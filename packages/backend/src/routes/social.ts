@@ -41,7 +41,7 @@ import { optionalAuth, requireAuth } from '../middleware/auth';
 import { selfAccount, selfDomain } from '../services/authors/authorKeys';
 import { federation } from '../services/federation';
 import { friendshipViewOf } from '../services/federation/friendships';
-import { type FriendPresence, limitFriendPresence } from '../services/federation/presence';
+import { type FriendPresence, limitFriendPresence, visitorVisibility } from '../services/federation/presence';
 import { remoteInstanceOf } from '../services/federation/remoteInstance';
 import { instanceManager } from '../services/instances/instanceManager';
 import { instanceRuntime } from '../services/instances/instanceRuntime';
@@ -296,14 +296,22 @@ router.get('/locations', requireAuth, async (req, res) => {
     const visibilities = await userSettingsRepository.presenceVisibilityOf(
         friendIds.filter((id) => !isRemoteUserId(id)),
     );
-    const visibilityOf = (id: string): PresenceVisibility =>
-        isRemoteUserId(id) ? 'location' : (visibilities.get(id) ?? DEFAULT_PRESENCE_VISIBILITY);
-    const hiddenIds = friendIds.filter((id) => visibilityOf(id) === 'hidden');
-    const shownIds = friendIds.filter((id) => visibilityOf(id) !== 'hidden');
     const presence = await instanceRuntime.presence();
     const locationsByUser = new Map(
         [...presence.values()].flatMap((room) => room.memberIds.map((id) => [id, room.id] as const)),
     );
+    // ここに来訪しているほかのサーバーのフレンドは、本人の見せ方をホームに確かめる（同じ部屋にいる人には見えているので尋ねない）
+    const visitors = await visitorVisibilities(
+        me,
+        friendIds.filter(
+            (id) =>
+                isRemoteUserId(id) && locationsByUser.has(id) && locationsByUser.get(id) !== locationsByUser.get(me),
+        ),
+    );
+    const visibilityOf = (id: string): PresenceVisibility =>
+        isRemoteUserId(id) ? (visitors.get(id) ?? 'location') : (visibilities.get(id) ?? DEFAULT_PRESENCE_VISIBILITY);
+    const hiddenIds = friendIds.filter((id) => visibilityOf(id) === 'hidden');
+    const shownIds = friendIds.filter((id) => visibilityOf(id) !== 'hidden');
     const instanceIds = [...new Set(shownIds.flatMap((id) => locationsByUser.get(id) ?? []))];
     const records = (await Promise.all(instanceIds.map((id) => instanceRepository.findById(id)))).flatMap((r) =>
         r ? [r] : [],
@@ -341,6 +349,24 @@ router.get('/locations', requireAuth, async (req, res) => {
         unreachable: await unreachableOf(remote.unreachable),
     });
 });
+
+/**
+ * ここに来訪しているほかのサーバーのフレンドの見せ方（ホームの答えから）。尋ねられないとき（連合なし・失敗）は場所を伏せる。
+ */
+async function visitorVisibilities(
+    me: string,
+    visitorIds: readonly string[],
+): Promise<Map<string, PresenceVisibility>> {
+    if (visitorIds.length === 0) return new Map();
+    const answers = federation
+        ? await federation.presence.locate(me, { remote: visitorIds, localVisiting: [] }).catch((error: unknown) => {
+              logger.warn('[federation] 来訪中のフレンドの見せ方を確かめられません:', error);
+              return [];
+          })
+        : [];
+    const byId = new Map(answers.map((a) => [a.friendId, a]));
+    return new Map(visitorIds.map((id) => [id, visitorVisibility(byId.get(id))]));
+}
 
 /** 確かめられなかったフレンドと、最後に確かめた場所（ワールドの名前）と時刻。 */
 async function unreachableOf(found: readonly FriendPresence[]) {

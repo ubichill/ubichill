@@ -75,6 +75,17 @@ export function limitFriendPresence(found: FriendPresence, visibility: PresenceV
     };
 }
 
+/**
+ * ここに来訪しているほかのサーバーのフレンドを、このサーバーの在室で出してよいか（本人のホームの答えから）。
+ * ホームは本人の見せ方を当てて答えるので、部屋にいると答えたときだけ場所を出す。場所を伏せた答え・つながらない・答えが無いときは
+ * 部屋にいることだけ（private）、offline と答えたら（見せない人）部屋にいないことにする。
+ */
+export function visitorVisibility(home: FriendPresence | undefined): PresenceVisibility {
+    if (home?.status === 'in_room') return 'location';
+    if (home?.status === 'offline') return 'hidden';
+    return 'online';
+}
+
 type Visibility = { visible: boolean; joinable: boolean; room: RoomCard | undefined };
 /** 部屋のサーバーの答え: 見えるか / その人は部屋にいない（部屋も無い） / 答えられない（連合しない・読めない） */
 type VisibilityAnswer = Visibility | 'absent' | null;

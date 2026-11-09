@@ -1,4 +1,4 @@
-import { type AccessType, INVITE_LIMITS } from '@ubichill/shared';
+import { type AccessType, INVITE_LIMITS, type PresenceVisibility } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
 import { createInviteService, type InviteRoom, type InviteServiceDeps } from './invites';
 
@@ -14,6 +14,8 @@ function setup(options: {
     deliverable?: boolean;
     /** 連合: 招待に対応していないと分かっているサーバーの人 */
     noInvites?: string[];
+    /** オンライン状態の見せ方（無い人は初期値） */
+    visibility?: Record<string, PresenceVisibility>;
 }) {
     const clock = { now: START };
     const rooms = new Map((options.rooms ?? []).map((r) => [r.id, r]));
@@ -35,6 +37,8 @@ function setup(options: {
         presence: async () => new Map([...rooms.values()].map((r) => [r.id, { memberIds: r.members }])),
         friendIdsOf: async (userId) =>
             new Set(pairs.flatMap(([a, b]) => (a === userId ? [b] : b === userId ? [a] : []))),
+        visibilityOf: async (userIds) =>
+            new Map(userIds.flatMap((id) => (options.visibility?.[id] ? [[id, options.visibility[id]] as const] : []))),
         invites: {
             upsert: async (input) => {
                 const at = invites.findIndex(
@@ -183,6 +187,55 @@ describe('招待を送る', () => {
                 { userId: 'carol', refusal: null, online: true },
             ]),
         );
+    });
+});
+
+describe('本人の見せ方（招待の画面とリクエストで在室を漏らさない）', () => {
+    const scene = (visibility: PresenceVisibility, members: string[] = ['friend']) =>
+        setup({
+            friends: [['me', 'friend']],
+            rooms: [room('r1', 'public', 'friend', members), room('mine', 'public', 'me', ['me'])],
+            visibility: { friend: visibility },
+        });
+
+    it('招待の候補: 「見せない」人は部屋にいても online にしない。「オンラインだけ」は online', async () => {
+        const hidden = await scene('hidden').service.candidates('me', 'mine');
+        expect(hidden?.find((c) => c.userId === 'friend')?.online).toBe(false);
+        const onlineOnly = await scene('online').service.candidates('me', 'mine');
+        expect(onlineOnly?.find((c) => c.userId === 'friend')?.online).toBe(true);
+    });
+
+    it('招待の候補: ここに来訪しているほかのサーバーの人も online にしない（本人の見せ方をホームに確かめていない）', async () => {
+        const visitor = 'https://b.example/ap/users/visitor';
+        const { service } = setup({
+            friends: [['me', visitor]],
+            rooms: [room('mine', 'public', 'me', ['me', visitor])],
+        });
+        expect((await service.candidates('me', 'mine'))?.find((c) => c.userId === visitor)?.online).toBe(false);
+    });
+
+    it('「見せない」人へのリクエストは、部屋にいてもいなくても同じ答え（在室確認にならない）で、本人に届く', async () => {
+        const inRoom = scene('hidden');
+        const away = scene('hidden', []);
+        const a = await inRoom.service.requestInvite('me', 'friend');
+        const b = await away.service.requestInvite('me', 'friend');
+        expect(a).toEqual({ ok: true, alreadyRequested: false });
+        expect(b).toEqual(a);
+        expect(inRoom.sent.filter((s) => s.kind === 'request')).toHaveLength(1);
+        expect(away.sent.filter((s) => s.kind === 'request')).toHaveLength(1);
+    });
+
+    it('「オンラインだけ」の人がパブリックの部屋にいても「そのまま入れます」で断らず、本人に届く（行き先を知らない人を行き止まりにしない）', async () => {
+        const { service, sent } = scene('online');
+        expect(await service.requestInvite('me', 'friend')).toEqual({ ok: true, alreadyRequested: false });
+        expect(sent.filter((s) => s.kind === 'request')).toHaveLength(1);
+    });
+
+    it('場所を見せている人なら、今までどおり「そのまま入れます」', async () => {
+        expect(await scene('location').service.requestInvite('me', 'friend')).toEqual({
+            ok: false,
+            reason: 'can-join',
+        });
     });
 });
 
