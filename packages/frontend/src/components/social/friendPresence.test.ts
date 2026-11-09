@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
     arrangeFriendPresence,
     friendDirectory,
+    friendLocationOf,
     lastKnownOf,
     onlineFriends,
     placeFriendCards,
@@ -168,6 +169,38 @@ describe('whereLabel', () => {
         expect(whereLabel({ kind: 'here' })).toBe('ここにいます');
         expect(whereLabel({ kind: 'room', instance: room('r', '森') })).toBe('森');
         expect(whereLabel({ kind: 'hidden' })).toBe('プライベート');
+    });
+});
+
+describe('friendLocationOf（プロフィールの現在地）', () => {
+    const NOW = Date.parse('2026-11-08T12:00:00Z');
+    const locked = { ...room('lk', '秘密基地'), canJoin: false } as Instance;
+    const withRooms = {
+        ...data,
+        locations: [...data.locations, { instance: locked, friends: [user('k', 'かぎ')] }],
+        unreachable: [{ user: user('z', 'ぜん') }],
+    };
+
+    it('入れる部屋は部屋とそこにいるフレンド（名前順）。自分と同じ部屋なら here', () => {
+        const at = friendLocationOf(withRooms, 'b', 'mine', NOW);
+        expect(at).toMatchObject({ kind: 'room', here: false, instance: { id: 'r2' } });
+        expect(at.kind === 'room' && at.friends.map((f) => f.id)).toEqual(['c', 'b']);
+        expect(friendLocationOf(withRooms, 'e', 'mine', NOW)).toMatchObject({ kind: 'room', here: true });
+    });
+
+    it('招待が要る部屋は、見えていてもどこかを出さずプライベートにする。ただし自分もいるなら部屋を出す', () => {
+        expect(friendLocationOf(withRooms, 'k', 'mine', NOW)).toEqual({ kind: 'private' });
+        expect(friendLocationOf(withRooms, 'k', 'lk', NOW)).toMatchObject({ kind: 'room', here: true });
+    });
+
+    it('見えない部屋はプライベート、部屋にいなければオフライン、確かめられなければその旨（オフラインとは言わない）', () => {
+        expect(friendLocationOf(withRooms, 'f', undefined, NOW)).toEqual({ kind: 'private' });
+        expect(friendLocationOf(withRooms, 'g', undefined, NOW)).toEqual({ kind: 'offline' });
+        expect(friendLocationOf(withRooms, 'z', undefined, NOW)).toEqual({ kind: 'unreachable', lastKnown: undefined });
+    });
+
+    it('一覧に無い人（フレンドでない・なったばかり）は unknown（オフラインと決めつけない）', () => {
+        expect(friendLocationOf(withRooms, 'nobody', undefined, NOW)).toEqual({ kind: 'unknown' });
     });
 });
 

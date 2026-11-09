@@ -1,7 +1,7 @@
 import { isRemoteUserId, type PublishedMod, type UserProfile } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { UserSocialBar } from '@/components/social';
+import { FriendLocationCard, UserSocialBar } from '@/components/social';
 import { WorldDetailModal } from '@/components/worlds/WorldDetailModal';
 import { fetchMyAccount, type MyAccount } from '@/lib/account/me';
 import { API_BASE } from '@/lib/api';
@@ -144,19 +144,24 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                     ほかの人と同じ表示名になっています。「編集」から表示名を変えてください。
                 </p>
             )}
-            {profile &&
-                (isOwnPage && edit.kind === 'editing' ? (
-                    <ProfileEditor account={edit.account} onSaved={finishEditing} onCancel={finishEditing} />
-                ) : (
-                    <ProfileHeader
-                        profile={profile}
-                        isOwner={isOwnPage}
-                        onEdit={startEditing}
-                        editPending={edit.kind === 'loading'}
-                    />
-                ))}
-
-            {!isOwnPage && session && profile && <UserSocialBar userId={profile.id} name={profile.name} />}
+            {/* 広い画面では、フレンドの現在地を右に並べる */}
+            <div className={top}>
+                <div className={css({ flex: 1, minW: 0 })}>
+                    {profile &&
+                        (isOwnPage && edit.kind === 'editing' ? (
+                            <ProfileEditor account={edit.account} onSaved={finishEditing} onCancel={finishEditing} />
+                        ) : (
+                            <ProfileHeader
+                                profile={profile}
+                                isOwner={isOwnPage}
+                                onEdit={startEditing}
+                                editPending={edit.kind === 'loading'}
+                            />
+                        ))}
+                    {!isOwnPage && session && profile && <UserSocialBar userId={profile.id} name={profile.name} />}
+                </div>
+                {!isOwnPage && session && profile && <FriendLocationCard userId={profile.id} />}
+            </div>
 
             {error && (
                 <div
@@ -235,6 +240,13 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
         </div>
     );
 }
+
+const top = css({
+    display: 'flex',
+    flexDirection: { base: 'column', lg: 'row' },
+    alignItems: { lg: 'flex-start' },
+    gap: { lg: '4' },
+});
 
 const conflictNotice = css({
     mb: '3',

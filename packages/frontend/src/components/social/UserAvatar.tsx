@@ -16,6 +16,7 @@ const avatar = cva({
     },
     variants: {
         size: {
+            xs: { width: '20px', height: '20px', fontSize: '10px' },
             sm: { width: '32px', height: '32px', fontSize: '13px' },
             md: { width: '40px', height: '40px', fontSize: '16px' },
             lg: { width: '52px', height: '52px', fontSize: '20px' },
@@ -25,7 +26,13 @@ const avatar = cva({
 });
 
 /** プロフィール画像（無ければ表示名の頭文字）。 */
-export function UserAvatar({ user, size }: { user: Pick<UserSummary, 'name' | 'image'>; size?: 'sm' | 'md' | 'lg' }) {
+export function UserAvatar({
+    user,
+    size,
+}: {
+    user: Pick<UserSummary, 'name' | 'image'>;
+    size?: 'xs' | 'sm' | 'md' | 'lg';
+}) {
     if (user.image) return <img src={user.image} alt="" className={avatar({ size })} />;
     return (
         <span className={avatar({ size })} aria-hidden>
