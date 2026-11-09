@@ -1,40 +1,42 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { rememberFriendLocations } from '@/lib/joinVia';
+import { useSession } from '@/lib/session';
 import { type FriendLocationsResponse, fetchFriendLocations } from '@/lib/socialApi';
+import { createSharedPoll } from './sharedPoll';
+
+const friendLocations = createSharedPoll<FriendLocationsResponse>({
+    async load() {
+        const located = await fetchFriendLocations();
+        rememberFriendLocations(located.locations);
+        return located;
+    },
+    intervalMs: 15_000,
+    staleMs: 5_000,
+    now: () => Date.now(),
+    isHidden: () => document.hidden,
+    onVisible(callback) {
+        const listener = () => {
+            if (!document.hidden) callback();
+        };
+        document.addEventListener('visibilitychange', listener);
+        return () => document.removeEventListener('visibilitychange', listener);
+    },
+});
 
 /**
- * フレンドの現在地を定期的に取り直す（入退室はサーバーからの通知ではなく読み直しで反映する）。
+ * フレンドの現在地（ランチパッド・ソーシャル・プロフィールで 1 つを共有する）。入退室はサーバーからの通知ではなく読み直しで反映する。
  * タブが隠れている間は取りに行かず、戻ってきたらすぐ取り直す。
  */
-export function useFriendLocations(intervalMs = 15000) {
-    const [data, setData] = useState<FriendLocationsResponse | null>(null);
-    const [error, setError] = useState<string | null>(null);
-
-    const reload = useCallback(async () => {
-        try {
-            const located = await fetchFriendLocations();
-            rememberFriendLocations(located.locations);
-            setData(located);
-            setError(null);
-        } catch (e) {
-            setError(e instanceof Error ? e.message : '読み込めませんでした');
-        }
-    }, []);
-
+export function useFriendLocations() {
+    const userId = useSession().data?.user.id;
     useEffect(() => {
-        void reload();
-        const timer = setInterval(() => {
-            if (!document.hidden) void reload();
-        }, intervalMs);
-        const onVisible = () => {
-            if (!document.hidden) void reload();
-        };
-        document.addEventListener('visibilitychange', onVisible);
-        return () => {
-            clearInterval(timer);
-            document.removeEventListener('visibilitychange', onVisible);
-        };
-    }, [reload, intervalMs]);
-
-    return { data, error, reload };
+        friendLocations.setOwner(userId);
+    }, [userId]);
+    const snapshot = useSyncExternalStore(friendLocations.subscribe, friendLocations.getSnapshot);
+    const current = snapshot.owner === userId;
+    return {
+        data: current ? snapshot.data : null,
+        error: current ? snapshot.error : null,
+        reload: friendLocations.reload,
+    };
 }
