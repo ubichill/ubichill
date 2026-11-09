@@ -158,7 +158,10 @@ describe.skipIf(!RUN)('フェディバースの保存（DB統合）', () => {
                 email: `${other}@example.com`,
                 handle: other.replaceAll('-', '_'),
             });
-            await actorKeyRepository.insertIfAbsent({ ...key(5), actorId: `https://a.example/ap/users/${other}`, userId: other }, T0);
+            await actorKeyRepository.insertIfAbsent(
+                { ...key(5), actorId: `https://a.example/ap/users/${other}`, userId: other },
+                T0,
+            );
             await userRepository.deleteById(other);
             expect(await actorKeyRepository.get(`https://a.example/ap/users/${other}`)).toBeUndefined();
         });
