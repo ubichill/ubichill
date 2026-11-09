@@ -30,6 +30,9 @@ import {
     MAX_EXTERNAL_WORKS_PER_USER,
     needsFriendCheck,
     OFFICIAL_HANDLE,
+    PRESENCE_VISIBILITIES,
+    PresenceVisibilitySchema,
+    type PrivacySettings,
     parseStoredDefinition,
     RevokeReasonSchema,
     SERVER_CONFIG,
@@ -594,6 +597,29 @@ router.delete('/me/favorites', requireAuth, async (req, res) => {
     if (parsed.ok && parsed.ref !== worldRef) await favoriteRepository.remove(req.user.id, parsed.ref);
     favoritesChanged(req.user.id);
     return res.status(204).send();
+});
+
+// プライバシーの設定（お気に入りの公開範囲・オンライン状態の見せ方）。フェディバースの設定は /api/v1/fediverse。
+router.get('/me/privacy', requireAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const [favoritesVisibility, presenceVisibility] = await Promise.all([
+        userSettingsRepository.getFavoritesVisibility(req.user.id),
+        userSettingsRepository.getPresenceVisibility(req.user.id),
+    ]);
+    res.set('Cache-Control', 'no-store');
+    return res.json({ favoritesVisibility, presenceVisibility } satisfies PrivacySettings);
+});
+
+// オンライン状態をフレンドにどこまで見せるか（location / online / hidden）。
+
+router.put('/me/presence', requireAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const parsed = PresenceVisibilitySchema.safeParse(req.body?.visibility);
+    if (!parsed.success) {
+        return res.status(400).json({ error: `visibility は ${PRESENCE_VISIBILITIES.join(' / ')} のいずれかです` });
+    }
+    await userSettingsRepository.setPresenceVisibility(req.user.id, parsed.data);
+    return res.json({ visibility: parsed.data });
 });
 
 // 公開プロフィール（他ユーザー閲覧用）

@@ -41,10 +41,10 @@ export function friendGroupsOf(
 export function groupFriendLocations<I extends { id: string }>(
     friendIds: readonly string[],
     instanceOf: (userId: string) => I | undefined,
-    canSee: (instance: I) => boolean,
+    canSee: (instance: I, friendId: string) => boolean,
 ): { locations: Array<{ instance: I; friendIds: string[] }>; privateFriendIds: string[]; elsewhereIds: string[] } {
     const located = friendIds.map((id) => ({ id, instance: instanceOf(id) }));
-    const visible = located.filter((f): f is { id: string; instance: I } => !!f.instance && canSee(f.instance));
+    const visible = located.filter((f): f is { id: string; instance: I } => !!f.instance && canSee(f.instance, f.id));
     const byInstance = new Map<string, { instance: I; friendIds: string[] }>();
     for (const f of visible) {
         const group = byInstance.get(f.instance.id) ?? { instance: f.instance, friendIds: [] };
@@ -52,7 +52,7 @@ export function groupFriendLocations<I extends { id: string }>(
     }
     return {
         locations: [...byInstance.values()].sort((a, b) => b.friendIds.length - a.friendIds.length),
-        privateFriendIds: located.filter((f) => !!f.instance && !canSee(f.instance)).map((f) => f.id),
+        privateFriendIds: located.filter((f) => !!f.instance && !canSee(f.instance, f.id)).map((f) => f.id),
         elsewhereIds: located.filter((f) => !f.instance).map((f) => f.id),
     };
 }
@@ -73,8 +73,16 @@ export interface UserSummary {
 /** ほかのサーバーの人の ID（actor の URL）か。このサーバーのユーザー ID は URL にならない。 */
 export const isRemoteUserId = (id: string): boolean => id.startsWith('https://') || id.startsWith('http://');
 
+/** ほかのサーバーの人との、フレンド以外の関係（このサーバーの人には付けない）。 */
+export interface RemoteRelation {
+    /** その人のサーバーがフレンドに対応していない（Mastodon・Misskey など）。フレンド申請は出さない */
+    friendsUnsupported?: true;
+    /** フェディバースでこの人にフォローされている（pending は承認待ち） */
+    followsYou?: 'accepted' | 'pending';
+}
+
 /** 検索結果・プロフィール（自分との関係付き）。 */
-export interface UserWithFriendship extends UserSummary {
+export interface UserWithFriendship extends UserSummary, RemoteRelation {
     friendship: Friendship;
 }
 

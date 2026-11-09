@@ -36,6 +36,16 @@ describe.skipIf(!RUN)('userSettingsRepository / userFriendRepository (DB統合)'
         expect(await userSettingsRepository.getFavoritesVisibility(ids.b)).toBe('private'); // 他人には影響しない
     });
 
+    it('オンライン状態の見せ方: 行が無ければ初期値、まとめて引くときは行のある人だけ。ほかの設定は戻さない', async () => {
+        expect(await userSettingsRepository.getPresenceVisibility(ids.c)).toBe('location');
+        await userSettingsRepository.setPresenceVisibility(ids.a, 'hidden');
+        await userSettingsRepository.setPresenceVisibility(ids.a, 'online');
+        const many = await userSettingsRepository.presenceVisibilityOf([ids.a, ids.c]);
+        expect([...many]).toEqual([[ids.a, 'online']]);
+        expect(await userSettingsRepository.presenceVisibilityOf([])).toEqual(new Map());
+        expect(await userSettingsRepository.getFavoritesVisibility(ids.a)).toBe('friends');
+    });
+
     it('フレンドは承認済み（accepted）だけで、申請中・無関係・自分自身は違う。申請の向きは問わない', async () => {
         await db.insert(userFriends).values({ userId: ids.a, friendId: ids.b, status: 'pending' });
         expect(await userFriendRepository.areFriends(ids.a, ids.b)).toBe(false);

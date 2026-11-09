@@ -2,11 +2,13 @@ import {
     DEFAULT_FAVORITES_VISIBILITY,
     DEFAULT_FEDIVERSE_SETTINGS,
     DEFAULT_HOME_SETTINGS,
+    DEFAULT_PRESENCE_VISIBILITY,
     type FavoritesVisibility,
     type FediverseSettings,
     type HomeSettings,
+    type PresenceVisibility,
 } from '@ubichill/shared';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db } from '../index';
 import { userSettings } from '../schema';
 
@@ -29,6 +31,32 @@ export const userSettingsRepository = {
             .onConflictDoUpdate({
                 target: userSettings.userId,
                 set: { favoritesVisibility: visibility, updatedAt: now },
+            });
+    },
+
+    /** オンライン状態の見せ方。設定の行が無いユーザーは初期値（いる場所まで）。 */
+    async getPresenceVisibility(userId: string): Promise<PresenceVisibility> {
+        return (await userSettingsRepository.presenceVisibilityOf([userId])).get(userId) ?? DEFAULT_PRESENCE_VISIBILITY;
+    },
+
+    /** 何人分かまとめて（フレンドの現在地）。行が無いユーザーは返さない（呼ぶ側で初期値にする）。 */
+    async presenceVisibilityOf(userIds: readonly string[]): Promise<Map<string, PresenceVisibility>> {
+        if (userIds.length === 0) return new Map();
+        const rows = await db
+            .select({ userId: userSettings.userId, visibility: userSettings.presenceVisibility })
+            .from(userSettings)
+            .where(inArray(userSettings.userId, [...userIds]));
+        return new Map(rows.map((r) => [r.userId, r.visibility]));
+    },
+
+    async setPresenceVisibility(userId: string, visibility: PresenceVisibility): Promise<void> {
+        const now = new Date();
+        await db
+            .insert(userSettings)
+            .values({ userId, presenceVisibility: visibility, createdAt: now, updatedAt: now })
+            .onConflictDoUpdate({
+                target: userSettings.userId,
+                set: { presenceVisibility: visibility, updatedAt: now },
             });
     },
 

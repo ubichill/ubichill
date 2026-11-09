@@ -1,7 +1,7 @@
-import type { Friendship, UserSummary } from '@ubichill/shared';
+import type { Friendship, RemoteRelation, UserSummary } from '@ubichill/shared';
 import { useState } from 'react';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import { type FriendAction, friendActionsOf } from '@/lib/friendActions';
+import { type FriendAction, followLabelOf, friendActionsOf } from '@/lib/friendActions';
 import { acceptFriend, removeFriend, requestFriend } from '@/lib/socialApi';
 import { css } from '@/styled-system/css';
 import { socialButton } from './buttons';
@@ -22,12 +22,16 @@ async function run(action: FriendAction, userId: string): Promise<Friendship> {
 export function FriendButton({
     user,
     friendship,
+    relation = {},
     onChange,
 }: {
     user: Pick<UserSummary, 'id' | 'name'>;
     friendship: Friendship;
+    /** ほかのサーバーの人: フレンドに対応しているか・フェディバースでフォローされているか */
+    relation?: RemoteRelation;
     onChange: (next: Friendship) => void;
 }) {
+    const followLabel = followLabelOf(relation);
     const confirm = useConfirm();
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -51,7 +55,8 @@ export function FriendButton({
             {friendship === 'friends' && (
                 <span className={css({ fontSize: '12px', color: 'successText', fontWeight: '600' })}>フレンド</span>
             )}
-            {friendActionsOf(friendship, user.name).map((a) => (
+            {followLabel && <span className={css({ fontSize: '12px', color: 'textMuted' })}>{followLabel}</span>}
+            {friendActionsOf(friendship, user.name, relation).map((a) => (
                 <button
                     key={a.action}
                     type="button"

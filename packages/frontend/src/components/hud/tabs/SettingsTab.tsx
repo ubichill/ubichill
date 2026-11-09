@@ -1,18 +1,19 @@
 import { isPublishable } from '@ubichill/shared';
 import { ServerPoliciesSection, WorldPeersSection } from '@/components/federation';
 import { HomeSettingsSection } from '@/components/home/HomeSettingsSection';
-import { MyWorldsSection, ProfileEditSection, useMyAccount } from '@/components/profile';
+import { MyWorldsSection, useMyAccount } from '@/components/profile';
 import { AnnouncementSection } from '@/components/profile/AnnouncementSection';
 import { PasswordSection } from '@/components/profile/PasswordSection';
 import { PublishingSection } from '@/components/profile/PublishingSection';
 import { css } from '@/styled-system/css';
 import { LogoutSection } from './settings/LogoutSection';
 import { ModPermissionsSettings } from './settings/ModPermissionsSettings';
+import { PrivacySection } from './settings/PrivacySection';
 import { type JoinInstanceHandler, tabPanel, tabSection } from './shared';
 
 export type SettingsSection =
-    | 'profile'
     | 'home'
+    | 'privacy'
     | 'worlds'
     | 'publishing'
     | 'account'
@@ -21,8 +22,8 @@ export type SettingsSection =
     | 'mods';
 
 const SECTIONS: ReadonlyArray<{ id: SettingsSection; label: string; adminOnly?: boolean }> = [
-    { id: 'profile', label: 'プロフィール' },
     { id: 'home', label: 'ホーム' },
+    { id: 'privacy', label: 'プライバシー' },
     { id: 'worlds', label: 'ワールド' },
     { id: 'publishing', label: '公開' },
     { id: 'account', label: 'アカウント' },
@@ -32,8 +33,8 @@ const SECTIONS: ReadonlyArray<{ id: SettingsSection; label: string; adminOnly?: 
 ];
 
 /**
- * 設定タブ。プロフィールの編集・ホーム・ワールドの管理・公開（公開環境）・アカウント（パスワード・ログアウト）・連合（管理者）・
- * mod の権限をタブで分ける。プロフィールの表示はランチパッドの上の自分の名前から。
+ * 設定タブ。ホーム・プライバシー（だれに何を見せるか）・ワールドの管理・公開（公開環境）・アカウント（パスワード・ログアウト）・
+ * 連合（管理者）・mod の権限をタブで分ける。プロフィールはプロフィールの画面でその場で編集する。
  */
 export function SettingsTab({
     section,
@@ -49,7 +50,7 @@ export function SettingsTab({
     const account = useMyAccount();
     const { profile } = account;
     const sections = SECTIONS.filter((s) => !s.adminOnly || profile?.isAdmin);
-    const current = sections.some((s) => s.id === section) ? section : 'profile';
+    const current = sections.some((s) => s.id === section) ? section : 'home';
     const unsignedCount = account.worlds.filter((w) => !isPublishable(w.identity)).length;
 
     return (
@@ -92,14 +93,14 @@ export function SettingsTab({
                         </button>
                     ))}
                 </div>
-                {account.error && current !== 'mods' && current !== 'home' && (
+                {account.error && current !== 'mods' && current !== 'home' && current !== 'privacy' && (
                     <p className={css({ fontSize: '13px', color: 'errorText', mb: '3' })}>{account.error}</p>
                 )}
-                {current !== 'mods' && current !== 'home' && account.loading && (
+                {current !== 'mods' && current !== 'home' && current !== 'privacy' && account.loading && (
                     <p className={css({ fontSize: '13px', color: 'textMuted' })}>読み込み中...</p>
                 )}
-                {current === 'profile' && <ProfileEditSection account={account} onNavigate={onNavigate} />}
                 {current === 'home' && <HomeSettingsSection />}
+                {current === 'privacy' && <PrivacySection />}
                 {current === 'worlds' && !account.loading && (
                     <MyWorldsSection account={account} onNavigate={onNavigate} onJoinInstance={onJoinInstance} />
                 )}

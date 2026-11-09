@@ -13,12 +13,10 @@ describe('FAVORITES_VISIBILITY_OPTIONS', () => {
 });
 
 describe('favoritesVisibilityNote', () => {
-    it('Friends では、フレンド機能が準備中で自分だけが見られる状態と同じことを伝える', () => {
-        expect(favoritesVisibilityNote('friends')).toContain('準備中');
-    });
-
-    it('Public では外部ワールドの URL も見えることを伝え、Private では補足なし', () => {
+    it('Public では外部ワールドの URL とフェディバースの固定ノートに出ることを伝え、ほかは補足なし', () => {
         expect(favoritesVisibilityNote('public')).toContain('外部');
+        expect(favoritesVisibilityNote('public')).toContain('固定ノート');
+        expect(favoritesVisibilityNote('friends')).toBeNull();
         expect(favoritesVisibilityNote('private')).toBeNull();
     });
 });

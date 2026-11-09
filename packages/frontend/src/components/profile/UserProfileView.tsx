@@ -48,6 +48,19 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
     const [mods, setMods] = useState<PublishedMod[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    // 自分の表示名がほかの人と同じになっている（編集で変えてもらう）
+    const [nameConflict, setNameConflict] = useState(false);
+
+    useEffect(() => {
+        if (!isOwnPage) return;
+        const ctrl = { cancelled: false };
+        fetchMyAccount()
+            .then((account) => !ctrl.cancelled && setNameConflict(account.displayNameConflict))
+            .catch(() => undefined);
+        return () => {
+            ctrl.cancelled = true;
+        };
+    }, [isOwnPage]);
 
     const joinInstance = (
         instanceId: string,
@@ -108,6 +121,7 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
     const finishEditing = (latest: UserProfile) => {
         setProfile(latest);
         setEdit({ kind: 'viewing' });
+        if (latest.name !== profile?.name) setNameConflict(false);
     };
 
     if (isPending || loading) {
@@ -125,6 +139,11 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
 
     return (
         <div>
+            {isOwnPage && nameConflict && edit.kind !== 'editing' && (
+                <p role="alert" className={conflictNotice}>
+                    ほかの人と同じ表示名になっています。「編集」から表示名を変えてください。
+                </p>
+            )}
             {profile &&
                 (isOwnPage && edit.kind === 'editing' ? (
                     <ProfileEditor account={edit.account} onSaved={finishEditing} onCancel={finishEditing} />
@@ -216,3 +235,15 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
         </div>
     );
 }
+
+const conflictNotice = css({
+    mb: '3',
+    px: '3',
+    py: '2',
+    borderRadius: '10px',
+    border: '1px solid',
+    borderColor: 'errorText',
+    color: 'errorText',
+    fontSize: '13px',
+    lineHeight: '1.6',
+});

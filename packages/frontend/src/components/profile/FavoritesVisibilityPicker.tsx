@@ -1,28 +1,6 @@
 import type { FavoritesVisibility } from '@ubichill/shared';
+import { ChoiceGroup } from '@/components/ui/ChoiceGroup';
 import { FAVORITES_VISIBILITY_OPTIONS, favoritesVisibilityNote } from '@/lib/account/favoritesVisibility';
-import { css, cva } from '@/styled-system/css';
-
-const option = cva({
-    base: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '2',
-        px: '3',
-        py: '2',
-        border: '1px solid',
-        borderRadius: '10px',
-        fontSize: '13px',
-        fontWeight: '600',
-        cursor: 'pointer',
-        _disabled: { opacity: 0.5, cursor: 'not-allowed' },
-    },
-    variants: {
-        selected: {
-            true: { bg: 'primary', color: 'textOnPrimary', borderColor: 'primary' },
-            false: { bg: 'surface', color: 'text', borderColor: 'border', _hover: { bg: 'surfaceHover' } },
-        },
-    },
-});
 
 function VisibilityIcon({ value }: { value: FavoritesVisibility }) {
     const common = {
@@ -72,31 +50,17 @@ export function FavoritesVisibilityPicker({ value, disabled, onChange }: Favorit
     const current = FAVORITES_VISIBILITY_OPTIONS.find((o) => o.value === value);
     const note = favoritesVisibilityNote(value);
     return (
-        <div className={css({ mb: '4' })}>
-            <div
-                role="radiogroup"
-                aria-label="お気に入りの公開範囲"
-                className={css({ display: 'flex', gap: '2', flexWrap: 'wrap' })}
-            >
-                {FAVORITES_VISIBILITY_OPTIONS.map((o) => (
-                    <button
-                        key={o.value}
-                        type="button"
-                        role="radio"
-                        aria-checked={o.value === value}
-                        disabled={disabled}
-                        onClick={() => o.value !== value && onChange(o.value)}
-                        className={option({ selected: o.value === value })}
-                    >
-                        <VisibilityIcon value={o.value} />
-                        {o.label}
-                    </button>
-                ))}
-            </div>
-            <p className={css({ mt: '2', fontSize: '12px', color: 'textMuted', lineHeight: '1.6' })}>
-                {current?.description}
-                {note && ` ${note}`}
-            </p>
-        </div>
+        <ChoiceGroup
+            label="お気に入りの公開範囲"
+            choices={FAVORITES_VISIBILITY_OPTIONS.map((o) => ({
+                value: o.value,
+                label: o.label,
+                icon: <VisibilityIcon value={o.value} />,
+            }))}
+            value={value}
+            description={[current?.description, note].filter(Boolean).join(' ')}
+            disabled={disabled}
+            onChange={onChange}
+        />
     );
 }
