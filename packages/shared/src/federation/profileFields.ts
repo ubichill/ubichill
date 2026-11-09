@@ -56,6 +56,9 @@ export interface RemoteProfileField {
 
 /** 読む項目の数（Misskey は 16 まで書ける）。 */
 export const MAX_REMOTE_PROFILE_FIELDS = 16;
+/** 項目の名前と値の長さ（取り込むときと、保存したものを読み出すときの両方で切る）。 */
+export const REMOTE_PROFILE_FIELD_NAME_MAX = 50;
+export const REMOTE_PROFILE_FIELD_VALUE_MAX = 200;
 
 const PropertyValueSchema = z.object({ type: z.literal('PropertyValue'), name: z.string(), value: z.string() });
 
@@ -80,8 +83,8 @@ export function readProfileAttachment(attachment: unknown): RemoteProfileField[]
         .flatMap((item): RemoteProfileField[] => {
             const parsed = PropertyValueSchema.safeParse(item);
             if (!parsed.success) return [];
-            const name = displayText(parsed.data.name, 50);
-            const value = displayText(parsed.data.value, 200);
+            const name = displayText(parsed.data.name, REMOTE_PROFILE_FIELD_NAME_MAX);
+            const value = displayText(parsed.data.value, REMOTE_PROFILE_FIELD_VALUE_MAX);
             return name && value ? [{ name, value, href: hrefOf(parsed.data.value) }] : [];
         })
         .slice(0, MAX_REMOTE_PROFILE_FIELDS);
@@ -109,14 +112,25 @@ export function readProfileExtensions(doc: Record<string, unknown>): {
 
 const StoredProfileSchema = z
     .object({
-        fields: z
-            .array(z.object({ name: z.string(), value: z.string(), href: z.string().nullable() }))
-            .max(MAX_REMOTE_PROFILE_FIELDS)
-            .catch([]),
+        fields: z.array(z.object({ name: z.string(), value: z.string(), href: z.string().nullable() })).catch([]),
         status: z.string().nullable().catch(null),
         languages: z.unknown(),
     })
     .partial();
+
+const clip = (text: string, max: number): string => Array.from(text).slice(0, max).join('').trim();
+
+/**
+ * 保存した項目を、取り込むときと同じ数と長さに切り直す（古い・壊れた行でもプロフィールを開けるように）。
+ * 保存してあるのは取り込むときに整えた文字なので、タグを除く処理はもう一度かけない（文字の「<」を消してしまう）。
+ */
+function storedFieldsOf(fields: Array<{ name: string; value: string; href: string | null }> | undefined) {
+    return (fields ?? []).slice(0, MAX_REMOTE_PROFILE_FIELDS).flatMap((field) => {
+        const name = clip(field.name, REMOTE_PROFILE_FIELD_NAME_MAX);
+        const value = clip(field.value, REMOTE_PROFILE_FIELD_VALUE_MAX);
+        return name && value ? [{ name, value, href: field.href }] : [];
+    });
+}
 
 /** ほかのサーバーの人のプロフィール（リンクにできない項目は表で出す）。 */
 export interface RemoteProfileView {
@@ -135,7 +149,7 @@ export function remoteProfileView(stored: unknown): RemoteProfileView {
     const profile = parsed.success ? parsed.data : {};
     const status = profile.status ? displayText(profile.status, PROFILE_STATUS_MAX_LENGTH) : null;
     const languages = profileLanguagesView(profile.languages);
-    const withLinks = (profile.fields ?? []).map((field) => {
+    const withLinks = storedFieldsOf(profile.fields).map((field) => {
         const parsedLink = field.href ? parseProfileLink(field.href) : null;
         return { field, link: parsedLink?.ok ? { url: parsedLink.url, kind: parsedLink.kind } : null };
     });
