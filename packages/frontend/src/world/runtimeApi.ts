@@ -4,6 +4,7 @@
  */
 import { type InstanceGrant, InstanceJoinRejected, type ResolveInstance } from '@ubichill/react';
 import type { Instance, InstanceAPI } from '@ubichill/shared';
+import { InstanceNotFoundError } from './instanceFailure';
 
 type RuntimePresence = InstanceAPI['schemas']['RuntimePresence'];
 
@@ -63,6 +64,7 @@ export async function fetchGuestInstance(runtimeOrigin: string, instanceId: stri
     const response = await fetch(`${runtimeOrigin}/realtime/v1/instances/${encodeURIComponent(instanceId)}`, {
         credentials: 'omit',
     });
+    if (response.status === 404) throw new InstanceNotFoundError('インスタンスが見つかりません');
     if (!response.ok) throw new Error('インスタンスが見つかりません');
     return presenceToInstance((await response.json()) as RuntimePresence, runtimeOrigin);
 }
