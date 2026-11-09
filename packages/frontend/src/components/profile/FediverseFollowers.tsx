@@ -1,10 +1,9 @@
-import type { FediverseFollower, FediverseOverview, FediverseSettingsUpdate } from '@ubichill/shared';
+import type { FediverseFollower, FediverseOverview } from '@ubichill/shared';
 import { type ReactNode, useEffect, useState } from 'react';
-import { UserAvatar } from '@/components/social';
+import { UserAvatar, useOpenUser } from '@/components/social';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import { Switch } from '@/components/ui/Switch';
-import { withFollowerAnswered, withManualApprovalOff } from '@/lib/fediverse';
-import { answerFollower, fetchFediverse, updateFediverseSettings } from '@/lib/fediverseApi';
+import { withFollowerAnswered } from '@/lib/fediverse';
+import { answerFollower, fetchFediverse } from '@/lib/fediverseApi';
 import { pushToast } from '@/lib/toast';
 import { css, cva } from '@/styled-system/css';
 
@@ -39,48 +38,52 @@ function FollowerRow({
     busy: boolean;
     children: ReactNode;
 }) {
+    const openUser = useOpenUser();
     const name = follower.name ?? follower.account;
-    const who = (
-        <>
-            <span className={css({ fontSize: '13px', fontWeight: '700', color: 'text', truncate: true })}>{name}</span>
-            <span className={css({ fontSize: '12px', color: 'textMuted', truncate: true })}>@{follower.account}</span>
-        </>
-    );
     return (
         <li className={css({ display: 'flex', alignItems: 'center', gap: '3', py: '2', opacity: busy ? 0.6 : 1 })}>
-            <UserAvatar user={{ name, image: follower.icon }} size="sm" />
-            {follower.url ? (
-                <a
-                    href={follower.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={css({
-                        display: 'flex',
-                        flexDirection: 'column',
-                        minW: 0,
-                        flex: 1,
-                        textDecoration: 'none',
-                    })}
-                >
-                    {who}
-                </a>
-            ) : (
-                <span className={css({ display: 'flex', flexDirection: 'column', minW: 0, flex: 1 })}>{who}</span>
-            )}
+            <button
+                type="button"
+                className={who}
+                onClick={() => openUser({ id: follower.actorId, handle: follower.account })}
+            >
+                <UserAvatar user={{ name, image: follower.icon }} size="sm" />
+                <span className={css({ display: 'flex', flexDirection: 'column', minW: 0 })}>
+                    <span className={css({ fontSize: '13px', fontWeight: '700', color: 'text', truncate: true })}>
+                        {name}
+                    </span>
+                    <span className={css({ fontSize: '12px', color: 'textMuted', truncate: true })}>
+                        @{follower.account}
+                    </span>
+                </span>
+            </button>
             <div className={css({ display: 'flex', gap: '2', flexShrink: 0 })}>{children}</div>
         </li>
     );
 }
 
+const who = css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '3',
+    minW: 0,
+    flex: 1,
+    p: 0,
+    bg: 'transparent',
+    border: 'none',
+    textAlign: 'left',
+    cursor: 'pointer',
+    _hover: { opacity: 0.8 },
+});
+
 /**
- * フェディバース（Mastodon・Misskey など）: アカウント・承認制・検索に出すか・承認待ちとフォロワー。
- * フォロワーに見えるのはプロフィールだけ（現在地や招待はフレンドだけ）。
+ * フェディバース（Mastodon・Misskey など）のアカウントと、承認待ち・フォロワー。押すとその人のプロフィール。
+ * フォロワーに見えるのはプロフィールだけ（現在地や招待はフレンドだけ）。承認制などの設定は「プライバシー」。
  */
-export function FediverseSection() {
+export function FediverseFollowers() {
     const confirm = useConfirm();
     const [overview, setOverview] = useState<FediverseOverview | null>(null);
     const [error, setError] = useState('');
-    const [saving, setSaving] = useState(false);
     const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set());
 
     useEffect(() => {
@@ -96,25 +99,6 @@ export function FediverseSection() {
     if (!overview) {
         return error ? <p className={css({ fontSize: '13px', color: 'errorText' })}>{error}</p> : null;
     }
-
-    const changeSettings = async (update: FediverseSettingsUpdate) => {
-        setSaving(true);
-        try {
-            const settings = await updateFediverseSettings(update);
-            setOverview((current) => {
-                if (!current) return current;
-                const released =
-                    current.settings.manuallyApprovesFollowers && !settings.manuallyApprovesFollowers
-                        ? withManualApprovalOff(current)
-                        : current;
-                return { ...released, settings };
-            });
-        } catch (e) {
-            pushToast(e instanceof Error ? e.message : '変更できませんでした', 'error');
-        } finally {
-            setSaving(false);
-        }
-    };
 
     const answer = async (follower: FediverseFollower, action: 'approve' | 'reject') => {
         if (
@@ -175,21 +159,6 @@ export function FediverseSection() {
 
             {overview.enabled && (
                 <>
-                    <Switch
-                        title="フォローを承認制にする"
-                        description="オンにすると、フォローされる前にあなたが承認します。オフにすると、承認待ちはまとめて承認されます。"
-                        on={overview.settings.manuallyApprovesFollowers}
-                        disabled={saving}
-                        onChange={(next) => void changeSettings({ manuallyApprovesFollowers: next })}
-                    />
-                    <Switch
-                        title="おすすめや検索に出す"
-                        description="オフにしても、アカウントを直接検索すれば見つかります。"
-                        on={overview.settings.discoverable}
-                        disabled={saving}
-                        onChange={(next) => void changeSettings({ discoverable: next })}
-                    />
-
                     {overview.pending.length > 0 && (
                         <div>
                             <p className={label}>承認待ち（{overview.pending.length}）</p>

@@ -14,17 +14,19 @@ import { HudIcon, type HudIconName } from './HudIcon';
 import { type HudNavigation, HudNavigationContext } from './HudNavigationContext';
 import {
     currentPage,
-    type DockTab,
     goBack,
     type HudPage,
+    type HudTab,
     type HudView,
     INITIAL_HUD_VIEW,
     openPage,
+    openUser,
     pageTitle,
-    selectDock,
+    selectTab,
 } from './hudView';
 import { LaunchpadHome } from './LaunchpadHome';
 import { AudioTab } from './tabs/AudioTab';
+import { FediverseTab } from './tabs/FediverseTab';
 import { InstanceTab } from './tabs/InstanceTab';
 import { InviteTab } from './tabs/InviteTab';
 import { NotificationsTab } from './tabs/NotificationsTab';
@@ -39,16 +41,31 @@ interface HudOverlayProps {
     currentInstanceId: string;
 }
 
-const DOCK_ITEMS: ReadonlyArray<{ id: DockTab; label: string; icon: HudIconName }> = [
+interface TabItem {
+    id: HudTab;
+    label: string;
+    icon: HudIconName;
+}
+
+/** 下: いる場所のこと。 */
+const PLACE_ITEMS: readonly TabItem[] = [
     { id: 'launchpad', label: 'ランチパッド', icon: 'rocket' },
-    { id: 'notifications', label: '通知', icon: 'bell' },
+    { id: 'worlds', label: 'ワールド', icon: 'globe' },
     { id: 'instance', label: '現在地', icon: 'pin' },
     { id: 'audio', label: '音声', icon: 'volume' },
+];
+
+/** 左: 自分と人のこと。 */
+const PERSON_ITEMS: readonly TabItem[] = [
+    { id: 'profile', label: 'プロフィール', icon: 'user' },
+    { id: 'notifications', label: '通知', icon: 'bell' },
+    { id: 'social', label: '検索', icon: 'search' },
+    { id: 'fediverse', label: 'フェディバース', icon: 'fediverse' },
     { id: 'settings', label: '設定', icon: 'gear' },
 ];
 
 /**
- * インスタンスの中で開くランチパッド。ページを移らずに、下のドックで画面を切り替え、その上に画面を重ねて進む。
+ * インスタンスの中で開くランチパッド。ページを移らずに、左（自分と人）と下（いる場所）のタブで画面を切り替え、その上に画面を重ねて進む。
  * 背景（パネルの外）を押すか Esc（InstanceHUD）で閉じる。
  */
 export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
@@ -77,15 +94,15 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
             currentInstanceId,
             openSettings: (section) => {
                 setSettingsSection(section);
-                setView(selectDock('settings'));
+                setView(selectTab('settings'));
             },
-            openUser: (userId) =>
-                setView((v) => openPage(v, userId === selfId ? { kind: 'profile' } : { kind: 'user', userId })),
+            openUser: (userId) => setView((v) => openUser(v, userId, selfId)),
             joinInstance: actions.joinInstance,
         }),
         [currentInstanceId, selfId, actions.joinInstance],
     );
     const open = (page: HudPage) => setView((v) => openPage(v, page));
+    const select = (tab: HudTab) => setView(selectTab(tab));
 
     const createWorld = async () => {
         if (!(await confirm('ワールドの作成画面に移動しますか？現在のインスタンスから退出します。'))) return;
@@ -98,34 +115,22 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
 
     const pageContent = (p: HudPage): ReactNode => {
         switch (p.kind) {
-            case 'worlds':
-                return <WorldsTab onJoinInstance={actions.joinInstance} currentInstanceId={currentInstanceId} />;
-            case 'social':
-                return (
-                    <SocialTab
-                        currentInstance={instance}
-                        onJoinInstance={actions.joinInstance}
-                        onFriendshipChange={() => void notifications.reload()}
-                    />
-                );
             case 'invite':
                 return (
                     <InviteTab
                         instance={instance}
                         currentInstanceId={currentInstanceId}
                         onCopyLink={() => void actions.copyInvite()}
-                        onFindFriends={() => open({ kind: 'social' })}
+                        onFindFriends={() => select('social')}
                     />
                 );
-            case 'profile':
-                return <ProfileTab onNavigate={onClose} onJoinInstance={actions.joinInstance} />;
             case 'user':
                 return <ProfileTab userId={p.userId} onNavigate={onClose} onJoinInstance={actions.joinInstance} />;
         }
     };
 
-    const dockContent = (): ReactNode => {
-        switch (view.dock) {
+    const tabContent = (): ReactNode => {
+        switch (view.tab) {
             case 'launchpad':
                 return (
                     <LaunchpadHome
@@ -135,18 +140,31 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
                         goingHome={actions.goingHome}
                         onGoHome={() => void actions.goHome()}
                         onInvite={() => open({ kind: 'invite' })}
-                        onOpenInstance={() => setView(selectDock('instance'))}
-                        onOpenPage={open}
+                        onSelectTab={select}
                         onCreateWorld={() => void createWorld()}
                         onJoinInstance={actions.joinInstance}
                     />
                 );
-            case 'notifications':
-                return <NotificationsTab onNavigate={onClose} />;
+            case 'worlds':
+                return <WorldsTab onJoinInstance={actions.joinInstance} currentInstanceId={currentInstanceId} />;
             case 'instance':
                 return <InstanceTab currentInstanceId={currentInstanceId} onNavigate={onClose} />;
             case 'audio':
                 return <AudioTab />;
+            case 'profile':
+                return <ProfileTab onNavigate={onClose} onJoinInstance={actions.joinInstance} />;
+            case 'notifications':
+                return <NotificationsTab onNavigate={onClose} />;
+            case 'social':
+                return (
+                    <SocialTab
+                        currentInstance={instance}
+                        onJoinInstance={actions.joinInstance}
+                        onFriendshipChange={() => void notifications.reload()}
+                    />
+                );
+            case 'fediverse':
+                return <FediverseTab />;
             case 'settings':
                 return (
                     <SettingsTab
@@ -162,84 +180,81 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
     const userName = session?.user.name ?? '';
     const avatar = session?.user.image;
     const unread = unreadBadge(notifications.feed.unreadCount);
+    const tabButton = (item: TabItem, placement: 'rail' | 'dock') => {
+        const active = view.tab === item.id;
+        const badge = item.id === 'notifications' ? unread : null;
+        const icon = item.id === 'audio' && audio.muted ? 'mute' : item.icon;
+        return (
+            <button
+                key={item.id}
+                type="button"
+                aria-pressed={active}
+                aria-controls={contentId}
+                className={tabButtonStyle({ active, placement })}
+                onClick={() => select(item.id)}
+            >
+                <span className={css({ position: 'relative', display: 'inline-flex' })}>
+                    {item.id === 'profile' && avatar ? (
+                        <img src={avatar} alt="" className={railAvatar} />
+                    ) : (
+                        <HudIcon name={icon} />
+                    )}
+                    {badge && (
+                        <span role="status" aria-label={`未読 ${badge} 件`} className={badgeStyle}>
+                            {badge}
+                        </span>
+                    )}
+                </span>
+                <span className={tabLabel}>{item.id === 'profile' && userName ? userName : item.label}</span>
+            </button>
+        );
+    };
 
     return (
         <HudNavigationContext.Provider value={navigation}>
             <div className={backdrop} data-open={visible} onClick={onClose}>
                 <div className={frame} onClick={(e) => e.stopPropagation()}>
-                    <section
-                        className={panel}
-                        role="dialog"
-                        aria-modal="true"
-                        aria-label="ランチパッド"
-                        data-launchpad=""
-                    >
-                        <header className={header}>
-                            <button
-                                type="button"
-                                className={accountChip}
-                                onClick={() => open({ kind: 'profile' })}
-                                aria-label={`${userName}（プロフィール）`}
-                            >
-                                {avatar ? (
-                                    <img src={avatar} alt="" className={avatarStyle} />
-                                ) : (
-                                    <span className={avatarStyle}>{[...userName][0] ?? ''}</span>
-                                )}
-                                <span className={accountName}>{userName}</span>
-                            </button>
-                            <Clock />
-                            <button type="button" className={iconButton} aria-label="閉じる" onClick={onClose}>
-                                <HudIcon name="close" />
-                            </button>
-                        </header>
-
-                        <div className={body}>
-                            {page && (
-                                <div className={pageHeader}>
-                                    <button
-                                        type="button"
-                                        className={backButton}
-                                        aria-label="戻る"
-                                        onClick={() => setView(goBack)}
-                                    >
-                                        <HudIcon name="back" size={20} />
-                                    </button>
-                                    {title && <h2 className={pageTitleStyle}>{title}</h2>}
-                                </div>
-                            )}
-                            <div id={contentId} className={contentArea}>
-                                {page ? pageContent(page) : dockContent()}
-                            </div>
-                        </div>
-                    </section>
-
-                    <nav className={dock} aria-label="メインメニュー">
-                        {DOCK_ITEMS.map((item) => {
-                            const active = view.dock === item.id;
-                            const icon = item.id === 'audio' && audio.muted ? 'mute' : item.icon;
-                            const badge = item.id === 'notifications' ? unread : null;
-                            return (
-                                <button
-                                    key={item.id}
-                                    type="button"
-                                    aria-pressed={active}
-                                    aria-controls={contentId}
-                                    className={dockButton({ active })}
-                                    onClick={() => setView(selectDock(item.id))}
-                                >
-                                    <span className={css({ position: 'relative', display: 'inline-flex' })}>
-                                        <HudIcon name={icon} />
-                                        {badge && (
-                                            <span role="status" aria-label={`未読 ${badge} 件`} className={badgeStyle}>
-                                                {badge}
-                                            </span>
-                                        )}
-                                    </span>
-                                    <span className={dockLabel}>{item.label}</span>
+                    <div className={main}>
+                        <nav className={rail} aria-label="自分と人">
+                            {PERSON_ITEMS.map((item) => tabButton(item, 'rail'))}
+                        </nav>
+                        <section
+                            className={panel}
+                            role="dialog"
+                            aria-modal="true"
+                            aria-label="ランチパッド"
+                            data-launchpad=""
+                        >
+                            <header className={header}>
+                                <Clock />
+                                <button type="button" className={iconButton} aria-label="閉じる" onClick={onClose}>
+                                    <HudIcon name="close" />
                                 </button>
-                            );
-                        })}
+                            </header>
+
+                            <div className={body}>
+                                {page && (
+                                    <div className={pageHeader}>
+                                        <button
+                                            type="button"
+                                            className={backButton}
+                                            aria-label="戻る"
+                                            onClick={() => setView(goBack)}
+                                        >
+                                            <HudIcon name="back" size={20} />
+                                        </button>
+                                        {title && <h2 className={pageTitleStyle}>{title}</h2>}
+                                    </div>
+                                )}
+                                <div id={contentId} className={contentArea}>
+                                    {page ? pageContent(page) : tabContent()}
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+
+                    <nav className={dock} aria-label="いる場所">
+                        {PLACE_ITEMS.map((item) => tabButton(item, 'dock'))}
                     </nav>
                 </div>
             </div>
@@ -297,11 +312,40 @@ const frame = css({
     flexDirection: 'column',
     alignItems: 'stretch',
     gap: '3',
-    w: 'min(780px, calc(100vw - 16px))',
+    w: { base: 'calc(100vw - 16px)', md: 'min(900px, calc(100vw - 32px))' },
     h: {
         base: 'calc(100dvh - 24px - env(safe-area-inset-bottom, 0px))',
         md: 'min(820px, calc(100dvh - 48px))',
     },
+});
+
+/** 左のタブとパネル（狭い画面ではタブをパネルの上に横に並べる）。 */
+const main = css({
+    flex: 1,
+    minH: 0,
+    display: 'flex',
+    flexDirection: { base: 'column', md: 'row' },
+    gap: '3',
+});
+
+const rail = css({
+    flexShrink: 0,
+    display: 'flex',
+    flexDirection: { base: 'row', md: 'column' },
+    gap: { base: '0.5', md: '1.5' },
+    w: { md: '92px' },
+    p: { base: '1.5', md: '2' },
+    bg: 'primary',
+    border: '1px solid',
+    borderColor: 'hudBorder',
+    borderRadius: '12px',
+});
+
+const railAvatar = css({
+    w: '24px',
+    h: '24px',
+    borderRadius: 'full',
+    objectFit: 'cover',
 });
 
 const panel = css({
@@ -319,56 +363,15 @@ const panel = css({
 
 const header = css({
     display: 'grid',
-    gridTemplateColumns: '1fr auto 1fr',
+    gridTemplateColumns: '40px 1fr 40px',
+    justifyItems: 'center',
+    '& > time': { gridColumn: '2' },
     alignItems: 'center',
     gap: '3',
     px: { base: '3', md: '4' },
     py: '3',
     bg: 'primary',
     color: 'textOnPrimary',
-});
-
-const accountChip = css({
-    justifySelf: 'start',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '2.5',
-    minW: 0,
-    maxW: 'full',
-    py: '1',
-    pl: '1',
-    pr: '3',
-    bg: 'transparent',
-    border: 'none',
-    borderRadius: '10px',
-    color: 'textOnPrimary',
-    textAlign: 'left',
-    cursor: 'pointer',
-    transition: 'background-color 0.16s ease',
-    _hover: { bg: 'hudActionHover' },
-});
-
-const avatarStyle = css({
-    w: '34px',
-    h: '34px',
-    flexShrink: 0,
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 'full',
-    objectFit: 'cover',
-    bg: 'surfaceAccent',
-    color: 'text',
-    fontSize: '15px',
-    fontWeight: '800',
-});
-
-const accountName = css({
-    fontSize: '14px',
-    fontWeight: '700',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
 });
 
 const clock = css({
@@ -434,15 +437,17 @@ const dock = css({
     borderRadius: '12px',
 });
 
-const dockButton = cva({
+const tabButtonStyle = cva({
     base: {
         flex: 1,
+        minW: 0,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         gap: '1',
         py: '2',
+        px: '1',
         border: 'none',
         borderRadius: '6px',
         cursor: 'pointer',
@@ -453,13 +458,21 @@ const dockButton = cva({
             true: { bg: 'hudActive', color: 'hudText' },
             false: { bg: 'transparent', color: 'hudTextMuted', _hover: { bg: 'hudActionHover', color: 'hudText' } },
         },
+        placement: {
+            // 縦に並べるときは、高さを詰めて上から並べる
+            rail: { md: { flex: 'none', py: '2.5' } },
+            dock: {},
+        },
     },
 });
 
-const dockLabel = css({
+const tabLabel = css({
+    maxW: 'full',
     fontSize: { base: '10px', md: '11px' },
     fontWeight: '700',
     whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
 });
 
 const badgeStyle = css({

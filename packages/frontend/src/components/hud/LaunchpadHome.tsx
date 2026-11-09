@@ -7,7 +7,7 @@ import { useInstances } from '@/components/worlds/useInstances';
 import { WorldDetailModal } from '@/components/worlds/WorldDetailModal';
 import { css } from '@/styled-system/css';
 import { HudIcon } from './HudIcon';
-import type { HudPage } from './hudView';
+import type { HudTab } from './hudView';
 import type { JoinInstanceHandler } from './tabs/shared';
 
 /** ランチパッドのトップに並べるワールドの数（続きは「ワールド」の画面）。 */
@@ -21,8 +21,7 @@ interface LaunchpadHomeProps {
     goingHome: boolean;
     onGoHome: () => void;
     onInvite: () => void;
-    onOpenInstance: () => void;
-    onOpenPage: (page: HudPage) => void;
+    onSelectTab: (tab: HudTab) => void;
     onCreateWorld: () => void;
     onJoinInstance: JoinInstanceHandler;
 }
@@ -35,10 +34,10 @@ export function LaunchpadHome(props: LaunchpadHomeProps) {
     return (
         <div className={layout}>
             <CurrentPlace {...props} />
-            <FriendsStrip instance={props.instance} onOpenSocial={() => props.onOpenPage({ kind: 'social' })} />
+            <FriendsStrip instance={props.instance} onOpenSocial={() => props.onSelectTab('social')} />
             <WorldsStrip
                 currentInstanceId={props.currentInstanceId}
-                onOpenWorlds={() => props.onOpenPage({ kind: 'worlds' })}
+                onOpenWorlds={() => props.onSelectTab('worlds')}
                 onCreateWorld={props.onCreateWorld}
                 onJoinInstance={props.onJoinInstance}
             />
@@ -46,12 +45,17 @@ export function LaunchpadHome(props: LaunchpadHomeProps) {
     );
 }
 
-function CurrentPlace({ instance, isHome, goingHome, onGoHome, onInvite, onOpenInstance }: LaunchpadHomeProps) {
+function CurrentPlace({ instance, isHome, goingHome, onGoHome, onInvite, onSelectTab }: LaunchpadHomeProps) {
     return (
         <section className={banner} aria-label="現在地">
             {instance?.world.thumbnail && <img src={instance.world.thumbnail} alt="" className={bannerImage} />}
             <span className={bannerShade} />
-            <button type="button" className={bannerHit} onClick={onOpenInstance} aria-label="現在地を開く" />
+            <button
+                type="button"
+                className={bannerHit}
+                onClick={() => onSelectTab('instance')}
+                aria-label="現在地を開く"
+            />
             <div className={bannerBody}>
                 {isHome && (
                     <span className={homeBadge}>

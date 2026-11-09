@@ -1,7 +1,7 @@
 import type { FavoritesVisibility, PresenceVisibility, PrivacySettings } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { FavoritesVisibilityPicker } from '@/components/profile/FavoritesVisibilityPicker';
-import { FediverseSection } from '@/components/profile/FediverseSection';
+import { FediverseSwitches } from '@/components/profile/FediverseSwitches';
 import { ChoiceGroup } from '@/components/ui/ChoiceGroup';
 import { fetchMyPrivacy, setMyFavoritesVisibility, setMyPresenceVisibility } from '@/lib/account/me';
 import { PRESENCE_VISIBILITY_OPTIONS } from '@/lib/account/presenceVisibility';
@@ -75,7 +75,10 @@ export function PrivacySection() {
                     </section>
                 </>
             )}
-            <FediverseSection />
+            <section className={group}>
+                <h3 className={heading}>フェディバース（Mastodon・Misskey など）</h3>
+                <FediverseSwitches />
+            </section>
         </div>
     );
 }

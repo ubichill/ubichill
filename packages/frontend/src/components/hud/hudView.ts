@@ -1,28 +1,27 @@
 /**
- * ランチパッド（インスタンスの中の HUD）の表示状態。下のドックで画面を切り替え、その上に画面を重ねて進む
- * （ワールド一覧・ソーシャル・招待・プロフィール）。戻ると 1 枚ずつ外し、ドックを押すと重ねた画面は忘れる。
+ * ランチパッド（インスタンスの中の HUD）の表示状態。タブは 2 列に分ける:
+ * - 下: いる場所のこと（ランチパッド・ワールド・現在地・音声）
+ * - 左: 自分と人のこと（プロフィール・通知・検索・フェディバース・設定）
+ * タブの画面の上に画面を重ねて進み（招待・ほかの人のプロフィール）、戻ると 1 枚ずつ外す。タブを押すと重ねた画面は忘れる。
  */
 
-export type DockTab = 'launchpad' | 'notifications' | 'instance' | 'audio' | 'settings';
+export const PLACE_TABS = ['launchpad', 'worlds', 'instance', 'audio'] as const;
+export const PERSON_TABS = ['profile', 'notifications', 'social', 'fediverse', 'settings'] as const;
+export type HudTab = (typeof PLACE_TABS)[number] | (typeof PERSON_TABS)[number];
 
-/** ドックの画面の上に重ねて開く画面。 */
-export type HudPage =
-    | { kind: 'worlds' }
-    | { kind: 'social' }
-    | { kind: 'invite' }
-    | { kind: 'profile' }
-    | { kind: 'user'; userId: string };
+/** タブの画面の上に重ねて開く画面。 */
+export type HudPage = { kind: 'invite' } | { kind: 'user'; userId: string };
 
 export interface HudView {
-    dock: DockTab;
-    /** 重ねた画面（最後が手前）。空ならドックの画面 */
+    tab: HudTab;
+    /** 重ねた画面（最後が手前）。空ならタブの画面 */
     pages: readonly HudPage[];
 }
 
-export const INITIAL_HUD_VIEW: HudView = { dock: 'launchpad', pages: [] };
+export const INITIAL_HUD_VIEW: HudView = { tab: 'launchpad', pages: [] };
 
-export function selectDock(dock: DockTab): HudView {
-    return { dock, pages: [] };
+export function selectTab(tab: HudTab): HudView {
+    return { tab, pages: [] };
 }
 
 const samePage = (a: HudPage, b: HudPage): boolean =>
@@ -35,6 +34,11 @@ export function openPage(view: HudView, page: HudPage): HudView {
     return { ...view, pages: [...view.pages, page] };
 }
 
+/** 人を開く。自分ならプロフィールのタブへ、ほかの人なら今の画面に重ねる（戻ると元の画面）。 */
+export function openUser(view: HudView, userId: string, selfId: string | undefined): HudView {
+    return userId === selfId ? selectTab('profile') : openPage(view, { kind: 'user', userId });
+}
+
 export function goBack(view: HudView): HudView {
     return { ...view, pages: view.pages.slice(0, -1) };
 }
@@ -45,14 +49,5 @@ export function currentPage(view: HudView): HudPage | undefined {
 
 /** 重ねた画面の見出し。プロフィールは本文に名前が大きく出るので見出しを付けない。 */
 export function pageTitle(page: HudPage): string | null {
-    switch (page.kind) {
-        case 'worlds':
-            return 'ワールド';
-        case 'social':
-            return 'ソーシャル';
-        case 'invite':
-            return '招待';
-        default:
-            return null;
-    }
+    return page.kind === 'invite' ? '招待' : null;
 }
