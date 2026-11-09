@@ -57,7 +57,12 @@ export function createActorDirectory(deps: ActorDirectoryDeps): ActorDirectory {
         for (const origin of originForDomain(domain, { allowHttp: deps.allowHttp })) {
             const url = `${origin}/.well-known/webfinger?resource=${encodeURIComponent(`acct:${account}`)}`;
             const response = await deps.transport
-                .get(url, { signAs: { kind: 'app' }, maxBytes: 64 * 1024, accept: 'application/jrd+json' })
+                .get(url, {
+                    signAs: { kind: 'app' },
+                    maxBytes: 64 * 1024,
+                    accept: 'application/jrd+json',
+                    scheme: 'auto',
+                })
                 .catch(() => null);
             const self = response?.status === 200 ? webfingerActorUrl(response.json) : null;
             if (self) return self;
@@ -72,7 +77,11 @@ export function createActorDirectory(deps: ActorDirectoryDeps): ActorDirectory {
         if (deps.policyOf(host) === 'block') return null;
         if (!known && !guard.tryAcquire(host)) return null;
         const response = await deps.transport
-            .get(parsed.href, { signAs: { kind: 'app' }, maxBytes: FEDERATION_LIMITS.ACTOR_FETCH_BYTES })
+            .get(parsed.href, {
+                signAs: { kind: 'app' },
+                maxBytes: FEDERATION_LIMITS.ACTOR_FETCH_BYTES,
+                scheme: 'auto',
+            })
             .catch(() => null);
         const now = new Date(deps.now());
         if (response?.status === 410) {
@@ -111,7 +120,10 @@ export function createActorDirectory(deps: ActorDirectoryDeps): ActorDirectory {
             url: doc.url,
             inbox: doc.inbox,
             sharedInbox: doc.sharedInbox,
-            keys: doc.keys.map((k) => ({ id: k.id, publicKeyMultibase: ed25519Multikey(k.publicKey) })),
+            keys: [
+                ...doc.keys.map((k) => ({ id: k.id, publicKeyMultibase: ed25519Multikey(k.publicKey) })),
+                ...doc.rsaKeys,
+            ],
             features: doc.features,
             fetchedAt: now,
         });

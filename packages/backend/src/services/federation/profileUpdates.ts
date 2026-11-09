@@ -1,7 +1,7 @@
 /**
- * このサーバーの人のプロフィールが変わったら、ほかのサーバーのフレンドに Update{Person} を届ける
- * （受けたサーバーは actor の文書を取り直す。届かなくても 1 時間で取り直される）。
- * 同じサーバーのフレンドへは、共有の inbox に 1 通だけ送る。
+ * このサーバーの人のプロフィール（フェディバースの設定を含む）が変わったら、ほかのサーバーのフレンドとフォロワーに
+ * Update{Person} を届ける（受けたサーバーは actor の文書を取り直す。届かなくても 1 時間で取り直される）。
+ * 同じサーバーの相手へは、共有の inbox に 1 通だけ送る。
  */
 import type { RemoteActorRecord } from '@ubichill/db';
 import { buildUpdateActor } from '@ubichill/shared';
@@ -12,16 +12,16 @@ import type { Outbox } from './outbox';
 export function createProfileAnnouncer(deps: {
     identity: FederationIdentity;
     localActors: Pick<LocalActors, 'person'>;
-    /** フレンドの actor の id */
-    friendsOf(userId: string): Promise<string[]>;
+    /** 知らせる相手（フレンドとフォロワー）の actor の id */
+    audienceOf(userId: string): Promise<string[]>;
     actors: { findByIds(ids: readonly string[]): Promise<RemoteActorRecord[]> };
     outbox: Pick<Outbox, 'send'>;
 }) {
     return async (userId: string): Promise<number> => {
         const doc = await deps.localActors.person(userId);
         if (!doc) return 0;
-        const friends = (await deps.actors.findByIds(await deps.friendsOf(userId))).filter((a) => !a.deletedAt);
-        const byInbox = [...Map.groupBy(friends, (a) => a.sharedInbox ?? a.inbox)];
+        const audience = (await deps.actors.findByIds(await deps.audienceOf(userId))).filter((a) => !a.deletedAt);
+        const byInbox = [...Map.groupBy(audience, (a) => a.sharedInbox ?? a.inbox)];
         await Promise.all(
             byInbox.map(([inbox, group]) =>
                 deps.outbox.send({

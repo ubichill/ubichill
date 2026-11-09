@@ -20,7 +20,7 @@ export function createActivityPubRouter(federation: Federation): Router {
         res.type(ACTIVITY_CONTENT_TYPE).send(JSON.stringify(doc));
     };
 
-    router.get('/actor', documents, (_req, res) => sendDocument(res, federation.localActors.application()));
+    router.get('/actor', documents, async (_req, res) => sendDocument(res, await federation.localActors.application()));
 
     router.get('/users/:id', documents, async (req, res) => {
         const doc = await federation.localActors.person(String(req.params.id));
@@ -29,6 +29,14 @@ export function createActivityPubRouter(federation: Federation): Router {
         if (req.accepts(AP_TYPES) === 'text/html' && typeof doc.url === 'string') return res.redirect(302, doc.url);
         sendDocument(res, doc);
     });
+
+    for (const kind of ['followers', 'following'] as const) {
+        router.get(`/users/:id/${kind}`, documents, async (req, res) => {
+            const doc = await federation.localActors.collection(String(req.params.id), kind);
+            if (!doc) return sendProblem(res, 404, 'not-found', 'ユーザーが見つかりません');
+            sendDocument(res, doc);
+        });
+    }
 
     router.get('/users/:id/outbox', documents, (req, res) => {
         // 公開の投稿は無い（人から人への知らせだけを、相手の inbox へ直接送る）
@@ -50,7 +58,7 @@ export function createActivityPubRouter(federation: Federation): Router {
             }
             next();
         },
-        signed(federation, { kind: 'any' }),
+        signed(federation, { kind: 'any', allowCavage: true }),
         perHostLimit('inbox', 300),
         async (req: import('express').Request, res: import('express').Response) => {
             const json = jsonBody(req);

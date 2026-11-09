@@ -1,7 +1,9 @@
 import {
     DEFAULT_FAVORITES_VISIBILITY,
+    DEFAULT_FEDIVERSE_SETTINGS,
     DEFAULT_HOME_SETTINGS,
     type FavoritesVisibility,
+    type FediverseSettings,
     type HomeSettings,
 } from '@ubichill/shared';
 import { eq } from 'drizzle-orm';
@@ -62,6 +64,46 @@ export const userSettingsRepository = {
             .onConflictDoUpdate({ target: userSettings.userId, set: { ...set, updatedAt: now } })
             .returning({ worldRef: userSettings.homeWorldRef, accessType: userSettings.homeAccessType });
         if (!row) throw new Error('ホームの設定を保存できません');
+        return row;
+    },
+
+    /** フェディバースの設定。設定の行が無いユーザーは初期値（承認しない・検索に出す）。 */
+    async getFediverse(userId: string): Promise<FediverseSettings> {
+        const [row] = await db
+            .select({
+                manuallyApprovesFollowers: userSettings.fediverseManuallyApprovesFollowers,
+                discoverable: userSettings.fediverseDiscoverable,
+            })
+            .from(userSettings)
+            .where(eq(userSettings.userId, userId));
+        return row ?? DEFAULT_FEDIVERSE_SETTINGS;
+    },
+
+    /** フェディバースの設定のうち、渡した項目だけを変える（行が無ければ初期値で作る）。変えた後の設定を返す。 */
+    async updateFediverse(userId: string, changes: Partial<FediverseSettings>): Promise<FediverseSettings> {
+        const now = new Date();
+        const set = {
+            ...(changes.manuallyApprovesFollowers !== undefined
+                ? { fediverseManuallyApprovesFollowers: changes.manuallyApprovesFollowers }
+                : {}),
+            ...(changes.discoverable !== undefined ? { fediverseDiscoverable: changes.discoverable } : {}),
+        };
+        const [row] = await db
+            .insert(userSettings)
+            .values({
+                userId,
+                fediverseManuallyApprovesFollowers: DEFAULT_FEDIVERSE_SETTINGS.manuallyApprovesFollowers,
+                fediverseDiscoverable: DEFAULT_FEDIVERSE_SETTINGS.discoverable,
+                ...set,
+                createdAt: now,
+                updatedAt: now,
+            })
+            .onConflictDoUpdate({ target: userSettings.userId, set: { ...set, updatedAt: now } })
+            .returning({
+                manuallyApprovesFollowers: userSettings.fediverseManuallyApprovesFollowers,
+                discoverable: userSettings.fediverseDiscoverable,
+            });
+        if (!row) throw new Error('フェディバースの設定を保存できません');
         return row;
     },
 };

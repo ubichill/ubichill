@@ -12,6 +12,8 @@ export interface FederationIdentity {
     userInboxUrl(userId: string): string;
     sharedInboxUrl: string;
     outboxUrl(userId: string): string;
+    followersUrl(userId: string): string;
+    followingUrl(userId: string): string;
     instanceUrl(instanceId: string): string;
     newActivityId(): string;
     newRelationshipId(): string;
@@ -42,6 +44,8 @@ export function createFederationIdentity(origin: string): FederationIdentity {
         userInboxUrl: (userId) => `${origin}${FEDERATION_PATHS.userInbox(userId)}`,
         sharedInboxUrl: `${origin}${FEDERATION_PATHS.sharedInbox}`,
         outboxUrl: (userId) => `${origin}${FEDERATION_PATHS.userOutbox(userId)}`,
+        followersUrl: (userId) => `${origin}${FEDERATION_PATHS.userFollowers(userId)}`,
+        followingUrl: (userId) => `${origin}${FEDERATION_PATHS.userFollowing(userId)}`,
         instanceUrl: (instanceId) => `${origin}${FEDERATION_PATHS.instance(instanceId)}`,
         newActivityId: () => `${origin}${FEDERATION_PATHS.activity(nanoid())}`,
         newRelationshipId: () => `${origin}${FEDERATION_PATHS.friendship(nanoid())}`,

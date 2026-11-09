@@ -8,6 +8,9 @@ import { users } from './users';
  * このサーバーが決めたこと（フレンドの関係・配送の予定・付き合い方）だけ。
  */
 
+/** actor の鍵（ubichill 同士の Ed25519 か、Mastodon・Misskey などの RSA）。 */
+export type RemoteActorKeyRecord = { id: string; publicKeyMultibase: string } | { id: string; publicKeyPem: string };
+
 /** ほかのサーバーの actor（取りに行った文書のキャッシュ。WebFinger の往復で確かめたものだけ）。 */
 export const remoteActors = pgTable(
     'remote_actors',
@@ -26,8 +29,8 @@ export const remoteActors = pgTable(
         url: text('url'),
         inbox: text('inbox').notNull(),
         sharedInbox: text('shared_inbox'),
-        /** 鍵（id と publicKeyMultibase） */
-        keys: jsonb('keys').$type<Array<{ id: string; publicKeyMultibase: string }>>().notNull().default([]),
+        /** 鍵（Ed25519 の Multikey と、ほかの実装の RSA の PEM） */
+        keys: jsonb('keys').$type<RemoteActorKeyRecord[]>().notNull().default([]),
         /** 告知している機能（FEP-844e） */
         features: jsonb('features').$type<string[]>().notNull().default([]),
         fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull(),
@@ -175,4 +178,48 @@ export const federatedAdmissions = pgTable(
         admittedAt: timestamp('admitted_at', { withTimezone: true }).notNull().defaultNow(),
     },
     (table) => [primaryKey({ name: 'federated_admissions_pk', columns: [table.instanceId, table.actorId] })],
+);
+
+/**
+ * このサーバーの actor の RSA の鍵（Mastodon・Misskey など、ほかの実装の署名に使う）。Ed25519 と違い種から導けないので、
+ * 初めて要るときに作って保存する。秘密鍵は種から導いた鍵で暗号化する（DB だけ漏れても署名できない）。
+ */
+export const federationActorKeys = pgTable('federation_actor_keys', {
+    /** このサーバーの actor の id（ユーザーか Application actor） */
+    actorId: text('actor_id').primaryKey(),
+    /** ユーザーの鍵なら、そのユーザー（消えたら鍵も消す）。Application actor は NULL */
+    userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    /** SPKI の PEM */
+    publicKeyPem: text('public_key_pem').notNull(),
+    /** 暗号化した PKCS#8 の秘密鍵（base64。AES-256-GCM の iv・tag・本文） */
+    privateKeyEncrypted: text('private_key_encrypted').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * このサーバーのユーザーをフォローしている、ほかのサーバーの actor（片方向。フレンドとは別）。
+ * - pending: 承認待ち（承認制のユーザー）
+ * - accepted: フォロワー
+ */
+export const federationFollowers = pgTable(
+    'federation_followers',
+    {
+        userId: text('user_id')
+            .notNull()
+            .references(() => users.id, { onDelete: 'cascade' }),
+        actorId: text('actor_id')
+            .notNull()
+            .references(() => remoteActors.id, { onDelete: 'cascade' }),
+        state: text('state').$type<'pending' | 'accepted'>().notNull(),
+        /** 相手の Follow の id（Accept・Reject に埋め込み、Undo で引く） */
+        followId: text('follow_id').notNull(),
+        createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+        updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    },
+    (table) => [
+        primaryKey({ name: 'federation_followers_pk', columns: [table.userId, table.actorId] }),
+        check('federation_followers_state_check', sql`${table.state} IN ('pending', 'accepted')`),
+        index('federation_followers_actor_idx').on(table.actorId),
+        index('federation_followers_follow_idx').on(table.followId),
+    ],
 );

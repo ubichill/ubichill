@@ -9,6 +9,7 @@
  * | 招待 | Invite{object: Instance, target: 相手}（AS2 の例 24）。権利は部屋のサーバーが持つ |
  * | リクエストインバイト | 拡張の RequestInvite{object: 頼む相手}。応じるときは Invite（inReplyTo） |
  * | プロフィールの更新・削除 | Update{Person}・Delete{actor} |
+| フォロー（Mastodon・Misskey などから） | Follow{Person}。答えは Accept{Follow}・Reject{Follow}（Follow を埋め込む）、やめるのは Undo{Follow} |
  *
  * 受けるときは知らない型・知らない項目を捨てる（形を厳しくしない。相手の版が新しくても壊れない）。
  * activity の id と actor は同じオリジン（FEP-fe34）。埋め込まれたほかのオリジンのものは表示のヒントにしか使わない。
@@ -27,6 +28,8 @@ export interface ActivityRef {
     id: string;
     type: string;
     actor?: string;
+    /** 参照する activity の object（Follow の相手など。分かるときだけ） */
+    object?: string;
 }
 
 const base = (id: string, type: string, actor: string, to: readonly string[]) => ({
@@ -139,6 +142,7 @@ export type InboundActivity =
           inReplyTo: string | null;
       }
     | { type: 'request-invite'; id: string; actor: string; target: string; content: string | null; endTime: string }
+    | { type: 'follow'; id: string; actor: string; object: string }
     | { type: 'update-actor'; id: string; actor: string }
     | { type: 'delete-actor'; id: string; actor: string }
     | { type: 'unknown'; id: string; actor: string; activityType: string };
@@ -147,7 +151,14 @@ export type ActivityRejection = 'malformed' | 'cross-origin';
 
 const RefSchema = z.union([
     z.string(),
-    z.object({ id: z.string(), type: z.string().optional(), actor: z.unknown().optional() }).passthrough(),
+    z
+        .object({
+            id: z.string(),
+            type: z.string().optional(),
+            actor: z.unknown().optional(),
+            object: z.unknown().optional(),
+        })
+        .passthrough(),
 ]);
 const idOf = (ref: z.infer<typeof RefSchema>): string => (typeof ref === 'string' ? ref : ref.id);
 
@@ -218,6 +229,7 @@ export function readActivity(
             if (!object.success) return { ok: false, reason: 'malformed' };
             const ref = object.data;
             const refActor = typeof ref === 'string' ? undefined : ref.actor;
+            const refObject = typeof ref === 'string' ? undefined : RefSchema.safeParse(ref.object);
             return {
                 ok: true,
                 activity: {
@@ -235,6 +247,7 @@ export function readActivity(
                                 typeof refActor.id === 'string'
                               ? { actor: refActor.id }
                               : {}),
+                        ...(refObject?.success ? { object: idOf(refObject.data) } : {}),
                     },
                 },
             };
@@ -281,6 +294,11 @@ export function readActivity(
                     endTime: endTime.data,
                 },
             };
+        }
+        case 'Follow': {
+            const object = RefSchema.safeParse(field('object'));
+            if (!object.success) return { ok: true, activity: unknown };
+            return { ok: true, activity: { type: 'follow', id: raw.id, actor, object: idOf(object.data) } };
         }
         case 'Update': {
             const object = RefSchema.safeParse(field('object'));

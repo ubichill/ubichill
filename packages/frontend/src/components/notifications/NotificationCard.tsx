@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router';
 import { HudIcon } from '@/components/hud/HudIcon';
 import { useHudNavigation } from '@/components/hud/HudNavigationContext';
 import { UserAvatar, useOpenUser } from '@/components/social';
+import { answerFollower } from '@/lib/fediverseApi';
 import { acceptInviteRequest, declineInviteRequest } from '@/lib/inviteApi';
 import { isExpired, notificationText, relativeTime } from '@/lib/notifications';
 import { acceptFriend, removeFriend } from '@/lib/socialApi';
@@ -14,6 +15,7 @@ import { css, cva } from '@/styled-system/css';
  * - フレンド申請（返事をしていないもの）: 承認・拒否
  * - 招待: 入る（期限内・今いる部屋でないとき）
  * - リクエストインバイト: 招待する（いま自分がいる部屋へ）・断る
+ * - フェディバースのフォローリクエスト: 承認・拒否（片付いたら通知ごと消える）
  */
 export function NotificationCard({
     notification,
@@ -80,6 +82,28 @@ export function NotificationCard({
                 tone="decline"
                 disabled={busy}
                 onClick={() => void act(() => removeFriend(actor.id), onFriendshipChange)}
+            >
+                <path d="M6 6l12 12M18 6L6 18" />
+            </IconAction>,
+        );
+    }
+    if (notification.type === 'FediverseFollowRequest') {
+        actions.push(
+            <IconAction
+                key="approve-follow"
+                label="承認する"
+                tone="accept"
+                disabled={busy}
+                onClick={() => void act(() => answerFollower(actor.id, 'approve'))}
+            >
+                <path d="M5 12.5l4.5 4.5L19 7.5" />
+            </IconAction>,
+            <IconAction
+                key="reject-follow"
+                label="拒否する"
+                tone="decline"
+                disabled={busy}
+                onClick={() => void act(() => answerFollower(actor.id, 'reject'))}
             >
                 <path d="M6 6l12 12M18 6L6 18" />
             </IconAction>,

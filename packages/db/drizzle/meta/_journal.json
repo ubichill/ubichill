@@ -218,6 +218,13 @@
       "when": 1794141051626,
       "tag": "0030_federation",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1794202750979,
+      "tag": "0031_fediverse_follow",
+      "breakpoints": true
     }
   ]
 }

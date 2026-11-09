@@ -27,7 +27,10 @@ export const notifications = pgTable(
         readAt: timestamp('read_at', { withTimezone: true }),
     },
     (table) => [
-        check('notifications_type_check', sql`${table.type} IN ('Follow', 'Accept', 'Like', 'Invite', 'Join')`),
+        check(
+            'notifications_type_check',
+            sql`${table.type} IN ('Follow', 'Accept', 'Like', 'Invite', 'Join', 'FediverseFollow', 'FediverseFollowRequest')`,
+        ),
         check('notifications_actor_check', sql`num_nonnulls(${table.actorUserId}, ${table.actorUri}) = 1`),
         uniqueIndex('notifications_recipient_dedupe_idx').on(table.recipientId, table.dedupeKey),
         index('notifications_recipient_created_idx').on(table.recipientId, table.createdAt.desc(), table.id.desc()),

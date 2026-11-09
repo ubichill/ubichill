@@ -48,6 +48,16 @@ function setup(options: { failOffer?: boolean; offerGate?: Promise<void> } = {})
             onUndo: async (_actor, activity) => void calls.push(`undo ${activity.object.id}`),
             onActorDeleted: async (id) => void calls.push(`deleted ${id}`),
         },
+        follows: {
+            onFollow: async (_actor, activity) => void calls.push(`follow ${activity.object}`),
+            // フォローの Undo（object が Follow）だけ受け持つ
+            onUndo: async (_actor, object) => {
+                if (object.type !== 'Follow') return false;
+                calls.push(`unfollow ${object.id}`);
+                return true;
+            },
+            onActorDeleted: async (id) => void calls.push(`followers-deleted ${id}`),
+        },
         invites: {
             onInvite: async (_actor, activity) => void calls.push(`invite ${activity.room.id}`),
             onRequestInvite: async (_actor, activity) => void calls.push(`request ${activity.target}`),
@@ -141,6 +151,30 @@ describe('受信箱', () => {
             `refresh ${BOB.id}`,
             `mark ${BOB.id}`,
             `deleted ${BOB.id}`,
+            `followers-deleted ${BOB.id}`,
+        ]);
+    });
+
+    it('Misskey のフォローと、その Undo（Follow を埋め込む）はフォローへ、ほかの Undo はフレンドへ振り分ける', async () => {
+        const { inbox, calls } = setup();
+        const follow = {
+            id: 'https://b.example/follows/1/2',
+            type: 'Follow',
+            actor: BOB.id,
+            object: 'https://a.example/ap/users/alice',
+        };
+        await inbox.receive(BOB, { '@context': 'https://www.w3.org/ns/activitystreams', ...follow });
+        await inbox.receive(BOB, { id: 'https://b.example/undo/1', type: 'Undo', actor: BOB.id, object: follow });
+        await inbox.receive(BOB, {
+            id: 'https://b.example/undo/2',
+            type: 'Undo',
+            actor: BOB.id,
+            object: { id: 'https://b.example/ap/activities/1', type: 'Offer', actor: BOB.id },
+        });
+        expect(calls).toEqual([
+            'follow https://a.example/ap/users/alice',
+            'unfollow https://b.example/follows/1/2',
+            'undo https://b.example/ap/activities/1',
         ]);
     });
 

@@ -64,13 +64,19 @@ export function createServerDirectory(deps: ServerDirectoryDeps): ServerDirector
                     signAs: { kind: 'app' },
                     maxBytes: 16 * 1024,
                     accept: 'application/json',
+                    scheme: 'auto',
                 })
                 .catch(() => null);
             if (links?.status !== 200) continue;
             const nodeInfoUrl = nodeInfoUrlFrom(links.json);
             const info = nodeInfoUrl
                 ? await deps.transport
-                      .get(nodeInfoUrl, { signAs: { kind: 'app' }, maxBytes: 64 * 1024, accept: 'application/json' })
+                      .get(nodeInfoUrl, {
+                          signAs: { kind: 'app' },
+                          maxBytes: 64 * 1024,
+                          accept: 'application/json',
+                          scheme: 'auto',
+                      })
                       .catch(() => null)
                 : null;
             const summary = info?.status === 200 ? readNodeInfo(info.json) : null;
