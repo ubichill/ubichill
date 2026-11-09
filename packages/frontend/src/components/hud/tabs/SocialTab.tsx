@@ -24,7 +24,8 @@ import type { JoinInstanceHandler } from './shared';
 export type SocialSection = 'locations' | 'friends' | 'search';
 
 /**
- * ソーシャル: フレンドの現在地（部屋ごと。自分の部屋は一番上）・すべてのフレンド・ユーザー検索を左で切り替える。
+ * ソーシャル: ユーザー検索（一番上・色を変える）・フレンドの現在地（部屋ごと。自分の部屋は一番上）・すべてのフレンドを左で切り替える。
+ * 開いたときはフレンドの現在地。
  * 届いた申請は通知、フレンドの解除はその人のプロフィール。
  */
 export function SocialTab({
@@ -59,9 +60,9 @@ export function SocialTab({
     const presence = locations.data ? arrangeFriendPresence(locations.data, currentInstance) : null;
     const directory = presence ? friendDirectory(presence, Date.now()) : null;
     const items: ReadonlyArray<SplitTabItem<SocialSection>> = [
+        { id: 'search', label: 'ユーザーを検索', icon: 'search', accent: true },
         { id: 'locations', label: 'フレンドの現在地', icon: 'pin', count: presence?.onlineCount },
         { id: 'friends', label: 'すべてのフレンド', icon: 'users', count: directory?.total },
-        { id: 'search', label: 'ユーザーを検索', icon: 'search' },
     ];
     const status = locations.error ? (
         <p className={css({ fontSize: '13px', color: 'errorText' })}>{locations.error}</p>
