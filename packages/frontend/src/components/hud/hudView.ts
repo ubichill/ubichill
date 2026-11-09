@@ -1,12 +1,12 @@
 /**
  * ランチパッド（インスタンスの中の HUD）の表示状態。タブは 2 列に分ける:
- * - 下: いる場所のこと（ランチパッド・ワールド・現在地・音声）
- * - 左: 自分と人のこと（プロフィール・通知・ソーシャル・設定）。ソーシャルと設定は中でさらに左で切り替える
+ * - 下: その場のこと（ランチパッド・現在地・音声）と通知
+ * - 左: 探すもの・人・自分（プロフィール・ワールド・ソーシャル・設定）。ワールド・ソーシャル・設定は中でさらに左で切り替える
  * タブの画面の上に画面を重ねて進み（招待・ほかの人のプロフィール）、戻ると 1 枚ずつ外す。タブを押すと重ねた画面は忘れる。
  */
 
-export const PLACE_TABS = ['launchpad', 'worlds', 'instance', 'audio'] as const;
-export const PERSON_TABS = ['profile', 'notifications', 'social', 'settings'] as const;
+export const PLACE_TABS = ['launchpad', 'instance', 'audio', 'notifications'] as const;
+export const PERSON_TABS = ['profile', 'worlds', 'social', 'settings'] as const;
 export type HudTab = (typeof PLACE_TABS)[number] | (typeof PERSON_TABS)[number];
 
 /** タブの画面の上に重ねて開く画面。 */

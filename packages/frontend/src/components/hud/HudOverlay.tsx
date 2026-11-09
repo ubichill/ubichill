@@ -32,7 +32,7 @@ import { NotificationsTab } from './tabs/NotificationsTab';
 import { ProfileTab } from './tabs/ProfileTab';
 import { type SettingsSection, SettingsTab } from './tabs/SettingsTab';
 import { type SocialSection, SocialTab } from './tabs/SocialTab';
-import { WorldsTab } from './tabs/WorldsTab';
+import { type WorldsSection, WorldsTab } from './tabs/WorldsTab';
 import { useHudActions } from './useHudActions';
 
 interface HudOverlayProps {
@@ -46,24 +46,25 @@ interface TabItem {
     icon: HudIconName;
 }
 
-/** 下: いる場所のこと。 */
+/** 下: その場のことと通知。 */
 const PLACE_ITEMS: readonly TabItem[] = [
     { id: 'launchpad', label: 'ランチパッド', icon: 'rocket' },
-    { id: 'worlds', label: 'ワールド', icon: 'globe' },
     { id: 'instance', label: '現在地', icon: 'pin' },
     { id: 'audio', label: '音声', icon: 'volume' },
+    { id: 'notifications', label: '通知', icon: 'bell' },
 ];
 
-/** 左: 自分と人のこと。 */
+/** 左: 探すもの・人・自分（中でさらに左で切り替える）。プロフィールはアカウントのアイコン。 */
 const PERSON_ITEMS: readonly TabItem[] = [
     { id: 'profile', label: 'プロフィール', icon: 'user' },
-    { id: 'notifications', label: '通知', icon: 'bell' },
+    { id: 'worlds', label: 'ワールド', icon: 'globe' },
     { id: 'social', label: 'ソーシャル', icon: 'users' },
     { id: 'settings', label: '設定', icon: 'gear' },
 ];
 
 /**
- * インスタンスの中で開くランチパッド。ページを移らずに、左（自分と人）と下（いる場所）のタブで画面を切り替え、その上に画面を重ねて進む。
+ * インスタンスの中で開くランチパッド。ページを移らずに、左（探すもの・人・自分）と下（その場のことと通知）のタブで画面を切り替え、
+ * その上に画面を重ねて進む。
  * 背景（パネルの外）を押すか Esc（InstanceHUD）で閉じる。
  */
 export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
@@ -75,6 +76,7 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
     const [audio] = useMediaOutput();
     const [view, setView] = useState<HudView>(INITIAL_HUD_VIEW);
     // 中の切り替えはタブを離れても覚えておく（人を開いて戻ったときに同じ欄に帰る）
+    const [worldsSection, setWorldsSection] = useState<WorldsSection>('local');
     const [socialSection, setSocialSection] = useState<SocialSection>('locations');
     const [settingsSection, setSettingsSection] = useState<SettingsSection>('home');
     const [visible, setVisible] = useState(false);
@@ -92,9 +94,9 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
     const navigation = useMemo<HudNavigation>(
         () => ({
             currentInstanceId,
-            openSettings: (section) => {
-                setSettingsSection(section);
-                setView(selectTab('settings'));
+            openWorlds: (section) => {
+                setWorldsSection(section);
+                setView(selectTab('worlds'));
             },
             openUser: (userId) => setView((v) => openUser(v, userId, selfId)),
             joinInstance: actions.joinInstance,
@@ -151,7 +153,15 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
                     />
                 );
             case 'worlds':
-                return <WorldsTab onJoinInstance={actions.joinInstance} currentInstanceId={currentInstanceId} />;
+                return (
+                    <WorldsTab
+                        section={worldsSection}
+                        onSectionChange={setWorldsSection}
+                        onJoinInstance={actions.joinInstance}
+                        currentInstanceId={currentInstanceId}
+                        onNavigate={onClose}
+                    />
+                );
             case 'instance':
                 return <InstanceTab currentInstanceId={currentInstanceId} onNavigate={onClose} />;
             case 'audio':
@@ -171,19 +181,11 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
                     />
                 );
             case 'settings':
-                return (
-                    <SettingsTab
-                        section={settingsSection}
-                        onSectionChange={setSettingsSection}
-                        onNavigate={onClose}
-                        onJoinInstance={actions.joinInstance}
-                    />
-                );
+                return <SettingsTab section={settingsSection} onSectionChange={setSettingsSection} />;
         }
     };
 
     const userName = session?.user.name ?? '';
-    const avatar = session?.user.image;
     const unread = unreadBadge(notifications.feed.unreadCount);
     const tabButton = (item: TabItem, placement: 'rail' | 'dock') => {
         const active = view.tab === item.id;
@@ -199,8 +201,8 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
                 onClick={() => select(item.id)}
             >
                 <span className={css({ position: 'relative', display: 'inline-flex' })}>
-                    {item.id === 'profile' && avatar ? (
-                        <img src={avatar} alt="" className={railAvatar} />
+                    {item.id === 'profile' && session ? (
+                        <AccountAvatar name={userName} image={session.user.image ?? null} />
                     ) : (
                         <HudIcon name={icon} />
                     )}
@@ -220,7 +222,7 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
             <div className={backdrop} data-open={visible} onClick={onClose}>
                 <div className={frame} onClick={(e) => e.stopPropagation()}>
                     <div className={main}>
-                        <nav className={rail} aria-label="自分と人">
+                        <nav className={rail} aria-label="メニュー">
                             {PERSON_ITEMS.map((item) => tabButton(item, 'rail'))}
                         </nav>
                         <section
@@ -258,7 +260,7 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
                         </section>
                     </div>
 
-                    <nav className={dock} aria-label="いる場所">
+                    <nav className={dock} aria-label="その場と通知">
                         {PLACE_ITEMS.map((item) => tabButton(item, 'dock'))}
                     </nav>
                 </div>
@@ -282,6 +284,30 @@ function useCurrentInstance(instanceId: string): Instance | null {
     }, [instanceId]);
     return instance;
 }
+
+/** プロフィールのタブのアイコン: アカウントの画像。無ければ名前の頭文字（タブの暗い地で見える色にする）。 */
+function AccountAvatar({ name, image }: { name: string; image: string | null }) {
+    if (image) return <img src={image} alt="" className={accountAvatar} />;
+    return (
+        <span className={accountAvatar} aria-hidden="true">
+            {Array.from(name)[0] ?? '?'}
+        </span>
+    );
+}
+
+const accountAvatar = css({
+    w: '24px',
+    h: '24px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 'full',
+    objectFit: 'cover',
+    bg: 'hudAvatar',
+    color: 'hudText',
+    fontSize: '12px',
+    fontWeight: '800',
+});
 
 const timeFormat = new Intl.DateTimeFormat('ja-JP', { hour: '2-digit', minute: '2-digit' });
 
@@ -348,13 +374,6 @@ const rail = css({
     border: '1px solid',
     borderColor: 'hudBorder',
     borderRadius: '12px',
-});
-
-const railAvatar = css({
-    w: '24px',
-    h: '24px',
-    borderRadius: 'full',
-    objectFit: 'cover',
 });
 
 const panel = css({
