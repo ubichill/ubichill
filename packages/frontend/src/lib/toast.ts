@@ -50,14 +50,21 @@ export function dismissToast(id: number): void {
     emit();
 }
 
-export function pushToast(message: string, level: ToastLevel = 'info', action?: ToastAction): void {
+/** sticky は閉じるまで残す（あとで使う操作を付けたとき）。出した id を返す（抑制したら null）。 */
+export function pushToast(
+    message: string,
+    level: ToastLevel = 'info',
+    action?: ToastAction,
+    options: { sticky?: boolean } = {},
+): number | null {
     const now = Date.now();
     const last = _recent.get(message) ?? 0;
-    if (now - last < DEDUP_MS) return; // 直近の同一メッセージは抑制
+    if (now - last < DEDUP_MS) return null; // 直近の同一メッセージは抑制
     _recent.set(message, now);
 
     const item: ToastItem = { id: _seq++, message, level, action };
     _toasts = [..._toasts, item];
     emit();
-    setTimeout(() => dismissToast(item.id), AUTO_DISMISS_MS);
+    if (!options.sticky) setTimeout(() => dismissToast(item.id), AUTO_DISMISS_MS);
+    return item.id;
 }
