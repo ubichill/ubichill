@@ -1,5 +1,6 @@
 export { FriendButton } from './FriendButton';
 export { FriendGroup } from './FriendGroup';
+export { FriendLocationCard } from './FriendLocationCard';
 export { FriendPlaceGroup } from './FriendPlaceGroup';
 export { FriendGrid, FriendTile } from './FriendTile';
 export { UserAvatar } from './UserAvatar';

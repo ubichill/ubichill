@@ -122,6 +122,41 @@ export function friendDirectory(presence: FriendPresence, now: number): FriendDi
 }
 
 /**
+ * プロフィールに出す、フレンド 1 人の現在地。
+ * - room: 見えて入れる部屋（自分と同じ部屋なら here）。friends はその部屋にいるフレンド（本人を含む）
+ * - private: 見えない部屋・招待が要る部屋・場所を見せない設定（どこかは出さない）
+ * - unreachable: 相手のサーバーにつながらず確かめられない（いないとは言わない）
+ * - offline: 部屋にいない
+ * - unknown: 一覧に無い（フレンドになったばかりなど。何も出さない）
+ */
+export type FriendLocation =
+    | { kind: 'room'; instance: Instance; friends: UserSummary[]; here: boolean }
+    | { kind: 'private' }
+    | { kind: 'unreachable'; lastKnown?: string }
+    | { kind: 'offline' }
+    | { kind: 'unknown' };
+
+export function friendLocationOf(
+    data: FriendLocationsResponse,
+    userId: string,
+    currentInstanceId: string | undefined,
+    now: number,
+): FriendLocation {
+    const place = data.locations.find((l) => l.friends.some((f) => f.id === userId));
+    if (place) {
+        const here = place.instance.id === currentInstanceId;
+        // 入れない部屋はどこかを出さない（自分もいる部屋なら入れているので出す）
+        if (!here && place.instance.canJoin === false) return { kind: 'private' };
+        return { kind: 'room', instance: place.instance, friends: [...place.friends].sort(byName), here };
+    }
+    if (data.private.some((f) => f.id === userId)) return { kind: 'private' };
+    const unreachable = data.unreachable?.find((f) => f.user.id === userId);
+    if (unreachable) return { kind: 'unreachable', lastKnown: lastKnownOf(unreachable, now) };
+    if (data.elsewhere.some((f) => f.id === userId)) return { kind: 'offline' };
+    return { kind: 'unknown' };
+}
+
+/**
  * 招待が要る部屋に入れてもらうよう頼む相手。作成者がフレンドなら作成者（どの公開範囲でも招待できる）、
  * そうでなければその部屋にいるフレンドの最初の人。フレンドがいなければ undefined。
  */

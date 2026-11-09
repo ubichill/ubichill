@@ -16,7 +16,8 @@ const pill = css({
     fontSize: '13px',
     boxShadow: 'card',
 });
-const dot = css({ width: '8px', height: '8px', borderRadius: 'full', bg: 'success', flexShrink: 0 });
+// ひとことはオンラインかどうかと関係ないので、緑（オンラインの色）にしない
+const dot = css({ width: '8px', height: '8px', borderRadius: 'full', bg: 'borderStrong', flexShrink: 0 });
 const text = css({ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
 
 /** ひとこと（1 行）。長ければ省略し、全文は title で見せる。 */

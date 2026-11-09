@@ -19,6 +19,19 @@ export const tabPanel = css({
     pb: '20px',
 });
 
+/** 右に列を持つ画面（プロフィール: 右にフレンドの現在地）。tabPanel と幅だけ違う。 */
+export const wideTabPanel = css({
+    width: 'full',
+    maxWidth: '1040px',
+    mx: 'auto',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6',
+    h: 'full',
+    overflowY: 'auto',
+    pb: '20px',
+});
+
 /**
  * タブの中の 1 まとまり。ランチパッドの面にそのまま置き、枠では囲まない（ランチパッド自体がパネルなので二重になる）。
  * まとまりの間は細い線で区切る。
