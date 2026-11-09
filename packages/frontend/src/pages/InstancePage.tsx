@@ -1,17 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { InstanceHUD } from '@/components/hud/InstanceHUD';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import { afterInstanceFailure, readInstanceEntryState } from '@/lib/home';
+import { afterInstanceFailure, readInstanceEntryState, recordEntryOutcome } from '@/lib/home';
 import { fetchInstance } from '@/lib/instancesApi';
 import { HOST_MOD_SOURCE } from '@/lib/modCdn';
 import { useSession } from '@/lib/session';
-import { pushToast } from '@/lib/toast';
+import { dismissToast, pushToast } from '@/lib/toast';
 import { useRemoteVisit } from '@/lib/useRemoteVisit';
 import { type InstanceFailure, WorldView } from '@/world';
 
 /** 失敗したら一定時間後に自動でホームへ戻す（ロード画面で詰まらないように）。 */
 const RETURN_HOME_MS = 5000;
+
+const RETRY_MESSAGE = '元の部屋には入れませんでした';
 
 /**
  * SNS のインスタンス画面。ワールドを動かすのは `WorldView` で、ここは認証の確認・ホームへの導線・HUD を足すだけ。
@@ -38,19 +40,44 @@ export function InstancePage() {
         },
         [id],
     );
+    const path = `${location.pathname}${location.search}`;
     // 入れなかった部屋は履歴に残さない（戻るでまた入れない部屋を開かない）
     const toHome = useCallback(() => {
-        const next = afterInstanceFailure(failure ?? { replaced: false, gone: false }, entry);
+        const next = afterInstanceFailure(failure ?? { replaced: false, gone: false }, entry, path);
+        if (next.kind === 'home' && next.autoHomeFailed) recordEntryOutcome(sessionStorage, 'autoHomeFailed');
         navigate('/', { replace: true, state: next.kind === 'home' ? next.state : {} });
-    }, [entry, failure, navigate]);
+    }, [entry, failure, navigate, path]);
     useEffect(() => {
         if (!failure) return;
-        const next = afterInstanceFailure(failure, entry);
+        const next = afterInstanceFailure(failure, entry, path);
         if (next.kind === 'stay') return;
         console.warn('[InstancePage] load failed → returning home:', failure.message);
         const timer = setTimeout(toHome, next.immediate ? 0 : RETURN_HOME_MS);
         return () => clearTimeout(timer);
-    }, [entry, failure, toHome]);
+    }, [entry, failure, path, toHome]);
+
+    // 入れなかった部屋へ戻る導線は、ホームに入れてから出し、この部屋を出たら消す
+    const retryToast = useRef<number | null>(null);
+    const handleEntered = useCallback(() => {
+        recordEntryOutcome(sessionStorage, 'entered');
+        const { retryPath } = entry;
+        if (!retryPath) return;
+        retryToast.current = pushToast(
+            RETRY_MESSAGE,
+            'info',
+            { label: '元の部屋をもう一度試す', run: () => navigate(retryPath) },
+            { sticky: true },
+        );
+        navigate(path, { replace: true, state: { ...entry, retryPath: undefined } });
+    }, [entry, navigate, path]);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: id は部屋を移ったときに消すための合図
+    useEffect(
+        () => () => {
+            if (retryToast.current !== null) dismissToast(retryToast.current);
+            retryToast.current = null;
+        },
+        [id],
+    );
 
     // お知らせは 1 度だけ（読み込み直しで履歴の state からまた出さない）
     useEffect(() => {
@@ -89,6 +116,7 @@ export function InstancePage() {
             preview={preview}
             recovery={recovery}
             onFailed={handleFailed}
+            onEntered={handleEntered}
         >
             <InstanceHUD />
         </WorldView>

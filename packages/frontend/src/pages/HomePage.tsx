@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { signOut } from '@/lib/auth-client';
-import { canAutoHome, homeInstanceEntry, readAutoHomeLog, readHomeEntryState, withAutoHome } from '@/lib/home';
+import { canAutoHome, homeInstanceEntry, readHomeEntryState, readHomeFailures, recordEntryOutcome } from '@/lib/home';
 import { ensureHomeInstance } from '@/lib/homeApi';
 import { resetHome } from '@/lib/homeStore';
 import { css, cva } from '@/styled-system/css';
@@ -9,27 +9,28 @@ import { InstanceLoadingScreen } from '@/world/InstanceLoadingScreen';
 
 const PREPARING_STAGES = [{ id: 'auth' as const, label: 'ホームを用意しています', status: 'active' as const }];
 
-// 作った時刻はこのタブの中で数える
-const AUTO_HOME_LOG_KEY = 'ubichill:home-created';
-const autoHomeLog = () => readAutoHomeLog(sessionStorage.getItem(AUTO_HOME_LOG_KEY));
-
 const STOPPED_MESSAGE = '続けて入れなかったので止めました';
 
-function initialAttempt(state: unknown): { attempt: { useDefault: boolean } | null; error: string | null } {
-    const entry = readHomeEntryState(state);
-    if (entry.homeFailed) return { attempt: null, error: null };
-    if (!canAutoHome(autoHomeLog(), Date.now())) return { attempt: null, error: STOPPED_MESSAGE };
-    return { attempt: { useDefault: entry.useDefault === true }, error: null };
+function initialAttempt(state: unknown): {
+    attempt: { useDefault: boolean } | null;
+    error: string | null;
+    retryPath?: string;
+} {
+    const { homeFailed, useDefault, retryPath } = readHomeEntryState(state);
+    if (homeFailed) return { attempt: null, error: null, retryPath };
+    if (!canAutoHome(readHomeFailures(sessionStorage))) return { attempt: null, error: STOPPED_MESSAGE, retryPath };
+    return { attempt: { useDefault: useDefault === true }, error: null, retryPath };
 }
 
 /**
  * `/`。ロビーは無く、ログインしたらホームの部屋を新しく作ってそのまま移る（部屋を出て戻ってきたときも作り直す）。
- * ホームのワールドの部屋に入れなかったら既定のワールドで作り直し、それも駄目なとき・続けて失敗したときだけ止まる。
+ * ホームのワールドの部屋に入れなかったら既定のワールドで作り直し、それも駄目なとき・続けて入れなかったときだけ止まる。
  */
 export function HomePage() {
     const navigate = useNavigate();
     const location = useLocation();
     const [initial] = useState(() => initialAttempt(location.state));
+    const { retryPath } = initial;
     // null は止まっている（もう一度試すのを待つ）
     const [attempt, setAttempt] = useState(initial.attempt);
     const [error, setError] = useState(initial.error);
@@ -41,21 +42,21 @@ export function HomePage() {
         ensureHomeInstance(attempt)
             .then((response) => {
                 if (ctrl.cancelled) return;
-                sessionStorage.setItem(AUTO_HOME_LOG_KEY, JSON.stringify(withAutoHome(autoHomeLog(), Date.now())));
                 navigate(`/instance/${response.instance.id}`, {
                     replace: true,
-                    state: homeInstanceEntry(response, attempt.useDefault),
+                    state: homeInstanceEntry(response, { useDefault: attempt.useDefault, retryPath }),
                 });
             })
             .catch((e: unknown) => {
                 if (ctrl.cancelled) return;
+                recordEntryOutcome(sessionStorage, 'autoHomeFailed');
                 setError(e instanceof Error ? e.message : 'ホームを用意できません');
                 setAttempt(null);
             });
         return () => {
             ctrl.cancelled = true;
         };
-    }, [attempt, navigate]);
+    }, [attempt, navigate, retryPath]);
 
     const handleLogout = useCallback(async () => {
         await signOut();
@@ -95,6 +96,11 @@ export function HomePage() {
                 >
                     もう一度試す
                 </button>
+                {retryPath && (
+                    <button type="button" className={action()} onClick={() => navigate(retryPath, { replace: true })}>
+                        元の部屋をもう一度試す
+                    </button>
+                )}
                 <button type="button" className={action({ tone: 'quiet' })} onClick={() => void handleLogout()}>
                     ログアウト
                 </button>

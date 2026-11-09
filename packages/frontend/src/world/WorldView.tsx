@@ -42,6 +42,8 @@ export interface WorldViewProps {
     recovery: { label: string; run: () => void };
     /** 読み込みの失敗が確定したとき（SNS はしばらくしてホームへ戻す）。 */
     onFailed?: (failure: InstanceFailure) => void;
+    /** 部屋に入れたとき（入るたびに 1 回）。 */
+    onEntered?: () => void;
     /** 入室できたあとに重ねる UI（HUD など）。 */
     children?: ReactNode;
 }
@@ -58,6 +60,7 @@ export function WorldView({
     preview,
     recovery,
     onFailed,
+    onEntered,
     children,
 }: WorldViewProps) {
     const { isConnected, isConnecting, error, sessionReplaced, currentUser, joinWorld, leaveWorld } = useSocket();
@@ -153,6 +156,15 @@ export function WorldView({
         if (loading.failed && loading.failureMessage)
             onFailed?.({ message: loading.failureMessage, replaced: sessionReplaced, gone });
     }, [loading.failed, loading.failureMessage, sessionReplaced, gone, onFailed]);
+
+    const onEnteredRef = useRef(onEntered);
+    onEnteredRef.current = onEntered;
+    // 入ったかの切り替わりだけを見る（部屋を移った直後の描画には前の部屋の currentUser が残っている。
+    // いったん退出で null になってから入り直すので、それで 1 回）
+    const entered = currentUser != null;
+    useEffect(() => {
+        if (entered) onEnteredRef.current?.();
+    }, [entered]);
 
     return (
         <>
