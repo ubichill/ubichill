@@ -3,6 +3,7 @@ export * from './actor';
 export * from './cavageSignature';
 export * from './delivery';
 export * from './domainPolicy';
+export * from './featured';
 export * from './httpSignature';
 export * from './multikey';
 export * from './nodeinfo';

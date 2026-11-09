@@ -94,18 +94,39 @@ function cachedConfirm(record: ExternalWorkRecord, account: string, fresh: boole
     return value.then((confirmation) => ({ confirmation, checkedAt: now }));
 }
 
+/** 公開している外部の作品 1 件（登録した時刻つき）。 */
+export interface PublishedExternalEntry {
+    registeredAt: Date;
+    world?: WorldListItem;
+    mod?: PublishedMod;
+}
+
+/** 公開している外部の作品（いま本人の署名付きで配られていると確かめられたものだけ。登録した順）。 */
+export async function publishedExternalEntries(userId: string, account: string): Promise<PublishedExternalEntry[]> {
+    const records = await externalWorkRepository.listByUser(userId);
+    const checked = await Promise.all(records.map((r) => cachedConfirm(r, account, false)));
+    return records.flatMap((record, i) => {
+        const confirmation = checked[i]?.confirmation;
+        if (confirmation?.status !== 'published') return [];
+        return [
+            {
+                registeredAt: record.registeredAt,
+                ...(confirmation.world ? { world: confirmation.world } : {}),
+                ...(confirmation.mod ? { mod: confirmation.mod } : {}),
+            },
+        ];
+    });
+}
+
 /** ユーザーページに出す外部の作品（いま本人の署名付きで配られていると確かめられたものだけ）。 */
 export async function publishedExternalWorks(
     userId: string,
     account: string,
 ): Promise<{ worlds: WorldListItem[]; mods: PublishedMod[] }> {
-    const records = await externalWorkRepository.listByUser(userId);
-    const confirmed = (await Promise.all(records.map((r) => cachedConfirm(r, account, false)))).map(
-        (c) => c.confirmation,
-    );
+    const entries = await publishedExternalEntries(userId, account);
     return {
-        worlds: confirmed.flatMap((c) => (c.status === 'published' && c.world ? [c.world] : [])),
-        mods: confirmed.flatMap((c) => (c.status === 'published' && c.mod ? [c.mod] : [])),
+        worlds: entries.flatMap((e) => (e.world ? [e.world] : [])),
+        mods: entries.flatMap((e) => (e.mod ? [e.mod] : [])),
     };
 }
 

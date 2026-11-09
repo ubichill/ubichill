@@ -70,7 +70,7 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 | `GET /api/v1/worlds?scope=local` | 連合のピア（このサーバーのワールドだけを返す） |
 | `GET /api/v1/service-tokens/keys` | サービストークンを検証する外部サービス |
 | `GET /.well-known/nodeinfo`・`/nodeinfo/2.1` | ubichill のサーバーかを確かめるほかのサーバー |
-| `GET /ap/actor`・`/ap/users/:id`（`/outbox`・`/followers`・`/following`） | 連合の actor の文書（鍵は FEP-521a の Multikey と、ほかの実装向けの RSA の `publicKey`） |
+| `GET /ap/actor`・`/ap/users/:id`（`/outbox`・`/followers`・`/following`・`/collections/featured`・`/featured/:key`） | 連合の actor の文書（鍵は FEP-521a の Multikey と、ほかの実装向けの RSA の `publicKey`） |
 | `POST /ap/inbox`・`/ap/users/:id/inbox` | 連合の知らせ（AS2 の activity。RFC 9421 の署名付き。Mastodon・Misskey などからは draft-cavage の署名で Follow・Undo を受ける） |
 | `GET /ap/instances/:id`・`POST /federation/v1/...` | 連合の部屋 RPC（入室・招待の権利・見えるか・現在地・フレンドか） |
 

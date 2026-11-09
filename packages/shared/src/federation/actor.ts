@@ -11,7 +11,7 @@
 import { z } from 'zod';
 import { parseEd25519Multikey } from './multikey';
 import { ACTOR_CONTEXT, AP_ACCEPT, FEDERATION_FEATURES, isActivityMediaType } from './protocol';
-import { displayText } from './text';
+import { displayText, escapeHtml } from './text';
 import { parseFederationUrl, sameOrigin } from './urls';
 
 export interface LocalActorInput {
@@ -35,6 +35,8 @@ export interface LocalActorInput {
     /** フォロワー・フォローのコレクション（件数だけ公開する） */
     followers?: string;
     following?: string;
+    /** 固定ノート（Mastodon の featured） */
+    featured?: string;
     /** フォローを承認制にするか（既定は承認制。Application actor はフォローを受けない） */
     manuallyApprovesFollowers?: boolean;
     /** ほかのサーバーの「おすすめ」や検索に出してよいか（Mastodon の discoverable・indexable） */
@@ -45,11 +47,8 @@ export interface LocalActorInput {
     implements?: readonly string[];
 }
 
-const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-
 /** 平文（自己紹介など）→ ほかの実装が表示する HTML（段落と改行だけ。中身はすべてエスケープする）。 */
 export function plainTextToHtml(text: string): string {
-    const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c] ?? c);
     return text
         .trim()
         .split(/\r?\n\s*\r?\n/)
@@ -73,6 +72,7 @@ export function buildActorDocument(input: LocalActorInput): Record<string, unkno
         ...(input.outbox ? { outbox: input.outbox } : {}),
         ...(input.followers ? { followers: input.followers } : {}),
         ...(input.following ? { following: input.following } : {}),
+        ...(input.featured ? { featured: input.featured } : {}),
         endpoints: { sharedInbox: input.sharedInbox },
         manuallyApprovesFollowers: input.manuallyApprovesFollowers ?? true,
         ...(input.discoverable !== undefined

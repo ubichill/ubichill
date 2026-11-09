@@ -38,6 +38,21 @@ export function createActivityPubRouter(federation: Federation): Router {
         });
     }
 
+    // 固定ノート（作ったワールド・公開している mod・パブリックのお気に入り）。ノートは id を取り直されても返す
+    router.get('/users/:id/collections/featured', documents, async (req, res) => {
+        const doc = await federation.featured.collection(String(req.params.id));
+        if (!doc) return sendProblem(res, 404, 'not-found', 'ユーザーが見つかりません');
+        sendDocument(res, doc);
+    });
+
+    router.get('/users/:id/featured/:key', documents, async (req, res) => {
+        const note = await federation.featured.note(String(req.params.id), String(req.params.key));
+        if (!note) return sendProblem(res, 404, 'not-found', 'ノートが見つかりません');
+        // ブラウザで開いたら、ノートのリンクの先（ワールドのページなど）へ
+        if (req.accepts(AP_TYPES) === 'text/html' && typeof note.url === 'string') return res.redirect(302, note.url);
+        sendDocument(res, note);
+    });
+
     router.get('/users/:id/outbox', documents, (req, res) => {
         // 公開の投稿は無い（人から人への知らせだけを、相手の inbox へ直接送る）
         sendDocument(res, {

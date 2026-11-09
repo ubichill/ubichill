@@ -6,6 +6,7 @@ import yaml from 'yaml';
 import { optionalAuth, requireAdmin, requireAuth, requirePublisher } from '../middleware/auth';
 import { bearerToken } from '../services/auth/cliAuth';
 import { selfAccount } from '../services/authors/authorKeys';
+import { federation } from '../services/federation';
 import { worldRegistry } from '../services/worlds/worldRegistry';
 import { logger } from '../utils/logger';
 
@@ -296,6 +297,7 @@ router.put('/', requireSaver, async (req, res) => {
             return;
         }
         await markEnvironmentUsed(claim);
+        federation?.featuredChanged(req.user.id);
         res.json({ id: result.world.id, url: result.world.url, saved: result.saved, identity: result.world.identity });
     } catch (error) {
         logger.error('ワールド保存エラー:', error);
@@ -363,6 +365,7 @@ router.delete('/:worldId', requireAuth, async (req, res) => {
             res.status(404).json({ error: 'World not found' });
             return;
         }
+        federation?.featuredChanged(req.user.id);
 
         res.status(204).send();
     } catch (error) {

@@ -1,3 +1,8 @@
+const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
+/** HTML に埋め込む文字列をエスケープする（ほかの実装に送る自己紹介・ノートの本文）。 */
+export const escapeHtml = (text: string): string => text.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c] ?? c);
+
 const ENTITIES: Record<string, string> = { lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', amp: '&' };
 
 /** 実体参照を文字に戻す（名前の付いたよく使うものと数値）。&amp; は 1 度だけ戻す（&amp;lt; は &lt; のまま）。 */
