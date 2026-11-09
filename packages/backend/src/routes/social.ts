@@ -41,7 +41,7 @@ import { optionalAuth, requireAuth } from '../middleware/auth';
 import { selfAccount, selfDomain } from '../services/authors/authorKeys';
 import { federation } from '../services/federation';
 import { friendshipViewOf } from '../services/federation/friendships';
-import { type FriendPresence, limitFriendPresence } from '../services/federation/presence';
+import { type FriendPresence, limitFriendPresence, visitorVisibility } from '../services/federation/presence';
 import { remoteInstanceOf } from '../services/federation/remoteInstance';
 import { instanceManager } from '../services/instances/instanceManager';
 import { instanceRuntime } from '../services/instances/instanceRuntime';
@@ -296,14 +296,22 @@ router.get('/locations', requireAuth, async (req, res) => {
     const visibilities = await userSettingsRepository.presenceVisibilityOf(
         friendIds.filter((id) => !isRemoteUserId(id)),
     );
-    const visibilityOf = (id: string): PresenceVisibility =>
-        isRemoteUserId(id) ? 'location' : (visibilities.get(id) ?? DEFAULT_PRESENCE_VISIBILITY);
-    const hiddenIds = friendIds.filter((id) => visibilityOf(id) === 'hidden');
-    const shownIds = friendIds.filter((id) => visibilityOf(id) !== 'hidden');
     const presence = await instanceRuntime.presence();
     const locationsByUser = new Map(
         [...presence.values()].flatMap((room) => room.memberIds.map((id) => [id, room.id] as const)),
     );
+    // ここに来訪しているほかのサーバーのフレンドは、本人の見せ方をホームに確かめる（同じ部屋にいる人には見えているので尋ねない）
+    const visitors = await visitorVisibilities(
+        me,
+        friendIds.filter(
+            (id) =>
+                isRemoteUserId(id) && locationsByUser.has(id) && locationsByUser.get(id) !== locationsByUser.get(me),
+        ),
+    );
+    const visibilityOf = (id: string): PresenceVisibility =>
+        isRemoteUserId(id) ? (visitors.get(id) ?? 'location') : (visibilities.get(id) ?? DEFAULT_PRESENCE_VISIBILITY);
+    const hiddenIds = friendIds.filter((id) => visibilityOf(id) === 'hidden');
+    const shownIds = friendIds.filter((id) => visibilityOf(id) !== 'hidden');
     const instanceIds = [...new Set(shownIds.flatMap((id) => locationsByUser.get(id) ?? []))];
     const records = (await Promise.all(instanceIds.map((id) => instanceRepository.findById(id)))).flatMap((r) =>
         r ? [r] : [],
@@ -323,28 +331,59 @@ router.get('/locations', requireAuth, async (req, res) => {
     const withAccess = new Map(
         (await instanceManager.withViewerAccess(instances, me, myFriends, presence)).map((i) => [i.id, i]),
     );
-    const locations = await Promise.all(
-        grouped.locations.flatMap((l) => {
-            const instance = withAccess.get(l.instance.id);
-            return instance ? [summariesOf(l.friendIds).then((friends) => ({ instance, friends }))] : [];
-        }),
-    );
+    const localRooms = grouped.locations.flatMap((l) => {
+        const instance = withAccess.get(l.instance.id);
+        return instance ? [{ instance, friendIds: l.friendIds }] : [];
+    });
     // このサーバーの部屋の外にいるフレンド: ほかのサーバーのフレンドはそのホームに、来訪中のフレンドは部屋のサーバーに尋ねる
     const remote = await remoteLocations(me, grouped.elsewhereIds, visibilityOf);
+    const rooms = [...localRooms, ...remote.rooms];
+    const privateIds = [...grouped.privateFriendIds, ...remote.privateIds];
     const elsewhere = [...grouped.elsewhereIds.filter((id) => !remote.placed.has(id)), ...hiddenIds];
+    // ユーザーの情報は 1 回でまとめて引く（部屋ごとに引くと、部屋の数だけ DB に問い合わせる）
+    const users = new Map(
+        (
+            await summariesOf([
+                ...new Set([
+                    ...rooms.flatMap((r) => r.friendIds),
+                    ...privateIds,
+                    ...elsewhere,
+                    ...remote.unreachable.map((f) => f.friendId),
+                ]),
+            ])
+        ).map((u) => [u.id, u]),
+    );
+    const pick = (ids: readonly string[]) => ids.flatMap((id) => users.get(id) ?? []);
     return res.json({
-        locations: [...locations, ...(await Promise.all(remote.rooms))].sort(
-            (a, b) => b.friends.length - a.friends.length,
-        ),
-        private: await summariesOf([...grouped.privateFriendIds, ...remote.privateIds]),
-        elsewhere: await summariesOf(elsewhere),
-        unreachable: await unreachableOf(remote.unreachable),
+        locations: rooms
+            .map((r) => ({ instance: r.instance, friends: pick(r.friendIds) }))
+            .sort((a, b) => b.friends.length - a.friends.length),
+        private: pick(privateIds),
+        elsewhere: pick(elsewhere),
+        unreachable: unreachableOf(remote.unreachable, users),
     });
 });
 
+/**
+ * ここに来訪しているほかのサーバーのフレンドの見せ方（ホームの答えから）。尋ねられないとき（連合なし・失敗）は場所を伏せる。
+ */
+async function visitorVisibilities(
+    me: string,
+    visitorIds: readonly string[],
+): Promise<Map<string, PresenceVisibility>> {
+    if (visitorIds.length === 0) return new Map();
+    const answers = federation
+        ? await federation.presence.locate(me, { remote: visitorIds, localVisiting: [] }).catch((error: unknown) => {
+              logger.warn('[federation] 来訪中のフレンドの見せ方を確かめられません:', error);
+              return [];
+          })
+        : [];
+    const byId = new Map(answers.map((a) => [a.friendId, a]));
+    return new Map(visitorIds.map((id) => [id, visitorVisibility(byId.get(id))]));
+}
+
 /** 確かめられなかったフレンドと、最後に確かめた場所（ワールドの名前）と時刻。 */
-async function unreachableOf(found: readonly FriendPresence[]) {
-    const users = new Map((await summariesOf(found.map((f) => f.friendId))).map((u) => [u.id, u]));
+function unreachableOf(found: readonly FriendPresence[], users: ReadonlyMap<string, UserSummary>) {
     return found.flatMap((f) => {
         const user = users.get(f.friendId);
         if (!user) return [];
@@ -373,7 +412,7 @@ async function remoteLocations(
     visibilityOf: (friendId: string) => PresenceVisibility,
 ) {
     const empty = {
-        rooms: [] as Array<Promise<{ instance: Instance; friends: UserSummary[] }>>,
+        rooms: [] as Array<{ instance: Instance; friendIds: string[] }>,
         privateIds: [] as string[],
         unreachable: [] as FriendPresence[],
         placed: new Set<string>(),
@@ -404,7 +443,7 @@ async function remoteLocations(
             canJoin: group.some((f) => f.joinable),
             seenAt,
         });
-        return [summariesOf(group.map((f) => f.friendId)).then((friends) => ({ instance, friends }))];
+        return [{ instance, friendIds: group.map((f) => f.friendId) }];
     });
     const privateIds = found.filter((f) => f.status === 'private').map((f) => f.friendId);
     const unreachable = found.filter((f) => f.status === 'unreachable');

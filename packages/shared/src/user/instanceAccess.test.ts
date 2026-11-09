@@ -129,6 +129,21 @@ describe('inviteRequestRefusal', () => {
         expect(inviteRequestRefusal('me', 'f', friendsOfMe, audience('public', ['f']))).toBe('can-join');
     });
 
+    it('「見せない」相手には、部屋にいなくても入れる部屋にいても断らない（断る理由で在室を漏らさない）', () => {
+        const open = audience('public', ['f']);
+        expect(inviteRequestRefusal('me', 'f', friendsOfMe, null, 'hidden')).toBeNull();
+        expect(inviteRequestRefusal('me', 'f', friendsOfMe, open, 'hidden')).toBeNull();
+        // 在室と関係のない理由は今までどおり
+        expect(inviteRequestRefusal('me', 'x', friendsOfMe, null, 'hidden')).toBe('not-friend');
+        expect(inviteRequestRefusal('me', 'me', friendsOfMe, null, 'hidden')).toBe('self');
+    });
+
+    it('「オンラインだけ」の相手には、入れる部屋でも断らない（場所を知らない人を行き止まりにしない）。いなければ offline', () => {
+        expect(inviteRequestRefusal('me', 'f', friendsOfMe, audience('public', ['f']), 'online')).toBeNull();
+        expect(inviteRequestRefusal('me', 'f', friendsOfMe, audience('friend_plus', ['f']), 'online')).toBeNull();
+        expect(inviteRequestRefusal('me', 'f', friendsOfMe, null, 'online')).toBe('offline');
+    });
+
     it('ほかのサーバーの部屋にいるフレンドには頼める（入れるかは部屋のサーバーが決める）。フレンドでなければ頼めない', () => {
         expect(inviteRequestRefusal('me', 'f', friendsOfMe, 'remote')).toBeNull();
         expect(inviteRequestRefusal('me', 'x', friendsOfMe, 'remote')).toBe('not-friend');
