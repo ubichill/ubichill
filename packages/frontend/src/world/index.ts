@@ -6,6 +6,7 @@
 export { buildWorldLock } from './buildWorldLock';
 export { DEV_HOST } from './devHost';
 export { EntityRenderer } from './EntityRenderer';
+export { type InstanceFailure, InstanceNotFoundError } from './instanceFailure';
 export { ModRegistryProvider, useModRegistry } from './ModRegistryContext';
 export { checkModInstallation, type ModInstallationCheck } from './modInstallation';
 export { describeModRejection } from './modRejection';
