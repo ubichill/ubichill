@@ -106,6 +106,7 @@ backendEvents.on('favorites.changed', ({ userId }) => publicFavoritesCache.delet
 const favoritesChanged = (userId: string): void => {
     publicFavoritesCache.delete(userId);
     backendEvents.broadcast({ type: 'favorites.changed', userId });
+    federation?.featuredChanged(userId);
 };
 
 // 仮登録（OTP送信）
@@ -500,6 +501,7 @@ router.put('/me/external-works', requirePublisher, async (req, res) => {
             code: 'limit',
         });
     }
+    federation?.featuredChanged(me.id);
     return res.json({ work: verdict.work });
 });
 
@@ -532,6 +534,7 @@ router.delete('/me/external-works', requireAuth, async (req, res) => {
         return res.status(400).json({ error: 'kind・url・name を指定してください' });
     }
     const removed = await externalWorkRepository.remove({ userId: req.user.id, kind, url, name });
+    if (removed) federation?.featuredChanged(req.user.id);
     return removed ? res.status(204).end() : res.status(404).json({ error: 'Not found' });
 });
 
@@ -610,6 +613,8 @@ router.put('/me/favorites/visibility', requireAuth, async (req, res) => {
         return res.status(400).json({ error: `visibility は ${FAVORITES_VISIBILITIES.join(' / ')} のいずれかです` });
     }
     await userSettingsRepository.setFavoritesVisibility(req.user.id, parsed.data);
+    // パブリックにした・やめたら、フェディバースの固定ノートのお気に入りも出す・消す
+    federation?.featuredChanged(req.user.id);
     return res.json({ visibility: parsed.data });
 });
 

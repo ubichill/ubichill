@@ -45,6 +45,7 @@ export function createLocalActors(deps: {
                 outbox: deps.identity.outboxUrl(user.id),
                 followers: deps.identity.followersUrl(user.id),
                 following: deps.identity.followingUrl(user.id),
+                featured: deps.identity.featuredUrl(user.id),
                 sharedInbox: deps.identity.sharedInboxUrl,
                 keyId: signer.keyId,
                 publicKeyMultibase: signer.publicKeyMultibase,

@@ -46,6 +46,7 @@ export const ACTOR_CONTEXT = [
         toot: 'http://joinmastodon.org/ns#',
         discoverable: 'toot:discoverable',
         indexable: 'toot:indexable',
+        featured: { '@id': 'toot:featured', '@type': '@id' },
     },
 ] as const;
 
@@ -86,6 +87,9 @@ export const FEDERATION_PATHS = {
     user: (userId: string) => `/ap/users/${encodeURIComponent(userId)}`,
     userFollowers: (userId: string) => `/ap/users/${encodeURIComponent(userId)}/followers`,
     userFollowing: (userId: string) => `/ap/users/${encodeURIComponent(userId)}/following`,
+    userFeatured: (userId: string) => `/ap/users/${encodeURIComponent(userId)}/collections/featured`,
+    featuredNote: (userId: string, key: string) =>
+        `/ap/users/${encodeURIComponent(userId)}/featured/${encodeURIComponent(key)}`,
     userInbox: (userId: string) => `/ap/users/${encodeURIComponent(userId)}/inbox`,
     userOutbox: (userId: string) => `/ap/users/${encodeURIComponent(userId)}/outbox`,
     instance: (instanceId: string) => `/ap/instances/${encodeURIComponent(instanceId)}`,

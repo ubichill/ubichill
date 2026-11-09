@@ -7,6 +7,7 @@ import {
     admissionRepository,
     deliveryRepository,
     domainPolicyRepository,
+    favoriteRepository,
     federationSeenRepository,
     followerRepository,
     instanceRepository,
@@ -17,28 +18,34 @@ import {
     remoteVisitRepository,
     userRepository,
     userSettingsRepository,
+    worldRepository,
 } from '@ubichill/db';
 import {
     FEDERATION_FEATURES,
     FEDERATION_LIMITS,
     type FediverseSettings,
     type FediverseSettingsUpdate,
+    isPublishable,
     parseRoomAddress,
+    worldPagePath,
 } from '@ubichill/shared';
 import { appConfig } from '../../config';
 import { safeFetch } from '../../lib/safeFetch';
 import { logger } from '../../utils/logger';
+import { selfAccount } from '../authors/authorKeys';
 import { backendEvents } from '../cluster/backendEvents';
 import { instanceManager } from '../instances/instanceManager';
 import { instanceRuntime } from '../instances/instanceRuntime';
 import { notificationService } from '../notifications/notificationService';
 import { friendIdsOf } from '../social/friends';
+import { publishedExternalEntries } from '../worlds/externalWorkStore';
 import { nodeWorldCrypto } from '../worlds/worldCrypto';
 import { worldRegistry } from '../worlds/worldRegistry';
 import { createActorDirectory } from './actors';
 import { type FederationConfig, federationConfigFromEnv } from './config';
 import { createLocalActors } from './documents';
 import { createDomainPolicies } from './domains';
+import { createDebouncer, createFeatured, type FeaturedSource } from './featured';
 import { createFollows } from './follows';
 import { createFriendshipCheck } from './friendshipCheck';
 import { createRemoteFriendships } from './friendships';
@@ -331,6 +338,93 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         },
     });
 
+    const featured = createFeatured({
+        identity,
+        profileOrigin: frontendOrigin,
+        async findUser(userId) {
+            if (userId === SYSTEM_USER_ID) return undefined;
+            const user = await userRepository.findById(userId);
+            return user && { id: user.id, handle: user.handle };
+        },
+        sources: {
+            // ユーザーページの「作ったワールド」と同じ条件（署名して公開したもの・本人の署名で配られている外部のもの）
+            async worlds(owner) {
+                const own = await Promise.all(
+                    (await worldRepository.findByAuthorId(owner.id)).map(async (record) => {
+                        const world = await worldRegistry.getWorld(record.id);
+                        return world && isPublishable(world.identity)
+                            ? [
+                                  {
+                                      id: world.url,
+                                      name: world.displayName,
+                                      description: world.description ?? null,
+                                      image: world.thumbnail ?? null,
+                                      path: worldPagePath(world),
+                                      published: record.createdAt,
+                                  } satisfies FeaturedSource,
+                              ]
+                            : [];
+                    }),
+                );
+                const external = (await publishedExternalEntries(owner.id, selfAccount(owner.handle))).flatMap(
+                    (entry): FeaturedSource[] =>
+                        entry.world
+                            ? [
+                                  {
+                                      id: entry.world.url,
+                                      name: entry.world.displayName,
+                                      description: entry.world.description ?? null,
+                                      image: entry.world.thumbnail ?? null,
+                                      path: worldPagePath(entry.world),
+                                      published: entry.registeredAt,
+                                  },
+                              ]
+                            : [],
+                );
+                return [...own.flat(), ...external];
+            },
+            async mods(owner) {
+                return (await publishedExternalEntries(owner.id, selfAccount(owner.handle))).flatMap(
+                    (entry): FeaturedSource[] =>
+                        entry.mod
+                            ? [
+                                  {
+                                      id: `${entry.mod.url}\n${entry.mod.name}`,
+                                      name: entry.mod.name,
+                                      description: null,
+                                      image: null,
+                                      // mod のページは無いので、mod の並ぶユーザーページへ
+                                      path: `/@${owner.handle}`,
+                                      version: entry.mod.version,
+                                      published: entry.registeredAt,
+                                  },
+                              ]
+                            : [],
+                );
+            },
+            async favorites(owner) {
+                for (const entry of await favoriteRepository.latest(owner.id, 5)) {
+                    const world = await worldRegistry.publishableListItem(entry.worldRef).catch(() => undefined);
+                    if (world) {
+                        return [
+                            {
+                                id: world.url,
+                                name: world.displayName,
+                                description: world.description ?? null,
+                                image: world.thumbnail ?? null,
+                                path: worldPagePath(world),
+                                published: entry.createdAt,
+                            },
+                        ];
+                    }
+                }
+                return [];
+            },
+        },
+        favoritesVisibility: (userId) => userSettingsRepository.getFavoritesVisibility(userId),
+        log,
+    });
+
     const announceProfile = createProfileAnnouncer({
         identity,
         localActors,
@@ -345,6 +439,14 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         outbox,
     });
 
+    const announceFeatured = createDebouncer(
+        (userId) =>
+            void announceProfile(userId).catch((error: unknown) =>
+                log(`固定ノートの更新を届けられません: ${String(error)}`),
+            ),
+        30_000,
+    );
+
     return {
         config,
         identity,
@@ -358,6 +460,7 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         friendships,
         friendshipCheck,
         follows,
+        featured,
         rooms,
         travel,
         presence,
@@ -367,6 +470,14 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         isFriend,
         visitOf,
         visitsOf,
+        /**
+         * 固定ノートの中身が変わった（ワールドの公開・削除、外部の作品、お気に入りとその公開範囲）。覚えた分を捨て、
+         * 続けて変えても 1 度にまとめて、フレンドとフォロワーに actor の取り直しを頼む。
+         */
+        featuredChanged(userId: string): void {
+            featured.invalidate(userId);
+            announceFeatured(userId);
+        },
         /** プロフィールが変わったら、ほかのサーバーのフレンドに知らせる（失敗してもプロフィールの更新は止めない） */
         profileChanged(userId: string): void {
             void announceProfile(userId).catch((error: unknown) =>

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { favoriteRepository } from '../favoriteRepository';
 import { userRepository } from '../userRepository';
 import { userSettingsRepository } from '../userSettingsRepository';
 import { actorKeyRepository } from './actorKeyRepository';
@@ -158,9 +159,27 @@ describe.skipIf(!RUN)('フェディバースの保存（DB統合）', () => {
                 email: `${other}@example.com`,
                 handle: other.replaceAll('-', '_'),
             });
-            await actorKeyRepository.insertIfAbsent({ ...key(5), actorId: `https://a.example/ap/users/${other}`, userId: other }, T0);
+            await actorKeyRepository.insertIfAbsent(
+                { ...key(5), actorId: `https://a.example/ap/users/${other}`, userId: other },
+                T0,
+            );
             await userRepository.deleteById(other);
             expect(await actorKeyRepository.get(`https://a.example/ap/users/${other}`)).toBeUndefined();
+        });
+    });
+
+    describe('favoriteRepository.latest（固定ノートのお気に入り）', () => {
+        it('新しく追加した順に、追加した時刻つきで limit 件まで返す', async () => {
+            for (const n of [1, 2, 3]) {
+                await favoriteRepository.add(userId, `https://worlds.example/${stamp}/${n}.yaml`);
+                await new Promise((r) => setTimeout(r, 5));
+            }
+            const latest = await favoriteRepository.latest(userId, 2);
+            expect(latest.map((f) => f.worldRef)).toEqual([
+                `https://worlds.example/${stamp}/3.yaml`,
+                `https://worlds.example/${stamp}/2.yaml`,
+            ]);
+            expect(latest[0]?.createdAt).toBeInstanceOf(Date);
         });
     });
 

@@ -167,6 +167,19 @@ ubichill のユーザーは、Mastodon・Misskey などから `@<handle>@<domain
   `followers`・`following`・`manuallyApprovesFollowers`・`discoverable`／`indexable`（Mastodon）を載せ、自己紹介は段落と改行だけの HTML にする。
 - 設定とフォロワーの管理は `GET /api/v1/fediverse`・`PUT /api/v1/fediverse/settings`・`POST /api/v1/fediverse/followers/{approve,reject}`。
 
+### 固定ノート（`featured`）
+
+プロフィールに載っている公開の情報から、固定ノートを作る（本人が書いたノートではない）。ほかの実装は 5 件まで読むので、
+作ったワールド 2・公開している mod 2・お気に入り 1（それぞれ新しい順）にする。
+
+- 作ったワールド: ユーザーページと同じ条件（署名して公開したもの・本人の署名で配られていると確かめた外部のもの）。リンクは共有ページ。
+- 公開している mod: 本人の署名付きで配られていると確かめたもの。mod のページは無いので、リンクはユーザーページ。
+- お気に入り: **公開範囲がパブリックのときだけ**（フレンドだけ・本人だけなら材料も読まない）。自分で作ったワールドは重ねて出さない。
+- ノートは `GET /ap/users/:id/collections/featured`（埋め込み）と `GET /ap/users/:id/featured/:key`（Mastodon は id を取り直して確かめる）。
+  id は種類と項目の id の要約で、並びが変わっても変えない。宛先は公開とフォロワー。画像は拡張子で種類が分かるときだけ添付する。
+- 中身が変わったら（ワールドの保存・削除、外部の作品の登録・削除、お気に入り、その公開範囲）、1 分覚えた分を捨て、30 秒まとめてから
+  `Update{Person}` をフレンドとフォロワーへ送る（相手は actor を取り直すときに featured も取り直す）。
+
 ### ほかの実装との署名（draft-cavage・RSA）
 
 Mastodon・Misskey は RFC 9421 の Ed25519 を確かめないので、ほかの実装とは draft-cavage-http-signatures-12 の `rsa-sha256` で話す。
@@ -215,6 +228,5 @@ Mastodon・Misskey は RFC 9421 の Ed25519 を確かめないので、ほかの
 - ワールドの中身は部屋のサーバーの Go が配るので、来訪者のサーバーが確かめたワールドと同じ中身かまでは保証しない（mod は作者の署名で確かめる）。
 - サーバーの版が違うと、Go の通信の版（`protocolVersion`）が合わない部屋には入れない（画面は「非対応の通信バージョン」を出す）。
 - 公開の部屋の一覧（ほかのサーバーのパブリックの部屋を探す）は、ワールドの連合のピアの上に足す。
-- フェディバース: 固定ノート（`featured`。作ったワールド・公開している mod・公開にしたお気に入り）、ノートを書く（公開範囲を選んで
-  `Create{Note}` をフォロワーへ）、ほかの実装の人をフォローして読む、は順に足す。keyId が actor の下にない実装（GoToSocial の
+- フェディバース: ノートを書く（公開範囲を選んで `Create{Note}` をフォロワーへ。今いる部屋の共有も）、ほかの実装の人をフォローして読む、は順に足す。keyId が actor の下にない実装（GoToSocial の
   `/main-key` など）の署名はまだ受けない。

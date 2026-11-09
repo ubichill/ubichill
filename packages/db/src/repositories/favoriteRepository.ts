@@ -17,6 +17,16 @@ export const favoriteRepository = {
         return rows.map((r) => r.worldRef);
     },
 
+    /** 新しく追加した順の limit 件（追加した時刻つき。フェディバースの固定ノート）。 */
+    async latest(userId: string, limit: number): Promise<Array<{ worldRef: string; createdAt: Date }>> {
+        return db
+            .select({ worldRef: userFavorites.worldRef, createdAt: userFavorites.createdAt })
+            .from(userFavorites)
+            .where(eq(userFavorites.userId, userId))
+            .orderBy(desc(userFavorites.createdAt))
+            .limit(limit);
+    },
+
     /** 追加（冪等: 既にあれば何もしない）。 */
     async add(userId: string, worldRef: string): Promise<void> {
         await db.insert(userFavorites).values({ userId, worldRef }).onConflictDoNothing();
