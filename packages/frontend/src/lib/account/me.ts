@@ -1,6 +1,8 @@
 import {
     type FavoritesVisibility,
     keyRegistrationMessage,
+    type PresenceVisibility,
+    type PrivacySettings,
     type PublishingEnvironmentKind,
     type RevokeReason,
     type UserProfile,
@@ -128,6 +130,25 @@ export async function revokeOtherSessions(): Promise<number> {
     });
     if (!res.ok) throw new Error(await errorMessage(res));
     return ((await res.json()) as { revoked: number }).revoked;
+}
+
+/** プライバシーの設定（お気に入りの公開範囲・オンライン状態の見せ方）。 */
+export async function fetchMyPrivacy(): Promise<PrivacySettings> {
+    const res = await fetch(`${API_BASE}/api/v1/users/me/privacy`, { credentials: 'include', cache: 'no-store' });
+    if (!res.ok) throw new Error(await errorMessage(res));
+    return (await res.json()) as PrivacySettings;
+}
+
+/** オンライン状態をフレンドにどこまで見せるかを変える。 */
+export async function setMyPresenceVisibility(visibility: PresenceVisibility): Promise<PresenceVisibility> {
+    const res = await fetch(`${API_BASE}/api/v1/users/me/presence`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ visibility }),
+    });
+    if (!res.ok) throw new Error(await errorMessage(res));
+    return ((await res.json()) as { visibility: PresenceVisibility }).visibility;
 }
 
 /** お気に入り一覧の公開範囲を変更する。 */

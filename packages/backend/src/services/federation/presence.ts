@@ -16,9 +16,11 @@ import {
     FEDERATION_LIMITS,
     FEDERATION_PATHS,
     hostOf,
+    limitPresence,
     originOf,
     type PresenceEntry,
     PresenceResponseSchema,
+    type PresenceVisibility,
     type RoomCard,
     SIGNATURE_TIMING,
     VisibilityResponseSchema,
@@ -34,6 +36,8 @@ export interface PresenceDeps {
     policyOf(domain: string): DomainPolicy;
     /** このサーバーのユーザーと actor がフレンドか */
     isFriend(userId: string, actorId: string): Promise<boolean>;
+    /** このサーバーのユーザーが、オンライン状態をどこまで見せるか */
+    visibilityOf(userId: string): Promise<PresenceVisibility>;
     /** このサーバーの部屋のうち、その人がいる部屋 */
     localRoomOf(userId: string): Promise<string | undefined>;
     /** 見る人にとっての部屋（rooms.describe。見えなければ undefined） */
@@ -54,6 +58,32 @@ export interface FriendPresence {
     joinable?: boolean;
     /** unreachable のとき、最後に確かめた現在地と時刻（1 時間以内のもの） */
     lastKnown?: { status: PresenceEntry['status']; room?: RoomCard; at: number };
+}
+
+/**
+ * このサーバーのフレンドの見せ方に合わせて、尋ねて分かった現在地を狭める（来訪中の部屋のサーバーは本人の設定を知らない）。
+ * 場所を伏せるときは、最後に確かめた場所も伏せる。
+ */
+export function limitFriendPresence(found: FriendPresence, visibility: PresenceVisibility): FriendPresence {
+    if (visibility === 'location') return found;
+    if (visibility === 'hidden') return { friendId: found.friendId, status: 'offline' };
+    const last = found.lastKnown;
+    return {
+        friendId: found.friendId,
+        status: found.status === 'unreachable' ? 'unreachable' : limitPresence(found.status, visibility),
+        ...(last ? { lastKnown: { status: limitPresence(last.status, visibility), at: last.at } } : {}),
+    };
+}
+
+/**
+ * ここに来訪しているほかのサーバーのフレンドを、このサーバーの在室で出してよいか（本人のホームの答えから）。
+ * ホームは本人の見せ方を当てて答えるので、部屋にいると答えたときだけ場所を出す。場所を伏せた答え・つながらない・答えが無いときは
+ * 部屋にいることだけ（private）、offline と答えたら（見せない人）部屋にいないことにする。
+ */
+export function visitorVisibility(home: FriendPresence | undefined): PresenceVisibility {
+    if (home?.status === 'in_room') return 'location';
+    if (home?.status === 'offline') return 'hidden';
+    return 'online';
 }
 
 type Visibility = { visible: boolean; joinable: boolean; room: RoomCard | undefined };
@@ -155,28 +185,37 @@ export function createFederatedPresence(deps: PresenceDeps) {
                     v,
                 ]),
             );
+            // 部屋の規則で見る人に見えるか（本人の見せ方はこの後で狭める）
+            const placeOf = async (subject: string, userId: string): Promise<PresenceEntry> => {
+                const instanceId = await deps.localRoomOf(userId);
+                if (instanceId) {
+                    const described = await deps.describeRoom(viewer, instanceId);
+                    return described
+                        ? { subject, status: 'in_room', room: described.room, joinable: described.canJoin }
+                        : { subject, status: 'private' };
+                }
+                const visit = visits.get(userId);
+                if (!visit) return { subject, status: 'offline' };
+                const { status, room, joinable } = await visitPresence(subject, viewer, visit);
+                // 部屋のサーバーにつながらないときは、部屋にいる（どこかは伏せる）と答える（約束の状態に unreachable は無い）
+                return status === 'unreachable'
+                    ? { subject, status: 'private' }
+                    : {
+                          subject,
+                          status,
+                          ...(room ? { room } : {}),
+                          ...(joinable !== undefined ? { joinable } : {}),
+                      };
+            };
             const presence = await Promise.all(
                 friendsOfViewer.map(async ({ subject, userId }): Promise<PresenceEntry> => {
                     if (!userId) return { subject, status: 'offline' };
-                    const instanceId = await deps.localRoomOf(userId);
-                    if (instanceId) {
-                        const described = await deps.describeRoom(viewer, instanceId);
-                        return described
-                            ? { subject, status: 'in_room', room: described.room, joinable: described.canJoin }
-                            : { subject, status: 'private' };
-                    }
-                    const visit = visits.get(userId);
-                    if (!visit) return { subject, status: 'offline' };
-                    const { status, room, joinable } = await visitPresence(subject, viewer, visit);
-                    // 部屋のサーバーにつながらないときは、部屋にいる（どこかは伏せる）と答える（約束の状態に unreachable は無い）
-                    return status === 'unreachable'
-                        ? { subject, status: 'private' }
-                        : {
-                              subject,
-                              status,
-                              ...(room ? { room } : {}),
-                              ...(joinable !== undefined ? { joinable } : {}),
-                          };
+                    const visibility = await deps.visibilityOf(userId);
+                    if (visibility === 'hidden') return { subject, status: 'offline' };
+                    const entry = await placeOf(subject, userId);
+                    const status = limitPresence(entry.status, visibility);
+                    // 場所を伏せたら、部屋の情報も載せない
+                    return status === entry.status ? entry : { subject, status };
                 }),
             );
             return { presence, ttl: FEDERATION_LIMITS.PRESENCE_TTL_SEC };

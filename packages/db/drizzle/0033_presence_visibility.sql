@@ -1,0 +1,2 @@
+CREATE TYPE "public"."presence_visibility" AS ENUM('location', 'online', 'hidden');--> statement-breakpoint
+ALTER TABLE "user_settings" ADD COLUMN "presence_visibility" "presence_visibility" DEFAULT 'location' NOT NULL;

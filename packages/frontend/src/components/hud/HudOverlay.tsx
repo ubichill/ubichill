@@ -59,7 +59,7 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
     const { home } = useHome();
     const [audio] = useMediaOutput();
     const [view, setView] = useState<HudView>(INITIAL_HUD_VIEW);
-    const [settingsSection, setSettingsSection] = useState<SettingsSection>('profile');
+    const [settingsSection, setSettingsSection] = useState<SettingsSection>('home');
     const [visible, setVisible] = useState(false);
     const instance = useCurrentInstance(currentInstanceId);
     const isHome = !!instance && isHomeInstance(instance, home, session?.user.id);

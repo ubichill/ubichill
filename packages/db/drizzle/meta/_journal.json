@@ -232,6 +232,13 @@
       "when": 1794208906907,
       "tag": "0032_fediverse_profile",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794209362845,
+      "tag": "0033_presence_visibility",
+      "breakpoints": true
     }
   ]
 }

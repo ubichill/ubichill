@@ -4,6 +4,7 @@
  */
 import {
     type AccessType,
+    DEFAULT_PRESENCE_VISIBILITY,
     INVITE_LIMITS,
     type InstanceAudience,
     type InviteRefusal,
@@ -11,6 +12,7 @@ import {
     inviteRefusal,
     inviteRequestRefusal,
     isRemoteUserId,
+    type PresenceVisibility,
     type SendInviteResult,
 } from '@ubichill/shared';
 
@@ -29,6 +31,8 @@ export interface InviteServiceDeps {
     /** Go の在室（部屋 ID → 参加している人） */
     presence(): Promise<ReadonlyMap<string, { memberIds: readonly string[] }>>;
     friendIdsOf(userId: string): Promise<ReadonlySet<string>>;
+    /** このサーバーのユーザーのオンライン状態の見せ方（行が無ければ初期値で埋める） */
+    visibilityOf(userIds: readonly string[]): Promise<ReadonlyMap<string, PresenceVisibility>>;
     invites: {
         upsert(input: {
             instanceId: string;
@@ -94,7 +98,7 @@ export interface InviteCandidate {
     userId: string;
     /** 送れなければ理由 */
     refusal: InviteRefusal | null;
-    /** どこかの部屋にいる */
+    /** どこかの部屋にいる（本人の見せ方に従う。見せない人・ほかのサーバーの人は false） */
     online: boolean;
 }
 
@@ -115,6 +119,21 @@ export function createInviteService(deps: InviteServiceDeps) {
             leaderId: room.leaderId,
             memberIds: presence.get(room.id)?.memberIds ?? [],
         };
+    };
+
+    /**
+     * 招待の画面に出す「オンライン」。見せない人は部屋にいても false。ほかのサーバーの人は本人の見せ方が分からないので false
+     * （ここに来訪していても、ホームに確かめずに在室を出さない）。
+     */
+    const onlineFor = async (
+        presence: ReadonlyMap<string, { memberIds: readonly string[] }>,
+        userIds: readonly string[],
+    ): Promise<(userId: string) => boolean> => {
+        const visibility = await deps.visibilityOf(userIds.filter((id) => !isRemoteUserId(id)));
+        return (userId) =>
+            !isRemoteUserId(userId) &&
+            (visibility.get(userId) ?? DEFAULT_PRESENCE_VISIBILITY) !== 'hidden' &&
+            roomOf(presence, userId) !== undefined;
     };
 
     /** その人がいま入っている部屋の ID（1 アカウント 1 接続なので 1 つ）。 */
@@ -225,25 +244,28 @@ export function createInviteService(deps: InviteServiceDeps) {
                 // ほかのサーバーの部屋の規則は部屋のサーバーが確かめる（送ってみるまで分からない）
                 if ((await deps.federation.visitingRoom(inviterId)) !== instanceId) return undefined;
                 const federated = deps.federation;
+                const friendIds = [...(await deps.friendIdsOf(inviterId))];
+                const online = await onlineFor(presence, friendIds);
                 return Promise.all(
-                    [...(await deps.friendIdsOf(inviterId))].map(async (userId) => ({
+                    friendIds.map(async (userId) => ({
                         userId,
                         refusal:
                             isRemoteUserId(userId) && (await federated.cannotReceiveInvites(userId))
                                 ? ('unsupported' as const)
                                 : null,
-                        online: roomOf(presence, userId) !== undefined,
+                        online: online(userId),
                     })),
                 );
             }
             const audience = await audienceOf(instanceId, presence);
             if (!audience) return undefined;
             const friends = await friendsFor(audience, inviterId);
+            const online = await onlineFor(presence, [...friends.inviter]);
             return Promise.all(
                 [...friends.inviter].map(async (userId) => ({
                     userId,
                     refusal: await refusalFor(audience, inviterId, userId, friends),
-                    online: roomOf(presence, userId) !== undefined,
+                    online: online(userId),
                 })),
             );
         },
@@ -256,14 +278,30 @@ export function createInviteService(deps: InviteServiceDeps) {
                     : { ok: false, reason: 'not-friend' };
             }
             const now = deps.now();
-            const [presence, requesterFriends] = await Promise.all([deps.presence(), deps.friendIdsOf(requesterId)]);
+            const [presence, requesterFriends, visibilities] = await Promise.all([
+                deps.presence(),
+                deps.friendIdsOf(requesterId),
+                deps.visibilityOf([targetId]),
+            ]);
+            const visibility = visibilities.get(targetId) ?? DEFAULT_PRESENCE_VISIBILITY;
             const roomId = roomOf(presence, targetId);
             const audience = roomId ? await audienceOf(roomId, presence) : undefined;
             const visiting = !audience && (await deps.federation?.visitingRoom(targetId)) ? 'remote' : null;
-            const refusal = inviteRequestRefusal(requesterId, targetId, requesterFriends, audience ?? visiting);
+            const refusal = inviteRequestRefusal(
+                requesterId,
+                targetId,
+                requesterFriends,
+                audience ?? visiting,
+                visibility,
+            );
             if (refusal) return { ok: false, reason: refusal };
-            // もう招待をもらっているなら、頼まずに入ればよい
-            if (roomId && audience && (await deps.invites.findValid(roomId, requesterId, now))) {
+            // もう招待をもらっているなら、頼まずに入ればよい（場所を見せている人のときだけ。断る理由で場所を漏らさない）
+            if (
+                visibility === 'location' &&
+                roomId &&
+                audience &&
+                (await deps.invites.findValid(roomId, requesterId, now))
+            ) {
                 return { ok: false, reason: 'can-join' };
             }
             const expiresAt = new Date(now.getTime() + INVITE_LIMITS.REQUEST_TTL_MS);

@@ -15,11 +15,8 @@ export const FAVORITES_VISIBILITY_OPTIONS: readonly FavoritesVisibilityOption[] 
 
 /** 選んだ公開範囲についての補足（なければ null）。 */
 export function favoritesVisibilityNote(visibility: FavoritesVisibility): string | null {
-    if (visibility === 'friends') {
-        return 'フレンド機能は準備中のため、いまはフレンドを作れず、自分だけが見られる状態と同じです。';
-    }
     if (visibility === 'public') {
-        return '外部のワールドの URL も、あなたのお気に入りとして見えるようになります。';
+        return '外部のワールドの URL も、あなたのお気に入りとして見えるようになります。いちばん新しいお気に入りは、フェディバースのプロフィールに固定ノートとして出ます。';
     }
     return null;
 }

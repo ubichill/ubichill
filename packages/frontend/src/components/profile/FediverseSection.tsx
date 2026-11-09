@@ -2,6 +2,7 @@ import type { FediverseFollower, FediverseOverview, FediverseSettingsUpdate } fr
 import { type ReactNode, useEffect, useState } from 'react';
 import { UserAvatar } from '@/components/social';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
+import { Switch } from '@/components/ui/Switch';
 import { withFollowerAnswered, withManualApprovalOff } from '@/lib/fediverse';
 import { answerFollower, fetchFediverse, updateFediverseSettings } from '@/lib/fediverseApi';
 import { pushToast } from '@/lib/toast';
@@ -9,36 +10,6 @@ import { css, cva } from '@/styled-system/css';
 
 const label = css({ fontSize: '13px', fontWeight: '700', color: 'text', mb: '1' });
 const note = css({ fontSize: '12px', color: 'textMuted', lineHeight: '1.6' });
-
-const toggle = cva({
-    base: {
-        position: 'relative',
-        flexShrink: 0,
-        w: '40px',
-        h: '22px',
-        borderRadius: '999px',
-        border: 'none',
-        cursor: 'pointer',
-        transition: 'background 0.15s',
-        _disabled: { opacity: 0.5, cursor: 'not-allowed' },
-        _after: {
-            content: '""',
-            position: 'absolute',
-            top: '3px',
-            w: '16px',
-            h: '16px',
-            borderRadius: '999px',
-            bg: 'surface',
-            transition: 'left 0.15s',
-        },
-    },
-    variants: {
-        on: {
-            true: { bg: 'primary', _after: { left: '21px' } },
-            false: { bg: 'border', _after: { left: '3px' } },
-        },
-    },
-});
 
 const smallButton = cva({
     base: {
@@ -58,38 +29,6 @@ const smallButton = cva({
         },
     },
 });
-
-function Switch({
-    title,
-    description,
-    on,
-    disabled,
-    onChange,
-}: {
-    title: string;
-    description: string;
-    on: boolean;
-    disabled: boolean;
-    onChange: (next: boolean) => void;
-}) {
-    return (
-        <div className={css({ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '3' })}>
-            <div>
-                <p className={css({ fontSize: '13px', fontWeight: '600', color: 'text' })}>{title}</p>
-                <p className={note}>{description}</p>
-            </div>
-            <button
-                type="button"
-                role="switch"
-                aria-checked={on}
-                aria-label={title}
-                disabled={disabled}
-                className={toggle({ on })}
-                onClick={() => onChange(!on)}
-            />
-        </div>
-    );
-}
 
 function FollowerRow({
     follower,
@@ -134,7 +73,7 @@ function FollowerRow({
 }
 
 /**
- * 設定の「プロフィール」のフェディバース（Mastodon・Misskey など）: アカウント・承認制・検索に出すか・承認待ちとフォロワー。
+ * フェディバース（Mastodon・Misskey など）: アカウント・承認制・検索に出すか・承認待ちとフォロワー。
  * フォロワーに見えるのはプロフィールだけ（現在地や招待はフレンドだけ）。
  */
 export function FediverseSection() {

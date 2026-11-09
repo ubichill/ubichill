@@ -1,4 +1,4 @@
-import { ACCESS_TYPE_LABELS, type Friendship, type Instance } from '@ubichill/shared';
+import { ACCESS_TYPE_LABELS, type Friendship, type Instance, type RemoteRelation } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useHudNavigation } from '@/components/hud/HudNavigationContext';
@@ -19,13 +19,21 @@ export function UserSocialBar({ userId, name }: { userId: string; name: string }
     const hud = useHudNavigation();
     const { canInvite, currentInstanceId, invite, request } = useInviteActions();
     const [friendship, setFriendship] = useState<Friendship | null>(null);
+    const [relation, setRelation] = useState<RemoteRelation>({});
     const [location, setLocation] = useState<Location>({ kind: 'none' });
     const [done, setDone] = useState<{ invited: boolean; requested: boolean }>({ invited: false, requested: false });
 
     useEffect(() => {
         const ctrl = { cancelled: false };
         fetchUserWithFriendship(userId)
-            .then((u) => !ctrl.cancelled && setFriendship(u.friendship))
+            .then((u) => {
+                if (ctrl.cancelled) return;
+                setFriendship(u.friendship);
+                setRelation({
+                    ...(u.friendsUnsupported ? { friendsUnsupported: true } : {}),
+                    ...(u.followsYou ? { followsYou: u.followsYou } : {}),
+                });
+            })
             .catch(() => !ctrl.cancelled && setFriendship(null));
         return () => {
             ctrl.cancelled = true;
@@ -113,7 +121,12 @@ export function UserSocialBar({ userId, name }: { userId: string; name: string }
                         {done.invited ? '招待済み' : '招待'}
                     </button>
                 )}
-                <FriendButton user={{ id: userId, name }} friendship={friendship} onChange={setFriendship} />
+                <FriendButton
+                    user={{ id: userId, name }}
+                    friendship={friendship}
+                    relation={relation}
+                    onChange={setFriendship}
+                />
             </span>
         </div>
     );

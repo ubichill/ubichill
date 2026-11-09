@@ -7,6 +7,7 @@ export const friendStatusEnum = pgEnum('friend_status', ['pending', 'accepted'])
 
 /** お気に入り一覧の公開範囲（値は shared の FAVORITES_VISIBILITIES と同じ）。 */
 export const favoritesVisibilityEnum = pgEnum('favorites_visibility', ['private', 'friends', 'public']);
+export const presenceVisibilityEnum = pgEnum('presence_visibility', ['location', 'online', 'hidden']);
 
 // Better Auth統合ユーザーテーブル
 // Better Authが必要とするフィールド + アプリ独自のフィールド
@@ -94,6 +95,8 @@ export const userSettings = pgTable('user_settings', {
     fediverseManuallyApprovesFollowers: boolean('fediverse_manually_approves_followers').default(false).notNull(),
     /** フェディバースのおすすめ・検索に出してよいか */
     fediverseDiscoverable: boolean('fediverse_discoverable').default(true).notNull(),
+    /** オンライン状態をフレンドにどこまで見せるか（shared の DEFAULT_PRESENCE_VISIBILITY と同じ初期値） */
+    presenceVisibility: presenceVisibilityEnum('presence_visibility').default('location').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });

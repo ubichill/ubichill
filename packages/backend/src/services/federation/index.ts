@@ -266,6 +266,7 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         transport,
         policyOf,
         isFriend,
+        visibilityOf: (userId) => userSettingsRepository.getPresenceVisibility(userId),
         async localRoomOf(userId) {
             const rooms = await instanceRuntime.presence();
             return [...rooms.values()].find((room) => room.memberIds.includes(userId))?.id;

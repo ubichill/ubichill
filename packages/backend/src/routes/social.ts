@@ -3,15 +3,19 @@
  * 関係と公開範囲の規則は shared の user/friends.ts（画面と同じ規則）。
  */
 import {
+    followerRepository,
     instanceRepository,
     type RemoteActorRecord,
     remoteFriendshipRepository,
     type UserProfileRecord,
     userFriendRepository,
     userRepository,
+    userSettingsRepository,
 } from '@ubichill/db';
 import {
     canSeeInstance,
+    DEFAULT_PRESENCE_VISIBILITY,
+    FEDERATION_FEATURES,
     type FriendRequestSummary,
     type Friendship,
     type FriendsResponse,
@@ -21,8 +25,10 @@ import {
     HANDLE_PATTERN,
     type Instance,
     isRemoteUserId,
+    type PresenceVisibility,
     parseAuthorAccount,
     parseUserSearchQuery,
+    type RemoteRelation,
     remoteProfileView,
     type UserProfileWithFriendship,
     type UserSearchResponse,
@@ -35,7 +41,7 @@ import { optionalAuth, requireAuth } from '../middleware/auth';
 import { selfAccount, selfDomain } from '../services/authors/authorKeys';
 import { federation } from '../services/federation';
 import { friendshipViewOf } from '../services/federation/friendships';
-import type { FriendPresence } from '../services/federation/presence';
+import { type FriendPresence, limitFriendPresence, visitorVisibility } from '../services/federation/presence';
 import { remoteInstanceOf } from '../services/federation/remoteInstance';
 import { instanceManager } from '../services/instances/instanceManager';
 import { instanceRuntime } from '../services/instances/instanceRuntime';
@@ -69,6 +75,15 @@ const remoteFriendshipOf = async (viewerId: string | undefined, actorId: string)
 const personOf = (actor: RemoteActorRecord | null | undefined): RemoteActorRecord | null =>
     actor && !actor.deletedAt && actor.type === 'Person' ? actor : null;
 
+/** フレンドに対応していないサーバーか・フェディバースでフォローされているか（申請のボタンの代わりに出す）。 */
+async function remoteRelationOf(viewerId: string | undefined, actor: RemoteActorRecord): Promise<RemoteRelation> {
+    const [unsupported, follow] = await Promise.all([
+        federation?.servers.lacks(actor.domain, FEDERATION_FEATURES.friends).catch(() => false) ?? false,
+        viewerId ? followerRepository.get(viewerId, actor.id) : undefined,
+    ]);
+    return { ...(unsupported ? { friendsUnsupported: true } : {}), ...(follow ? { followsYou: follow.state } : {}) };
+}
+
 /** ほかのサーバーの人のプロフィール（バナー・項目の表は取りに行った actor の文書から）。 */
 async function remoteProfileWithFriendship(
     viewerId: string | undefined,
@@ -81,6 +96,7 @@ async function remoteProfileWithFriendship(
         bannerImage: actor.banner,
         ...profile,
         ...(fields.length > 0 ? { fields } : {}),
+        ...(await remoteRelationOf(viewerId, actor)),
         friendship: await remoteFriendshipOf(viewerId, actor.id),
     };
 }
@@ -105,8 +121,13 @@ router.get('/users', requireAuth, async (req, res) => {
     if (query.kind === 'remote') {
         const actor = await findRemotePerson(query.account).catch(() => null);
         if (!actor) return res.json({ users: [], remoteAccount: query.account } satisfies UserSearchResponse);
-        const friendship = await remoteFriendshipOf(req.user.id, actor.id);
-        return res.json({ users: [{ ...remoteSummaryOf(actor), friendship }] } satisfies UserSearchResponse);
+        const [friendship, relation] = await Promise.all([
+            remoteFriendshipOf(req.user.id, actor.id),
+            remoteRelationOf(req.user.id, actor),
+        ]);
+        return res.json({
+            users: [{ ...remoteSummaryOf(actor), ...relation, friendship }],
+        } satisfies UserSearchResponse);
     }
     const [users, edges] = await Promise.all([
         query.kind === 'local'
@@ -271,19 +292,37 @@ router.get('/locations', requireAuth, async (req, res) => {
     const me = req.user.id;
     const friendIds = [...(await friendIdsOf(me))];
     const myFriends = new Set(friendIds);
+    // このサーバーのフレンドの見せ方（ほかのサーバーのフレンドは、そのホームが本人の設定で答える）
+    const visibilities = await userSettingsRepository.presenceVisibilityOf(
+        friendIds.filter((id) => !isRemoteUserId(id)),
+    );
     const presence = await instanceRuntime.presence();
     const locationsByUser = new Map(
         [...presence.values()].flatMap((room) => room.memberIds.map((id) => [id, room.id] as const)),
     );
-    const instanceIds = [...new Set(friendIds.flatMap((id) => locationsByUser.get(id) ?? []))];
+    // ここに来訪しているほかのサーバーのフレンドは、本人の見せ方をホームに確かめる（同じ部屋にいる人には見えているので尋ねない）
+    const visitors = await visitorVisibilities(
+        me,
+        friendIds.filter(
+            (id) =>
+                isRemoteUserId(id) && locationsByUser.has(id) && locationsByUser.get(id) !== locationsByUser.get(me),
+        ),
+    );
+    const visibilityOf = (id: string): PresenceVisibility =>
+        isRemoteUserId(id) ? (visitors.get(id) ?? 'location') : (visibilities.get(id) ?? DEFAULT_PRESENCE_VISIBILITY);
+    const hiddenIds = friendIds.filter((id) => visibilityOf(id) === 'hidden');
+    const shownIds = friendIds.filter((id) => visibilityOf(id) !== 'hidden');
+    const instanceIds = [...new Set(shownIds.flatMap((id) => locationsByUser.get(id) ?? []))];
     const records = (await Promise.all(instanceIds.map((id) => instanceRepository.findById(id)))).flatMap((r) =>
         r ? [r] : [],
     );
     const recordById = new Map(records.map((r) => [r.id, r]));
     const grouped = groupFriendLocations(
-        friendIds,
+        shownIds,
         (userId) => recordById.get(locationsByUser.get(userId) ?? ''),
-        (record) => canSeeInstance(instanceManager.audienceOf(record, presence), me, myFriends),
+        (record, friendId) =>
+            visibilityOf(friendId) === 'location' &&
+            canSeeInstance(instanceManager.audienceOf(record, presence), me, myFriends),
     );
     const instances = (
         await Promise.all(grouped.locations.map((l) => instanceManager.getInstance(l.instance.id)))
@@ -299,8 +338,8 @@ router.get('/locations', requireAuth, async (req, res) => {
         }),
     );
     // このサーバーの部屋の外にいるフレンド: ほかのサーバーのフレンドはそのホームに、来訪中のフレンドは部屋のサーバーに尋ねる
-    const remote = await remoteLocations(me, grouped.elsewhereIds);
-    const elsewhere = grouped.elsewhereIds.filter((id) => !remote.placed.has(id));
+    const remote = await remoteLocations(me, grouped.elsewhereIds, visibilityOf);
+    const elsewhere = [...grouped.elsewhereIds.filter((id) => !remote.placed.has(id)), ...hiddenIds];
     return res.json({
         locations: [...locations, ...(await Promise.all(remote.rooms))].sort(
             (a, b) => b.friends.length - a.friends.length,
@@ -310,6 +349,24 @@ router.get('/locations', requireAuth, async (req, res) => {
         unreachable: await unreachableOf(remote.unreachable),
     });
 });
+
+/**
+ * ここに来訪しているほかのサーバーのフレンドの見せ方（ホームの答えから）。尋ねられないとき（連合なし・失敗）は場所を伏せる。
+ */
+async function visitorVisibilities(
+    me: string,
+    visitorIds: readonly string[],
+): Promise<Map<string, PresenceVisibility>> {
+    if (visitorIds.length === 0) return new Map();
+    const answers = federation
+        ? await federation.presence.locate(me, { remote: visitorIds, localVisiting: [] }).catch((error: unknown) => {
+              logger.warn('[federation] 来訪中のフレンドの見せ方を確かめられません:', error);
+              return [];
+          })
+        : [];
+    const byId = new Map(answers.map((a) => [a.friendId, a]));
+    return new Map(visitorIds.map((id) => [id, visitorVisibility(byId.get(id))]));
+}
 
 /** 確かめられなかったフレンドと、最後に確かめた場所（ワールドの名前）と時刻。 */
 async function unreachableOf(found: readonly FriendPresence[]) {
@@ -336,7 +393,11 @@ async function unreachableOf(found: readonly FriendPresence[]) {
 }
 
 /** このサーバーの部屋の外にいるフレンドの現在地（連合）。尋ねられなかった人は elsewhere のまま。 */
-async function remoteLocations(me: string, elsewhereIds: readonly string[]) {
+async function remoteLocations(
+    me: string,
+    elsewhereIds: readonly string[],
+    visibilityOf: (friendId: string) => PresenceVisibility,
+) {
     const empty = {
         rooms: [] as Array<Promise<{ instance: Instance; friends: UserSummary[] }>>,
         privateIds: [] as string[],
@@ -349,6 +410,7 @@ async function remoteLocations(me: string, elsewhereIds: readonly string[]) {
             remote: elsewhereIds.filter(isRemoteUserId),
             localVisiting: elsewhereIds.filter((id) => !isRemoteUserId(id)),
         })
+        .then((all) => all.map((f) => limitFriendPresence(f, visibilityOf(f.friendId))))
         .catch((error: unknown) => {
             logger.warn('[federation] フレンドの現在地を尋ねられません:', error);
             return [];

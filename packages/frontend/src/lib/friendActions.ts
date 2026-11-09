@@ -1,4 +1,4 @@
-import type { Friendship } from '@ubichill/shared';
+import type { Friendship, RemoteRelation } from '@ubichill/shared';
 
 export type FriendAction = 'request' | 'accept' | 'decline' | 'cancel' | 'unfriend';
 
@@ -10,11 +10,15 @@ export interface FriendActionView {
     confirm?: string;
 }
 
-/** 相手との関係で出すボタン（自分には出さない）。 */
-export function friendActionsOf(friendship: Friendship, name: string): FriendActionView[] {
+/** 相手との関係で出すボタン（自分には出さない。フレンドに対応していないサーバーの人には申請を出さない）。 */
+export function friendActionsOf(
+    friendship: Friendship,
+    name: string,
+    relation: RemoteRelation = {},
+): FriendActionView[] {
     switch (friendship) {
         case 'none':
-            return [{ action: 'request', label: 'フレンド申請', tone: 'primary' }];
+            return relation.friendsUnsupported ? [] : [{ action: 'request', label: 'フレンド申請', tone: 'primary' }];
         case 'outgoing':
             return [{ action: 'cancel', label: '申請を取り消す', tone: 'secondary' }];
         case 'incoming':
@@ -41,4 +45,11 @@ export function friendshipAfter(action: FriendAction): Friendship {
     if (action === 'request') return 'outgoing';
     if (action === 'accept') return 'friends';
     return 'none';
+}
+
+/** フェディバースでの関係（フォローされているか）。無ければ null。 */
+export function followLabelOf(relation: RemoteRelation): string | null {
+    if (relation.followsYou === 'accepted') return 'フォローされています';
+    if (relation.followsYou === 'pending') return 'フォローの承認待ち';
+    return null;
 }

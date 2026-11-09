@@ -1,7 +1,7 @@
-import { FEDERATION_FEATURES, type PresenceEntry, type RoomCard } from '@ubichill/shared';
+import { FEDERATION_FEATURES, type PresenceEntry, type PresenceVisibility, type RoomCard } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
 import { createFederationIdentity } from './identity';
-import { createFederatedPresence } from './presence';
+import { createFederatedPresence, limitFriendPresence, visitorVisibility } from './presence';
 import type { FederationResponse } from './transport';
 
 const identity = createFederationIdentity('https://a.example');
@@ -33,6 +33,8 @@ interface Setup {
     reply?: (url: string, body: unknown) => FederationResponse;
     /** 現在地に答えないと分かっているサーバー */
     noPresence?: string[];
+    /** 本人の見せ方（無ければ location） */
+    visibility?: Record<string, PresenceVisibility>;
 }
 
 function setup(options: Setup = {}) {
@@ -57,6 +59,7 @@ function setup(options: Setup = {}) {
         lacks: async (domain, feature) =>
             feature === FEDERATION_FEATURES.presence && (options.noPresence ?? []).includes(domain),
         isFriend: async (userId, actorId) => (options.friends?.[userId] ?? []).includes(actorId),
+        visibilityOf: async (userId) => options.visibility?.[userId] ?? 'location',
         localRoomOf: async (userId) => options.localRooms?.[userId],
         describeRoom: async (_viewer, instanceId) =>
             options.visible?.[instanceId] === undefined
@@ -142,6 +145,59 @@ describe('現在地を答える（見られる人のホームとして）', () =
         const { presence } = setup({ friends: { alice: [VIEWER] } });
         const alice = identity.actorUrl('alice');
         expect((await presence.answer(VIEWER, [alice, alice, alice])).presence).toHaveLength(1);
+    });
+});
+
+describe('本人の見せ方（オンライン状態の設定）', () => {
+    it('答える側: 見せないならフレンドにもオフライン、オンラインだけなら部屋を伏せて private', async () => {
+        const { presence } = setup({
+            friends: { alice: [VIEWER], dave: [VIEWER], erin: [VIEWER] },
+            localRooms: { alice: 'r1', dave: 'r1', erin: 'r1' },
+            visible: { r1: true },
+            visibility: { alice: 'hidden', dave: 'online' },
+        });
+        const answer = await presence.answer(
+            VIEWER,
+            ['alice', 'dave', 'erin'].map((u) => identity.actorUrl(u)),
+        );
+        expect(answer.presence).toEqual([
+            { subject: identity.actorUrl('alice'), status: 'offline' },
+            { subject: identity.actorUrl('dave'), status: 'private' },
+            {
+                subject: identity.actorUrl('erin'),
+                status: 'in_room',
+                room: card(identity.instanceUrl('r1')),
+                joinable: true,
+            },
+        ]);
+    });
+
+    it('オンラインだけでも、部屋にいなければオフラインのまま（いないのにオンラインとは言わない）', async () => {
+        const { presence } = setup({ friends: { dave: [VIEWER] }, visibility: { dave: 'online' } });
+        const answer = await presence.answer(VIEWER, [identity.actorUrl('dave')]);
+        expect(answer.presence).toEqual([{ subject: identity.actorUrl('dave'), status: 'offline' }]);
+    });
+
+    it('見る側: 来訪中のフレンドの答えを本人の見せ方で狭める（最後に確かめた場所も伏せる）', () => {
+        const found = {
+            friendId: 'dave',
+            status: 'in_room' as const,
+            room: REMOTE_ROOM,
+            joinable: true,
+        };
+        expect(limitFriendPresence(found, 'location')).toBe(found);
+        expect(limitFriendPresence(found, 'online')).toEqual({ friendId: 'dave', status: 'private' });
+        expect(limitFriendPresence(found, 'hidden')).toEqual({ friendId: 'dave', status: 'offline' });
+        expect(
+            limitFriendPresence(
+                {
+                    friendId: 'dave',
+                    status: 'unreachable',
+                    lastKnown: { status: 'in_room', room: REMOTE_ROOM, at: NOW },
+                },
+                'online',
+            ),
+        ).toEqual({ friendId: 'dave', status: 'unreachable', lastKnown: { status: 'private', at: NOW } });
     });
 });
 
@@ -268,5 +324,21 @@ describe('フレンドの現在地を尋ねる（見る人のホームとして�
             member: identity.actorUrl('dave'),
             viewers: [identity.actorUrl('alice')],
         });
+    });
+});
+
+describe('visitorVisibility（ここに来訪しているほかのサーバーのフレンド）', () => {
+    const id = 'https://b.example/ap/users/bob';
+    it('ホームが部屋にいると答えたときだけ場所を出す', () => {
+        expect(visitorVisibility({ friendId: id, status: 'in_room' })).toBe('location');
+    });
+    it('場所を伏せた答え・確かめられない・答えが無いときは、部屋にいることだけ（場所は出さない）', () => {
+        expect(visitorVisibility({ friendId: id, status: 'private' })).toBe('online');
+        expect(visitorVisibility({ friendId: id, status: 'online' })).toBe('online');
+        expect(visitorVisibility({ friendId: id, status: 'unreachable' })).toBe('online');
+        expect(visitorVisibility(undefined)).toBe('online');
+    });
+    it('ホームが offline と答えた（見せない）なら、ここにいても部屋にいないことにする', () => {
+        expect(visitorVisibility({ friendId: id, status: 'offline' })).toBe('hidden');
     });
 });

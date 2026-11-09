@@ -1,4 +1,4 @@
-import type { Friendship, UserSummary } from '@ubichill/shared';
+import type { Friendship, RemoteRelation, UserSummary } from '@ubichill/shared';
 import { css } from '@/styled-system/css';
 import { FriendButton } from './FriendButton';
 import { UserAvatar } from './UserAvatar';
@@ -10,7 +10,7 @@ export function UserRow({
     friendship,
     onChange,
 }: {
-    user: UserSummary;
+    user: UserSummary & RemoteRelation;
     friendship: Friendship;
     onChange: (next: Friendship) => void;
 }) {
@@ -62,7 +62,9 @@ export function UserRow({
                     </span>
                 </span>
             </button>
-            {friendship !== 'self' && <FriendButton user={user} friendship={friendship} onChange={onChange} />}
+            {friendship !== 'self' && (
+                <FriendButton user={user} friendship={friendship} relation={user} onChange={onChange} />
+            )}
         </li>
     );
 }

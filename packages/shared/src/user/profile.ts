@@ -3,7 +3,7 @@
  * 画面の入力の判定と API の受け付けは同じスキーマで行う。
  */
 import { z } from 'zod';
-import type { Friendship, UserSummary } from './friends';
+import type { Friendship, RemoteRelation, UserSummary } from './friends';
 import { BioSchema } from './handle';
 import { type ProfileLanguageCode, ProfileLanguagesSchema, profileLanguagesView } from './profileLanguages';
 import { type ProfileLink, ProfileLinksSchema, profileLinksView } from './profileLinks';
@@ -102,7 +102,7 @@ export interface ProfileField {
 }
 
 /** ID・内部 ID で引いたプロフィール（自分との関係付き。`GET /api/v1/social/users/...`）。 */
-export interface UserProfileWithFriendship extends UserProfile {
+export interface UserProfileWithFriendship extends UserProfile, RemoteRelation {
     friendship: Friendship;
 }
 
