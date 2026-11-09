@@ -2,7 +2,13 @@
  * このサーバーの actor の文書（Person・Application）。Ed25519 は種から導いた公開鍵、RSA は保存した鍵（ほかの実装向け）を載せる。
  * フォロワー・フォローのコレクションは件数だけ公開する（誰がフォローしているかは出さない）。
  */
-import { AS_CONTEXT, buildActorDocument, FEDERATION_FEATURES, type FediverseSettings } from '@ubichill/shared';
+import {
+    AS_CONTEXT,
+    buildActorDocument,
+    FEDERATION_FEATURES,
+    type FediverseSettings,
+    type LocalProfileFields,
+} from '@ubichill/shared';
 import type { FederationIdentity } from './identity';
 import type { Keyring } from './keys';
 import type { RsaKeyring } from './rsaKeys';
@@ -13,6 +19,9 @@ export interface LocalUser {
     name: string;
     bio: string | null;
     image: string | null;
+    banner: string | null;
+    createdAt: Date;
+    profile: LocalProfileFields;
 }
 
 export function createLocalActors(deps: {
@@ -41,6 +50,9 @@ export function createLocalActors(deps: {
                 summary: user.bio,
                 url: `${deps.profileOrigin}/@${user.handle}`,
                 icon: absolute(user.image),
+                banner: absolute(user.banner),
+                published: user.createdAt.toISOString(),
+                profile: user.profile,
                 inbox: deps.identity.userInboxUrl(user.id),
                 outbox: deps.identity.outboxUrl(user.id),
                 followers: deps.identity.followersUrl(user.id),

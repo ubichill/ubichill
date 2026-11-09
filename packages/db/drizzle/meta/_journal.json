@@ -225,6 +225,13 @@
       "when": 1794202750979,
       "tag": "0031_fediverse_follow",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1794208906907,
+      "tag": "0032_fediverse_profile",
+      "breakpoints": true
     }
   ]
 }

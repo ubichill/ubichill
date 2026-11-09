@@ -91,6 +91,14 @@ export interface UserProfile extends UserSummary {
     bannerImage: string | null;
     links: ProfileLink[];
     languages: ProfileLanguageCode[];
+    /** ほかのサーバーの人の項目の表（リンクにできないもの。このサーバーの人には無い） */
+    fields?: ProfileField[];
+}
+
+/** 項目の表の 1 行（Mastodon・Misskey のプロフィールの「補足情報」）。 */
+export interface ProfileField {
+    name: string;
+    value: string;
 }
 
 /** ID・内部 ID で引いたプロフィール（自分との関係付き。`GET /api/v1/social/users/...`）。 */

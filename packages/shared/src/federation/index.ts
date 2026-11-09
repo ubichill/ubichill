@@ -7,6 +7,7 @@ export * from './featured';
 export * from './httpSignature';
 export * from './multikey';
 export * from './nodeinfo';
+export * from './profileFields';
 export * from './protocol';
 export * from './roomAddress';
 export * from './rpc';

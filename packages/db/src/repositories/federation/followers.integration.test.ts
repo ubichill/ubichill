@@ -23,6 +23,8 @@ const actor = (n: number) => ({
     name: `U ${n}`,
     summary: null,
     icon: null,
+    banner: null,
+    profile: {},
     url: null,
     inbox: `${actorId(n)}/inbox`,
     sharedInbox: `https://${host}/inbox`,
