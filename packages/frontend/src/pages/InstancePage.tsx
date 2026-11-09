@@ -8,8 +8,7 @@ import { HOST_MOD_SOURCE } from '@/lib/modCdn';
 import { useSession } from '@/lib/session';
 import { pushToast } from '@/lib/toast';
 import { useRemoteVisit } from '@/lib/useRemoteVisit';
-import { WorldView } from '@/world';
-import type { InstanceFailure } from '@/world/WorldView';
+import { type InstanceFailure, WorldView } from '@/world';
 
 /** 失敗したら一定時間後に自動でホームへ戻す（ロード画面で詰まらないように）。 */
 const RETURN_HOME_MS = 5000;
@@ -39,14 +38,17 @@ export function InstancePage() {
         },
         [id],
     );
+    // 入れなかった部屋は履歴に残さない（戻るでまた入れない部屋を開かない）
     const toHome = useCallback(() => {
-        const next = afterInstanceFailure(failure ?? { replaced: false }, entry);
-        navigate('/', { state: next.kind === 'home' ? next.state : {} });
+        const next = afterInstanceFailure(failure ?? { replaced: false, gone: false }, entry);
+        navigate('/', { replace: true, state: next.kind === 'home' ? next.state : {} });
     }, [entry, failure, navigate]);
     useEffect(() => {
-        if (!failure || afterInstanceFailure(failure, entry).kind === 'stay') return;
+        if (!failure) return;
+        const next = afterInstanceFailure(failure, entry);
+        if (next.kind === 'stay') return;
         console.warn('[InstancePage] load failed → returning home:', failure.message);
-        const timer = setTimeout(toHome, RETURN_HOME_MS);
+        const timer = setTimeout(toHome, next.immediate ? 0 : RETURN_HOME_MS);
         return () => clearTimeout(timer);
     }, [entry, failure, toHome]);
 

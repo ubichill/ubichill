@@ -11,6 +11,7 @@ import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { CursorLayer } from './cursor/CursorLayer';
 import { acceptEntry, hasAcceptedEntry, unverifiedEntryKey, unverifiedEntryMessage } from './entryGate';
 import { InstanceLoadingScreen } from './InstanceLoadingScreen';
+import { type InstanceFailure, InstanceNotFoundError } from './instanceFailure';
 import { ModRegistryProvider } from './ModRegistryContext';
 import type { ModSource } from './modSource';
 import { ServerNoticeToasts } from './ServerNoticeToasts';
@@ -23,7 +24,7 @@ export interface WorldViewProps {
     instanceId: string;
     /** 入室時の表示名。 */
     userName: string;
-    /** インスタンスの情報（ワールドの作者の確認に使う）。SNS は backend、`world.html` は Go から取る。 */
+    /** インスタンスの情報（ワールドの作者の確認に使う）。SNS は backend、`world.html` は Go から取る。無ければ InstanceNotFoundError。 */
     fetchInstance: (instanceId: string) => Promise<Instance>;
     /** 作者を確認できないワールドに入るかを利用者に聞く。false なら入らない。 */
     confirmEntry: (message: string) => Promise<boolean>;
@@ -43,12 +44,6 @@ export interface WorldViewProps {
     onFailed?: (failure: InstanceFailure) => void;
     /** 入室できたあとに重ねる UI（HUD など）。 */
     children?: ReactNode;
-}
-
-/** 入れなかった理由。replaced は同じアカウントが別のタブ・端末で入り、この接続が切られたとき。 */
-export interface InstanceFailure {
-    message: string;
-    replaced: boolean;
 }
 
 export function WorldView({
@@ -73,7 +68,7 @@ export function WorldView({
     leaveWorldRef.current = leaveWorld;
 
     // インスタンスの取得・作者の確認など、Socket 以外で起きる失敗
-    const [loadError, setLoadError] = useState<string | null>(null);
+    const [loadError, setLoadError] = useState<{ message: string; gone: boolean } | null>(null);
     // mod の取得 / Worker 起動の進捗（各 Provider から通知される）
     const [mods, setMods] = useState({ completed: 0, total: 0 });
     const [workers, setWorkers] = useState({ ready: 0, total: 0 });
@@ -109,12 +104,15 @@ export function WorldView({
             // 取得できなければ署名の有無を確認できないので参加しない（確認を飛ばして入らない）。
             const fetched = await fetchInstance(instanceId).then(
                 (instance) => ({ instance }),
-                (e: unknown) => ({ error: e instanceof Error ? e.message : String(e) }),
+                (e: unknown) => ({
+                    error: e instanceof Error ? e.message : String(e),
+                    gone: e instanceof InstanceNotFoundError,
+                }),
             );
             if (!stillTarget()) return;
             if (!('instance' in fetched)) {
                 joinedIdRef.current = null;
-                setLoadError(`入室できません: ${fetched.error}`);
+                setLoadError({ message: `入室できません: ${fetched.error}`, gone: fetched.gone });
                 return;
             }
             const entryKey = unverifiedEntryKey(fetched.instance.world);
@@ -123,7 +121,7 @@ export function WorldView({
                 if (!stillTarget()) return;
                 if (!accepted) {
                     joinedIdRef.current = null;
-                    setLoadError(ENTRY_DECLINED_MESSAGE);
+                    setLoadError({ message: ENTRY_DECLINED_MESSAGE, gone: false });
                     return;
                 }
                 acceptEntry(sessionStorage, entryKey);
@@ -145,15 +143,16 @@ export function WorldView({
         isConnected,
         isConnecting,
         isJoined: currentUser != null,
-        error: error ?? loadError,
+        error: error ?? loadError?.message ?? null,
         mods,
         workers,
     });
 
+    const gone = !error && loadError?.gone === true;
     useEffect(() => {
         if (loading.failed && loading.failureMessage)
-            onFailed?.({ message: loading.failureMessage, replaced: sessionReplaced });
-    }, [loading.failed, loading.failureMessage, sessionReplaced, onFailed]);
+            onFailed?.({ message: loading.failureMessage, replaced: sessionReplaced, gone });
+    }, [loading.failed, loading.failureMessage, sessionReplaced, gone, onFailed]);
 
     return (
         <>
