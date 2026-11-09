@@ -1,6 +1,6 @@
 import type { FediverseFollower, FediverseOverview } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
-import { withFollowerAnswered, withManualApprovalOff } from './fediverse';
+import { withFollowerAnswered } from './fediverse';
 
 const person = (n: number, state: FediverseFollower['state']): FediverseFollower => ({
     actorId: `https://misskey.example/users/${n}`,
@@ -45,13 +45,5 @@ describe('フォロワーの操作を手元の一覧に反映する', () => {
         const removed = withFollowerAnswered(overview(), person(3, 'accepted').actorId, 'reject');
         expect(removed.followers).toEqual([]);
         expect(removed.followerCount).toBe(249);
-    });
-
-    it('承認制をやめると、承認待ちはまとめてフォロワーになる', () => {
-        const next = withManualApprovalOff(overview());
-        expect(next.settings.manuallyApprovesFollowers).toBe(false);
-        expect(next.pending).toEqual([]);
-        expect(next.followers.map((f) => f.state)).toEqual(['accepted', 'accepted', 'accepted']);
-        expect(next.followerCount).toBe(252);
     });
 });

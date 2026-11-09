@@ -29,14 +29,3 @@ export function withFollowerAnswered(
         followerCount: Math.max(0, overview.followerCount - (wasFollower ? 1 : 0)),
     };
 }
-
-/** 承認制をやめると承認待ちはまとめて承認される（サーバーと同じ。取り直すまでの見た目）。 */
-export function withManualApprovalOff(overview: FediverseOverview): FediverseOverview {
-    return {
-        ...overview,
-        settings: { ...overview.settings, manuallyApprovesFollowers: false },
-        pending: [],
-        followers: [...overview.pending.map((f) => ({ ...f, state: 'accepted' as const })), ...overview.followers],
-        followerCount: overview.followerCount + overview.pending.length,
-    };
-}

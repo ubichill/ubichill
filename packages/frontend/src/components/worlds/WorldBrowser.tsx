@@ -5,7 +5,7 @@ import { HudIcon } from '@/components/hud/HudIcon';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { createInstance } from '@/lib/instancesApi';
 import { SETTINGS_KEYS, useSetting } from '@/lib/settings';
-import { css, cva } from '@/styled-system/css';
+import { css } from '@/styled-system/css';
 import { PasswordChangeNotice } from './PasswordChangeNotice';
 import { UnavailableFavorites } from './UnavailableFavorites';
 import { UnsignedWorldsNotice } from './UnsignedWorldsNotice';
@@ -55,7 +55,11 @@ function sortWorlds(worlds: WorldListItem[], key: SortKey): WorldListItem[] {
     });
 }
 
+export type WorldBrowserTab = 'local' | 'global' | 'favorites';
+
 interface WorldBrowserProps {
+    /** どの一覧を出すか（切り替えはランチパッドの「ワールド」の左） */
+    tab: WorldBrowserTab;
     onJoinInstance: (
         instanceId: string,
         worldId: string,
@@ -65,8 +69,8 @@ interface WorldBrowserProps {
     currentInstanceId?: string;
 }
 
-/** ワールドを探す一覧（ランチパッドの「ワールド」）。お気に入り・自サーバー・連合のワールドを並べる。 */
-export function WorldBrowser({ onJoinInstance, currentInstanceId }: WorldBrowserProps) {
+/** ワールドを探す一覧（ランチパッドの「ワールド」）。自サーバー・連合・お気に入りのどれか 1 つを並べる。 */
+export function WorldBrowser({ tab, onJoinInstance, currentInstanceId }: WorldBrowserProps) {
     const navigate = useNavigate();
     const confirm = useConfirm();
 
@@ -78,7 +82,6 @@ export function WorldBrowser({ onJoinInstance, currentInstanceId }: WorldBrowser
     );
     const { worlds, globalWorlds, loading, error, refreshGlobalWorlds } = useInstances();
     const { toggle: toggleFavorite } = useFavorites();
-    const [tab, setTab] = useState<BrowserTab>('local');
     // 選択はワールドの URL で持つ（id はサーバーをまたぐと重複し得る）
     const [selectedWorldUrl, setSelectedWorldUrl] = useState<string | null>(null);
 
@@ -129,33 +132,6 @@ export function WorldBrowser({ onJoinInstance, currentInstanceId }: WorldBrowser
             <UnsignedWorldsNotice />
 
             <div className={toolbar}>
-                <div role="tablist" aria-label="ワールドの種類" className={segmented}>
-                    {BROWSER_TABS.map((t) => (
-                        <button
-                            key={t.id}
-                            type="button"
-                            role="tab"
-                            aria-selected={tab === t.id}
-                            className={segment({ active: tab === t.id })}
-                            onClick={() => setTab(t.id)}
-                        >
-                            {t.id === 'favorites' && (
-                                <svg
-                                    width="14"
-                                    height="14"
-                                    viewBox="0 0 24 24"
-                                    fill={tab === 'favorites' ? 'currentColor' : 'none'}
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    aria-hidden="true"
-                                >
-                                    <path d="M11.48 3.5a.56.56 0 0 1 1.04 0l2.36 5.14 5.6.62c.5.05.7.68.32 1.02l-4.17 3.8 1.15 5.5a.56.56 0 0 1-.83.6L12 17.9l-4.94 2.88a.56.56 0 0 1-.83-.6l1.15-5.5-4.17-3.8a.56.56 0 0 1 .32-1.02l5.6-.62 2.35-5.14Z" />
-                                </svg>
-                            )}
-                            {t.label}
-                        </button>
-                    ))}
-                </div>
                 <div className={css({ display: 'flex', alignItems: 'center', gap: '1' })}>
                     <select
                         value={sortKey}
@@ -257,48 +233,15 @@ export function WorldBrowser({ onJoinInstance, currentInstanceId }: WorldBrowser
     );
 }
 
-type BrowserTab = 'local' | 'global' | 'favorites';
-
-const BROWSER_TABS: ReadonlyArray<{ id: BrowserTab; label: string }> = [
-    { id: 'local', label: 'ローカル' },
-    { id: 'global', label: 'グローバル' },
-    { id: 'favorites', label: 'お気に入り' },
-];
-
 const root = css({ display: 'flex', flexDirection: 'column', gap: '3', h: 'full', minH: 0 });
 
 const toolbar = css({
     display: 'flex',
     flexWrap: 'wrap',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     gap: '2',
     flexShrink: 0,
-});
-
-const segmented = css({ display: 'flex', gap: '1', p: '1', bg: 'surface', borderRadius: '10px' });
-
-const segment = cva({
-    base: {
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '1',
-        px: '3',
-        py: '1.5',
-        border: 'none',
-        borderRadius: '7px',
-        fontSize: '13px',
-        fontWeight: '700',
-        whiteSpace: 'nowrap',
-        cursor: 'pointer',
-        transition: 'background-color 0.16s ease, color 0.16s ease',
-    },
-    variants: {
-        active: {
-            true: { bg: 'primary', color: 'textOnPrimary' },
-            false: { bg: 'transparent', color: 'textMuted', _hover: { color: 'text' } },
-        },
-    },
 });
 
 const sortSelect = css({

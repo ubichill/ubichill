@@ -54,7 +54,7 @@ export function UnsignedWorldsNotice() {
             </span>
             <button
                 type="button"
-                onClick={() => hud.openSettings('worlds')}
+                onClick={() => hud.openWorlds('mine')}
                 className={css({
                     px: '3',
                     py: '6px',
