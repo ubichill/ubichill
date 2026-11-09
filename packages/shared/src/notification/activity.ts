@@ -6,11 +6,22 @@
  * - Invite: 部屋への招待（object は部屋。`Instance` は ubichill の拡張の型。content は一言、endTime は期限）
  * - Join: リクエストインバイト（「あなたのいる部屋に入れて」。object は頼まれた人、endTime は答えられる期限）
  * - Announce: 運営からのお知らせ（object は Note）
+ * - FediverseFollow / FediverseFollowRequest: フェディバース（Mastodon・Misskey など）の人がフォローした・フォローを申請した
+ *   （object はフォローされた人。Follow はフレンド申請に使っているので、片方向のフォローは別の種類にする）
  */
 import { z } from 'zod';
 import { INVITE_LIMITS } from '../user/instanceAccess';
 
-export const NOTIFICATION_TYPES = ['Follow', 'Accept', 'Like', 'Invite', 'Join', 'Announce'] as const;
+export const NOTIFICATION_TYPES = [
+    'Follow',
+    'Accept',
+    'Like',
+    'Invite',
+    'Join',
+    'Announce',
+    'FediverseFollow',
+    'FediverseFollowRequest',
+] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 /** 保存（notifications の表）する種類。Announce はお知らせの表から読むので行を作らない。 */
@@ -20,6 +31,8 @@ export const STORED_NOTIFICATION_TYPES = [
     'Like',
     'Invite',
     'Join',
+    'FediverseFollow',
+    'FediverseFollowRequest',
 ] as const satisfies readonly NotificationType[];
 export type StoredNotificationType = (typeof STORED_NOTIFICATION_TYPES)[number];
 
@@ -108,6 +121,8 @@ export const NOTIFICATION_OBJECT_SCHEMAS = {
     Invite: InviteObjectSchema,
     Join: JoinObjectSchema,
     Announce: AnnounceObjectSchema,
+    FediverseFollow: PersonRefSchema,
+    FediverseFollowRequest: PersonRefSchema,
 } as const satisfies Record<NotificationType, z.ZodType>;
 
 export type NotificationObjectOf<T extends NotificationType> = z.infer<(typeof NOTIFICATION_OBJECT_SCHEMAS)[T]>;
@@ -145,6 +160,8 @@ export const NotificationSchema = z.discriminatedUnion('type', [
         })
         .strict(),
     z.object({ ...base, type: z.literal('Announce'), object: AnnounceObjectSchema }).strict(),
+    z.object({ ...base, type: z.literal('FediverseFollow'), object: PersonRefSchema }).strict(),
+    z.object({ ...base, type: z.literal('FediverseFollowRequest'), object: PersonRefSchema }).strict(),
 ]);
 export type AppNotification = z.infer<typeof NotificationSchema>;
 

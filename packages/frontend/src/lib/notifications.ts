@@ -48,6 +48,10 @@ export function notificationText(n: AppNotification): string {
             return `${who} さんが招待をリクエストしています`;
         case 'Announce':
             return `お知らせ: ${n.object.summary}`;
+        case 'FediverseFollow':
+            return `${who} さんにフォローされました`;
+        case 'FediverseFollowRequest':
+            return `${who} さんからフォローリクエストが届きました`;
     }
 }
 

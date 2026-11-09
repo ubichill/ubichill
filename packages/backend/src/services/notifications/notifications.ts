@@ -43,6 +43,8 @@ export const dedupeKeys = {
     like: (actorId: string, worldUrl: string) => `Like:${actorId}:${worldUrl}`,
     invite: (inviterId: string, instanceId: string) => `Invite:${inviterId}:${instanceId}`,
     inviteRequest: (requesterId: string) => `Join:${requesterId}`,
+    fediverseFollow: (actorUri: string) => `FediverseFollow:${actorUri}`,
+    fediverseFollowRequest: (actorUri: string) => `FediverseFollowRequest:${actorUri}`,
 };
 
 export type FeedResult =
@@ -220,6 +222,30 @@ export function createNotificationService(deps: {
             ]);
             if (ids.length > 0) await deps.hub.deliver(userId, { type: 'removed', ids });
         },
+
+        /** フェディバース（Mastodon・Misskey など）の actor がフォローした。 */
+        fediverseFollowed: (actorUri: string, userId: string) =>
+            notify({
+                recipientId: userId,
+                type: 'FediverseFollow',
+                actorUri,
+                object: { type: 'Person', id: userId },
+                dedupeKey: dedupeKeys.fediverseFollow(actorUri),
+            }),
+
+        /** フェディバースの actor がフォローを申請した（承認制のユーザー。申請し直したら作り直す）。 */
+        fediverseFollowRequested: (actorUri: string, userId: string) =>
+            replace({
+                recipientId: userId,
+                type: 'FediverseFollowRequest',
+                actorUri,
+                object: { type: 'Person', id: userId },
+                dedupeKey: dedupeKeys.fediverseFollowRequest(actorUri),
+            }),
+
+        /** フォローの申請が片付いた（承認・拒否・取り下げ）。もう操作できないので申請の通知を消す。 */
+        fediverseFollowSettled: (userId: string, actorUri: string) =>
+            removeByKey(userId, dedupeKeys.fediverseFollowRequest(actorUri)),
 
         /**
          * 連合の招待が届いた: ほかのサーバーの actor からの招待か、このサーバーの人がほかのサーバーの部屋へ招待した。

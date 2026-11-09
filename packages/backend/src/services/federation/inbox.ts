@@ -7,6 +7,7 @@
  * - 知らない型は受けて捨てる（相手の版が新しくても壊れない）
  */
 import { FEDERATION_LIMITS, readActivity } from '@ubichill/shared';
+import type { Follows } from './follows';
 import type { FriendshipActor, RemoteFriendships } from './friendships';
 import type { FederatedInvites } from './invites';
 
@@ -17,6 +18,7 @@ export interface InboxDeps {
         forget(key: string): Promise<void>;
     };
     friendships: Pick<RemoteFriendships, 'onOffer' | 'onAccept' | 'onReject' | 'onUndo' | 'onActorDeleted'>;
+    follows: Pick<Follows, 'onFollow' | 'onUndo' | 'onActorDeleted'>;
     invites: Pick<FederatedInvites, 'onInvite' | 'onRequestInvite'>;
     actors: {
         /** 取り直す（Update を受けたとき） */
@@ -59,7 +61,12 @@ export function createInbox(deps: InboxDeps) {
                         await deps.friendships.onReject(actor, activity);
                         break;
                     case 'undo':
-                        await deps.friendships.onUndo(actor, activity);
+                        // フォローの取り下げでなければ、フレンドの申請・承認の取り消し
+                        if (!(await deps.follows.onUndo(actor, activity.object)))
+                            await deps.friendships.onUndo(actor, activity);
+                        break;
+                    case 'follow':
+                        await deps.follows.onFollow(actor, activity);
                         break;
                     case 'invite':
                         await deps.invites.onInvite(actor, activity);
@@ -73,6 +80,7 @@ export function createInbox(deps: InboxDeps) {
                     case 'delete-actor':
                         await deps.actors.markDeleted(actor.id, new Date(now));
                         await deps.friendships.onActorDeleted(actor.id);
+                        await deps.follows.onActorDeleted(actor.id);
                         break;
                     case 'unknown':
                         break;

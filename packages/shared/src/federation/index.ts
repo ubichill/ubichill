@@ -1,5 +1,6 @@
 export * from './activities';
 export * from './actor';
+export * from './cavageSignature';
 export * from './delivery';
 export * from './domainPolicy';
 export * from './httpSignature';

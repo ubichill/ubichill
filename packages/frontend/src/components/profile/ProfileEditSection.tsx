@@ -6,6 +6,7 @@ import { setMyFavoritesVisibility } from '@/lib/account/me';
 import { API_BASE } from '@/lib/api';
 import { css } from '@/styled-system/css';
 import { FavoritesVisibilityPicker } from './FavoritesVisibilityPicker';
+import { FediverseSection } from './FediverseSection';
 import type { MyAccountState } from './useMyAccount';
 
 const label = css({ fontSize: '13px', fontWeight: '700', color: 'text', mb: '1' });
@@ -25,7 +26,7 @@ const openButton = css({
 });
 
 /**
- * 設定の「プロフィール」: お気に入りの公開範囲。表示名・ひとこと・自己紹介・リンク・画像は、プロフィールのページで
+ * 設定の「プロフィール」: お気に入りの公開範囲・フェディバース（フォローの承認制など）。表示名・ひとこと・自己紹介・リンク・画像は、プロフィールのページで
  * 見た目を確かめながら編集する（編集の場所を 1 つにする）。
  */
 export function ProfileEditSection({ account, onNavigate }: { account: MyAccountState; onNavigate?: () => void }) {
@@ -94,6 +95,7 @@ export function ProfileEditSection({ account, onNavigate }: { account: MyAccount
                 )}
                 {error && <p className={css({ fontSize: '13px', color: 'errorText' })}>{error}</p>}
             </div>
+            <FediverseSection />
         </div>
     );
 }

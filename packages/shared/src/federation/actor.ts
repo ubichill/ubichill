@@ -1,10 +1,12 @@
 /**
- * actor の文書（Person・Application）を作る・読む。鍵は FEP-521a の assertionMethod（Multikey、Ed25519）。
+ * actor の文書（Person・Application）を作る・読む。鍵は 2 つ載せる:
+ * - FEP-521a の assertionMethod（Multikey、Ed25519）: ubichill 同士の RFC 9421 の署名
+ * - publicKey（RSA の PEM）: Mastodon・Misskey など、ほかの実装の draft-cavage の署名
  *
  * 読むときの規則（オリジンによる信頼。FEP-fe34）:
  * - 文書の id は取りに行った URL と同じ（ほかのオリジンの文書で乗っ取らせない。Mastodon の CVE-2024-23832）
  * - inbox・sharedInbox は actor と同じオリジン（自分のサーバーを使って第三者へ送らせない）
- * - 鍵は controller が actor で、id が `<actor の id>#…`、Ed25519 の Multikey だけ
+ * - 鍵は controller（owner）が actor で、id が `<actor の id>#…` のものだけ（Ed25519 の Multikey と RSA の PEM）
  */
 import { z } from 'zod';
 import { parseEd25519Multikey } from './multikey';
@@ -28,10 +30,31 @@ export interface LocalActorInput {
     publicKeyMultibase: string;
     /** 鍵の移行の間だけ一緒に載せる前の鍵（前の鍵で署名して送った分を、相手が確かめられるように） */
     previousKeys?: ReadonlyArray<{ keyId: string; publicKeyMultibase: string }>;
+    /** ほかの実装に向けた RSA の公開鍵（SPKI の PEM） */
+    rsaKey?: { keyId: string; publicKeyPem: string };
+    /** フォロワー・フォローのコレクション（件数だけ公開する） */
+    followers?: string;
+    following?: string;
+    /** フォローを承認制にするか（既定は承認制。Application actor はフォローを受けない） */
+    manuallyApprovesFollowers?: boolean;
+    /** ほかのサーバーの「おすすめ」や検索に出してよいか（Mastodon の discoverable・indexable） */
+    discoverable?: boolean;
     /** `handle@domain`（FEP-2c59） */
     webfinger?: string;
     /** 告知する機能（FEP-844e）。Application actor に付ける */
     implements?: readonly string[];
+}
+
+const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
+/** 平文（自己紹介など）→ ほかの実装が表示する HTML（段落と改行だけ。中身はすべてエスケープする）。 */
+export function plainTextToHtml(text: string): string {
+    const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c] ?? c);
+    return text
+        .trim()
+        .split(/\r?\n\s*\r?\n/)
+        .map((paragraph) => `<p>${paragraph.split(/\r?\n/).map(escapeHtml).join('<br>')}</p>`)
+        .join('');
 }
 
 /** このサーバーの actor の文書。 */
@@ -42,15 +65,22 @@ export function buildActorDocument(input: LocalActorInput): Record<string, unkno
         type: input.type,
         preferredUsername: input.preferredUsername,
         name: input.name,
-        ...(input.summary ? { summary: input.summary } : {}),
+        ...(input.summary ? { summary: plainTextToHtml(input.summary) } : {}),
         ...(input.url ? { url: input.url } : {}),
         ...(input.webfinger ? { webfinger: input.webfinger } : {}),
         ...(input.icon ? { icon: { type: 'Image', url: input.icon } } : {}),
         inbox: input.inbox,
         ...(input.outbox ? { outbox: input.outbox } : {}),
+        ...(input.followers ? { followers: input.followers } : {}),
+        ...(input.following ? { following: input.following } : {}),
         endpoints: { sharedInbox: input.sharedInbox },
-        // フレンドは承認制（片方向の Follow はまだ使わない）
-        manuallyApprovesFollowers: true,
+        manuallyApprovesFollowers: input.manuallyApprovesFollowers ?? true,
+        ...(input.discoverable !== undefined
+            ? { discoverable: input.discoverable, indexable: input.discoverable }
+            : {}),
+        ...(input.rsaKey
+            ? { publicKey: { id: input.rsaKey.keyId, owner: input.id, publicKeyPem: input.rsaKey.publicKeyPem } }
+            : {}),
         assertionMethod: [
             { keyId: input.keyId, publicKeyMultibase: input.publicKeyMultibase },
             ...(input.previousKeys ?? []),
@@ -75,6 +105,9 @@ const MultikeySchema = z
     .object({ id: z.string(), type: z.string(), controller: z.string(), publicKeyMultibase: z.string() })
     .passthrough();
 const ImplementsSchema = z.array(z.object({ href: z.string() }).passthrough());
+const PublicKeySchema = z
+    .object({ id: z.string(), owner: z.string().optional(), publicKeyPem: z.string().max(8192) })
+    .passthrough();
 
 /** 受けた actor の文書（知らない項目は無視する。.strict() にしない）。 */
 const RemoteActorSchema = z
@@ -89,6 +122,7 @@ const RemoteActorSchema = z
         inbox: z.string(),
         endpoints: z.object({ sharedInbox: z.string().optional() }).passthrough().nullish(),
         assertionMethod: z.union([MultikeySchema, z.array(MultikeySchema)]).optional(),
+        publicKey: z.union([PublicKeySchema, z.array(PublicKeySchema)]).nullish(),
         implements: ImplementsSchema.optional(),
         generator: z.object({ implements: ImplementsSchema.optional() }).passthrough().nullish(),
     })
@@ -97,6 +131,12 @@ const RemoteActorSchema = z
 export interface RemoteActorKey {
     id: string;
     publicKey: Uint8Array;
+}
+
+/** ほかの実装の RSA の公開鍵（draft-cavage の署名を確かめる）。 */
+export interface RemoteRsaKey {
+    id: string;
+    publicKeyPem: string;
 }
 
 export interface RemoteActor {
@@ -111,11 +151,16 @@ export interface RemoteActor {
     inbox: string;
     sharedInbox: string | null;
     keys: RemoteActorKey[];
+    rsaKeys: RemoteRsaKey[];
     /** 告知している機能（FEP-844e） */
     features: string[];
 }
 
 export type ActorRejection = 'malformed' | 'id-mismatch' | 'inbox-origin';
+
+/** SPKI（`PUBLIC KEY`）か PKCS#1（`RSA PUBLIC KEY`）の PEM。中身が RSA かは使うときに確かめる。 */
+const PEM_PUBLIC_KEY =
+    /^-----BEGIN (RSA )?PUBLIC KEY-----\r?\n[A-Za-z0-9+/=\r\n]+\r?\n-----END (RSA )?PUBLIC KEY-----$/;
 
 const first = <T>(value: T | readonly T[] | null | undefined): T | undefined =>
     Array.isArray(value) ? value[0] : ((value ?? undefined) as T | undefined);
@@ -154,6 +199,11 @@ export function readActorDocument(
         const publicKey = parseEd25519Multikey(m.publicKeyMultibase);
         return publicKey ? [{ id: m.id, publicKey }] : [];
     });
+    const rsaKeys = (doc.publicKey ? [doc.publicKey].flat() : []).flatMap((k): RemoteRsaKey[] => {
+        if (k.owner !== undefined && k.owner !== id.href) return [];
+        if (!k.id.startsWith(`${id.href}#`) || !PEM_PUBLIC_KEY.test(k.publicKeyPem.trim())) return [];
+        return [{ id: k.id, publicKeyPem: k.publicKeyPem.trim() }];
+    });
 
     const iconRaw = first(doc.icon);
     const icon = typeof iconRaw === 'string' ? iconRaw : hrefOf(iconRaw?.url);
@@ -172,6 +222,7 @@ export function readActorDocument(
             inbox: inbox.href,
             sharedInbox: sharedInbox?.href ?? null,
             keys,
+            rsaKeys,
             features: [...new Set(features)],
         },
     };

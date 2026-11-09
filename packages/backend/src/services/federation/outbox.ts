@@ -96,6 +96,8 @@ async function deliverOne(deps: DeliveryWorkerDeps, delivery: DeliveryRecord): P
             signAs,
             ttlSec: SIGNATURE_TIMING.INBOX_TTL_SEC,
             contentType: ACTIVITY_CONTENT_TYPE,
+            // Mastodon・Misskey などへは RSA の draft-cavage で（相手が RFC 9421 の Ed25519 を告知していなければ）
+            scheme: 'auto',
         })
         .catch((error: unknown) => ({ status: null as number | null, retryAfter: null, error }));
     const status = response.status;

@@ -34,12 +34,19 @@ export const ACTIVITY_CONTEXT = [
     },
 ] as const;
 
-/** actor の @context（FEP-521a の Multikey・FEP-844e の implements） */
+/** actor の @context（FEP-521a の Multikey・FEP-844e の implements・ほかの実装の publicKey と discoverable） */
 export const ACTOR_CONTEXT = [
     AS_CONTEXT,
+    'https://w3id.org/security/v1',
     'https://www.w3.org/ns/cid/v1',
     'https://w3id.org/fep/844e',
-    { ubichill: UBICHILL_NS, manuallyApprovesFollowers: 'as:manuallyApprovesFollowers' },
+    {
+        ubichill: UBICHILL_NS,
+        manuallyApprovesFollowers: 'as:manuallyApprovesFollowers',
+        toot: 'http://joinmastodon.org/ns#',
+        discoverable: 'toot:discoverable',
+        indexable: 'toot:indexable',
+    },
 ] as const;
 
 /** 送るときの Content-Type（受けるときは ld+json の profile 付きも同じに扱う） */
@@ -77,6 +84,8 @@ export const FEDERATION_PATHS = {
     appActor: '/ap/actor',
     sharedInbox: '/ap/inbox',
     user: (userId: string) => `/ap/users/${encodeURIComponent(userId)}`,
+    userFollowers: (userId: string) => `/ap/users/${encodeURIComponent(userId)}/followers`,
+    userFollowing: (userId: string) => `/ap/users/${encodeURIComponent(userId)}/following`,
     userInbox: (userId: string) => `/ap/users/${encodeURIComponent(userId)}/inbox`,
     userOutbox: (userId: string) => `/ap/users/${encodeURIComponent(userId)}/outbox`,
     instance: (instanceId: string) => `/ap/instances/${encodeURIComponent(instanceId)}`,
@@ -93,6 +102,9 @@ export const FEDERATION_PATHS = {
 
 /** 鍵の id（actor の id + `#ed25519-<世代>`）。 */
 export const keyIdOf = (actorId: string, generation = 1): string => `${actorId}#ed25519-${generation}`;
+
+/** ほかの実装に向けた RSA の鍵の id（Mastodon・Misskey と同じ `#main-key`）。 */
+export const rsaKeyIdOf = (actorId: string): string => `${actorId}#main-key`;
 
 /** keyid から actor の id を取り出す（v1 は「actor の文書の中にある鍵」だけ）。 */
 export function actorIdOfKey(keyId: string): string {

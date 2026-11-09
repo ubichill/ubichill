@@ -3,10 +3,12 @@
  * 種（FEDERATION_KEY_SEED。開発では BETTER_AUTH_SECRET から導く）が無ければ連合しない（federation は null）。
  */
 import {
+    actorKeyRepository,
     admissionRepository,
     deliveryRepository,
     domainPolicyRepository,
     federationSeenRepository,
+    followerRepository,
     instanceRepository,
     inviteRepository,
     remoteActorRepository,
@@ -14,8 +16,15 @@ import {
     remoteServerRepository,
     remoteVisitRepository,
     userRepository,
+    userSettingsRepository,
 } from '@ubichill/db';
-import { FEDERATION_FEATURES, FEDERATION_LIMITS, parseRoomAddress } from '@ubichill/shared';
+import {
+    FEDERATION_FEATURES,
+    FEDERATION_LIMITS,
+    type FediverseSettings,
+    type FediverseSettingsUpdate,
+    parseRoomAddress,
+} from '@ubichill/shared';
 import { appConfig } from '../../config';
 import { safeFetch } from '../../lib/safeFetch';
 import { logger } from '../../utils/logger';
@@ -30,6 +39,7 @@ import { createActorDirectory } from './actors';
 import { type FederationConfig, federationConfigFromEnv } from './config';
 import { createLocalActors } from './documents';
 import { createDomainPolicies } from './domains';
+import { createFollows } from './follows';
 import { createFriendshipCheck } from './friendshipCheck';
 import { createRemoteFriendships } from './friendships';
 import { createFederationIdentity } from './identity';
@@ -40,6 +50,7 @@ import { createDeliveryWorker, createOutbox } from './outbox';
 import { createFederatedPresence } from './presence';
 import { createProfileAnnouncer } from './profileUpdates';
 import { createRooms } from './rooms';
+import { createRsaKeyring, verifyRsaSha256 } from './rsaKeys';
 import { createServerDirectory } from './servers';
 import { createTransport } from './transport';
 import { createTravel } from './travel';
@@ -71,9 +82,26 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         generation: config.keyGeneration,
         previousSeed: config.previousSeed,
     });
+    const rsaKeys = createRsaKeyring({
+        seed: config.seed,
+        previousSeed: config.previousSeed,
+        repo: actorKeyRepository,
+        now,
+    });
     const policies = createDomainPolicies({ list: () => domainPolicyRepository.list(), now });
     const policyOf = (domain: string) => policies.policyOf(domain);
-    const transport = createTransport({ identity, keyring, fetch: safeFetch, now });
+    const transport = createTransport({
+        identity,
+        keyring,
+        rsaKeys,
+        fetch: safeFetch,
+        now,
+        // RFC 9421 の Ed25519 を告知しているサーバー（ubichill）だけ RFC 9421。知らないサーバーは Mastodon・Misskey と同じ方式
+        async schemeFor(host) {
+            const known = await remoteServerRepository.get(host);
+            return known?.features.includes(FEDERATION_FEATURES.rfc9421Ed25519) ? 'rfc9421' : 'cavage';
+        },
+    });
     const actors = createActorDirectory({
         identity,
         allowHttp: config.allowHttp,
@@ -97,7 +125,7 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         policyOf,
         actors,
         seen: federationSeenRepository,
-        crypto: nodeWorldCrypto,
+        crypto: { verifyEd25519: nodeWorldCrypto.verifyEd25519, verifyRsaSha256 },
         now,
     });
     const outbox = createOutbox({ identity, repo: deliveryRepository, policyOf, now });
@@ -254,9 +282,25 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         notify: notificationService,
         now,
     });
+    const follows = createFollows({
+        identity,
+        repo: followerRepository,
+        userExists,
+        settingsOf: (userId) => userSettingsRepository.getFediverse(userId),
+        actorOf: async (actorId) => {
+            const actor = await actors.get(actorId).catch(() => null);
+            return actor && !actor.deletedAt ? actor : null;
+        },
+        outbox,
+        notify: notificationService,
+        seen: federationSeenRepository,
+        policyOf,
+        now,
+    });
     const inbox = createInbox({
         seen: federationSeenRepository,
         friendships,
+        follows,
         invites,
         actors: {
             refresh: (actorId) => actors.get(actorId, { refresh: true }),
@@ -268,6 +312,9 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
     const localActors = createLocalActors({
         identity,
         keyring,
+        rsaKeys,
+        settingsOf: (userId) => userSettingsRepository.getFediverse(userId),
+        followerCount: (userId) => followerRepository.countAccepted(userId),
         profileOrigin: frontendOrigin,
         async findUser(userId) {
             if (userId === SYSTEM_USER_ID) return undefined;
@@ -287,7 +334,13 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
     const announceProfile = createProfileAnnouncer({
         identity,
         localActors,
-        friendsOf: (userId) => remoteFriendshipRepository.acceptedActorsOf(userId),
+        async audienceOf(userId) {
+            const [friends, followers] = await Promise.all([
+                remoteFriendshipRepository.acceptedActorsOf(userId),
+                followerRepository.acceptedActorsOf(userId),
+            ]);
+            return [...new Set([...friends, ...followers.map((a) => a.id)])];
+        },
         actors: remoteActorRepository,
         outbox,
     });
@@ -304,6 +357,7 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         worker,
         friendships,
         friendshipCheck,
+        follows,
         rooms,
         travel,
         presence,
@@ -318,6 +372,19 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
             void announceProfile(userId).catch((error: unknown) =>
                 log(`プロフィールの更新を届けられません: ${String(error)}`),
             );
+        },
+        /**
+         * フェディバースの設定を変える。承認制をやめたら承認待ちをまとめて承認し、actor の文書が変わったことを
+         * フレンドとフォロワーに知らせる。
+         */
+        async updateFediverseSettings(userId: string, changes: FediverseSettingsUpdate): Promise<FediverseSettings> {
+            const before = await userSettingsRepository.getFediverse(userId);
+            const after = await userSettingsRepository.updateFediverse(userId, changes);
+            await follows.settingsChanged(userId, before, after);
+            void announceProfile(userId).catch((error: unknown) =>
+                log(`プロフィールの更新を届けられません: ${String(error)}`),
+            );
+            return after;
         },
         /** 画面の住所がほかのサーバーの部屋なら、その住所（`{ id, domain }`） */
         remoteAddressOf(roomRef: string) {
@@ -336,6 +403,10 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
                 ...(await Promise.all(blocked.map((p) => remoteFriendshipRepository.removeForDomain(p.domain)))).flat(),
             ];
             await notifyFriendshipsRemoved(removed);
+            await notifyFollowsRemoved([
+                ...(await followerRepository.removeForDeletedActors()),
+                ...(await Promise.all(blocked.map((p) => followerRepository.removeForDomain(p.domain)))).flat(),
+            ]);
             await recheckFriendships(at).catch((error: unknown) =>
                 log(`フレンドの関係を確かめられません: ${String(error)}`),
             );
@@ -364,11 +435,27 @@ async function notifyFriendshipsRemoved(rows: ReadonlyArray<{ userId: string; ac
     );
 }
 
-/** ドメインとの付き合い方を変えた（block ならフレンドを切り、ほかの backend にも読み直させる）。 */
+/** 消したフォローのうち承認待ちだったものの知らせを片付ける。 */
+async function notifyFollowsRemoved(rows: ReadonlyArray<{ userId: string; actorId: string; state: string }>) {
+    await Promise.all(
+        rows
+            .filter((r) => r.state === 'pending')
+            .map((r) =>
+                notificationService
+                    .fediverseFollowSettled(r.userId, r.actorId)
+                    .catch((error: unknown) => logger.warn('通知の片付けに失敗:', error)),
+            ),
+    );
+}
+
+/** ドメインとの付き合い方を変えた（block ならフレンドとフォローを切り、ほかの backend にも読み直させる）。 */
 export async function domainPolicyChanged(domain: string, policy: string | null): Promise<void> {
     await federation?.policies.reload();
     backendEvents.broadcast({ type: 'federation.policies.changed' });
-    if (policy === 'block') await notifyFriendshipsRemoved(await remoteFriendshipRepository.removeForDomain(domain));
+    if (policy === 'block') {
+        await notifyFriendshipsRemoved(await remoteFriendshipRepository.removeForDomain(domain));
+        await notifyFollowsRemoved(await followerRepository.removeForDomain(domain));
+    }
 }
 
 const config = federationConfigFromEnv(process.env);

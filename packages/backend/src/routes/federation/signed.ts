@@ -35,10 +35,13 @@ export function jsonBody(req: Request): unknown {
     }
 }
 
-/** 署名を確かめる。kind で署名する actor の種類を絞る（人の操作は Person、サーバーの判断は Application）。 */
+/**
+ * 署名を確かめる。kind で署名する actor の種類を絞る（人の操作は Person、サーバーの判断は Application）。
+ * allowCavage は inbox だけ（Mastodon・Misskey などの draft-cavage の署名も受ける）。
+ */
 export function signed(
     federation: Federation,
-    options: { kind: 'person' | 'application' | 'any'; requireNonce?: boolean },
+    options: { kind: 'person' | 'application' | 'any'; requireNonce?: boolean; allowCavage?: boolean },
 ): RequestHandler {
     return async (req, res, next) => {
         const result = await federation.verifier
@@ -49,7 +52,7 @@ export function signed(
                     header: (name) => req.get(name),
                     rawBody: Buffer.isBuffer(req.body) ? req.body : undefined,
                 },
-                { requireNonce: options.requireNonce },
+                { requireNonce: options.requireNonce, allowCavage: options.allowCavage },
             )
             .catch((error: unknown) => {
                 logger.warn('[federation] 署名の確認でエラー:', error);

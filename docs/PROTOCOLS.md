@@ -70,8 +70,8 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 | `GET /api/v1/worlds?scope=local` | 連合のピア（このサーバーのワールドだけを返す） |
 | `GET /api/v1/service-tokens/keys` | サービストークンを検証する外部サービス |
 | `GET /.well-known/nodeinfo`・`/nodeinfo/2.1` | ubichill のサーバーかを確かめるほかのサーバー |
-| `GET /ap/actor`・`/ap/users/:id`（`/outbox`） | 連合の actor の文書（鍵は FEP-521a の Multikey） |
-| `POST /ap/inbox`・`/ap/users/:id/inbox` | 連合の知らせ（AS2 の activity。RFC 9421 の署名付き） |
+| `GET /ap/actor`・`/ap/users/:id`（`/outbox`・`/followers`・`/following`） | 連合の actor の文書（鍵は FEP-521a の Multikey と、ほかの実装向けの RSA の `publicKey`） |
+| `POST /ap/inbox`・`/ap/users/:id/inbox` | 連合の知らせ（AS2 の activity。RFC 9421 の署名付き。Mastodon・Misskey などからは draft-cavage の署名で Follow・Undo を受ける） |
 | `GET /ap/instances/:id`・`POST /federation/v1/...` | 連合の部屋 RPC（入室・招待の権利・見えるか・現在地・フレンドか） |
 
 ### 連合（federation v1）
@@ -84,6 +84,8 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 - 署名の形（RFC 9421 の ubichill プロファイル: Ed25519・`sig1`・含める項目・時刻の幅）を変えるときは、新しいラベル・`alg` を足して
   両方を受ける期間を置く。今の形は RFC 9421 付録 B.2.6 と RFC 9530 の値でテストで固定している（`backend/src/services/federation/httpSignature.test.ts`）。
 - id の形（`/ap/users/<ユーザー ID>`・`/ap/instances/<部屋 ID>`）はほかのサーバーが持つので変えない。
+- ほかの実装（Mastodon・Misskey など）とは draft-cavage の `rsa-sha256` で話す（keyId は `<actor>#main-key`）。受けるのは inbox だけ。
+  形は `shared/src/federation/cavageSignature.ts`、送受信の往復は `backend/src/services/federation/cavage.test.ts` で固定している。
 
 ## D. 内部の API
 

@@ -260,6 +260,7 @@ export * from './user/cliAuth';
 export * from './user/displayNameChange';
 export * from './user/externalWorks';
 export * from './user/favoritesVisibility';
+export * from './user/fediverse';
 export * from './user/friends';
 export * from './user/handle';
 export * from './user/home';

@@ -24,7 +24,7 @@
 | 人の actor | `https://<domain>/ap/users/<ユーザー ID>`（handle を入れない。改名しても変わらない） |
 | サーバーの actor（Application） | `https://<domain>/ap/actor`（アカウントはホスト名） |
 | 部屋 | `https://<domain>/ap/instances/<部屋 ID>`。画面の住所は `<部屋 ID>@<domain>`（`/instance/:住所` でどのサーバーの部屋にも入る） |
-| 鍵 | Ed25519。actor ごとに `FEDERATION_KEY_SEED` から HKDF で導く（秘密鍵は保存しない）。文書には FEP-521a の Multikey（`assertionMethod`）で載せ、keyid は `<actor>#ed25519-<世代>`（既定 1） |
+| 鍵 | Ed25519。actor ごとに `FEDERATION_KEY_SEED` から HKDF で導く（秘密鍵は保存しない）。文書には FEP-521a の Multikey（`assertionMethod`）で載せ、keyid は `<actor>#ed25519-<世代>`（既定 1）。ほかの実装向けの RSA の鍵は別（下の「ほかの実装との署名」） |
 
 鍵の種を差し替えると全員の鍵が変わるだけで、ほかのサーバーは文書を取り直して追従する（鍵を固定しない）。
 
@@ -146,6 +146,42 @@ B: 見える・入れる・満員でない・A からの来訪者が 20 人未�
 - 続けて失敗するホストは止め（サーキットブレーカー）、3 日届かなければ到達できないとして 6 時間ごとにだけ試す。
 - 400・403・404・413・422 は送り直さない（相手が受けないと決めた）。401 は送り直す（鍵を差し替えた直後に、相手が古い鍵を覚えているだけのことがある）。410 は相手が消えたとして諦める。429 は `Retry-After`（最長 1 時間）に従う。
 
+## フェディバース（Mastodon・Misskey など）からのフォロー
+
+ubichill のユーザーは、Mastodon・Misskey などから `@<handle>@<domain>` で検索してフォローできる。フレンドとは別の片方向の関係で、
+フォロワーに見えるのはプロフィール（とこれから公開するノート）だけ。現在地・来訪・招待はフレンドだけ。
+
+| 出来事 | activity |
+|---|---|
+| フォローされた | `Follow{Person}` を受ける |
+| 承認・断る・フォロワーから外す | `Accept{Follow}`・`Reject{Follow}`（受けた Follow をそのまま埋め込む。外すときも Reject。Mastodon と同じ） |
+| フォローをやめた | `Undo{Follow}` を受ける（Follow の id で引く。id が合わなければ埋め込まれた Follow の相手と宛先で引く） |
+| 承認制・検索の可否を変えた | `Update{Person}` をフレンドとフォロワーへ |
+
+- 承認制（`manuallyApprovesFollowers`）は初期値オフ（Misskey・Mastodon と同じ）。オンなら承認待ちにして通知し、本人が承認・拒否する。
+  オフに戻したら承認待ちはまとめて承認する。承認待ちは 1 人 500 件まで（超えた分は断る）。
+- `limit` のサーバーからのフォローは断る。同じ人から Follow が来直したら（相手の記録が外れた）、今の状態で答え直す。
+- 取り下げた Follow の id は 14 日覚える（Undo が先に処理されても、遅れて届いた Follow でフォローに戻さない）。
+- 読んでから書くまでは 2 人ごとに advisory lock を取り、答え（Accept・Reject）は書き込みと同じトランザクションで送る予定に入れる。
+- フォロワー・フォローのコレクションは件数だけ公開する（誰がフォローしているかは出さない）。actor の文書には
+  `followers`・`following`・`manuallyApprovesFollowers`・`discoverable`／`indexable`（Mastodon）を載せ、自己紹介は段落と改行だけの HTML にする。
+- 設定とフォロワーの管理は `GET /api/v1/fediverse`・`PUT /api/v1/fediverse/settings`・`POST /api/v1/fediverse/followers/{approve,reject}`。
+
+### ほかの実装との署名（draft-cavage・RSA）
+
+Mastodon・Misskey は RFC 9421 の Ed25519 を確かめないので、ほかの実装とは draft-cavage-http-signatures-12 の `rsa-sha256` で話す。
+
+- RSA の鍵（2048 ビット）は actor ごとに初めて要るときに作り、`federation_actor_keys` に置く（種から導けないため）。秘密鍵は種から
+  HKDF で導いた鍵で AES-256-GCM に包む（actor の id を AAD に入れる）。文書には `publicKey`（keyId `<actor>#main-key`）で載せる。
+  種を差し替えたら前の種で開けて包み直す。どちらでも開けなければ作り直す（相手は署名が通らなければ文書を取り直す）。
+- 送る: 相手のサーバーが Application actor で `rfc9421Ed25519` を告知していれば RFC 9421、していなければ（知らないサーバーも）draft-cavage。
+  署名する項目は POST が `(request-target) host date digest content-type`、GET が `(request-target) host date accept`。
+  入室など nonce の要る RPC は必ず RFC 9421。
+- 受ける: `Signature-Input` があれば RFC 9421。無ければ draft-cavage を受けるのは **inbox だけ**（部屋 RPC・部屋の作りは RFC 9421 だけ）。
+  `(request-target)`・`host`・`date`（POST は `digest` も）が署名されていなければ断る。`host` と `(request-target)` は自分の正規の
+  ドメインと受けたパスから組み立てる。`Date` は受け手の時刻の 1 時間前〜5 分後まで（相手の送り直しの列の遅れを見込む。2 度目は activity の id で弾く）。
+  RSA は 2048 ビット未満を受けない。照合は shared の `verifyCavageSignature` の 1 か所。
+
 ## 付き合い方（管理者）
 
 どの ubichill のサーバーとも連合するのが既定。問題のあるサーバーだけを絞る（設定 → 連合 → ほかのサーバー）。
@@ -154,7 +190,7 @@ B: 見える・入れる・満員でない・A からの来訪者が 20 人未�
 |---|---|
 | 連合する | 既定 |
 | 新しいつながりを受けない（limit） | 新しい申請・招待・リクエスト・来訪を受けない。今あるフレンドはそのまま |
-| 連合しない（block） | 送受信・取得をすべてやめ（WebFinger も送らない）、そのサーバーの人とのフレンドも切る（10 分ごとの掃除でも消し直す） |
+| 連合しない（block） | 送受信・取得をすべてやめ（WebFinger も送らない）、そのサーバーの人とのフレンドとフォローも切る（10 分ごとの掃除でも消し直す） |
 
 サブドメイン・ポート違いにも効く（`spam.example` を block すれば `a.spam.example` も）。受けた要求は署名したサーバーごとに回数を絞る（IP ごとの全体の上限からは外す）。
 
@@ -179,3 +215,6 @@ B: 見える・入れる・満員でない・A からの来訪者が 20 人未�
 - ワールドの中身は部屋のサーバーの Go が配るので、来訪者のサーバーが確かめたワールドと同じ中身かまでは保証しない（mod は作者の署名で確かめる）。
 - サーバーの版が違うと、Go の通信の版（`protocolVersion`）が合わない部屋には入れない（画面は「非対応の通信バージョン」を出す）。
 - 公開の部屋の一覧（ほかのサーバーのパブリックの部屋を探す）は、ワールドの連合のピアの上に足す。
+- フェディバース: 固定ノート（`featured`。作ったワールド・公開している mod・公開にしたお気に入り）、ノートを書く（公開範囲を選んで
+  `Create{Note}` をフォロワーへ）、ほかの実装の人をフォローして読む、は順に足す。keyId が actor の下にない実装（GoToSocial の
+  `/main-key` など）の署名はまだ受けない。

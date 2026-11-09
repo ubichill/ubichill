@@ -90,6 +90,10 @@ export const userSettings = pgTable('user_settings', {
     homeWorldRef: text('home_world_ref'),
     /** ホームの部屋の公開範囲。初期値は招待のみ。 */
     homeAccessType: instanceAccessTypeEnum('home_access_type').default('invite_only').notNull(),
+    /** フェディバースからのフォローを承認制にするか（shared の DEFAULT_FEDIVERSE_SETTINGS と同じ初期値） */
+    fediverseManuallyApprovesFollowers: boolean('fediverse_manually_approves_followers').default(false).notNull(),
+    /** フェディバースのおすすめ・検索に出してよいか */
+    fediverseDiscoverable: boolean('fediverse_discoverable').default(true).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });

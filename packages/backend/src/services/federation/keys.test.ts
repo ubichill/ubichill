@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { nodeWorldCrypto } from '../worlds/worldCrypto';
 import { createFederationIdentity } from './identity';
 import { createKeyring, type Keyring } from './keys';
+import { createRsaKeyring, verifyRsaSha256 } from './rsaKeys';
 import { createTransport } from './transport';
 import { createVerifier, type InboundRequest, type VerifiableActor } from './verification';
 
@@ -18,6 +19,22 @@ async function signedBy(keyring: Keyring, at: number): Promise<InboundRequest> {
     const transport = createTransport({
         identity: A,
         keyring,
+        // RFC 9421 だけを試す（RSA の鍵は作らない）
+        rsaKeys: createRsaKeyring({
+            seed: randomBytes(32),
+            repo: {
+                get: async () => undefined,
+                insertIfAbsent: async () => {
+                    throw new Error('使わない');
+                },
+                rewrap: async () => undefined,
+                replace: async () => {
+                    throw new Error('使わない');
+                },
+            },
+            now: () => at,
+        }),
+        schemeFor: async () => 'rfc9421',
         now: () => at,
         fetch: async (url, init) => {
             captured.push({ url, headers: init.headers, body: init.body });
@@ -71,7 +88,7 @@ function receiver(
             },
         },
         seen: { remember: async () => true },
-        crypto: nodeWorldCrypto,
+        crypto: { verifyEd25519: nodeWorldCrypto.verifyEd25519, verifyRsaSha256 },
         now: () => clock.now,
     });
     return { verifier, state };
