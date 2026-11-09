@@ -75,7 +75,7 @@ export function FriendLocationCard({ userId }: { userId: string }) {
                                         )
                                     }
                                 >
-                                    {done.requested ? 'リクエスト済み' : 'リクエスト'}
+                                    {done.requested ? '招待をリクエスト済み' : '招待をリクエスト'}
                                 </button>
                             )}
                             {inviteButton}

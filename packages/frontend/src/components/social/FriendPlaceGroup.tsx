@@ -106,7 +106,7 @@ function PlaceTile({
                 {!here && needsInvite && onRequest && (
                     <button type="button" className={joinButton} onClick={onRequest} disabled={requested}>
                         <HudIcon name="userPlus" size={16} />
-                        {requested ? 'リクエスト済み' : 'リクエスト'}
+                        {requested ? '招待をリクエスト済み' : '招待をリクエスト'}
                     </button>
                 )}
             </div>
