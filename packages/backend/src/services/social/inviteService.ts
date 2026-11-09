@@ -1,5 +1,5 @@
 /** 招待とリクエストインバイトの実体（DB・Go の在室・通知・連合をつなぐ）。規則は invites.ts と shared の instanceAccess.ts。 */
-import { instanceRepository, inviteRepository } from '@ubichill/db';
+import { instanceRepository, inviteRepository, userSettingsRepository } from '@ubichill/db';
 import { type Federation, federation } from '../federation';
 import { instanceRuntime } from '../instances/instanceRuntime';
 import { notificationService } from '../notifications/notificationService';
@@ -32,6 +32,7 @@ export const inviteService = createInviteService({
     },
     presence: () => instanceRuntime.presence(),
     friendIdsOf,
+    visibilityOf: (userIds) => userSettingsRepository.presenceVisibilityOf(userIds),
     invites: inviteRepository,
     notify: notificationService,
     federation: federation ? inviteFederationOf(federation) : undefined,

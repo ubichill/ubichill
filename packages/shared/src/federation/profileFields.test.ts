@@ -5,6 +5,8 @@ import {
     MAX_REMOTE_PROFILE_FIELDS,
     PROFILE_FIELD_NAMES,
     profileAttachment,
+    REMOTE_PROFILE_FIELD_NAME_MAX,
+    REMOTE_PROFILE_FIELD_VALUE_MAX,
     readProfileAttachment,
     remoteProfileView,
     remoteStatusOf,
@@ -166,6 +168,25 @@ describe('ほかのサーバーの人のプロフィール（保存した形か�
         });
         // ひとことは 1 行・60 文字に整え直す
         expect(remoteProfileView({ status: `<b>a</b>\n${'あ'.repeat(100)}` }).status).toHaveLength(60);
+    });
+
+    it('保存した項目が長すぎ・多すぎても、取り込むときと同じ長さと数に切って返す（巨大な行でもプロフィールを開ける）', () => {
+        const huge = { name: 'な'.repeat(100_000), value: 'あ'.repeat(100_000), href: null };
+        const many = Array.from({ length: 40 }, (_, i) => ({ name: `n${i}`, value: `v${i}`, href: null }));
+        const view = remoteProfileView({ fields: [huge, ...many] });
+        expect(view.fields[0]?.name).toHaveLength(REMOTE_PROFILE_FIELD_NAME_MAX);
+        expect(view.fields[0]?.value).toHaveLength(REMOTE_PROFILE_FIELD_VALUE_MAX);
+        expect(view.fields).toHaveLength(MAX_REMOTE_PROFILE_FIELDS);
+    });
+
+    it('保存した文字はもう一度タグとして扱わない（文字の < > を消さない）。空の項目は出さない', () => {
+        const view = remoteProfileView({
+            fields: [
+                { name: '式', value: 'a < b > c', href: null },
+                { name: '  ', value: 'x', href: null },
+            ],
+        });
+        expect(view.fields).toEqual([{ name: '式', value: 'a < b > c' }]);
     });
 
     it('同じ名前と値の項目は 1 つにする', () => {

@@ -14,6 +14,7 @@
 import { z } from 'zod';
 import type { AccessType } from '../schemas/instance.schema';
 import type { UserSummary } from './friends';
+import type { PresenceVisibility } from './presence';
 
 /** 公開範囲の表示名。 */
 export const ACCESS_TYPE_LABELS: Record<AccessType, string> = {
@@ -151,6 +152,10 @@ export const INVITE_REQUEST_REFUSAL_MESSAGES: Record<InviteRequestRefusal, strin
 /**
  * requester が target（フレンド）に「部屋に入れて」と頼めるか。target のいる部屋（いなければ null）で決める。
  * もう入れる部屋なら頼まず入ればよい。
+ *
+ * 断る理由で相手の様子を漏らさない（target の見せ方に従う）:
+ * - 見せない（hidden）: いるかどうかも伏せるので、部屋にいなくても入れる部屋でも断らない（届けて本人が決める）
+ * - オンラインだけ（online）: いるかは見えてよいが、場所は伏せるので「そのまま入れます」で断らない（頼む人は行き先を知らない）
  */
 export function inviteRequestRefusal(
     requesterId: string,
@@ -158,11 +163,19 @@ export function inviteRequestRefusal(
     requesterFriendIds: ReadonlySet<string>,
     /** 相手のいる部屋。'remote' はほかのサーバーの部屋（入れるかは部屋のサーバーが決めるので、頼むのは止めない） */
     targetRoom: InstanceAudience | 'remote' | null,
+    targetVisibility: PresenceVisibility = 'location',
 ): InviteRequestRefusal | null {
     if (requesterId === targetId) return 'self';
     if (!requesterFriendIds.has(targetId)) return 'not-friend';
+    if (targetVisibility === 'hidden') return null;
     if (!targetRoom) return 'offline';
-    if (targetRoom !== 'remote' && canJoinInstance(targetRoom, requesterId, requesterFriendIds)) return 'can-join';
+    if (
+        targetVisibility === 'location' &&
+        targetRoom !== 'remote' &&
+        canJoinInstance(targetRoom, requesterId, requesterFriendIds)
+    ) {
+        return 'can-join';
+    }
     return null;
 }
 

@@ -1,7 +1,7 @@
 import { FEDERATION_FEATURES, type PresenceEntry, type PresenceVisibility, type RoomCard } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
 import { createFederationIdentity } from './identity';
-import { createFederatedPresence, limitFriendPresence } from './presence';
+import { createFederatedPresence, limitFriendPresence, visitorVisibility } from './presence';
 import type { FederationResponse } from './transport';
 
 const identity = createFederationIdentity('https://a.example');
@@ -324,5 +324,21 @@ describe('フレンドの現在地を尋ねる（見る人のホームとして�
             member: identity.actorUrl('dave'),
             viewers: [identity.actorUrl('alice')],
         });
+    });
+});
+
+describe('visitorVisibility（ここに来訪しているほかのサーバーのフレンド）', () => {
+    const id = 'https://b.example/ap/users/bob';
+    it('ホームが部屋にいると答えたときだけ場所を出す', () => {
+        expect(visitorVisibility({ friendId: id, status: 'in_room' })).toBe('location');
+    });
+    it('場所を伏せた答え・確かめられない・答えが無いときは、部屋にいることだけ（場所は出さない）', () => {
+        expect(visitorVisibility({ friendId: id, status: 'private' })).toBe('online');
+        expect(visitorVisibility({ friendId: id, status: 'online' })).toBe('online');
+        expect(visitorVisibility({ friendId: id, status: 'unreachable' })).toBe('online');
+        expect(visitorVisibility(undefined)).toBe('online');
+    });
+    it('ホームが offline と答えた（見せない）なら、ここにいても部屋にいないことにする', () => {
+        expect(visitorVisibility({ friendId: id, status: 'offline' })).toBe('hidden');
     });
 });
