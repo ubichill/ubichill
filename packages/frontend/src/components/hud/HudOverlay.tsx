@@ -26,13 +26,12 @@ import {
 } from './hudView';
 import { LaunchpadHome } from './LaunchpadHome';
 import { AudioTab } from './tabs/AudioTab';
-import { FediverseTab } from './tabs/FediverseTab';
 import { InstanceTab } from './tabs/InstanceTab';
 import { InviteTab } from './tabs/InviteTab';
 import { NotificationsTab } from './tabs/NotificationsTab';
 import { ProfileTab } from './tabs/ProfileTab';
 import { type SettingsSection, SettingsTab } from './tabs/SettingsTab';
-import { SocialTab } from './tabs/SocialTab';
+import { type SocialSection, SocialTab } from './tabs/SocialTab';
 import { WorldsTab } from './tabs/WorldsTab';
 import { useHudActions } from './useHudActions';
 
@@ -59,8 +58,7 @@ const PLACE_ITEMS: readonly TabItem[] = [
 const PERSON_ITEMS: readonly TabItem[] = [
     { id: 'profile', label: 'プロフィール', icon: 'user' },
     { id: 'notifications', label: '通知', icon: 'bell' },
-    { id: 'social', label: '検索', icon: 'search' },
-    { id: 'fediverse', label: 'フェディバース', icon: 'fediverse' },
+    { id: 'social', label: 'ソーシャル', icon: 'users' },
     { id: 'settings', label: '設定', icon: 'gear' },
 ];
 
@@ -76,6 +74,8 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
     const { home } = useHome();
     const [audio] = useMediaOutput();
     const [view, setView] = useState<HudView>(INITIAL_HUD_VIEW);
+    // 中の切り替えはタブを離れても覚えておく（人を開いて戻ったときに同じ欄に帰る）
+    const [socialSection, setSocialSection] = useState<SocialSection>('locations');
     const [settingsSection, setSettingsSection] = useState<SettingsSection>('home');
     const [visible, setVisible] = useState(false);
     const instance = useCurrentInstance(currentInstanceId);
@@ -103,6 +103,10 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
     );
     const open = (page: HudPage) => setView((v) => openPage(v, page));
     const select = (tab: HudTab) => setView(selectTab(tab));
+    const findUsers = () => {
+        setSocialSection('search');
+        select('social');
+    };
 
     const createWorld = async () => {
         if (!(await confirm('ワールドの作成画面に移動しますか？現在のインスタンスから退出します。'))) return;
@@ -121,7 +125,7 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
                         instance={instance}
                         currentInstanceId={currentInstanceId}
                         onCopyLink={() => void actions.copyInvite()}
-                        onFindFriends={() => select('social')}
+                        onFindFriends={findUsers}
                     />
                 );
             case 'user':
@@ -141,6 +145,7 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
                         onGoHome={() => void actions.goHome()}
                         onInvite={() => open({ kind: 'invite' })}
                         onSelectTab={select}
+                        onFindUsers={findUsers}
                         onCreateWorld={() => void createWorld()}
                         onJoinInstance={actions.joinInstance}
                     />
@@ -158,13 +163,13 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
             case 'social':
                 return (
                     <SocialTab
+                        section={socialSection}
+                        onSectionChange={setSocialSection}
                         currentInstance={instance}
                         onJoinInstance={actions.joinInstance}
                         onFriendshipChange={() => void notifications.reload()}
                     />
                 );
-            case 'fediverse':
-                return <FediverseTab />;
             case 'settings':
                 return (
                     <SettingsTab
@@ -312,7 +317,11 @@ const frame = css({
     flexDirection: 'column',
     alignItems: 'stretch',
     gap: '3',
-    w: { base: 'calc(100vw - 16px)', md: 'min(900px, calc(100vw - 32px))' },
+    w: {
+        base: 'calc(100vw - 16px)',
+        md: 'min(900px, calc(100vw - 32px))',
+        lg: 'min(1160px, calc(100vw - 48px))',
+    },
     h: {
         base: 'calc(100dvh - 24px - env(safe-area-inset-bottom, 0px))',
         md: 'min(820px, calc(100dvh - 48px))',

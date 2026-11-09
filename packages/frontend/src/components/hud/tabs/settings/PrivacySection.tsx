@@ -1,19 +1,16 @@
 import type { FavoritesVisibility, PresenceVisibility, PrivacySettings } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { FavoritesVisibilityPicker } from '@/components/profile/FavoritesVisibilityPicker';
-import { FediverseSwitches } from '@/components/profile/FediverseSwitches';
 import { ChoiceGroup } from '@/components/ui/ChoiceGroup';
 import { fetchMyPrivacy, setMyFavoritesVisibility, setMyPresenceVisibility } from '@/lib/account/me';
 import { PRESENCE_VISIBILITY_OPTIONS } from '@/lib/account/presenceVisibility';
 import { pushToast } from '@/lib/toast';
 import { css } from '@/styled-system/css';
-
-const group = css({ display: 'flex', flexDirection: 'column', gap: '2' });
-const heading = css({ fontSize: '13px', fontWeight: '700', color: 'text' });
+import { settingsGroup, settingsHeading } from './settingsStyles';
 
 /**
- * 設定の「プライバシー」: だれに何を見せるか（オンライン状態・お気に入り・フェディバース）をまとめる。
- * それぞれ選んだらすぐ保存する。
+ * 設定の「プライバシー」: フレンドやほかの人に何を見せるか（オンライン状態・お気に入り）。選んだらすぐ保存する。
+ * フェディバースのフォローの受け方は「フェディバース」の欄。
  */
 export function PrivacySection() {
     const [settings, setSettings] = useState<PrivacySettings | null>(null);
@@ -51,8 +48,8 @@ export function PrivacySection() {
             {error && <p className={css({ fontSize: '13px', color: 'errorText' })}>{error}</p>}
             {settings && (
                 <>
-                    <section className={group}>
-                        <h3 className={heading}>オンライン状態</h3>
+                    <section className={settingsGroup}>
+                        <h3 className={settingsHeading}>オンライン状態</h3>
                         <ChoiceGroup
                             label="オンライン状態をフレンドにどこまで見せるか"
                             choices={PRESENCE_VISIBILITY_OPTIONS}
@@ -65,8 +62,8 @@ export function PrivacySection() {
                             onChange={changePresence}
                         />
                     </section>
-                    <section className={group}>
-                        <h3 className={heading}>お気に入りの公開範囲</h3>
+                    <section className={settingsGroup}>
+                        <h3 className={settingsHeading}>お気に入りの公開範囲</h3>
                         <FavoritesVisibilityPicker
                             value={settings.favoritesVisibility}
                             disabled={saving}
@@ -75,10 +72,6 @@ export function PrivacySection() {
                     </section>
                 </>
             )}
-            <section className={group}>
-                <h3 className={heading}>フェディバース（Mastodon・Misskey など）</h3>
-                <FediverseSwitches />
-            </section>
         </div>
     );
 }

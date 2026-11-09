@@ -1,32 +1,44 @@
-import type { UserSummary } from '@ubichill/shared';
 import { css, cva } from '@/styled-system/css';
+import type { FriendCard } from './friendPresence';
 import { UserAvatar } from './UserAvatar';
 import { useOpenUser } from './useOpenUser';
 
-/** フレンド 1 人（顔・名前・いる場所）。押すとプロフィール。presence はアイコンの右下の点の色。 */
-export function FriendTile({
-    user,
-    status,
-    presence,
-}: {
-    user: UserSummary;
-    status?: string;
-    presence: 'online' | 'offline';
-}) {
+/** フレンド 1 人のカード（顔・名前・2 行目の一言）。押すとプロフィール。オンラインなら顔の右下に点。 */
+export function FriendTile({ user, detail, online }: FriendCard) {
     const openUser = useOpenUser();
     return (
-        <button type="button" className={tile({ presence })} onClick={() => openUser(user)}>
+        <button type="button" className={tile({ online })} onClick={() => openUser(user)}>
             <span className={css({ position: 'relative', display: 'inline-flex', flexShrink: 0 })}>
                 <UserAvatar user={user} />
-                {presence === 'online' && <span className={onlineDot} aria-hidden="true" />}
+                {online && <span className={onlineDot} aria-hidden="true" />}
             </span>
             <span className={css({ display: 'flex', flexDirection: 'column', minW: 0 })}>
                 <span className={name}>{user.name}</span>
-                {status && <span className={statusText}>{status}</span>}
+                {detail && <span className={detailText}>{detail}</span>}
             </span>
         </button>
     );
 }
+
+/** フレンドのカードを幅に合わせて並べる。 */
+export function FriendGrid({ cards }: { cards: readonly FriendCard[] }) {
+    if (cards.length === 0) return null;
+    return (
+        <div className={grid}>
+            {cards.map((card) => (
+                <FriendTile key={card.user.id} {...card} />
+            ))}
+        </div>
+    );
+}
+
+const grid = css({
+    display: 'grid',
+    // スマホの幅でも 2 列に並ぶように、狭い画面では最小幅を詰める
+    gridTemplateColumns: { base: 'repeat(auto-fill, minmax(148px, 1fr))', md: 'repeat(auto-fill, minmax(180px, 1fr))' },
+    alignContent: 'start',
+    gap: '2',
+});
 
 const tile = cva({
     base: {
@@ -34,9 +46,10 @@ const tile = cva({
         alignItems: 'center',
         gap: '2.5',
         minW: 0,
-        px: '2',
-        py: '1.5',
-        bg: 'transparent',
+        minH: '60px',
+        px: '2.5',
+        py: '2',
+        bg: 'surface',
         border: 'none',
         borderRadius: '10px',
         textAlign: 'left',
@@ -45,7 +58,7 @@ const tile = cva({
         _hover: { bg: 'surfaceHover' },
     },
     variants: {
-        presence: { online: {}, offline: { opacity: 0.6, _hover: { opacity: 1 } } },
+        online: { true: {}, false: { opacity: 0.6, _hover: { opacity: 1 } } },
     },
 });
 
@@ -58,7 +71,7 @@ const onlineDot = css({
     borderRadius: 'full',
     bg: 'hudStatusOn',
     border: '2px solid',
-    borderColor: 'background',
+    borderColor: 'surface',
 });
 
 const name = css({
@@ -70,7 +83,7 @@ const name = css({
     whiteSpace: 'nowrap',
 });
 
-const statusText = css({
+const detailText = css({
     fontSize: '12px',
     color: 'textMuted',
     overflow: 'hidden',

@@ -118,6 +118,18 @@ const StoredProfileSchema = z
     })
     .partial();
 
+type StoredProfile = z.infer<typeof StoredProfileSchema>;
+
+const storedProfileOf = (stored: unknown): StoredProfile => {
+    const parsed = StoredProfileSchema.safeParse(stored);
+    return parsed.success ? parsed.data : {};
+};
+
+const statusOf = (profile: StoredProfile): string | null => displayText(profile.status, PROFILE_STATUS_MAX_LENGTH);
+
+/** 保存した項目（remote_actors.profile）から、ひとことだけを確かめて取り出す（一覧のカードに出す）。 */
+export const remoteStatusOf = (stored: unknown): string | null => statusOf(storedProfileOf(stored));
+
 /** ほかのサーバーの人のプロフィール（リンクにできない項目は表で出す）。 */
 export interface RemoteProfileView {
     status: string | null;
@@ -131,9 +143,8 @@ export interface RemoteProfileView {
  * リンクの項目はプロフィールのリンク（5 件まで）にし、ubichill が載せたひとこと・話せる言語の項目は拡張の語と重なるので出さない。
  */
 export function remoteProfileView(stored: unknown): RemoteProfileView {
-    const parsed = StoredProfileSchema.safeParse(stored);
-    const profile = parsed.success ? parsed.data : {};
-    const status = profile.status ? displayText(profile.status, PROFILE_STATUS_MAX_LENGTH) : null;
+    const profile = storedProfileOf(stored);
+    const status = statusOf(profile);
     const languages = profileLanguagesView(profile.languages);
     const withLinks = (profile.fields ?? []).map((field) => {
         const parsedLink = field.href ? parseProfileLink(field.href) : null;

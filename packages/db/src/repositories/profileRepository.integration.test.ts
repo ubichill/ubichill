@@ -61,6 +61,12 @@ describe.skipIf(!RUN)('userRepository のプロフィール / profileImageReposi
         expect((await userRepository.findProfileById(ids.b))?.links).toEqual([]);
     });
 
+    it('一覧のためのひとことは、書いている人だけを ID で引ける（行が無い人・空の ID は出さない）', async () => {
+        const statuses = await userRepository.statusesOf([ids.a, ids.b, 'missing']);
+        expect([...statuses]).toEqual([[ids.a, '制作中']]);
+        expect((await userRepository.statusesOf([])).size).toBe(0);
+    });
+
     it('いないユーザーのプロフィールは作らない', async () => {
         expect(
             await userRepository.setProfile('missing', { status: null, bio: null, links: [], languages: [] }),

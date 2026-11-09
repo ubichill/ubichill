@@ -1,5 +1,19 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, getTableColumns, ilike, inArray, isNull, lte, ne, or, type SQL, sql } from 'drizzle-orm';
+import {
+    and,
+    asc,
+    eq,
+    getTableColumns,
+    ilike,
+    inArray,
+    isNotNull,
+    isNull,
+    lte,
+    ne,
+    or,
+    type SQL,
+    sql,
+} from 'drizzle-orm';
 import { type Database, db } from '../index';
 import { accounts, instances, sessions, userProfiles, users, worlds, worldVersions } from '../schema';
 import { insertCredentialUser, type NewCredentialUser } from './credentialUser';
@@ -63,6 +77,16 @@ export const userRepository = {
             .select()
             .from(users)
             .where(inArray(users.id, [...ids]));
+    },
+
+    /** ひとことを書いている人だけ、ID → ひとこと。 */
+    async statusesOf(ids: readonly string[]): Promise<Map<string, string>> {
+        if (ids.length === 0) return new Map();
+        const rows = await db
+            .select({ userId: userProfiles.userId, status: userProfiles.status })
+            .from(userProfiles)
+            .where(and(inArray(userProfiles.userId, [...ids]), isNotNull(userProfiles.status)));
+        return new Map(rows.flatMap((r) => (r.status ? [[r.userId, r.status] as const] : [])));
     },
 
     async findByEmail(email: string): Promise<UserRecord | undefined> {

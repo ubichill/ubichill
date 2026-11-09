@@ -1,6 +1,14 @@
 import type { Instance, UserSummary } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
-import { arrangeFriendPresence, lastKnownOf, onlineFriends, requestTargetOf } from './friendPresence';
+import {
+    arrangeFriendPresence,
+    friendDirectory,
+    lastKnownOf,
+    onlineFriends,
+    placeFriendCards,
+    requestTargetOf,
+    whereLabel,
+} from './friendPresence';
 
 const user = (id: string, name = id): UserSummary => ({ id, name, handle: id, image: null, bio: null });
 const room = (id: string, name: string, currentUsers = 1): Instance =>
@@ -90,6 +98,76 @@ describe('onlineFriends', () => {
             'a:room',
             'f:hidden',
         ]);
+    });
+});
+
+describe('friendDirectory（すべてのフレンド）', () => {
+    const NOW = Date.parse('2026-11-08T12:00:00Z');
+    const full = {
+        ...data,
+        elsewhere: [{ ...user('h', 'はる'), status: '旅行中' }, user('g', 'ぎん')],
+        unreachable: [
+            {
+                user: user('z', 'ぜん'),
+                lastKnown: { at: new Date(NOW - 5 * 60_000).toISOString(), status: 'online' as const },
+            },
+            { user: user('y', 'よう') },
+        ],
+    };
+
+    it('オンラインは部屋をまたいで名前順にし、いる場所を添える（同じ部屋・見えない部屋も）', () => {
+        const dir = friendDirectory(arrangeFriendPresence(full, room('mine', 'ホーム')), NOW);
+        expect(dir.online.map((c) => `${c.user.name}:${c.detail}`)).toEqual([
+            'あきら:カフェ',
+            'えま:ここにいます',
+            'ちか:ゲーム',
+            'でん:図書館',
+            'ふみ:プライベート',
+            'ぶん:ゲーム',
+        ]);
+        expect(dir.online.every((c) => c.online)).toBe(true);
+    });
+
+    it('オフラインはひとことを添え、確かめられない人は最後に確かめた様子（無ければ何も添えない）。どちらも点は付けない', () => {
+        const dir = friendDirectory(arrangeFriendPresence(full, null), NOW);
+        expect(dir.offline.map((c) => [c.user.id, c.detail])).toEqual([
+            ['g', null],
+            ['h', '旅行中'],
+        ]);
+        expect(dir.unreachable.map((c) => [c.user.id, c.detail])).toEqual([
+            ['z', '5 分前はオンライン'],
+            ['y', null],
+        ]);
+        expect([...dir.offline, ...dir.unreachable].some((c) => c.online)).toBe(false);
+    });
+
+    it('総数はだれも落とさず、だれも重ねない', () => {
+        const dir = friendDirectory(arrangeFriendPresence(full, room('mine', 'ホーム')), NOW);
+        const ids = [...dir.online, ...dir.unreachable, ...dir.offline].map((c) => c.user.id);
+        expect(dir.total).toBe(10);
+        expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    it('フレンドがいなければ空で、総数は 0', () => {
+        const dir = friendDirectory(arrangeFriendPresence({ locations: [], private: [], elsewhere: [] }, null), NOW);
+        expect(dir).toEqual({ online: [], unreachable: [], offline: [], total: 0 });
+    });
+});
+
+describe('placeFriendCards', () => {
+    it('部屋のカードは場所でなくひとことを添える（書いていなければ null）', () => {
+        expect(placeFriendCards([{ ...user('a'), status: 'ねむい' }, user('b')])).toEqual([
+            { user: { ...user('a'), status: 'ねむい' }, detail: 'ねむい', online: true },
+            { user: user('b'), detail: null, online: true },
+        ]);
+    });
+});
+
+describe('whereLabel', () => {
+    it('同じ部屋・ほかの部屋（ワールド名）・見えない部屋を一言で', () => {
+        expect(whereLabel({ kind: 'here' })).toBe('ここにいます');
+        expect(whereLabel({ kind: 'room', instance: room('r', '森') })).toBe('森');
+        expect(whereLabel({ kind: 'hidden' })).toBe('プライベート');
     });
 });
 

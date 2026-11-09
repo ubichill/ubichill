@@ -66,6 +66,8 @@ export interface UserSummary {
     image: string | null;
     /** 自己紹介（書いていなければ null） */
     bio: string | null;
+    /** ひとこと（一覧のカードに出す。書いていなければ null か無し） */
+    status?: string | null;
     /** ほかのサーバーの人ならそのドメイン（id は actor の URL、handle は `handle@domain`） */
     domain?: string;
 }

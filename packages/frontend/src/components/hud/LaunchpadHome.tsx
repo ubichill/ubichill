@@ -2,7 +2,7 @@ import { ACCESS_TYPE_LABELS, type Instance, type WorldListItem } from '@ubichill
 import { type ReactNode, useMemo, useState } from 'react';
 import { UserAvatar, useFriendLocations, useOpenUser } from '@/components/social';
 import { accessIcon } from '@/components/social/accessIcon';
-import { arrangeFriendPresence, type FriendWhere, onlineFriends } from '@/components/social/friendPresence';
+import { arrangeFriendPresence, onlineFriends, whereLabel } from '@/components/social/friendPresence';
 import { useInstances } from '@/components/worlds/useInstances';
 import { WorldDetailModal } from '@/components/worlds/WorldDetailModal';
 import { css } from '@/styled-system/css';
@@ -22,6 +22,8 @@ interface LaunchpadHomeProps {
     onGoHome: () => void;
     onInvite: () => void;
     onSelectTab: (tab: HudTab) => void;
+    /** ソーシャルのユーザー検索を開く */
+    onFindUsers: () => void;
     onCreateWorld: () => void;
     onJoinInstance: JoinInstanceHandler;
 }
@@ -34,7 +36,11 @@ export function LaunchpadHome(props: LaunchpadHomeProps) {
     return (
         <div className={layout}>
             <CurrentPlace {...props} />
-            <FriendsStrip instance={props.instance} onOpenSocial={() => props.onSelectTab('social')} />
+            <FriendsStrip
+                instance={props.instance}
+                onOpenSocial={() => props.onSelectTab('social')}
+                onFindUsers={props.onFindUsers}
+            />
             <WorldsStrip
                 currentInstanceId={props.currentInstanceId}
                 onOpenWorlds={() => props.onSelectTab('worlds')}
@@ -114,18 +120,15 @@ function SectionHeader({
     );
 }
 
-const whereLabel = (where: FriendWhere): string => {
-    switch (where.kind) {
-        case 'here':
-            return 'ここにいます';
-        case 'room':
-            return where.instance.world.displayName;
-        case 'hidden':
-            return 'プライベート';
-    }
-};
-
-function FriendsStrip({ instance, onOpenSocial }: { instance: Instance | null; onOpenSocial: () => void }) {
+function FriendsStrip({
+    instance,
+    onOpenSocial,
+    onFindUsers,
+}: {
+    instance: Instance | null;
+    onOpenSocial: () => void;
+    onFindUsers: () => void;
+}) {
     const { data } = useFriendLocations();
     const openUser = useOpenUser();
     const online = data ? onlineFriends(arrangeFriendPresence(data, instance)) : [];
@@ -143,7 +146,7 @@ function FriendsStrip({ instance, onOpenSocial }: { instance: Instance | null; o
                         <span className={faceWhere}>{whereLabel(where)}</span>
                     </button>
                 ))}
-                <button type="button" className={face} onClick={onOpenSocial} aria-label="ユーザーを探す">
+                <button type="button" className={face} onClick={onFindUsers} aria-label="ユーザーを探す">
                     <span className={findCircle}>
                         <HudIcon name="search" size={20} />
                     </span>
@@ -378,7 +381,7 @@ const face = css({
     border: 'none',
     borderRadius: '10px',
     cursor: 'pointer',
-    scrollSnapAlign: 'start',
+    // 吸着させない: 先に出ている検索のボタンに吸着したまま、後から前に入ったフレンドが左に隠れる
     transition: 'background-color 0.16s ease',
     _hover: { bg: 'surfaceHover' },
 });

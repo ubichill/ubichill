@@ -7,6 +7,7 @@ import {
     profileAttachment,
     readProfileAttachment,
     remoteProfileView,
+    remoteStatusOf,
 } from './profileFields';
 import { keyIdOf } from './protocol';
 
@@ -170,5 +171,16 @@ describe('ほかのサーバーの人のプロフィール（保存した形か�
     it('同じ名前と値の項目は 1 つにする', () => {
         const row = { name: 'a', value: 'b', href: null };
         expect(remoteProfileView({ fields: [row, row] }).fields).toEqual([{ name: 'a', value: 'b' }]);
+    });
+});
+
+describe('remoteStatusOf', () => {
+    it('一覧のカードに出すひとことを、プロフィールと同じ規則で整える（空・タグだけ・壊れた形は無し）', () => {
+        expect(remoteStatusOf({ status: ' <i>ねむい</i> ' })).toBe('ねむい');
+        expect(remoteStatusOf({ status: '<b></b>' })).toBeNull();
+        expect(remoteStatusOf({ status: 3 })).toBeNull();
+        expect(remoteStatusOf('x')).toBeNull();
+        const long = { status: 'あ'.repeat(100) };
+        expect(remoteStatusOf(long)).toBe(remoteProfileView(long).status);
     });
 });

@@ -74,6 +74,53 @@ export function onlineFriends(presence: FriendPresence): Array<{ user: UserSumma
     ];
 }
 
+/** オンラインのフレンドのいる場所を一言で（顔の列・すべてのフレンドのカード）。 */
+export function whereLabel(where: FriendWhere): string {
+    switch (where.kind) {
+        case 'here':
+            return 'ここにいます';
+        case 'room':
+            return where.instance.world.displayName;
+        case 'hidden':
+            return 'プライベート';
+    }
+}
+
+/** フレンドのカード 1 枚（顔・名前・2 行目の一言）。online は顔の右下の点。 */
+export interface FriendCard {
+    user: UserSummary;
+    detail: string | null;
+    online: boolean;
+}
+
+/** 部屋にいるフレンドのカード。部屋ごとにまとめて出すので、2 行目は場所ではなくひとこと。 */
+export const placeFriendCards = (friends: readonly UserSummary[]): FriendCard[] =>
+    friends.map((user) => ({ user, detail: user.status ?? null, online: true }));
+
+export interface FriendDirectory {
+    /** 名前順。2 行目はいる場所 */
+    online: FriendCard[];
+    /** 2 行目は最後に確かめた様子 */
+    unreachable: FriendCard[];
+    /** 2 行目はひとこと */
+    offline: FriendCard[];
+    total: number;
+}
+
+/** すべてのフレンド: オンライン → 確かめられない → オフライン。部屋でまとめないので、オンラインの人にはいる場所を添える。 */
+export function friendDirectory(presence: FriendPresence, now: number): FriendDirectory {
+    const online = onlineFriends(presence)
+        .map(({ user, where }) => ({ user, detail: whereLabel(where), online: true }))
+        .sort((a, b) => byName(a.user, b.user));
+    const unreachable = presence.unreachable.map((f) => ({
+        user: f.user,
+        detail: lastKnownOf(f, now) ?? null,
+        online: false,
+    }));
+    const offline = presence.offline.map((user) => ({ user, detail: user.status ?? null, online: false }));
+    return { online, unreachable, offline, total: online.length + unreachable.length + offline.length };
+}
+
 /**
  * 招待が要る部屋に入れてもらうよう頼む相手。作成者がフレンドなら作成者（どの公開範囲でも招待できる）、
  * そうでなければその部屋にいるフレンドの最初の人。フレンドがいなければ undefined。
