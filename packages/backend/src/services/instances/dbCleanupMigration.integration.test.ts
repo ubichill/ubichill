@@ -129,9 +129,7 @@ function defineCleanupSuite(from: string): void {
                 worlds,
                 list: await worldRegistry.listWorlds('local'),
                 // パスワード付きだった部屋は 0029 で招待のみに変わるので、比べる対象から外して別に確かめる
-                instances: withoutLocked(
-                    await instanceManager.listInstances({ includeFull: true, viewerId: AUTHOR_ID }),
-                ),
+                instances: withoutLocked(await instanceManager.listInstances({ viewerId: AUTHOR_ID })),
                 instancesByWorld: withoutLocked(
                     await instanceManager.listInstances({ worldId: urlOf('pub'), viewerId: AUTHOR_ID }),
                 ),

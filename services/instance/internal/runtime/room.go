@@ -219,7 +219,8 @@ func (r *Room) occupancy() (coord.RoomPresence, int) {
 }
 
 // join は参加者を入れる。full なら新しい参加者だけを断る（猶予中の人の戻り・引っ越しの繋ぎ直し・同じ人の別の接続は通す）。
-func (r *Room) join(p *peer, user Object, id string, request string, full bool) error {
+// 作成者（leader）は満員でも入れる。
+func (r *Room) join(p *peer, user Object, id string, request string, leader, full bool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if !r.usableLocked() || r.migrating {
@@ -228,8 +229,8 @@ func (r *Room) join(p *peer, user Object, id string, request string, full bool) 
 	old := r.members[id]
 	// 引っ越しの繋ぎ直し。他の人から見れば居続けていたので、入退室を出さず、移ってきたプロフィール（最新の位置）を使う
 	resumed := old != nil && old.migrated && old.peer == nil
-	if old == nil && len(r.members) >= r.definition.MaxUsers {
-		return errors.New("instance full")
+	if old == nil && len(r.members) >= admissionLimit(r.definition.MaxUsers, leader) {
+		return errors.New("満員です")
 	}
 	if old == nil && full {
 		return errConnectionLimit
@@ -349,4 +350,12 @@ func (r *Room) shutdownLocked(announce bool) {
 		}
 	}
 	r.members = map[string]*member{}
+}
+
+// admissionLimit は入れる人数の上限。作成者は 1 人なので、定員を超えるのは 1 人まで（引っ越しの受け入れも同じ上限）。
+func admissionLimit(maxUsers int, leader bool) int {
+	if leader {
+		return maxUsers + 1
+	}
+	return maxUsers
 }

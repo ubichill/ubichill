@@ -7,7 +7,7 @@ import {
     FRIEND_OF,
     readActivity,
 } from './activities';
-import { actorKey, buildActorDocument, REMOTE_SUMMARY_MAX_LENGTH, readActorDocument, webfingerActorUrl } from './actor';
+import { actorKey, buildActorDocument, readActorDocument, webfingerActorUrl } from './actor';
 import {
     circuitPauseMs,
     classifyDelivery,
@@ -19,6 +19,7 @@ import {
 import { acceptsNewContact, policyFor } from './domainPolicy';
 import { ed25519Multikey } from './multikey';
 import { buildNodeInfo, nodeInfoLinks, nodeInfoUrlFrom, readNodeInfo } from './nodeinfo';
+import { REMOTE_SUMMARY_MAX_LENGTH } from './profileFields';
 import { actorIdOfKey, FEDERATION_FEATURES, isActivityMediaType, keyIdOf } from './protocol';
 import { JoinRequestSchema, PresenceResponseSchema } from './rpc';
 

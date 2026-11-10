@@ -8,6 +8,7 @@ export { UserAvatar } from './UserAvatar';
 export { UserRow } from './UserRow';
 export { UserSearch } from './UserSearch';
 export { useFriendLocations } from './useFriendLocations';
+export { useOpenAccount } from './useOpenAccount';
 export { useOpenUser } from './useOpenUser';
 export type { UserRelationSource } from './userRelation';
 export { useUserRelation } from './useUserRelation';

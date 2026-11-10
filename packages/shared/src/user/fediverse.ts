@@ -6,6 +6,7 @@
  * - discoverable: ほかのサーバーのおすすめ・検索に出してよいか。アカウントを直接検索すれば、どちらでも見つかる
  */
 import { z } from 'zod';
+import type { CustomEmoji } from './richText';
 
 export interface FediverseSettings {
     manuallyApprovesFollowers: boolean;
@@ -44,6 +45,8 @@ export interface FediverseFollower {
     state: FollowerState;
     /** フォローされた（申請された）時刻（ISO 8601） */
     since: string;
+    /** 名前に使うカスタム絵文字 */
+    emojis?: CustomEmoji[];
 }
 
 /** `GET /api/v1/fediverse`。enabled が false なら、このサーバーは連合していない（フォローされない）。 */

@@ -120,9 +120,9 @@ func TestAdmissionReportsRecoverableFailureCodes(t *testing.T) {
 	cases := []struct {
 		name, room, token, code string
 	}{
-		{"signed with another key", "a", other.sign(ticket{"a", "alice", time.Now().Add(time.Minute).Unix(), "member", "", ""}), "ticket_invalid"},
-		{"ticket expired", "a", s.sign(ticket{"a", "alice", time.Now().Add(-time.Minute).Unix(), "member", "", ""}), "ticket_invalid"},
-		{"room disappeared", "missing", s.sign(ticket{"missing", "alice", time.Now().Add(time.Minute).Unix(), "member", "", ""}), "instance_unavailable"},
+		{"signed with another key", "a", other.sign(ticket{"a", "alice", time.Now().Add(time.Minute).Unix(), "member", "", "", false}), "ticket_invalid"},
+		{"ticket expired", "a", s.sign(ticket{"a", "alice", time.Now().Add(-time.Minute).Unix(), "member", "", "", false}), "ticket_invalid"},
+		{"room disappeared", "missing", s.sign(ticket{"missing", "alice", time.Now().Add(time.Minute).Unix(), "member", "", "", false}), "instance_unavailable"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

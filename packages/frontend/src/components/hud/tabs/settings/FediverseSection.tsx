@@ -1,6 +1,7 @@
 import type { FediverseFollower, FediverseOverview, FediverseSettingsUpdate } from '@ubichill/shared';
 import { type ReactNode, useEffect, useState } from 'react';
 import { UserAvatar, useOpenUser } from '@/components/social';
+import { EmojiText } from '@/components/ui/EmojiText';
 import { Switch } from '@/components/ui/Switch';
 import { withFollowerAnswered } from '@/lib/fediverse';
 import { answerFollower, fetchFediverse, updateFediverseSettings } from '@/lib/fediverseApi';
@@ -53,7 +54,7 @@ function FollowerRow({
                 <UserAvatar user={{ name, image: follower.icon }} size="sm" />
                 <span className={css({ display: 'flex', flexDirection: 'column', minW: 0 })}>
                     <span className={css({ fontSize: '13px', fontWeight: '700', color: 'text', truncate: true })}>
-                        {name}
+                        <EmojiText text={name} emojis={follower.emojis} />
                     </span>
                     <span className={css({ fontSize: '12px', color: 'textMuted', truncate: true })}>
                         @{follower.account}

@@ -102,11 +102,12 @@ function setup(options: {
     return { service: createInviteService(deps), invites, requests, sent, tick, rooms };
 }
 
-const room = (id: string, accessType: AccessType, leaderId: string, members: string[]) => ({
+const room = (id: string, accessType: AccessType, leaderId: string, members: string[], maxUsers = 10) => ({
     id,
     accessType,
     leaderId,
     members,
+    maxUsers,
 });
 
 describe('招待を送る', () => {
@@ -236,6 +237,42 @@ describe('本人の見せ方（招待の画面とリクエストで在室を漏�
             ok: false,
             reason: 'can-join',
         });
+    });
+});
+
+describe('満員の部屋', () => {
+    it('満員の部屋への招待は送らない（作成者が送っても）。招待の画面にも満員と出す', async () => {
+        const { service, sent, invites } = setup({
+            friends: [['leader', 'bob']],
+            rooms: [room('r1', 'public', 'leader', ['leader', 'm1'], 2)],
+        });
+        expect(await service.sendInvites('leader', 'r1', ['bob'], null)).toEqual({
+            ok: true,
+            results: [{ userId: 'bob', ok: false, reason: 'full' }],
+        });
+        expect(sent).toEqual([]);
+        expect(invites).toEqual([]);
+        expect(await service.candidates('leader', 'r1')).toEqual([{ userId: 'bob', refusal: 'full', online: false }]);
+    });
+
+    it('場所を見せている人の部屋が満員なら頼めない（届けない）', async () => {
+        const { service, sent } = setup({
+            friends: [['me', 'friend']],
+            rooms: [room('r1', 'public', 'x', ['x', 'friend'], 2)],
+        });
+        expect(await service.requestInvite('me', 'friend')).toEqual({ ok: false, reason: 'full' });
+        expect(sent).toEqual([]);
+    });
+
+    it('「見せない」人の部屋が満員でも断らずに届け、答える（招待する）ときに満員で断る。リクエストは残す', async () => {
+        const { service, requests } = setup({
+            friends: [['me', 'friend']],
+            rooms: [room('r1', 'public', 'friend', ['friend', 'm1'], 2)],
+            visibility: { friend: 'hidden' },
+        });
+        expect(await service.requestInvite('me', 'friend')).toEqual({ ok: true, alreadyRequested: false });
+        expect(await service.answerRequest('friend', 'me', true)).toEqual({ ok: false, reason: 'full' });
+        expect(requests).toHaveLength(1);
     });
 });
 
