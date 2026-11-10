@@ -3,7 +3,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { fetchMyAccount } from '@/lib/account/me';
 import { signOut } from '@/lib/auth-client';
-import { approveCliAuthRequest, type CliAuthRequestView, fetchCliAuthRequest, keyFingerprint } from '@/lib/cliAuthApi';
+import {
+    approveCliAuthRequest,
+    type CliAuthRequestView,
+    fetchCliAuthRequest,
+    keyFingerprint,
+} from '@/lib/publishing/cliAuthApi';
 import { useSession } from '@/lib/session';
 import { css, cva } from '@/styled-system/css';
 

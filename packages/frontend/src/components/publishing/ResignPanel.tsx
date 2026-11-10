@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import type { ResignCandidate, ResignTarget } from '@/lib/account/resign';
+import type { ResignCandidate, ResignTarget } from '@/lib/publishing/resign';
 import { css, cva } from '@/styled-system/css';
 
 const box = cva({

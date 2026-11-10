@@ -1,0 +1,561 @@
+import { describe, expect, it } from 'vitest';
+import { DISPLAY_NAME_WEBFINGER_PROPERTY } from '../account/handle';
+import { AUTHOR_CHECK_STALE_MS } from '../world/identity';
+import {
+    AUTHOR_KEYS_FRESH_MS,
+    AUTHOR_KEYS_MAX_AGE_MS,
+    type AuthorProfile,
+    createAuthorKeyDirectory,
+    createFetchGuard,
+    DOMAIN_FETCH_LIMIT,
+    DOMAIN_FETCH_WINDOW_MS,
+    resolveSameOriginStrict,
+    webFingerLinks,
+} from './authorKeyDirectory';
+import { SIGNING_KEYS_WEBFINGER_REL, type SigningKeyEntry } from './signingKeys';
+
+const HASH = 'sha256-content';
+
+// shared は環境の型（DOM・Node）を持たないので、テストのタイマーだけ型を補う
+const nextTask = () =>
+    new Promise<void>((resolve) =>
+        (globalThis as unknown as { setTimeout: (callback: () => void, ms: number) => unknown }).setTimeout(resolve, 0),
+    );
+
+/** 確認済みの内容の記録（テスト用のメモリ実装）。 */
+function memoryConfirmedContents() {
+    const set = new Set<string>();
+    return {
+        set,
+        record: async (account: string, contentHash: string) => {
+            set.add(`${account} ${contentHash}`);
+        },
+        has: async (account: string, contentHash: string) => set.has(`${account} ${contentHash}`),
+    };
+}
+
+const ORIGIN = 'https://other.example';
+const KEYS_URL = `${ORIGIN}/api/v1/authors/alice/signing-keys`;
+
+const jrd = (subject: unknown, extra: Record<string, unknown> = {}) => ({
+    subject,
+    links: [{ rel: SIGNING_KEYS_WEBFINGER_REL, href: KEYS_URL }],
+    ...extra,
+});
+
+describe('webFingerLinks', () => {
+    it('問い合わせたアカウントの JRD から鍵一覧の URL と表示名を取り出す', () => {
+        expect(
+            webFingerLinks(
+                jrd('acct:alice@Other.Example', { properties: { [DISPLAY_NAME_WEBFINGER_PROPERTY]: 'アリス' } }),
+                'alice@other.example',
+                ORIGIN,
+            ),
+        ).toEqual({ signingKeysUrl: KEYS_URL, displayName: 'アリス' });
+    });
+
+    it('別人の JRD（subject 不一致）は採用しない＝他人の鍵一覧をすり替えられない', () => {
+        expect(webFingerLinks(jrd('acct:evil@other.example'), 'alice@other.example', ORIGIN)).toBeUndefined();
+        expect(webFingerLinks(jrd('acct:alice@evil.example'), 'alice@other.example', ORIGIN)).toBeUndefined();
+        expect(webFingerLinks(jrd(undefined), 'alice@other.example', ORIGIN)).toBeUndefined();
+        expect(webFingerLinks('not json', 'alice@other.example', ORIGIN)).toBeUndefined();
+    });
+
+    it('鍵一覧の URL が別のオリジンを指していたら採用しない（鍵の決定を他サーバーに委ねさせない）', () => {
+        const links = webFingerLinks(
+            {
+                subject: 'acct:alice@other.example',
+                links: [{ rel: SIGNING_KEYS_WEBFINGER_REL, href: 'https://evil.example/keys' }],
+            },
+            'alice@other.example',
+            ORIGIN,
+        );
+        expect(links).toEqual({});
+    });
+
+    it('相対 URL は WebFinger のオリジン基準で解決する', () => {
+        const links = webFingerLinks(
+            { subject: 'acct:alice@other.example', links: [{ rel: SIGNING_KEYS_WEBFINGER_REL, href: '/keys' }] },
+            'alice@other.example',
+            ORIGIN,
+        );
+        expect(links?.signingKeysUrl).toBe(`${ORIGIN}/keys`);
+    });
+
+    it.each([
+        '//evil.example/keys',
+        'https://other.example.evil.example/keys',
+        'https://other.example@evil.example/keys',
+        'https://user:pass@other.example/keys',
+        'http://other.example/keys',
+        'https://other.example:8443/keys',
+        'javascript:alert(1)',
+    ])('同じオリジンではない鍵一覧の URL（%j）は採用しない', (href) => {
+        const links = webFingerLinks(
+            { subject: 'acct:alice@other.example', links: [{ rel: SIGNING_KEYS_WEBFINGER_REL, href }] },
+            'alice@other.example',
+            ORIGIN,
+        );
+        expect(links).toEqual({});
+    });
+
+    it.each([
+        ['https://other.example:443/keys', `${ORIGIN}/keys`],
+        ['https://OTHER.example/keys', `${ORIGIN}/keys`],
+        ['keys', `${ORIGIN}/keys`],
+        ['/a/../keys', `${ORIGIN}/keys`],
+    ])(
+        '同じオリジンの表記の揺れ（%j）は、正規の URL にそろえて採用する（ほかの実装と連携できるように）',
+        (href, expected) => {
+            const links = webFingerLinks(
+                { subject: 'acct:alice@other.example', links: [{ rel: SIGNING_KEYS_WEBFINGER_REL, href }] },
+                'alice@other.example',
+                ORIGIN,
+            );
+            expect(links?.signingKeysUrl).toBe(expected);
+        },
+    );
+
+    it('URL を扱えない環境の既定は、同じオリジンの絶対 URL と / で始まるパスだけを受け付ける', () => {
+        expect(resolveSameOriginStrict(`${ORIGIN}/keys`, ORIGIN)).toBe(`${ORIGIN}/keys`);
+        expect(resolveSameOriginStrict('/keys', ORIGIN)).toBe(`${ORIGIN}/keys`);
+        for (const href of [
+            '//evil.example/keys',
+            'https://other.example:443/keys',
+            ' /keys',
+            '/\\evil.example',
+            'keys',
+        ]) {
+            expect(resolveSameOriginStrict(href, ORIGIN)).toBeUndefined();
+        }
+    });
+
+    it('作者アカウントを発行していない Host（local なし）は、どの作者も WebFinger で確かめる', async () => {
+        const fetched: string[] = [];
+        const directory = createAuthorKeyDirectory({
+            bindings: { find: async () => undefined, save: async () => undefined },
+            confirmedContents: memoryConfirmedContents(),
+            fetchJson: async (url) => {
+                fetched.push(url);
+                return undefined;
+            },
+            allowHttp: false,
+        });
+        expect(await directory.isAuthorKey('youkan@ubichill.com', 'B'.repeat(43), HASH)).toEqual({
+            status: 'unconfirmed',
+        });
+        expect(fetched).toEqual(['https://ubichill.com/.well-known/webfinger?resource=acct%3Ayoukan%40ubichill.com']);
+    });
+
+    it('表示名が不正（制御文字・長すぎ・文字列でない）なら捨てる', () => {
+        for (const bad of ['a\u0000b', 'x'.repeat(31), 42, '']) {
+            const links = webFingerLinks(
+                jrd('acct:alice@other.example', { properties: { [DISPLAY_NAME_WEBFINGER_PROPERTY]: bad } }),
+                'alice@other.example',
+                ORIGIN,
+            );
+            expect(links?.displayName).toBeUndefined();
+        }
+    });
+});
+
+describe('createAuthorKeyDirectory（公開環境の鍵一覧と取り消し）', () => {
+    const LOCAL = 'B'.repeat(43);
+    const LOCAL_REVOKED = 'b'.repeat(43);
+    const REMOTE = 'C'.repeat(43);
+    const REMOTE_NEW = 'D'.repeat(43);
+    const OFFICIAL = 'E'.repeat(43);
+    const OTHER = 'F'.repeat(43);
+    const REVOKED_AT = '2026-09-01T00:00:00.000Z';
+
+    const setup = (
+        options: { allowHttp?: boolean; remote?: () => { keys: SigningKeyEntry[]; name?: string } | undefined } = {},
+    ) => {
+        const calls = { fetch: [] as string[], saved: [] as string[] };
+        const clock = { t: 1_000_000_000 };
+        const store = new Map<string, AuthorProfile & { fetchedAt: Date }>();
+        const directory = createAuthorKeyDirectory({
+            local: {
+                domain: () => 'ubichill.com',
+                findAccount: async (handle) =>
+                    handle === 'youkan'
+                        ? {
+                              keys: [{ publicKey: LOCAL }, { publicKey: LOCAL_REVOKED, revokedAt: REVOKED_AT }],
+                              displayName: 'ようかん',
+                          }
+                        : undefined,
+            },
+            bindings: {
+                find: async (account) => store.get(account),
+                save: async (account, profile) => {
+                    calls.saved.push(account);
+                    store.set(account, { ...profile, fetchedAt: new Date(clock.t) });
+                },
+            },
+            confirmedContents: memoryConfirmedContents(),
+            fetchJson: async (url) => {
+                calls.fetch.push(url);
+                const remote = options.remote?.();
+                if (!remote) return undefined;
+                if (url.includes('/.well-known/webfinger')) {
+                    return {
+                        subject: 'acct:alice@other.example',
+                        properties: { [DISPLAY_NAME_WEBFINGER_PROPERTY]: remote.name ?? 'アリス' },
+                        links: [
+                            { rel: SIGNING_KEYS_WEBFINGER_REL, href: `${/^https?:\/\/[^/]+/.exec(url)?.[0]}/keys` },
+                        ],
+                    };
+                }
+                return { account: 'alice@other.example', issuedAt: new Date(clock.t).toISOString(), keys: remote.keys };
+            },
+            allowHttp: options.allowHttp ?? false,
+            now: () => clock.t,
+        });
+        return { directory, calls, clock, store };
+    };
+    const tick = () => nextTask();
+
+    it('自サーバーのアカウントは DB の公開環境で判定し、取り消した鍵は作者にしない', async () => {
+        const { directory, calls } = setup();
+        expect((await directory.isAuthorKey('youkan@ubichill.com', LOCAL, HASH)).status === 'confirmed').toBe(true);
+        expect((await directory.isAuthorKey('youkan@ubichill.com', LOCAL_REVOKED, HASH)).status === 'confirmed').toBe(
+            false,
+        );
+        expect((await directory.isAuthorKey('youkan@ubichill.com', OTHER, HASH)).status === 'confirmed').toBe(false);
+        expect(await directory.displayName('youkan@ubichill.com')).toBe('ようかん');
+        expect(calls.fetch).toEqual([]);
+    });
+
+    it('公式アカウントも特別扱いせず、公開環境に無い鍵は作者にしない', async () => {
+        const { directory } = setup();
+        expect((await directory.isAuthorKey('ubichill@ubichill.com', OFFICIAL, HASH)).status === 'confirmed').toBe(
+            false,
+        );
+    });
+
+    it('他サーバーは WebFinger → 鍵一覧を辿って保存し、新しいうちはネットワークに出ない', async () => {
+        const { directory, calls } = setup({ remote: () => ({ keys: [{ publicKey: REMOTE }] }) });
+        expect((await directory.isAuthorKey('alice@other.example', REMOTE, HASH)).status === 'confirmed').toBe(true);
+        expect((await directory.isAuthorKey('alice@other.example', REMOTE, HASH)).status === 'confirmed').toBe(true);
+        expect(calls.fetch).toEqual([
+            'https://other.example/.well-known/webfinger?resource=acct%3Aalice%40other.example',
+            'https://other.example/keys',
+        ]);
+        expect(calls.saved).toEqual(['alice@other.example']);
+    });
+
+    it('知らない鍵（新しい公開環境）なら待って取り直す', async () => {
+        const state = { keys: [{ publicKey: REMOTE }] as SigningKeyEntry[] };
+        const { directory, calls, clock } = setup({ remote: () => ({ keys: state.keys }) });
+        await directory.isAuthorKey('alice@other.example', REMOTE, HASH);
+        state.keys = [{ publicKey: REMOTE }, { publicKey: REMOTE_NEW }];
+        clock.t += 60 * 1000;
+        expect((await directory.isAuthorKey('alice@other.example', REMOTE_NEW, HASH)).status === 'confirmed').toBe(
+            true,
+        );
+        expect(calls.fetch).toHaveLength(4);
+    });
+
+    it('他人の鍵で名乗られても、鍵一覧に無ければ作者は付かない', async () => {
+        const { directory, calls, clock } = setup({ remote: () => ({ keys: [{ publicKey: REMOTE }] }) });
+        await directory.isAuthorKey('alice@other.example', REMOTE, HASH);
+        clock.t += 60 * 1000;
+        expect((await directory.isAuthorKey('alice@other.example', OTHER, HASH)).status === 'confirmed').toBe(false);
+        expect(calls.fetch).toHaveLength(4);
+    });
+
+    it('毎回違う知らない鍵で名乗られても、作者のサーバーへの問い合わせは最短間隔ごとに 1 回（増幅させない）', async () => {
+        const { directory, calls, clock } = setup({ remote: () => ({ keys: [{ publicKey: REMOTE }] }) });
+        await directory.isAuthorKey('alice@other.example', REMOTE, HASH);
+        for (const c of 'GHIJKLMNOP') {
+            expect(
+                (await directory.isAuthorKey('alice@other.example', c.repeat(43), HASH)).status === 'confirmed',
+            ).toBe(false);
+        }
+        expect(calls.fetch).toHaveLength(2);
+        clock.t += 60 * 1000;
+        await directory.isAuthorKey('alice@other.example', 'Q'.repeat(43), HASH);
+        await directory.isAuthorKey('alice@other.example', 'R'.repeat(43), HASH);
+        expect(calls.fetch).toHaveLength(4);
+    });
+
+    it('T_fresh を超えたら保存した結果で即答し、裏で取り直した取り消しを次から反映する', async () => {
+        const state = { keys: [{ publicKey: REMOTE }] as SigningKeyEntry[] };
+        const { directory, clock } = setup({ remote: () => ({ keys: state.keys }) });
+        await directory.isAuthorKey('alice@other.example', REMOTE, HASH);
+        state.keys = [{ publicKey: REMOTE, revokedAt: REVOKED_AT }];
+        clock.t += AUTHOR_KEYS_FRESH_MS - 1;
+        expect((await directory.isAuthorKey('alice@other.example', REMOTE, HASH)).status === 'confirmed').toBe(true); // 新しいうちは取り直さない
+        clock.t += 2;
+        expect((await directory.isAuthorKey('alice@other.example', REMOTE, HASH)).status === 'confirmed').toBe(true); // 即答
+        await tick();
+        expect((await directory.isAuthorKey('alice@other.example', REMOTE, HASH)).status === 'confirmed').toBe(false);
+    });
+
+    it('取り消した鍵は、知らない鍵と違って取り直しを待たずに作者を外す', async () => {
+        const { directory, calls } = setup({
+            remote: () => ({ keys: [{ publicKey: REMOTE, revokedAt: REVOKED_AT }] }),
+        });
+        expect((await directory.isAuthorKey('alice@other.example', REMOTE, HASH)).status === 'confirmed').toBe(false);
+        expect((await directory.isAuthorKey('alice@other.example', REMOTE, HASH)).status === 'confirmed').toBe(false);
+        expect(calls.fetch).toHaveLength(2);
+    });
+
+    it('作者のサーバーが止まっている間は、最後に確認できた結果と確認時刻を返す（「確認が古い」と表示させる）', async () => {
+        const state = { up: true };
+        const { directory, clock } = setup({
+            remote: () => (state.up ? { keys: [{ publicKey: REMOTE }] } : undefined),
+        });
+        const first = await directory.isAuthorKey('alice@other.example', REMOTE, HASH);
+        const checkedAt = new Date(clock.t).toISOString();
+        expect(first).toEqual({ status: 'confirmed', checkedAt });
+        state.up = false;
+        clock.t += 3 * 24 * 60 * 60 * 1000; // 3 日止まっていても
+        expect(await directory.isAuthorKey('alice@other.example', REMOTE, HASH)).toEqual({
+            status: 'confirmed',
+            checkedAt,
+        });
+        await tick();
+        state.up = true;
+        clock.t += 5 * 60 * 1000;
+        await directory.isAuthorKey('alice@other.example', REMOTE, HASH); // 裏で取り直す
+        await tick();
+        const after = await directory.isAuthorKey('alice@other.example', REMOTE, HASH);
+        expect(after).toEqual({ status: 'confirmed', checkedAt: new Date(clock.t).toISOString() });
+    });
+
+    it('相手が落ちていても T_max までは保存した結果を使い、超えたら作者を外す', async () => {
+        const state = { up: true };
+        const { directory, clock } = setup({
+            remote: () => (state.up ? { keys: [{ publicKey: REMOTE }] } : undefined),
+        });
+        await directory.isAuthorKey('alice@other.example', REMOTE, HASH);
+        state.up = false;
+        clock.t += AUTHOR_KEYS_MAX_AGE_MS;
+        expect((await directory.isAuthorKey('alice@other.example', REMOTE, HASH)).status === 'confirmed').toBe(true);
+        expect(await directory.displayName('alice@other.example')).toBe('アリス');
+        clock.t += 1;
+        expect((await directory.isAuthorKey('alice@other.example', REMOTE, HASH)).status === 'confirmed').toBe(false);
+        expect(await directory.displayName('alice@other.example')).toBeUndefined();
+        state.up = true;
+        clock.t += 5 * 60 * 1000;
+        expect((await directory.isAuthorKey('alice@other.example', REMOTE, HASH)).status === 'confirmed').toBe(true); // 復旧したら戻る
+    });
+
+    it('同じアカウントへの同時の取り直しは 1 回にまとめる', async () => {
+        const { directory, calls } = setup({ remote: () => ({ keys: [{ publicKey: REMOTE }] }) });
+        await Promise.all([
+            directory.isAuthorKey('alice@other.example', REMOTE, HASH),
+            directory.isAuthorKey('alice@other.example', REMOTE, HASH),
+            directory.displayName('alice@other.example'),
+        ]);
+        expect(calls.fetch).toHaveLength(2);
+    });
+
+    it('鍵一覧が別のアカウントのものなら採用しない', async () => {
+        const { directory } = setup({ remote: () => ({ keys: [{ publicKey: REMOTE }] }) });
+        expect((await directory.isAuthorKey('bob@other.example', REMOTE, HASH)).status === 'confirmed').toBe(false);
+    });
+
+    it('本番は https だけ、開発時だけ http も試す', async () => {
+        const prod = setup();
+        await prod.directory.isAuthorKey('alice@other.example', REMOTE, HASH);
+        expect(prod.calls.fetch.map((u) => u.split(':')[0])).toEqual(['https']);
+        const dev = setup({ allowHttp: true });
+        await dev.directory.isAuthorKey('bob@other.example', REMOTE, HASH);
+        expect(dev.calls.fetch.map((u) => u.split(':')[0])).toEqual(['https', 'http']);
+    });
+
+    it('形式不正なアカウントは問い合わせない', async () => {
+        const { directory, calls } = setup();
+        expect((await directory.isAuthorKey('not an account', REMOTE, HASH)).status === 'confirmed').toBe(false);
+        expect(calls.fetch).toEqual([]);
+    });
+});
+
+describe('createFetchGuard（ドメイン単位の取得回数の上限）', () => {
+    it('窓の間は上限まで取得でき、超えたら拒否し、窓が過ぎたら再び取得できる。ドメインごとに別に数える', () => {
+        const clock = { t: 0 };
+        const guard = createFetchGuard({ limit: 3, windowMs: 1000, now: () => clock.t });
+        expect([1, 2, 3, 4].map(() => guard.tryAcquire('victim.example'))).toEqual([true, true, true, false]);
+        expect(guard.tryAcquire('other.example')).toBe(true);
+        clock.t = 1000;
+        expect(guard.tryAcquire('victim.example')).toBe(true);
+    });
+
+    it('ドメイン数の記録にも上限がある（古いドメインの記録から捨てる）', () => {
+        const guard = createFetchGuard({ limit: 1, windowMs: 60_000, now: () => 0, maxDomains: 2 });
+        guard.tryAcquire('a.example');
+        guard.tryAcquire('b.example');
+        guard.tryAcquire('c.example');
+        expect(guard.tryAcquire('a.example')).toBe(true); // a の記録は捨てられている
+    });
+});
+
+describe('作者名を変えて問い合わせを出させる攻撃', () => {
+    it('同じドメインの作者名を変え続けても、そのドメインへの取得は窓ごとに上限までで、超えた分は作者を付けない', async () => {
+        const fetched: string[] = [];
+        const clock = { t: 1_000_000_000 };
+        const directory = createAuthorKeyDirectory({
+            local: { domain: () => 'ubichill.com', findAccount: async () => undefined },
+            bindings: { find: async () => undefined, save: async () => undefined },
+            confirmedContents: memoryConfirmedContents(),
+            fetchJson: async (url) => {
+                fetched.push(url);
+                return undefined;
+            },
+            allowHttp: false,
+            now: () => clock.t,
+        });
+        const key = 'K'.repeat(43);
+        for (let i = 0; i < DOMAIN_FETCH_LIMIT + 50; i++) {
+            expect((await directory.isAuthorKey(`a${i}_user@victim.example`, key, HASH)).status === 'confirmed').toBe(
+                false,
+            );
+        }
+        expect(fetched).toHaveLength(DOMAIN_FETCH_LIMIT);
+        clock.t += DOMAIN_FETCH_WINDOW_MS;
+        await directory.isAuthorKey('later_user@victim.example', key, HASH);
+        expect(fetched).toHaveLength(DOMAIN_FETCH_LIMIT + 1);
+    });
+});
+
+describe('上限は初めての作者・知らない鍵だけにかかる', () => {
+    const KNOWN = 'C'.repeat(43);
+    const tick = () => nextTask();
+    const setupDomain = () => {
+        const fetched: string[] = [];
+        const clock = { t: 1_000_000_000 };
+        const store = new Map<string, AuthorProfile & { fetchedAt: Date }>();
+        const known = new Set(['known1', 'known2', 'known3']);
+        const directory = createAuthorKeyDirectory({
+            local: { domain: () => 'ubichill.com', findAccount: async () => undefined },
+            bindings: {
+                find: async (account) => store.get(account),
+                save: async (account, profile) => {
+                    store.set(account, { ...profile, fetchedAt: new Date(clock.t) });
+                },
+            },
+            confirmedContents: memoryConfirmedContents(),
+            fetchJson: async (url) => {
+                fetched.push(url);
+                const handle = /acct%3A([a-z0-9_]+)%40/.exec(url)?.[1] ?? /\/authors\/([a-z0-9_]+)\//.exec(url)?.[1];
+                if (!handle || !known.has(handle)) return undefined;
+                if (url.includes('webfinger')) {
+                    return {
+                        subject: `acct:${handle}@big.example`,
+                        links: [
+                            { rel: SIGNING_KEYS_WEBFINGER_REL, href: `https://big.example/authors/${handle}/keys` },
+                        ],
+                    };
+                }
+                return {
+                    account: `${handle}@big.example`,
+                    issuedAt: new Date(clock.t).toISOString(),
+                    keys: [{ publicKey: KNOWN }],
+                };
+            },
+            allowHttp: false,
+            now: () => clock.t,
+        });
+        return { directory, fetched, clock };
+    };
+
+    it('攻撃者が上限を使い切っても、既に知っている作者の取り直しは止まらない（取り消しが届く）', async () => {
+        const { directory, fetched, clock } = setupDomain();
+        for (const h of ['known1', 'known2', 'known3']) {
+            expect((await directory.isAuthorKey(`${h}@big.example`, KNOWN, HASH)).status).toBe('confirmed');
+        }
+        clock.t += AUTHOR_KEYS_FRESH_MS + 1;
+        // 作者名を変えた署名で、そのドメインの上限を使い切る
+        for (let i = 0; i < DOMAIN_FETCH_LIMIT + 10; i++) {
+            await directory.isAuthorKey(`spam${i}@big.example`, KNOWN, HASH);
+        }
+        const before = fetched.length;
+        for (const h of ['known1', 'known2', 'known3']) await directory.isAuthorKey(`${h}@big.example`, KNOWN, HASH);
+        await tick();
+        // 既知の 3 人は上限と関係なく取り直す（1 人につき WebFinger と鍵一覧の 2 回）
+        expect(fetched.length - before).toBe(6);
+    });
+
+    it('上限に達して確かめられなかった初めての作者は pending（作者は付けず、すぐ確認し直す）', async () => {
+        const { directory, clock } = setupDomain();
+        for (let i = 0; i < DOMAIN_FETCH_LIMIT; i++) await directory.isAuthorKey(`spam${i}@big.example`, KNOWN, HASH);
+        expect(await directory.isAuthorKey('known1@big.example', KNOWN, HASH)).toEqual({ status: 'pending' });
+        clock.t += DOMAIN_FETCH_WINDOW_MS;
+        expect((await directory.isAuthorKey('known1@big.example', KNOWN, HASH)).status).toBe('confirmed');
+    });
+});
+
+describe('確認が古い間は、古くなる前に確認済みだった内容にだけ作者を付ける', () => {
+    const KEY = 'C'.repeat(43);
+    const OLD_WORK = 'sha256-old-work';
+    const NEW_WORK = 'sha256-new-work';
+    const setupStale = () => {
+        const state = { up: true };
+        const clock = { t: 1_000_000_000 };
+        const store = new Map<string, AuthorProfile & { fetchedAt: Date }>();
+        const contents = memoryConfirmedContents();
+        const directory = createAuthorKeyDirectory({
+            local: { domain: () => 'ubichill.com', findAccount: async () => undefined },
+            bindings: {
+                find: async (account) => store.get(account),
+                save: async (account, profile) => {
+                    store.set(account, { ...profile, fetchedAt: new Date(clock.t) });
+                },
+            },
+            confirmedContents: contents,
+            fetchJson: async (url) => {
+                if (!state.up) return undefined;
+                if (url.includes('webfinger')) {
+                    return {
+                        subject: 'acct:alice@small.example',
+                        links: [
+                            { rel: SIGNING_KEYS_WEBFINGER_REL, href: `${/^https?:\/\/[^/]+/.exec(url)?.[0]}/keys` },
+                        ],
+                    };
+                }
+                return {
+                    account: 'alice@small.example',
+                    issuedAt: new Date(clock.t).toISOString(),
+                    keys: [{ publicKey: KEY }],
+                };
+            },
+            allowHttp: false,
+            now: () => clock.t,
+        });
+        return { directory, state, clock, contents };
+    };
+    const tickOnce = () => nextTask();
+
+    it('確認が新しいうちに作者付きと確かめた内容は記録する', async () => {
+        const { directory, contents } = setupStale();
+        expect((await directory.isAuthorKey('alice@small.example', KEY, OLD_WORK)).status).toBe('confirmed');
+        await tickOnce();
+        expect(contents.set.has('alice@small.example sha256-old-work')).toBe(true);
+    });
+
+    it('作者のサーバーを止めて確認を古くしても、盗んだ鍵で新しく出した作品には作者が付かない（既存の作品は付いたまま）', async () => {
+        const { directory, state, clock } = setupStale();
+        await directory.isAuthorKey('alice@small.example', KEY, OLD_WORK);
+        await tickOnce();
+        state.up = false;
+        clock.t += AUTHOR_CHECK_STALE_MS + 1;
+        expect((await directory.isAuthorKey('alice@small.example', KEY, OLD_WORK)).status).toBe('confirmed');
+        expect((await directory.isAuthorKey('alice@small.example', KEY, NEW_WORK)).status).toBe('unconfirmed');
+    });
+
+    it('作者のサーバーが戻って確認が新しくなれば、新しい作品にも作者が付く', async () => {
+        const { directory, state, clock } = setupStale();
+        await directory.isAuthorKey('alice@small.example', KEY, OLD_WORK);
+        state.up = false;
+        clock.t += AUTHOR_CHECK_STALE_MS + 1;
+        expect((await directory.isAuthorKey('alice@small.example', KEY, NEW_WORK)).status).toBe('unconfirmed');
+        await tickOnce(); // 止まっている間の裏の取り直し（失敗）を終わらせる
+        state.up = true;
+        clock.t += 5 * 60 * 1000;
+        await directory.isAuthorKey('alice@small.example', KEY, OLD_WORK); // 裏で取り直す
+        await tickOnce();
+        expect((await directory.isAuthorKey('alice@small.example', KEY, NEW_WORK)).status).toBe('confirmed');
+    });
+});

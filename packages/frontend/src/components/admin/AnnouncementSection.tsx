@@ -1,6 +1,6 @@
 import { CreateAnnouncementRequestSchema, NOTIFICATION_LIMITS } from '@ubichill/shared';
 import { useState } from 'react';
-import { createAnnouncement } from '@/lib/notificationsApi';
+import { createAnnouncement } from '@/lib/notifications/notificationsApi';
 import { css, cva } from '@/styled-system/css';
 
 const field = cva({

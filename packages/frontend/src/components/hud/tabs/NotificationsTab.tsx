@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { isPendingFollow, NotificationCard, useNotifications } from '@/components/notifications';
-import { NOTIFICATION_TABS, type NotificationKind } from '@/lib/notifications';
+import { NOTIFICATION_TABS, type NotificationKind } from '@/lib/notifications/notifications';
 import { css, cva } from '@/styled-system/css';
 import { tabPanel, tabSection } from './shared';
 

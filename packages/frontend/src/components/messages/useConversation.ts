@@ -7,8 +7,8 @@ import {
     withConversationPage,
     withReactions,
     withSentMessage,
-} from '@/lib/messages';
-import { fetchConversation, markConversationRead, sendMessage, setReaction } from '@/lib/messagesApi';
+} from '@/lib/messages/messages';
+import { fetchConversation, markConversationRead, sendMessage, setReaction } from '@/lib/messages/messagesApi';
 
 /**
  * 1 人との会話。開いている間は、その人からメッセージが届くたびに最新を取り直して既読にする

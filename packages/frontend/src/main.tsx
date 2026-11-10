@@ -2,9 +2,9 @@ import { ServiceTokenProvider, SocketProvider, WorldProvider } from '@ubichill/r
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { PermissionRoot } from './components/permissions/PermissionRoot';
-import { resolveInstance } from './lib/instanceConnection';
-import { restoreMediaOutput } from './lib/mediaOutputSetting';
-import { requestServiceToken } from './lib/serviceTokens';
+import { requestServiceToken } from './lib/mods/serviceTokens';
+import { restoreMediaOutput } from './lib/settings/mediaOutputSetting';
+import { resolveInstance } from './lib/worlds/instanceConnection';
 import { AppRouter } from './router';
 import './styles/globals.css';
 

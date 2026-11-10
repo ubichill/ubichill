@@ -2,8 +2,8 @@ import type { CustomEmoji, RichSegment } from '@ubichill/shared';
 import { type MouseEvent, useState } from 'react';
 import { useOpenAccount } from '@/components/social/useOpenAccount';
 import { EmojiText } from '@/components/ui/EmojiText';
-import { bioPieces } from '@/lib/bioLinks';
 import { shouldCollapseBio } from '@/lib/profile/bioCollapse';
+import { bioPieces } from '@/lib/profile/bioLinks';
 import { css, cva } from '@/styled-system/css';
 import { profileSectionTitle } from './profileStyles';
 

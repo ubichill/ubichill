@@ -18,8 +18,8 @@ import {
     requestTargetOf,
 } from '@/components/social/friendPresence';
 import { useInviteActions } from '@/components/social/useInviteActions';
-import { unreadMessageCount } from '@/lib/messages';
-import { fetchFriends } from '@/lib/socialApi';
+import { unreadMessageCount } from '@/lib/messages/messages';
+import { fetchFriends } from '@/lib/social/socialApi';
 import { css } from '@/styled-system/css';
 import { SplitTab, type SplitTabItem } from './SplitTab';
 import type { JoinInstanceHandler } from './shared';

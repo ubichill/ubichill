@@ -13,7 +13,7 @@ vi.mock('@ubichill/db', () => ({ authorKeyRepository: {}, roleRepository: {}, us
 vi.mock('../lib/auth', () => ({ auth: { api: { getSession: mocks.getSession } } }));
 vi.mock('../utils/logger', () => ({ logger: { warn: vi.fn() } }));
 vi.mock('../lib/redis', () => ({ redis: null }));
-vi.mock('../services/authors/authorKeyStore', () => ({ isAuthorKey: mocks.isAuthorKey }));
+vi.mock('../services/authors/authorKeyService', () => ({ isAuthorKey: mocks.isAuthorKey }));
 vi.mock('../services/auth/serviceTokens', async (importOriginal) => ({
     ...(await importOriginal<typeof import('../services/auth/serviceTokens')>()),
     serviceTokenIssuerFromEnv: () => ({

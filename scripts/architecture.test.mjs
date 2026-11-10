@@ -43,7 +43,7 @@ describe('host-runs-mods-without-backend', () => {
     it('説明のコメント・テスト・mod の経路の外は対象にしない', () => {
         expect(violations('packages/sandbox/src/host/fetchHandler.ts', '/**\n * コアの `/api/v1/…` は null\n */')).toEqual([]);
         expect(violations('packages/frontend/src/world/x.test.ts', "fetch('/api/v1/x')")).toEqual([]);
-        expect(violations('packages/frontend/src/lib/serviceTokens.ts', "fetch(`${API_BASE}/api/v1/service-tokens`)")).toEqual([]);
+        expect(violations('packages/frontend/src/lib/mods/serviceTokens.ts', "fetch(`${API_BASE}/api/v1/service-tokens`)")).toEqual([]);
     });
 });
 
@@ -112,7 +112,7 @@ describe('signatures-in-one-place', () => {
     it('署名の部品・暗号の実装（定義）・テストは対象にしない', () => {
         const call = 'await crypto.verifyEd25519(key, message, sig)';
         expect(violations('packages/shared/src/signature/envelope.ts', call)).toEqual([]);
-        expect(violations('packages/shared/src/user/cliAuth.ts', call)).toEqual([]);
+        expect(violations('packages/shared/src/publishing/cliAuth.ts', call)).toEqual([]);
         expect(violations('packages/loader/src/worldCrypto.ts', 'verifyEd25519: async (publicKey, message, signature) => {')).toEqual([]);
         expect(violations('packages/backend/src/x.test.ts', call)).toEqual([]);
     });

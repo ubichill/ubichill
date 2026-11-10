@@ -17,11 +17,11 @@ import {
     retryDelayMs,
 } from './delivery';
 import { acceptsNewContact, policyFor } from './domainPolicy';
-import { ed25519Multikey } from './multikey';
+import { REMOTE_SUMMARY_MAX_LENGTH } from './fediverse/profileFields';
 import { buildNodeInfo, nodeInfoLinks, nodeInfoUrlFrom, readNodeInfo } from './nodeinfo';
-import { REMOTE_SUMMARY_MAX_LENGTH } from './profileFields';
 import { actorIdOfKey, FEDERATION_FEATURES, isActivityMediaType, keyIdOf } from './protocol';
-import { JoinRequestSchema, PresenceResponseSchema } from './rpc';
+import { ed25519Multikey } from './ubichill/multikey';
+import { JoinRequestSchema, PresenceResponseSchema } from './ubichill/rpc';
 
 const ALICE = 'https://a.example/ap/users/7Fq2aL';
 const BOB = 'https://c.example/ap/users/9bQkR3';

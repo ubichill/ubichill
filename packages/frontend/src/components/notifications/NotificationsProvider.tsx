@@ -1,8 +1,7 @@
 import type { AppNotification, MessageReactionsResponse } from '@ubichill/shared';
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { acceptInviteRequest } from '@/lib/inviteApi';
-import { shouldToast, toastTextOf } from '@/lib/messages';
+import { shouldToast, toastTextOf } from '@/lib/messages/messages';
 import {
     EMPTY_FEED,
     type FeedState,
@@ -13,11 +12,16 @@ import {
     withNextPage,
     withStreamEvent,
     withUnreadCount,
-} from '@/lib/notificationFeed';
-import { groupNotifications, toastActionOf } from '@/lib/notifications';
-import { fetchNotifications, markNotificationsRead, openNotificationStream } from '@/lib/notificationsApi';
+} from '@/lib/notifications/notificationFeed';
+import { groupNotifications, toastActionOf } from '@/lib/notifications/notifications';
+import {
+    fetchNotifications,
+    markNotificationsRead,
+    openNotificationStream,
+} from '@/lib/notifications/notificationsApi';
 import { useSession } from '@/lib/session';
-import { fetchFriends } from '@/lib/socialApi';
+import { acceptInviteRequest } from '@/lib/social/inviteApi';
+import { fetchFriends } from '@/lib/social/socialApi';
 import { pushToast } from '@/lib/toast';
 
 /** SSE が使えないとき（繋ぎ直しを諦めた）の取り直しの間隔。 */

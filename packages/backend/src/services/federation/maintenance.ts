@@ -15,10 +15,10 @@ import {
 import { FEDERATION_FEATURES, FEDERATION_LIMITS } from '@ubichill/shared';
 import { logger } from '../../utils/logger';
 import { notificationService } from '../notifications/notificationService';
-import type { ActorDirectory } from './actors';
-import type { FriendshipCheck } from './friendshipCheck';
-import type { RemoteFriendships } from './friendships';
 import type { FederationIdentity } from './identity';
+import type { ActorDirectory } from './transport/actors';
+import type { FriendshipCheck } from './ubichill/friendshipCheck';
+import type { RemoteFriendships } from './ubichill/friendships';
 
 /** 消したほかのサーバーの人とのフレンドを、このサーバーの人に知らせる（失敗しても残りは知らせる）。 */
 export async function notifyFriendshipsRemoved(

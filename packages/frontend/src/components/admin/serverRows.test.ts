@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { DomainPolicyRecord, FederationServer } from '@/lib/federationApi';
+import type { DomainPolicyRecord, FederationServer } from '@/lib/admin/federationApi';
 import { domainFromInput, serverRows } from './serverRows';
 
 const NOW = Date.parse('2026-11-07T00:00:00Z');

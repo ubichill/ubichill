@@ -15,8 +15,8 @@
  * activity の id と actor は同じオリジン（FEP-fe34）。埋め込まれたほかのオリジンのものは表示のヒントにしか使わない。
  */
 import { z } from 'zod';
+import { displayText } from './fediverse/text';
 import { ACTIVITY_CONTEXT, type RoomCard } from './protocol';
-import { displayText } from './text';
 import { sameOrigin } from './urls';
 
 export const FRIEND_OF = 'http://purl.org/vocab/relationship/friendOf';

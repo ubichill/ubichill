@@ -4,7 +4,7 @@ import { EmojiPicker } from '@/components/emoji';
 import { HudIcon } from '@/components/hud/HudIcon';
 import { useHudNavigation } from '@/components/hud/HudNavigationContext';
 import { UserAvatar } from '@/components/social/UserAvatar';
-import { messageTime } from '@/lib/messages';
+import { messageTime } from '@/lib/messages/messages';
 import { useSession } from '@/lib/session';
 import { css, cva, cx } from '@/styled-system/css';
 import { MessageComposer } from './MessageComposer';

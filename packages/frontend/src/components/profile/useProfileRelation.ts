@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useHudNavigation } from '@/components/hud/HudNavigationContext';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import { blockAndReload, unblockAndReload } from '@/lib/blocks';
-import { answerFollower } from '@/lib/fediverseApi';
-import { relationAfter } from '@/lib/friendActions';
-import { type ProfileAction, profileActionsOf } from '@/lib/profileActions';
+import { type ProfileAction, profileActionsOf } from '@/lib/profile/profileActions';
 import { useSession } from '@/lib/session';
-import { sendFriendAction } from '@/lib/socialApi';
+import { blockAndReload, unblockAndReload } from '@/lib/social/blocks';
+import { answerFollower } from '@/lib/social/fediverseApi';
+import { relationAfter } from '@/lib/social/friendActions';
+import { sendFriendAction } from '@/lib/social/socialApi';
 import { pushToast } from '@/lib/toast';
 import type { UserRelationSource } from './userRelation';
 import { useUserRelation } from './useUserRelation';

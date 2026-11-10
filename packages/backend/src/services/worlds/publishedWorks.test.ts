@@ -1,7 +1,7 @@
 import type { WorldRecord } from '@ubichill/db';
 import type { ResolvedWorld, WorldListItem } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
-import type { PublishedExternalEntry } from './externalWorkStore';
+import type { PublishedExternalEntry } from './externalWorkService';
 import { createPublishedWorks, type PublishedWorksDeps } from './publishedWorks';
 
 const at = (day: number) => new Date(Date.UTC(2026, 10, day));

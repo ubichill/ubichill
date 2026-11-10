@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { WorldIdentityBadge } from '@/components/worlds/WorldIdentityBadge';
-import { isResignable } from '@/lib/account/worldProblems';
 import type { OwnedWorld } from '@/lib/profile/profileApi';
+import { isResignable } from '@/lib/worlds/worldProblems';
 import { css } from '@/styled-system/css';
 
 /** ワールドのカード。`editable` なら編集・署名・削除のメニューを出す（設定のワールド管理）。 */

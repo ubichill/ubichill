@@ -5,7 +5,7 @@ import { instanceRepository, remoteFriendshipRepository, remoteVisitRepository, 
 import { FEDERATION_LIMITS, profileLanguagesView, profileLinksView } from '@ubichill/shared';
 import { isSystemUser } from '../users/systemUser';
 import { worldRegistry } from '../worlds/worldRegistry';
-import type { LocalUser } from './documents';
+import type { LocalUser } from './transport/documents';
 
 export function createLocalStore(origin: string, now: () => number) {
     return {

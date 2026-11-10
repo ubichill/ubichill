@@ -1,7 +1,7 @@
 import type { Friendship, UserWithFriendship } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { HudIcon } from '@/components/hud/HudIcon';
-import { searchUsers } from '@/lib/socialApi';
+import { searchUsers } from '@/lib/social/socialApi';
 import { css } from '@/styled-system/css';
 import { UserRow } from './UserRow';
 

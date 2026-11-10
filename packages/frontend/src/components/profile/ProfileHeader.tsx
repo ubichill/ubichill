@@ -1,8 +1,8 @@
 import type { UserProfile } from '@ubichill/shared';
 import type { ReactNode } from 'react';
 import { EmojiText } from '@/components/ui/EmojiText';
+import { userPagePath } from '@/lib/profile/userPath';
 import { pushToast } from '@/lib/toast';
-import { userPagePath } from '@/lib/userPath';
 import { css } from '@/styled-system/css';
 import { ProfileAbout } from './ProfileAbout';
 import { ProfileAvatar } from './ProfileAvatar';

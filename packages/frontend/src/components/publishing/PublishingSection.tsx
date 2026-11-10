@@ -12,8 +12,13 @@ import {
     isStaleEnvironment,
     revokeConfirmMessage,
     sortEnvironments,
-} from '@/lib/account/publishingEnvironments';
-import { type ResignCandidate, type ResignResult, type ResignTarget, worldsNeedingResign } from '@/lib/account/resign';
+} from '@/lib/publishing/publishingEnvironments';
+import {
+    type ResignCandidate,
+    type ResignResult,
+    type ResignTarget,
+    worldsNeedingResign,
+} from '@/lib/publishing/resign';
 import { useSigningPublicKey } from '@/lib/signing';
 import { css, cva } from '@/styled-system/css';
 import { CompromiseGuide } from './CompromiseGuide';

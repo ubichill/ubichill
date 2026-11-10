@@ -1,7 +1,7 @@
 import type { AccessType } from '@ubichill/shared';
 import { useState } from 'react';
 import { AccessTypeSelect } from '@/components/worlds/AccessTypeSelect';
-import { saveHome, useHome } from '@/lib/homeStore';
+import { saveHome, useHome } from '@/lib/home/homeStore';
 import { pushToast } from '@/lib/toast';
 import { css } from '@/styled-system/css';
 

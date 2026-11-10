@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { base58btcDecode, base58btcEncode, ed25519Multikey, parseEd25519Multikey } from './multikey';
 import { base64ToBytes, bytesToBase64, parseDictionary, parseInnerList, serializeInnerList } from './structuredFields';
+import { base58btcDecode, base58btcEncode, ed25519Multikey, parseEd25519Multikey } from './ubichill/multikey';
 
 const ascii = (text: string) => Uint8Array.from([...text].map((c) => c.charCodeAt(0)));
 

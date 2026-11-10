@@ -15,7 +15,7 @@ const between = (a: string, b: string) =>
         and(eq(userBlocks.blockerId, b), eq(userBlocks.blockedId, a)),
     );
 
-/** ユーザーのブロック（片方向の行）。判定は shared の user/blocks.ts、ブロックしたときに関係を消すのは backend。 */
+/** ユーザーのブロック（片方向の行）。判定は shared の social/blocks.ts、ブロックしたときに関係を消すのは backend。 */
 export const userBlockRepository = {
     /** ブロックする。新しくブロックしたら true（すでにブロックしていれば false）。 */
     async add(blockerId: string, blockedId: string, now = new Date()): Promise<boolean> {

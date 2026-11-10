@@ -1,8 +1,8 @@
 import type { Friendship, RemoteRelation, UserSummary } from '@ubichill/shared';
 import { useState } from 'react';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import { type FriendAction, followLabelOf, friendActionsOf } from '@/lib/friendActions';
-import { sendFriendAction } from '@/lib/socialApi';
+import { type FriendAction, followLabelOf, friendActionsOf } from '@/lib/social/friendActions';
+import { sendFriendAction } from '@/lib/social/socialApi';
 import { css } from '@/styled-system/css';
 import { socialButton } from './buttons';
 

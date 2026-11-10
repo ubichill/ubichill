@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
-import { rememberFriendLocations } from '@/lib/joinVia';
 import { useSession } from '@/lib/session';
-import { type FriendLocationsResponse, fetchFriendLocations } from '@/lib/socialApi';
+import { type FriendLocationsResponse, fetchFriendLocations } from '@/lib/social/socialApi';
+import { rememberFriendLocations } from '@/lib/worlds/joinVia';
 import { createSharedPoll } from './sharedPoll';
 
 const friendLocations = createSharedPoll<FriendLocationsResponse>({

@@ -1,5 +1,5 @@
 /**
- * 公開環境（作者アカウントの署名鍵）の純粋なロジック。DB の読み書きは routes / officialAccountStore で行う。
+ * 公開環境（作者アカウントの署名鍵）の純粋なロジック。DB の読み書きは routes / officialAccountService で行う。
  */
 import type { PublishingEnvironmentKind, RevokeReason, SigningKeyEntry, SigningKeyList } from '@ubichill/shared';
 

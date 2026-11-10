@@ -3,7 +3,7 @@ import { onAdminRecheck, recheckIfForbidden } from './adminStatus';
 
 // adminApi は読み込むときに API のオリジンを window から決める
 vi.stubGlobal('window', { location: { hostname: 'app.example', origin: 'https://app.example' } });
-const { deleteRole, fetchRoles, updateRole } = await import('../adminApi');
+const { deleteRole, fetchRoles, updateRole } = await import('../admin/adminApi');
 
 const respond = (status: number, body: unknown = {}) =>
     vi.fn(

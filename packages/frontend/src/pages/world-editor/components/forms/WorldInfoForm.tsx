@@ -1,5 +1,5 @@
 import type { WorldDefinition } from '@ubichill/shared';
-import { toWorldName, WORLD_NAME_MAX_LENGTH } from '@/lib/worldName';
+import { toWorldName, WORLD_NAME_MAX_LENGTH } from '@/lib/worlds/worldName';
 import { css } from '@/styled-system/css';
 import { PanelSection } from '../PanelSection';
 

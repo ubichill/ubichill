@@ -3,11 +3,11 @@ import { followerRepository, remoteFriendshipRepository, userBlockRepository, us
 import { FEDERATION_FEATURES, isRemoteUserId } from '@ubichill/shared';
 import { selfDomain } from '../authors/authorKeys';
 import { federation } from '../federation';
-import { friendshipViewOf } from '../federation/friendships';
+import { friendshipViewOf } from '../federation/ubichill/friendships';
 import { publicProfileOf } from '../users/publicProfile';
 import { SYSTEM_USER_ID } from '../users/systemUser';
-import { hiddenIdsFor } from './blockCheck';
-import { friendEdgesOf } from './friends';
+import { hiddenIdsFor } from './blocks/blockCheck';
+import { friendEdgesOf } from './friends/friends';
 import { createPeople } from './people';
 import { createRelations } from './relations';
 import { remoteSummaryOf, summaryOf } from './userSummaries';

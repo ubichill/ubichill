@@ -36,7 +36,7 @@ import {
 import yaml from 'yaml';
 import { assertPublicUrl, safeFetch } from '../../lib/safeFetch';
 import { logger } from '../../utils/logger';
-import { isAuthorKey, resolveAuthorDisplayName } from '../authors/authorKeyStore';
+import { isAuthorKey, resolveAuthorDisplayName } from '../authors/authorKeyService';
 import { selfAccount, selfDomain } from '../authors/authorKeys';
 import { type BackendEvents, backendEvents } from '../cluster/backendEvents';
 import { SYSTEM_USER_ID } from '../users/systemUser';

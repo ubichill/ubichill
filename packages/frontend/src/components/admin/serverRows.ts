@@ -1,4 +1,4 @@
-import type { DomainPolicy, DomainPolicyRecord, FederationServer } from '@/lib/federationApi';
+import type { DomainPolicy, DomainPolicyRecord, FederationServer } from '@/lib/admin/federationApi';
 
 /** 一覧の 1 行（知っているサーバーと、まだ連絡の無いサーバーに決めた方針）。 */
 export interface ServerRow {

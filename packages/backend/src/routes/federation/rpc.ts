@@ -14,7 +14,7 @@ import {
 import { type Request, type Response, Router } from 'express';
 import type { z } from 'zod';
 import type { Federation } from '../../services/federation';
-import type { Visitor } from '../../services/federation/rooms';
+import type { Visitor } from '../../services/federation/ubichill/rooms';
 import { logger } from '../../utils/logger';
 import { jsonBody, perHostLimit, sendProblem, signed, signerOf } from './signed';
 

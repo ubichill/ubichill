@@ -66,7 +66,7 @@ export interface RemoteFriendshipWithActor extends RemoteFriendshipRecord {
     profile: RemoteActorProfileRecord;
 }
 
-/** このサーバーのユーザーと、ほかのサーバーの actor のフレンドの関係。規則は backend の federation/friendships.ts。 */
+/** このサーバーのユーザーと、ほかのサーバーの actor のフレンドの関係。規則は backend の federation/ubichill/friendships.ts。 */
 export const remoteFriendshipRepository = {
     async get(userId: string, actorId: string): Promise<RemoteFriendshipRecord | undefined> {
         const [row] = await db.select().from(remoteFriendships).where(pairOf(userId, actorId));

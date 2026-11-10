@@ -5,7 +5,11 @@
 import type { ExternalWork } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import { describeExternalWorkStatus, fetchMyExternalWorks, removeMyExternalWork } from '@/lib/externalWorksApi';
+import {
+    describeExternalWorkStatus,
+    fetchMyExternalWorks,
+    removeMyExternalWork,
+} from '@/lib/publishing/externalWorksApi';
 import { css } from '@/styled-system/css';
 
 const row = css({
