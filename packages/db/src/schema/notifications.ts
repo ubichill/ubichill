@@ -1,6 +1,18 @@
+import { STORED_NOTIFICATION_TYPES } from '@ubichill/shared';
 import { sql } from 'drizzle-orm';
 import { check, index, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import { users } from './users';
+
+/**
+ * CHECK 制約の中に並べる文字列の一覧。制約はパラメータを取れないので、値はそのまま埋め込む（種類の名前は英字だけ）。
+ * 並びを変えると drizzle-kit が制約を作り直すマイグレーションを出すので、shared の配列の順は保つ。
+ */
+function sqlStringList(values: readonly string[]) {
+    for (const v of values) {
+        if (!/^[A-Za-z]+$/.test(v)) throw new Error(`CHECK に埋め込めない値です: ${v}`);
+    }
+    return sql.raw(values.map((v) => `'${v}'`).join(', '));
+}
 
 /**
  * 本人に関わる出来事の通知（ActivityStreams 2.0 の Follow・Accept・Like・Invite・Join・Create（メッセージ）・EmojiReact（メッセージへのリアクション））。object の形は種類ごとに shared のスキーマで確かめる。
@@ -27,10 +39,7 @@ export const notifications = pgTable(
         readAt: timestamp('read_at', { withTimezone: true }),
     },
     (table) => [
-        check(
-            'notifications_type_check',
-            sql`${table.type} IN ('Follow', 'Accept', 'Like', 'Invite', 'Join', 'FediverseFollow', 'FediverseFollowRequest', 'Create', 'EmojiReact')`,
-        ),
+        check('notifications_type_check', sql`${table.type} IN (${sqlStringList(STORED_NOTIFICATION_TYPES)})`),
         check('notifications_actor_check', sql`num_nonnulls(${table.actorUserId}, ${table.actorUri}) = 1`),
         uniqueIndex('notifications_recipient_dedupe_idx').on(table.recipientId, table.dedupeKey),
         index('notifications_recipient_created_idx').on(table.recipientId, table.createdAt.desc(), table.id.desc()),
