@@ -9,6 +9,7 @@ import type {
     UserSummary,
 } from '@ubichill/shared';
 import { API_BASE } from './api';
+import type { FriendAction } from './friendActions';
 
 export interface FriendLocationsResponse {
     locations: Array<{ instance: Instance; friends: UserSummary[] }>;
@@ -65,6 +66,19 @@ export const acceptFriend = (userId: string) =>
 /** フレンドの解除・申請の取り消し・拒否。 */
 export const removeFriend = (userId: string) =>
     request<void>(`/friends/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+
+/** フレンドの操作を送り、あとの関係を返す。 */
+export async function sendFriendAction(action: FriendAction, userId: string): Promise<Friendship> {
+    switch (action) {
+        case 'request':
+            return requestFriend(userId);
+        case 'accept':
+            return (await acceptFriend(userId)).friendship;
+        default:
+            await removeFriend(userId);
+            return 'none';
+    }
+}
 
 export const fetchBlocks = () => request<BlocksResponse>('/blocks');
 

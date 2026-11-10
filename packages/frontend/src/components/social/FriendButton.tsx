@@ -2,21 +2,9 @@ import type { Friendship, RemoteRelation, UserSummary } from '@ubichill/shared';
 import { useState } from 'react';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { type FriendAction, followLabelOf, friendActionsOf } from '@/lib/friendActions';
-import { acceptFriend, removeFriend, requestFriend } from '@/lib/socialApi';
+import { sendFriendAction } from '@/lib/socialApi';
 import { css } from '@/styled-system/css';
 import { socialButton } from './buttons';
-
-async function run(action: FriendAction, userId: string): Promise<Friendship> {
-    switch (action) {
-        case 'request':
-            return requestFriend(userId);
-        case 'accept':
-            return (await acceptFriend(userId)).friendship;
-        default:
-            await removeFriend(userId);
-            return 'none';
-    }
-}
 
 /** 相手との関係に応じた操作（申請・取り消し・承認・拒否・解除）。 */
 export function FriendButton({
@@ -44,7 +32,7 @@ export function FriendButton({
         setBusy(true);
         setError(null);
         try {
-            onChange(await run(action, user.id));
+            onChange(await sendFriendAction(action, user.id));
         } catch (e) {
             setError(e instanceof Error ? e.message : '操作できませんでした');
         } finally {
