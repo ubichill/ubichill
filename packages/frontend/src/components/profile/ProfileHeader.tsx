@@ -1,4 +1,5 @@
 import type { UserProfile } from '@ubichill/shared';
+import { EmojiText } from '@/components/ui/EmojiText';
 import { pushToast } from '@/lib/toast';
 import { userPagePath } from '@/lib/userPath';
 import { css } from '@/styled-system/css';
@@ -47,7 +48,7 @@ function ShareButton({ profile }: { profile: UserProfile }) {
 }
 
 /** 名前と ID。ID のうちドメインの部分は薄くする（同じ名前の別サーバーの人と区別するための部分）。 */
-export function ProfileIdentity({ profile }: { profile: Pick<UserProfile, 'name' | 'handle' | 'author'> }) {
+export function ProfileIdentity({ profile }: { profile: Pick<UserProfile, 'name' | 'handle' | 'author' | 'emojis'> }) {
     const account = accountParts(profile);
     return (
         <div className={css({ flex: 1, minW: 0 })}>
@@ -60,7 +61,7 @@ export function ProfileIdentity({ profile }: { profile: Pick<UserProfile, 'name'
                     overflowWrap: 'anywhere',
                 })}
             >
-                {profile.name}
+                <EmojiText text={profile.name} emojis={profile.emojis} />
             </h1>
             <p className={css({ fontSize: '14px', color: 'textMuted', overflowWrap: 'anywhere' })}>
                 @{account.handle}
@@ -88,7 +89,7 @@ export function ProfileHeader({
             <div className={profileBody}>
                 <div className={avatarRow}>
                     <ProfileAvatar src={profile.image} name={profile.name} />
-                    {profile.status && <StatusPill status={profile.status} />}
+                    {profile.status && <StatusPill status={profile.status} emojis={profile.emojis} />}
                 </div>
                 <div className={css({ display: 'flex', alignItems: 'flex-start', gap: '3' })}>
                     <ProfileIdentity profile={profile} />
@@ -108,10 +109,10 @@ export function ProfileHeader({
                         <ShareButton profile={profile} />
                     </div>
                 )}
-                <ProfileAbout bio={profile.bio} />
+                <ProfileAbout bio={profile.bio} segments={profile.bioSegments} emojis={profile.emojis} />
                 <ProfileLinkButtons links={profile.links} />
                 <ProfileLanguageChips languages={profile.languages} />
-                <ProfileFieldsTable fields={profile.fields} />
+                <ProfileFieldsTable fields={profile.fields} emojis={profile.emojis} />
             </div>
         </article>
     );

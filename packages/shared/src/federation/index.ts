@@ -9,6 +9,7 @@ export * from './multikey';
 export * from './nodeinfo';
 export * from './profileFields';
 export * from './protocol';
+export * from './richText';
 export * from './roomAddress';
 export * from './rpc';
 export { bytesToBase64, parseDictionary, parseInnerList } from './structuredFields';

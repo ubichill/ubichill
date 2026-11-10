@@ -7,6 +7,7 @@ import type { Friendship, RemoteRelation, UserSummary } from './friends';
 import { BioSchema } from './handle';
 import { type ProfileLanguageCode, ProfileLanguagesSchema, profileLanguagesView } from './profileLanguages';
 import { type ProfileLink, ProfileLinksSchema, profileLinksView } from './profileLinks';
+import type { RichSegment } from './richText';
 
 /** ひとこと（今の状態を 1 行で）の最大文字数。 */
 export const PROFILE_STATUS_MAX_LENGTH = 60;
@@ -93,12 +94,16 @@ export interface UserProfile extends UserSummary {
     languages: ProfileLanguageCode[];
     /** ほかのサーバーの人の項目の表（リンクにできないもの。このサーバーの人には無い） */
     fields?: ProfileField[];
+    /** ほかのサーバーの人の自己紹介のリンク・メンションの並び（無ければ bio の文字から URL だけリンクにする） */
+    bioSegments?: RichSegment[];
 }
 
 /** 項目の表の 1 行（Mastodon・Misskey のプロフィールの「補足情報」）。 */
 export interface ProfileField {
     name: string;
     value: string;
+    /** 値がリンクなら行き先（http(s)） */
+    href?: string;
 }
 
 /** ID・内部 ID で引いたプロフィール（自分との関係付き。`GET /api/v1/social/users/...`）。 */

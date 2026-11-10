@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { PROFILE_STATUS_MAX_LENGTH, type ProfileField } from '../user/profile';
 import { type ProfileLanguageCode, profileLanguageLabel, profileLanguagesView } from '../user/profileLanguages';
 import { MAX_PROFILE_LINKS, PROFILE_LINK_LABELS, type ProfileLink, parseProfileLink } from '../user/profileLinks';
+import { type CustomEmoji, type RichSegment, storedCustomEmojisOf, storedRichTextOf } from '../user/richText';
 import { displayText, escapeHtml } from './text';
 import { parseFederationUrl } from './urls';
 
@@ -46,6 +47,9 @@ export function profileAttachment(fields: LocalProfileFields): PropertyValue[] {
         ...(fields.status ? [field(PROFILE_FIELD_NAMES.status, escapeHtml(fields.status))] : []),
     ];
 }
+
+/** ほかの実装の自己紹介を読む長さ（Misskey は 1500 文字まで書ける）。 */
+export const REMOTE_SUMMARY_MAX_LENGTH = 1500;
 
 /** ほかのサーバーの人の項目。href は値の中の最初のリンク（https のもの）。 */
 export interface RemoteProfileField {
@@ -115,6 +119,8 @@ const StoredProfileSchema = z
         fields: z.array(z.object({ name: z.string(), value: z.string(), href: z.string().nullable() })).catch([]),
         status: z.string().nullable().catch(null),
         languages: z.unknown(),
+        bio: z.unknown(),
+        emojis: z.unknown(),
     })
     .partial();
 
@@ -150,7 +156,13 @@ export interface RemoteProfileView {
     links: ProfileLink[];
     languages: ProfileLanguageCode[];
     fields: ProfileField[];
+    /** 自己紹介のリンク・メンションの並び（古い行には無い） */
+    bioSegments: RichSegment[] | null;
+    emojis: CustomEmoji[];
 }
+
+/** 保存したカスタム絵文字だけを取り出す（一覧のカードの名前に使う）。 */
+export const remoteEmojisOf = (stored: unknown): CustomEmoji[] => storedCustomEmojisOf(storedProfileOf(stored).emojis);
 
 /**
  * 保存した項目（remote_actors.profile）を表示の形にする。保存した形は信用せず確かめ直す。
@@ -178,7 +190,15 @@ export function remoteProfileView(stored: unknown): RemoteProfileView {
         languages,
         fields: withLinks
             .filter(({ field, link }) => !(link && shown.has(link.url)) && !duplicated(field.name))
-            .map(({ field }) => ({ name: field.name, value: field.value }))
+            .map(
+                ({ field }): ProfileField => ({
+                    name: field.name,
+                    value: field.value,
+                    ...(field.href ? { href: field.href } : {}),
+                }),
+            )
             .filter((f, i, all) => all.findIndex((g) => g.name === f.name && g.value === f.value) === i),
+        bioSegments: storedRichTextOf(profile.bio, REMOTE_SUMMARY_MAX_LENGTH),
+        emojis: storedCustomEmojisOf(profile.emojis),
     };
 }

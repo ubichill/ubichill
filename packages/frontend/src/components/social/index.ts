@@ -8,4 +8,5 @@ export { UserRow } from './UserRow';
 export { UserSearch } from './UserSearch';
 export { UserSocialBar } from './UserSocialBar';
 export { useFriendLocations } from './useFriendLocations';
+export { useOpenAccount } from './useOpenAccount';
 export { useOpenUser } from './useOpenUser';

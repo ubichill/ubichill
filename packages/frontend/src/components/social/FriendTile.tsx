@@ -1,3 +1,4 @@
+import { EmojiText } from '@/components/ui/EmojiText';
 import { css, cva } from '@/styled-system/css';
 import type { FriendCard } from './friendPresence';
 import { UserAvatar } from './UserAvatar';
@@ -13,8 +14,14 @@ export function FriendTile({ user, detail, online }: FriendCard) {
                 {online && <span className={onlineDot} aria-hidden="true" />}
             </span>
             <span className={css({ display: 'flex', flexDirection: 'column', minW: 0 })}>
-                <span className={name}>{user.name}</span>
-                {detail && <span className={detailText}>{detail}</span>}
+                <span className={name}>
+                    <EmojiText text={user.name} emojis={user.emojis} />
+                </span>
+                {detail && (
+                    <span className={detailText}>
+                        <EmojiText text={detail} emojis={user.emojis} />
+                    </span>
+                )}
             </span>
         </button>
     );
