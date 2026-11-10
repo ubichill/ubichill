@@ -2,7 +2,8 @@
  * フェディバースのプロフィールに出す固定ノート（`featured`）。選び方とノートの形は shared の federation/featured.ts。
  * ここは材料（作ったワールド・公開している mod・パブリックのお気に入り）を集め、id とリンクを決めて、少しの間覚える。
  *
- * - ノートの id は項目ごとに変えない（種類と項目の id の要約。並びが変わっても同じノート）
+ * - ノートは種類ごとに 1 つ。id は種類と中身の要約で、中身が変わったら id も変わる
+ *   （Mastodon・Misskey は同じ id のノートを取り直さないので、新しい id にしないと古い中身が残る）
  * - 材料の 1 つが取れなくても、ほかの材料で出す（外部の作品の確かめに失敗しても、作ったワールドは出す）
  * - 中身が変わったら（ワールドの公開・お気に入り・公開範囲）、少し待ってまとめて Update{Person} を届ける
  *   （相手は actor を取り直すときに featured も取り直す）
@@ -12,8 +13,10 @@ import {
     buildFeaturedCollection,
     buildFeaturedNote,
     type FavoritesVisibility,
+    type FeaturedGroup,
     type FeaturedItem,
     type FeaturedKind,
+    featuredNoteContent,
     pickFeatured,
 } from '@ubichill/shared';
 import { createTtlCache } from '../../utils/ttlCache';
@@ -21,7 +24,6 @@ import type { FederationIdentity } from './identity';
 
 /** 材料 1 つ（path は画面のパスか絶対 URL、image は API のパスか絶対 URL）。 */
 export interface FeaturedSource {
-    id: string;
     name: string;
     description: string | null;
     image: string | null;
@@ -53,9 +55,18 @@ export interface FeaturedDeps {
 
 const PREFIX: Record<FeaturedKind, string> = { world: 'w', mod: 'm', favorite: 'f' };
 
-/** ノートの id の末尾（種類と項目の id の要約。URL に入る文字だけ）。 */
-export const featuredKeyOf = (kind: FeaturedKind, id: string): string =>
-    `${PREFIX[kind]}-${createHash('sha256').update(`${kind}\n${id}`).digest('base64url').slice(0, 16)}`;
+/** ノートの id の末尾（種類と中身の要約。URL に入る文字だけ）。本文か添付が変われば変わる。 */
+export const featuredKeyOf = (group: FeaturedGroup): string =>
+    `${PREFIX[group.kind]}-${createHash('sha256')
+        .update(
+            JSON.stringify([group.kind, featuredNoteContent(group), group.items.map((i) => [i.image, i.published])]),
+        )
+        .digest('base64url')
+        .slice(0, 16)}`;
+
+interface KeyedGroup extends FeaturedGroup {
+    key: string;
+}
 
 const httpsOnly = (url: string | null, base: string): string | null => {
     if (!url) return null;
@@ -68,16 +79,14 @@ const httpsOnly = (url: string | null, base: string): string | null => {
 };
 
 export function createFeatured(deps: FeaturedDeps) {
-    const cache = createTtlCache<FeaturedItem[]>({ ttlMs: deps.ttlMs ?? 60_000, max: 500 });
+    const cache = createTtlCache<KeyedGroup[]>({ ttlMs: deps.ttlMs ?? 60_000, max: 500 });
 
-    const itemsOf = (kind: FeaturedKind, sources: readonly FeaturedSource[]): FeaturedItem[] =>
+    const itemsOf = (sources: readonly FeaturedSource[]): FeaturedItem[] =>
         sources.flatMap((s) => {
             const link = httpsOnly(s.path, deps.profileOrigin);
             if (!link) return [];
             return [
                 {
-                    kind,
-                    key: featuredKeyOf(kind, s.id),
                     name: s.name,
                     description: s.description,
                     image: httpsOnly(s.image, deps.identity.origin),
@@ -88,7 +97,7 @@ export function createFeatured(deps: FeaturedDeps) {
             ];
         });
 
-    const collect = async (owner: FeaturedOwner): Promise<FeaturedItem[]> => {
+    const collect = async (owner: FeaturedOwner): Promise<KeyedGroup[]> => {
         const safely = (what: string, load: () => Promise<FeaturedSource[]>) =>
             load().catch((error: unknown) => {
                 deps.log?.(`固定ノートの${what}を読めません: ${String(error)}`);
@@ -103,42 +112,42 @@ export function createFeatured(deps: FeaturedDeps) {
             ),
         ]);
         return pickFeatured({
-            worlds: itemsOf('world', worlds),
-            mods: itemsOf('mod', mods),
-            favorites: itemsOf('favorite', favorites),
-        });
+            world: itemsOf(worlds),
+            mod: itemsOf(mods),
+            favorite: itemsOf(favorites),
+        }).map((group) => ({ ...group, key: featuredKeyOf(group) }));
     };
 
-    const items = async (userId: string): Promise<{ owner: FeaturedOwner; items: FeaturedItem[] } | undefined> => {
+    const groups = async (userId: string): Promise<{ owner: FeaturedOwner; groups: KeyedGroup[] } | undefined> => {
         const owner = await deps.findUser(userId);
         if (!owner) return undefined;
-        return { owner, items: await cache.getOrCreate(owner.id, () => collect(owner)) };
+        return { owner, groups: await cache.getOrCreate(owner.id, () => collect(owner)) };
     };
 
-    const noteOf = (owner: FeaturedOwner, item: FeaturedItem) =>
+    const noteOf = (owner: FeaturedOwner, group: KeyedGroup) =>
         buildFeaturedNote({
-            id: deps.identity.featuredNoteUrl(owner.id, item.key),
+            id: deps.identity.featuredNoteUrl(owner.id, group.key),
             actor: deps.identity.actorUrl(owner.id),
             followers: deps.identity.followersUrl(owner.id),
-            item,
+            group,
         });
 
     return {
         /** actor の `featured`（ユーザーがいなければ undefined）。 */
         async collection(userId: string): Promise<Record<string, unknown> | undefined> {
-            const found = await items(userId);
+            const found = await groups(userId);
             if (!found) return undefined;
             return buildFeaturedCollection({
                 id: deps.identity.featuredUrl(found.owner.id),
-                notes: found.items.map((item) => noteOf(found.owner, item)),
+                notes: found.groups.map((group) => noteOf(found.owner, group)),
             });
         },
 
-        /** 固定ノート 1 つ（いま固定していなければ undefined）。 */
+        /** 固定ノート 1 つ（いま固定していなければ undefined。中身が変わる前の id も undefined）。 */
         async note(userId: string, key: string): Promise<Record<string, unknown> | undefined> {
-            const found = await items(userId);
-            const item = found?.items.find((i) => i.key === key);
-            return found && item ? noteOf(found.owner, item) : undefined;
+            const found = await groups(userId);
+            const group = found?.groups.find((g) => g.key === key);
+            return found && group ? noteOf(found.owner, group) : undefined;
         },
 
         /** 中身が変わった（次に取りに来られたら作り直す）。 */
