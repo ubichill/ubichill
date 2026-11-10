@@ -1,7 +1,8 @@
-import { type Instance, type WorldListItem, worldOriginDomain } from '@ubichill/shared';
+import { type Instance, isFullFor, type WorldListItem, worldOriginDomain } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useDialogLayer } from '@/components/ui/dialogLayer';
 import { createInstance, fetchInstances, fetchWorld } from '@/lib/instancesApi';
+import { useSession } from '@/lib/session';
 import { instanceWorldRef } from '@/lib/worldRef';
 import { css } from '@/styled-system/css';
 import { FavoriteButton } from './FavoriteButton';
@@ -27,6 +28,7 @@ interface InstanceDetailOverlayProps {
  */
 export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstanceId }: InstanceDetailOverlayProps) {
     useDialogLayer(onClose);
+    const viewerId = useSession().data?.user.id ?? null;
     const worldRef = instanceWorldRef(instance.world);
     // 詳細の主役インスタンス（右の一覧で切り替わる）。
     const [selected, setSelected] = useState<Instance>(instance);
@@ -77,7 +79,7 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
     const shareUrl = `${window.location.origin}${pagePath}`;
     const originDomain = world.source ? worldOriginDomain(world.source) : null;
     const isCurrent = selected.id === currentInstanceId;
-    const isFull = selected.status === 'full';
+    const isFull = isFullFor(selected, viewerId);
     // 招待のみの部屋がフレンドに見えているだけ（入るには中にいるフレンドへのリクエストか招待が要る）
     const needsInvite = selected.canJoin === false;
     const accessLabel = selected.access.type === 'public' ? '公開' : '限定';
@@ -433,6 +435,7 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
                                         </span>
                                         <span className={css({ fontSize: 'xs', color: 'textSubtle' })}>
                                             {i.stats.currentUsers} / {i.stats.maxUsers} 人
+                                            {i.status === 'full' && ' 満員'}
                                         </span>
                                     </div>
                                     {isCur && (

@@ -116,6 +116,9 @@ type Snapshot struct {
 
 // TicketRequest defines model for TicketRequest.
 type TicketRequest struct {
+	// Leader 部屋の作成者のチケット。満員でも入れる（定員を超えるのは 1 人まで）。
+	Leader *bool `json:"leader,omitempty"`
+
 	// Name SNS が保証する表示名。指定すると、クライアントが入室時に送る名前より優先する。
 	Name *string `json:"name,omitempty"`
 

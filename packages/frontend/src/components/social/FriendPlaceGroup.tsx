@@ -1,5 +1,6 @@
-import { ACCESS_TYPE_LABELS, type Instance } from '@ubichill/shared';
+import { ACCESS_TYPE_LABELS, type Instance, isFullFor } from '@ubichill/shared';
 import { HudIcon } from '@/components/hud/HudIcon';
+import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
 import { accessIcon } from './accessIcon';
 import { FriendGroup } from './FriendGroup';
@@ -9,6 +10,7 @@ import { type FriendPlace, placeFriendCards } from './friendPresence';
 /**
  * フレンドのいる部屋 1 つ。見出し（ワールド名・公開範囲・フレンドの数）の下に、部屋のカードとそこにいるフレンドを並べる。
  * here は自分がいる部屋（入る操作を出さず「ここにいます」の印）。招待が要る部屋（canJoin が false）は「入る」の代わりに「リクエスト」。
+ * 満員の部屋は、作成者でなければどちらも押せない「満員」。
  */
 export function FriendPlaceGroup({
     place,
@@ -73,6 +75,7 @@ function PlaceTile({
     onRequest?: () => void;
     requested?: boolean;
 }) {
+    const full = isFullFor(instance, useSession().data?.user.id ?? null);
     const needsInvite = instance.canJoin === false;
     const { world, stats } = instance;
     return (
@@ -97,13 +100,18 @@ function PlaceTile({
                         {friendCount}
                     </span>
                 </p>
-                {!here && !needsInvite && onJoin && (
+                {!here && full && (onJoin || onRequest) && (
+                    <button type="button" className={joinButton} disabled>
+                        満員
+                    </button>
+                )}
+                {!here && !full && !needsInvite && onJoin && (
                     <button type="button" className={joinButton} onClick={onJoin}>
                         <HudIcon name="enter" size={16} />
                         入る
                     </button>
                 )}
-                {!here && needsInvite && onRequest && (
+                {!here && !full && needsInvite && onRequest && (
                     <button type="button" className={joinButton} onClick={onRequest} disabled={requested}>
                         <HudIcon name="userPlus" size={16} />
                         {requested ? '招待をリクエスト済み' : '招待をリクエスト'}

@@ -145,7 +145,7 @@ func (r *Room) handOver(s *Server) (relayed []*peer, links []*relayLink) {
 
 // restoreRoom は渡された中身から部屋を作る（まだ owner ではない。確定で世代と期限を入れる）。
 func restoreRoom(h handoffSnapshot) (*Room, error) {
-	if len(h.Members) > h.Definition.MaxUsers {
+	if len(h.Members) > admissionLimit(h.Definition.MaxUsers, true) {
 		return nil, errors.New("too many members")
 	}
 	r, err := newRoom(h.Definition)

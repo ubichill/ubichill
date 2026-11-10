@@ -54,7 +54,7 @@ func joinAsWith(t *testing.T, h *httptest.Server, room, token string, features [
 
 func enter(t *testing.T, s *Server, h *httptest.Server, room, user string, features []string) *websocket.Conn {
 	t.Helper()
-	c, out := joinAsWith(t, h, room, s.sign(ticket{room, user, time.Now().Add(time.Minute).Unix(), "member", "", ""}), features)
+	c, out := joinAsWith(t, h, room, s.sign(ticket{room, user, time.Now().Add(time.Minute).Unix(), "member", "", "", false}), features)
 	joined(t, out)
 	receive(t, c, "world:snapshot")
 	return c
