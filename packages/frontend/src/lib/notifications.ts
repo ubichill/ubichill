@@ -16,6 +16,7 @@ export const NOTIFICATION_TABS: ReadonlyArray<{ kind: NotificationKind; label: s
 export const kindOf = (n: AppNotification): NotificationKind => {
     switch (n.type) {
         case 'Create':
+        case 'EmojiReact':
             return 'message';
         case 'Invite':
         case 'Join':
@@ -57,6 +58,8 @@ export function notificationText(n: AppNotification): string {
             return `${who} さんからフォローリクエストが届きました`;
         case 'Create':
             return `${who} さんからメッセージが届きました`;
+        case 'EmojiReact':
+            return `${who} さんがメッセージに ${n.content} を付けました`;
     }
 }
 

@@ -133,6 +133,9 @@ export function withStreamEvent(state: FeedState, event: NotificationStreamEvent
                 unreadCount: clamp(state.unreadCount - removedUnread),
             };
         }
+        // 通知の一覧には関わらない（開いている会話が自分で受け取る）
+        case 'reaction':
+            return state;
     }
 }
 

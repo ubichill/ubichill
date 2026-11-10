@@ -1,5 +1,10 @@
-/** フレンド同士のメッセージの API（会話の一覧・会話・送る・既読）。 */
-import type { ConversationPage, ConversationsResponse, DirectMessage } from '@ubichill/shared';
+/** フレンド同士のメッセージの API（会話の一覧・会話・送る・既読・リアクション）。 */
+import type {
+    ConversationPage,
+    ConversationsResponse,
+    DirectMessage,
+    MessageReactionsResponse,
+} from '@ubichill/shared';
 import { API_BASE } from './api';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -27,3 +32,10 @@ export const sendMessage = (userId: string, content: string) =>
     request<DirectMessage>(userPath(userId), { method: 'POST', body: JSON.stringify({ content }) });
 
 export const markConversationRead = (userId: string) => request<void>(`${userPath(userId)}/read`, { method: 'POST' });
+
+/** messageId のリアクションを emoji にする（null なら外す）。その 1 通のリアクションの全部が返る。 */
+export const setReaction = (userId: string, messageId: string, emoji: string | null) =>
+    request<MessageReactionsResponse>(`${userPath(userId)}/${encodeURIComponent(messageId)}/reaction`, {
+        method: emoji ? 'PUT' : 'DELETE',
+        ...(emoji ? { body: JSON.stringify({ emoji }) } : {}),
+    });

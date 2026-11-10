@@ -8,10 +8,12 @@ import {
     type DirectMessage,
     MESSAGE_LIMITS,
     MessageContentSchema,
+    type MessageReaction,
     type MessageRefusal,
     mergeMessages,
     messageLength,
     type UserSummary,
+    withMessageReactions,
 } from '@ubichill/shared';
 import { notificationText } from './notifications';
 
@@ -46,6 +48,13 @@ export const withSentMessage = (state: ConversationState, message: DirectMessage
     ...state,
     messages: mergeMessages(state.messages, [message]),
 });
+
+/** 1 通のリアクションを置き換える（付け外しの応答・SSE・楽観的な反映で同じもの）。 */
+export const withReactions = (
+    state: ConversationState,
+    messageId: string,
+    reactions: readonly MessageReaction[],
+): ConversationState => ({ ...state, messages: withMessageReactions(state.messages, messageId, reactions) });
 
 type MessageNotification = Extract<AppNotification, { type: 'Create' }>;
 
@@ -98,9 +107,12 @@ export function composerKeyAction(e: {
 export const toastTextOf = (n: AppNotification): string =>
     isMessage(n) ? `${n.actor.name}: ${messagePreview(n.object.content)}` : notificationText(n);
 
-/** 届いた通知をトーストに出すか。開いている会話の相手からのメッセージは、画面にそのまま出るので出さない。 */
+/**
+ * 届いた通知をトーストに出すか。開いている会話の相手からのメッセージは、画面にそのまま出るので出さない。
+ * リアクションは返事を求めるものではないので、ベルの未読だけにして割り込まない。
+ */
 export const shouldToast = (n: AppNotification, openPeerId: string | null): boolean =>
-    !n.read && !(isMessage(n) && n.actor.id === openPeerId);
+    !n.read && n.type !== 'EmojiReact' && !(isMessage(n) && n.actor.id === openPeerId);
 
 const timeFormat = new Intl.DateTimeFormat('ja-JP', { hour: '2-digit', minute: '2-digit' });
 const dateTimeFormat = new Intl.DateTimeFormat('ja-JP', {

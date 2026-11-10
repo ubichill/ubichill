@@ -1,10 +1,15 @@
 import { MESSAGE_LIMITS } from '@ubichill/shared';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { EmojiPicker } from '@/components/emoji';
 import { HudIcon } from '@/components/hud/HudIcon';
+import { insertAtSelection } from '@/lib/emoji/emojiCatalog';
 import { composerKeyAction, draftState } from '@/lib/messages';
 import { css, cva } from '@/styled-system/css';
 
-/** 会話の入力欄。Enter で送り、Shift+Enter で改行。上限に近づいたら文字数を出す。送れなければ入力は残す。 */
+/**
+ * 会話の入力欄。Enter で送り、Shift+Enter で改行。上限に近づいたら文字数を出す。送れなければ入力は残す。
+ * 横のボタンで絵文字を選ぶと、カーソルの位置に入れる。
+ */
 export function MessageComposer({
     name,
     sending,
@@ -16,12 +21,26 @@ export function MessageComposer({
     onSend: (content: string) => Promise<boolean>;
 }) {
     const [draft, setDraft] = useState('');
+    const [picking, setPicking] = useState(false);
+    const input = useRef<HTMLTextAreaElement>(null);
+    const pickerButton = useRef<HTMLButtonElement>(null);
     const { length, over, sendable } = draftState(draft);
     const showCount = length > MESSAGE_LIMITS.CONTENT_MAX * 0.8;
 
     const submit = async () => {
         if (!sendable || sending) return;
         if (await onSend(draft)) setDraft('');
+    };
+
+    const insertEmoji = (emoji: string) => {
+        const el = input.current;
+        const next = insertAtSelection(draft, el ? { start: el.selectionStart, end: el.selectionEnd } : null, emoji);
+        setDraft(next.value);
+        // 値が入れ替わったあとにカーソルを置き直す
+        requestAnimationFrame(() => {
+            input.current?.focus();
+            input.current?.setSelectionRange(next.caret, next.caret);
+        });
     };
 
     return (
@@ -32,11 +51,20 @@ export function MessageComposer({
                 void submit();
             }}
         >
+            {picking && (
+                <EmojiPicker
+                    anchor={pickerButton}
+                    className={pickerPlace}
+                    onSelect={insertEmoji}
+                    onClose={() => setPicking(false)}
+                />
+            )}
             <textarea
+                ref={input}
                 value={draft}
                 rows={1}
                 aria-label={`${name} さんへのメッセージ`}
-                className={input({ over })}
+                className={field({ over })}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
                     if (composerKeyAction({ ...e, isComposing: e.nativeEvent.isComposing }) !== 'send') return;
@@ -49,6 +77,16 @@ export function MessageComposer({
                     {length} / {MESSAGE_LIMITS.CONTENT_MAX}
                 </span>
             )}
+            <button
+                ref={pickerButton}
+                type="button"
+                className={pickerToggle}
+                aria-label="絵文字"
+                aria-expanded={picking}
+                onClick={() => setPicking((v) => !v)}
+            >
+                <HudIcon name="smilePlus" size={18} />
+            </button>
             <button type="submit" className={sendButton} disabled={!sendable || sending} aria-label="送る">
                 <HudIcon name="send" size={18} />
             </button>
@@ -56,9 +94,27 @@ export function MessageComposer({
     );
 }
 
-const form = css({ flexShrink: 0, display: 'flex', alignItems: 'flex-end', gap: '2' });
+const form = css({ position: 'relative', flexShrink: 0, display: 'flex', alignItems: 'flex-end', gap: '2' });
 
-const input = cva({
+const pickerPlace = css({ position: 'absolute', bottom: 'calc(100% + 8px)', right: 0 });
+
+const pickerToggle = css({
+    flexShrink: 0,
+    w: '40px',
+    h: '40px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: 'none',
+    borderRadius: '12px',
+    bg: 'transparent',
+    color: 'textMuted',
+    cursor: 'pointer',
+    _hover: { bg: 'surfaceHover', color: 'text' },
+    _expanded: { bg: 'surfaceAccent', color: 'text' },
+});
+
+const field = cva({
     base: {
         flex: 1,
         minW: 0,

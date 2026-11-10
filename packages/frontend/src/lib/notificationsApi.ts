@@ -34,7 +34,13 @@ export const createAnnouncement = (body: CreateAnnouncementRequest) =>
 
 export const notificationStreamUrl = (): string => `${API_BASE}/api/v1/notifications/stream`;
 
-const STREAM_EVENTS = ['notification', 'read', 'removed'] as const;
+// 種類を足したら聞き漏らさないよう、全部の種類を持たせる（足し忘れると型が合わない）
+const STREAM_EVENTS = Object.keys({
+    notification: true,
+    read: true,
+    removed: true,
+    reaction: true,
+} satisfies Record<NotificationStreamEvent['type'], true>);
 
 /** SSE の 1 つの出来事を読む（形が違えば捨てる）。 */
 export function parseStreamEvent(data: string): NotificationStreamEvent | undefined {

@@ -10,6 +10,7 @@ import {
     toastTextOf,
     unreadMessageCount,
     withConversationPage,
+    withReactions,
     withSentMessage,
 } from './messages';
 import { groupNotifications } from './notifications';
@@ -23,6 +24,15 @@ const message = (id: string, from: string, read = false, content = 'やあ'): Ap
     object: { type: 'Note', id: `m-${id}`, content },
     published: '2026-11-10T00:00:00.000Z',
     read,
+});
+const reaction = (id: string, from: string, emoji = '👍'): AppNotification => ({
+    id,
+    type: 'EmojiReact',
+    actor: person(from),
+    object: { type: 'Note', id: `m-${id}`, content: '本文' },
+    content: emoji,
+    published: '2026-11-10T00:00:00.000Z',
+    read: false,
 });
 const follow: AppNotification = {
     id: 'f1',
@@ -128,6 +138,7 @@ describe('withConversationPage', () => {
         senderId: 'bob',
         content: id,
         published: new Date(Date.UTC(2026, 10, 10, 0, 0, sec)).toISOString(),
+        reactions: [],
     });
     const page = (messages: DirectMessage[], nextCursor: string | null, refusal: ConversationPage['refusal'] = null) =>
         ({ user, messages, nextCursor, refusal }) satisfies ConversationPage;
@@ -162,6 +173,34 @@ describe('withConversationPage', () => {
     });
 });
 
+describe('withReactions', () => {
+    const user = { id: 'bob', name: 'Bob', handle: 'bob', image: null, bio: null };
+    const dm = (id: string): DirectMessage => ({
+        id,
+        senderId: 'bob',
+        content: id,
+        published: '2026-11-10T00:00:00.000Z',
+        reactions: [],
+    });
+    const state = { user, messages: [dm('a'), dm('b')], nextCursor: null, refusal: null };
+
+    it('その 1 通だけを置き換え、ほかの項目は保つ', () => {
+        const next = withReactions(state, 'b', [{ userId: 'alice', emoji: '👍' }]);
+        expect(next.messages.map((m) => m.reactions)).toEqual([[], [{ userId: 'alice', emoji: '👍' }]]);
+        expect(next.user).toBe(user);
+    });
+
+    it('取り直したページはサーバーのリアクションで置き換える（ほかの端末で外した）', () => {
+        const reacted = withReactions(state, 'a', [{ userId: 'alice', emoji: '👍' }]);
+        const refreshed = withConversationPage(
+            reacted,
+            { user, messages: [dm('a')], nextCursor: null, refusal: null },
+            'latest',
+        );
+        expect(refreshed.messages.find((m) => m.id === 'a')?.reactions).toEqual([]);
+    });
+});
+
 describe('shouldToast', () => {
     it('開いている会話の相手からのメッセージは出さず、ほかの人・ほかの種類は出す', () => {
         expect(shouldToast(message('1', 'alice'), 'alice')).toBe(false);
@@ -173,11 +212,27 @@ describe('shouldToast', () => {
     it('既読で届いたものは出さない', () => {
         expect(shouldToast(message('1', 'bob', true), null)).toBe(false);
     });
+
+    it('リアクションは、会話を開いていなくても出さない（ベルの未読だけ）', () => {
+        expect(shouldToast(reaction('r1', 'bob'), null)).toBe(false);
+        expect(shouldToast(reaction('r1', 'bob'), 'alice')).toBe(false);
+    });
 });
 
 describe('通知の中のメッセージ', () => {
-    it('メッセージの種類に分ける', () => {
-        expect(groupNotifications([message('1', 'a'), follow]).message.map((n) => n.id)).toEqual(['1']);
+    it('メッセージとリアクションはメッセージの種類に分ける', () => {
+        expect(groupNotifications([message('1', 'a'), reaction('2', 'b'), follow]).message.map((n) => n.id)).toEqual([
+            '1',
+            '2',
+        ]);
+    });
+
+    it('リアクションの文面は付けた絵文字を含む', () => {
+        expect(toastTextOf(reaction('1', 'bob', '🎉'))).toBe('BOB さんがメッセージに 🎉 を付けました');
+    });
+
+    it('リアクションは会話の取り直しの合図にしない（SSE の reaction で当てる）', () => {
+        expect(messageSignalOf([reaction('1', 'bob')], 'bob')).toBe('');
     });
 
     it('トーストは送った人の名前と本文の頭（ほかの種類は一覧と同じ文面）', () => {

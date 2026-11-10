@@ -1,14 +1,21 @@
+import { withReaction } from '@ubichill/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNotifications } from '@/components/notifications';
-import { type ConversationState, messageSignalOf, withConversationPage, withSentMessage } from '@/lib/messages';
-import { fetchConversation, markConversationRead, sendMessage } from '@/lib/messagesApi';
+import {
+    type ConversationState,
+    messageSignalOf,
+    withConversationPage,
+    withReactions,
+    withSentMessage,
+} from '@/lib/messages';
+import { fetchConversation, markConversationRead, sendMessage, setReaction } from '@/lib/messagesApi';
 
 /**
  * 1 人との会話。開いている間は、その人からメッセージが届くたびに最新を取り直して既読にする
- * （その人からのトーストは出さない）。
+ * （その人からのトーストは出さない）。リアクションの変化は SSE の reaction でそのまま当てる。
  */
-export function useConversation(peerId: string) {
-    const { feed, setOpenConversation } = useNotifications();
+export function useConversation(peerId: string, selfId: string | undefined) {
+    const { feed, setOpenConversation, subscribeReactions } = useNotifications();
     const signal = messageSignalOf(feed.items, peerId);
     const [state, setState] = useState<ConversationState | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -19,6 +26,11 @@ export function useConversation(peerId: string) {
         setOpenConversation(peerId);
         return () => setOpenConversation(null);
     }, [peerId, setOpenConversation]);
+
+    useEffect(
+        () => subscribeReactions((c) => setState((s) => (s ? withReactions(s, c.messageId, c.reactions) : s))),
+        [subscribeReactions],
+    );
 
     // biome-ignore lint/correctness/useExhaustiveDependencies: signal は取り直しの合図（値そのものは使わない）
     useEffect(() => {
@@ -69,5 +81,23 @@ export function useConversation(peerId: string) {
         [peerId],
     );
 
-    return { state, error, sending, loadOlder, send };
+    /** 自分のリアクションを emoji にする（null なら外す）。先に画面に当て、失敗したら元に戻す。 */
+    const react = useCallback(
+        async (messageId: string, emoji: string | null): Promise<void> => {
+            const before = state?.messages.find((m) => m.id === messageId)?.reactions;
+            if (!selfId || !before) return;
+            setState((s) => (s ? withReactions(s, messageId, withReaction(before, selfId, emoji)) : s));
+            setError(null);
+            try {
+                const result = await setReaction(peerId, messageId, emoji);
+                setState((s) => (s ? withReactions(s, result.messageId, result.reactions) : s));
+            } catch (e) {
+                setState((s) => (s ? withReactions(s, messageId, before) : s));
+                setError(e instanceof Error ? e.message : 'リアクションを付けられませんでした');
+            }
+        },
+        [peerId, selfId, state?.messages],
+    );
+
+    return { state, error, sending, loadOlder, send, react };
 }

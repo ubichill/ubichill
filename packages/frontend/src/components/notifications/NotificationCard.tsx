@@ -17,7 +17,7 @@ import { css, cva } from '@/styled-system/css';
  * - 招待: 入る（期限内・今いる部屋でないとき）
  * - リクエストインバイト: 招待する（いま自分がいる部屋へ）・断る
  * - フェディバースのフォローリクエスト: 承認・拒否（片付いたら通知ごと消える）
- * - メッセージ: 会話を開く（ランチパッドの中だけ）
+ * - メッセージ・リアクション: 会話を開く（ランチパッドの中だけ）
  */
 export function NotificationCard({
     notification,
@@ -142,7 +142,7 @@ export function NotificationCard({
             </IconAction>,
         );
     }
-    if (notification.type === 'Create' && hud) {
+    if ((notification.type === 'Create' || notification.type === 'EmojiReact') && hud) {
         actions.push(
             <IconAction
                 key="conversation"
@@ -179,7 +179,7 @@ export function NotificationCard({
             ? notification.object.content
             : notification.type === 'Invite'
               ? notification.content
-              : notification.type === 'Create'
+              : notification.type === 'Create' || notification.type === 'EmojiReact'
                 ? messagePreview(notification.object.content, 120)
                 : null;
 

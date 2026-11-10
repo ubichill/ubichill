@@ -1,19 +1,31 @@
-import { MESSAGE_REFUSAL_MESSAGES } from '@ubichill/shared';
+import { MESSAGE_REFUSAL_MESSAGES, toggledReaction } from '@ubichill/shared';
+import { useCallback, useRef, useState } from 'react';
+import { EmojiPicker } from '@/components/emoji';
+import { HudIcon } from '@/components/hud/HudIcon';
 import { useHudNavigation } from '@/components/hud/HudNavigationContext';
 import { UserAvatar } from '@/components/social/UserAvatar';
 import { messageTime } from '@/lib/messages';
 import { useSession } from '@/lib/session';
-import { css, cva } from '@/styled-system/css';
+import { css, cva, cx } from '@/styled-system/css';
 import { MessageComposer } from './MessageComposer';
+import { MessageReactions } from './MessageReactions';
 import { useConversation } from './useConversation';
 
-/** 1 人との会話（ランチパッドに重ねる画面）。上の名前を押すと相手のプロフィール。送れなくなった相手でも過去の分は読める。 */
+/**
+ * 1 人との会話（ランチパッドに重ねる画面）。上の名前を押すと相手のプロフィール。送れなくなった相手でも過去の分は読める。
+ * 各メッセージにリアクションできる（送れない相手との会話では見るだけ）。
+ */
 export function ConversationView({ userId }: { userId: string }) {
     const hud = useHudNavigation();
     const { data: session } = useSession();
-    const { state, error, sending, loadOlder, send } = useConversation(userId);
-    const now = new Date();
     const selfId = session?.user.id;
+    const { state, error, sending, loadOlder, send, react } = useConversation(userId, selfId);
+    // リアクションを選んでいる 1 通（選ぶ画面は会話に 1 つだけ。流れる一覧の中に置くと端で切れる）
+    const [reactingTo, setReactingTo] = useState<string | null>(null);
+    const reactButton = useRef<HTMLElement | null>(null);
+    const closePicker = useCallback(() => setReactingTo(null), []);
+    const now = new Date();
+    const canReact = !!state && !state.refusal && !!selfId;
 
     return (
         <div className={layout} onClick={(e) => e.stopPropagation()}>
@@ -39,9 +51,35 @@ export function ConversationView({ userId }: { userId: string }) {
                     )}
                     {state?.messages.map((m) => {
                         const mine = m.senderId === selfId;
+                        const picking = reactingTo === m.id;
                         return (
-                            <li key={m.id} className={item({ mine })}>
-                                <p className={bubble({ mine })}>{m.content}</p>
+                            <li key={m.id} className={cx('group', item({ mine }))}>
+                                <div className={bubbleRow({ mine })}>
+                                    <p className={bubble({ mine })}>{m.content}</p>
+                                    {canReact && (
+                                        <button
+                                            type="button"
+                                            className={reactToggle}
+                                            aria-label="リアクション"
+                                            aria-expanded={picking}
+                                            onClick={(e) => {
+                                                reactButton.current = e.currentTarget;
+                                                setReactingTo(picking ? null : m.id);
+                                            }}
+                                        >
+                                            <HudIcon name="smilePlus" size={16} />
+                                        </button>
+                                    )}
+                                </div>
+                                <MessageReactions
+                                    reactions={m.reactions}
+                                    selfId={selfId}
+                                    mine={mine}
+                                    disabled={!canReact}
+                                    onToggle={(emoji) =>
+                                        selfId && void react(m.id, toggledReaction(m.reactions, selfId, emoji))
+                                    }
+                                />
                                 <time dateTime={m.published} className={time}>
                                     {messageTime(m.published, now)}
                                 </time>
@@ -52,6 +90,14 @@ export function ConversationView({ userId }: { userId: string }) {
                 {!state && !error && <p className={muted}>読み込み中...</p>}
             </div>
 
+            {reactingTo && canReact && (
+                <EmojiPicker
+                    anchor={reactButton}
+                    className={pickerPlace}
+                    onSelect={(emoji) => void react(reactingTo, emoji)}
+                    onClose={closePicker}
+                />
+            )}
             {error && <p className={css({ fontSize: '12px', color: 'errorText' })}>{error}</p>}
             {state &&
                 (state.refusal ? (
@@ -64,6 +110,7 @@ export function ConversationView({ userId }: { userId: string }) {
 }
 
 const layout = css({
+    position: 'relative',
     h: 'full',
     minH: 0,
     w: 'full',
@@ -115,6 +162,35 @@ const item = cva({
         mine: { true: { alignSelf: 'flex-end', alignItems: 'flex-end' }, false: { alignSelf: 'flex-start' } },
     },
 });
+
+const bubbleRow = cva({
+    base: { display: 'flex', alignItems: 'center', gap: '1', maxW: 'full' },
+    variants: { mine: { true: { flexDirection: 'row-reverse' }, false: { flexDirection: 'row' } } },
+});
+
+// 押せる場所は見えなくても残す（タッチの端末はホバーが無いので、そこでは常に出す）
+const reactToggle = css({
+    flexShrink: 0,
+    w: '28px',
+    h: '28px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: 'none',
+    borderRadius: '999px',
+    bg: 'transparent',
+    color: 'textMuted',
+    cursor: 'pointer',
+    opacity: 0,
+    transition: 'opacity 0.16s ease',
+    _groupHover: { opacity: 1 },
+    _focusVisible: { opacity: 1 },
+    _expanded: { opacity: 1, bg: 'surfaceAccent', color: 'text' },
+    _hover: { bg: 'surfaceHover', color: 'text' },
+    '@media (hover: none)': { opacity: 1 },
+});
+
+const pickerPlace = css({ position: 'absolute', bottom: '56px', right: 0 });
 
 const bubble = cva({
     base: {
