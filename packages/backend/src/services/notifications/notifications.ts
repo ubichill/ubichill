@@ -45,6 +45,8 @@ export const dedupeKeys = {
     inviteRequest: (requesterId: string) => `Join:${requesterId}`,
     fediverseFollow: (actorUri: string) => `FediverseFollow:${actorUri}`,
     fediverseFollowRequest: (actorUri: string) => `FediverseFollowRequest:${actorUri}`,
+    /** 会話ごとに 1 つ（最新の 1 通で作り直す） */
+    message: (senderId: string) => `Create:${senderId}`,
 };
 
 export type FeedResult =
@@ -139,6 +141,22 @@ export function createNotificationService(deps: {
                     deps.hub.deliver(recipientId, { type: 'removed', ids: rows.map((r) => r.id) }),
                 ),
             );
+        },
+
+        /** senderId からメッセージが届いた。会話ごとに最新の 1 通だけを通知にする（届くたびに作り直して未読にする）。 */
+        messageReceived: (input: { senderId: string; recipientId: string; message: { id: string; content: string } }) =>
+            replace({
+                recipientId: input.recipientId,
+                type: 'Create',
+                actorUserId: input.senderId,
+                object: { type: 'Note', id: input.message.id, content: input.message.content },
+                dedupeKey: dedupeKeys.message(input.senderId),
+            }),
+
+        /** recipientId が senderId との会話を読んだ。その会話の通知も既読にする。 */
+        async messagesRead(recipientId: string, senderId: string): Promise<void> {
+            const read = await deps.notifications.markReadByKey(recipientId, dedupeKeys.message(senderId), now());
+            if (read.length > 0) await deps.hub.deliver(recipientId, { type: 'read', ids: read });
         },
 
         /** likerId がワールドをお気に入りにした。作者がこのサーバーのユーザーのときだけ作者に届ける。 */

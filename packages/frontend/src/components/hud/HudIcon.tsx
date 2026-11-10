@@ -148,6 +148,13 @@ const PATHS = {
             <path d="M6 6h.01M6 18h.01" />
         </>
     ),
+    message: <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12Z" />,
+    send: (
+        <>
+            <path d="M22 2 11 13" />
+            <path d="M22 2 15 22l-4-9-9-4 20-7Z" />
+        </>
+    ),
     megaphone: (
         <>
             <path d="m3 11 18-5v12L3 14v-3z" />

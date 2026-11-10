@@ -2,11 +2,12 @@ import http from 'node:http';
 import {
     announcementRepository,
     cliAuthRequestRepository,
+    directMessageRepository,
     inviteRepository,
     notificationRepository,
     pendingRegistrationRepository,
 } from '@ubichill/db';
-import { LIMITS, NOTIFICATION_LIMITS } from '@ubichill/shared';
+import { LIMITS, MESSAGE_LIMITS, NOTIFICATION_LIMITS } from '@ubichill/shared';
 import cors from 'cors';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
@@ -25,6 +26,7 @@ import { router as fediverseRouter } from './routes/fediverse';
 import { router as homeRouter } from './routes/homeRouter';
 import { router as instancesRouter } from './routes/instances';
 import { router as invitesRouter } from './routes/invitesRouter';
+import { router as messagesRouter } from './routes/messagesRouter';
 import { router as notificationsRouter } from './routes/notifications';
 import { router as profilesRouter } from './routes/profilesRouter';
 import { router as serviceTokensRouter } from './routes/serviceTokens';
@@ -143,6 +145,7 @@ app.use('/api/v1/social', socialRouter);
 app.use('/api/v1/fediverse', fediverseRouter);
 app.use('/api/v1', invitesRouter);
 app.use('/api/v1/notifications', notificationsRouter);
+app.use('/api/v1/messages', messagesRouter);
 app.use('/api/v1/authors', authorsRouter);
 app.use('/api/v1/cli-auth', cliAuthRouter);
 app.use('/api/v1/federation', federationApiRouter);
@@ -210,6 +213,9 @@ async function startServer() {
         const cutoff = new Date(Date.now() - NOTIFICATION_LIMITS.RETENTION_DAYS * 24 * 60 * 60 * 1000);
         await notificationRepository.deleteExpired(cutoff, NOTIFICATION_LIMITS.MAX_PER_RECIPIENT);
         await announcementRepository.deleteExpired(cutoff);
+        await directMessageRepository.deleteExpired(
+            new Date(Date.now() - MESSAGE_LIMITS.RETENTION_DAYS * 24 * 60 * 60 * 1000),
+        );
     };
 
     // 期限切れの CLI 認可の要求と仮登録を消す（どちらも認証なしで作れるので溜めない）。reaper と同じリースを持つ 1 台だけが行う

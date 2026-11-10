@@ -306,6 +306,45 @@ describe('招待・リクエストインバイトの通知', () => {
     });
 });
 
+describe('メッセージの通知', () => {
+    const send = (service: ReturnType<typeof setup>['service'], id: string, content: string) =>
+        service.messageReceived({ senderId: 'alice', recipientId: 'bob', message: { id, content } });
+
+    it('会話ごとに最新の 1 通だけが通知になり、読んだあとに届いた分はまた未読になる', async () => {
+        const { service, rows, tick } = setup();
+        const first = await send(service, 'm1', 'やあ');
+        expect(first).toMatchObject({ type: 'Create', object: { type: 'Note', id: 'm1', content: 'やあ' } });
+        await service.messagesRead('bob', 'alice');
+        expect(await service.unreadCount('bob')).toBe(0);
+        tick();
+        const second = await send(service, 'm2', 'まだいる？');
+        expect(rows.filter((r) => r.recipientId === 'bob')).toHaveLength(1);
+        expect(second).toMatchObject({ read: false, object: { id: 'm2' } });
+        expect(await service.unreadCount('bob')).toBe(1);
+    });
+
+    it('会話を読むと、その会話の通知だけを既読にして SSE に流す（ほかの人からの通知は残す）', async () => {
+        const { service, delivered } = setup();
+        const fromAlice = await send(service, 'm1', 'a');
+        await service.followRequested('newcomer', 'bob');
+        delivered.length = 0;
+        await service.messagesRead('bob', 'alice');
+        expect(delivered).toEqual([{ to: 'bob', event: { type: 'read', ids: [fromAlice?.id] } }]);
+        expect(await service.unreadCount('bob')).toBe(1);
+        // もう読んだ会話を読み直しても何も流さない
+        delivered.length = 0;
+        await service.messagesRead('bob', 'alice');
+        expect(delivered).toEqual([]);
+    });
+
+    it('フレンドでなくなってもメッセージの通知は消さない（過去の分は読める）', async () => {
+        const { service, rows } = setup();
+        await send(service, 'm1', 'a');
+        await service.friendshipRemoved('alice', 'bob');
+        expect(rows.map((r) => r.type)).toEqual(['Create']);
+    });
+});
+
 describe('ほかのサーバーの actor からの通知（連合）', () => {
     const BOB = 'https://c.example/ap/users/bob';
 
@@ -442,7 +481,7 @@ describe('運営のお知らせ', () => {
         // 古いお知らせを既読にしても位置は戻らない
         expect(await service.markRead('alice', { ids: [first.notification.id] })).toBe(1);
         const page = await service.listFeed('alice', {});
-        expect(page.ok && page.items.map((i) => [i.object.type === 'Note' && i.object.summary, i.read])).toEqual([
+        expect(page.ok && page.items.map((i) => [i.type === 'Announce' && i.object.summary, i.read])).toEqual([
             ['3', false],
             ['2', true],
             ['1', true],

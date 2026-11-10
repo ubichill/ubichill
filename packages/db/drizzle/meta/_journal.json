@@ -239,6 +239,13 @@
       "when": 1794209362845,
       "tag": "0033_presence_visibility",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1794292763058,
+      "tag": "0036_direct_messages",
+      "breakpoints": true
     }
   ]
 }

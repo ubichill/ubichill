@@ -2,6 +2,7 @@ import type { AppNotification } from '@ubichill/shared';
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { acceptInviteRequest } from '@/lib/inviteApi';
+import { shouldToast, toastTextOf } from '@/lib/messages';
 import {
     EMPTY_FEED,
     type FeedState,
@@ -13,7 +14,7 @@ import {
     withStreamEvent,
     withUnreadCount,
 } from '@/lib/notificationFeed';
-import { groupNotifications, notificationText, toastActionOf } from '@/lib/notifications';
+import { groupNotifications, toastActionOf } from '@/lib/notifications';
 import { fetchNotifications, markNotificationsRead, openNotificationStream } from '@/lib/notificationsApi';
 import { useSession } from '@/lib/session';
 import { fetchFriends } from '@/lib/socialApi';
@@ -28,6 +29,8 @@ function useNotificationFeed(enabled: boolean) {
     const [incomingIds, setIncomingIds] = useState<ReadonlySet<string>>(new Set());
     const [error, setError] = useState<string | null>(null);
     const loadingMore = useRef(false);
+    // 開いている会話の相手（その人からのメッセージはトーストに出さない）。描き直しを起こさないよう ref で持つ
+    const openConversation = useRef<string | null>(null);
 
     const refreshFriends = useCallback(async () => {
         const friends = await fetchFriends().catch(() => undefined);
@@ -59,7 +62,7 @@ function useNotificationFeed(enabled: boolean) {
             },
             onEvent: (event) => {
                 setFeed((s) => withStreamEvent(s, event));
-                if (event.type === 'notification' && !event.notification.read) {
+                if (event.type === 'notification' && shouldToast(event.notification, openConversation.current)) {
                     const n = event.notification;
                     // 招待はトーストからそのまま入れる（部屋を移ると前の部屋からは抜ける）。リクエストはそのまま招待で答えられる
                     const action = toastActionOf(n, {
@@ -71,7 +74,7 @@ function useNotificationFeed(enabled: boolean) {
                                     pushToast(e instanceof Error ? e.message : '招待を送れませんでした', 'error'),
                             ),
                     });
-                    pushToast(notificationText(n), 'info', action);
+                    pushToast(toastTextOf(n), 'info', action);
                     if (n.type === 'Follow') void refreshFriends();
                 }
             },
@@ -117,7 +120,10 @@ function useNotificationFeed(enabled: boolean) {
     }, []);
 
     const groups = useMemo(() => groupNotifications(feed.items), [feed.items]);
-    return { feed, groups, error, incomingIds, reload, loadMore, markRead, refreshFriends };
+    const setOpenConversation = useCallback((peerId: string | null) => {
+        openConversation.current = peerId;
+    }, []);
+    return { feed, groups, error, incomingIds, reload, loadMore, markRead, refreshFriends, setOpenConversation };
 }
 
 export type NotificationsState = ReturnType<typeof useNotificationFeed>;

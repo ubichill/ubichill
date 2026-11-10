@@ -6,6 +6,7 @@ import { useHudNavigation } from '@/components/hud/HudNavigationContext';
 import { UserAvatar, useOpenUser } from '@/components/social';
 import { answerFollower } from '@/lib/fediverseApi';
 import { acceptInviteRequest, declineInviteRequest } from '@/lib/inviteApi';
+import { messagePreview } from '@/lib/messages';
 import { isExpired, notificationText, relativeTime } from '@/lib/notifications';
 import { acceptFriend, removeFriend } from '@/lib/socialApi';
 import { css, cva } from '@/styled-system/css';
@@ -16,6 +17,7 @@ import { css, cva } from '@/styled-system/css';
  * - 招待: 入る（期限内・今いる部屋でないとき）
  * - リクエストインバイト: 招待する（いま自分がいる部屋へ）・断る
  * - フェディバースのフォローリクエスト: 承認・拒否（片付いたら通知ごと消える）
+ * - メッセージ: 会話を開く（ランチパッドの中だけ）
  */
 export function NotificationCard({
     notification,
@@ -140,6 +142,21 @@ export function NotificationCard({
             </IconAction>,
         );
     }
+    if (notification.type === 'Create' && hud) {
+        actions.push(
+            <IconAction
+                key="conversation"
+                label="会話を開く"
+                tone="view"
+                onClick={() => {
+                    onRead();
+                    hud.openConversation(actor.id);
+                }}
+            >
+                <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12Z" />
+            </IconAction>,
+        );
+    }
     if (actorHandle && notification.type !== 'Announce') {
         actions.push(
             <IconAction
@@ -162,7 +179,9 @@ export function NotificationCard({
             ? notification.object.content
             : notification.type === 'Invite'
               ? notification.content
-              : null;
+              : notification.type === 'Create'
+                ? messagePreview(notification.object.content, 120)
+                : null;
 
     return (
         <li className={card({ read: notification.read })}>
