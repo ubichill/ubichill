@@ -9,17 +9,20 @@
  * - 鍵は controller（owner）が actor で、id が `<actor の id>#…` のものだけ（Ed25519 の Multikey と RSA の PEM）
  */
 import { z } from 'zod';
+import { type CustomEmoji, type RichSegment, richTextPlain } from '../user/richText';
 import { parseEd25519Multikey } from './multikey';
 import {
     type LocalProfileFields,
     profileAttachment,
     profileExtensions,
+    REMOTE_SUMMARY_MAX_LENGTH,
     type RemoteProfileField,
     readProfileAttachment,
     readProfileExtensions,
 } from './profileFields';
 import { ACTOR_CONTEXT, AP_ACCEPT, FEDERATION_FEATURES, isActivityMediaType } from './protocol';
-import { displayMultilineText, displayText, escapeHtml } from './text';
+import { htmlToRichText, readCustomEmojis } from './richText';
+import { displayText, escapeHtml } from './text';
 import { parseFederationUrl, sameOrigin } from './urls';
 
 export interface LocalActorInput {
@@ -175,6 +178,10 @@ export interface RemoteActor {
     banner: string | null;
     /** 項目の表（ほかの実装の PropertyValue） */
     fields: RemoteProfileField[];
+    /** 自己紹介のリンク・メンションの並び（summary はこれをつないだ文字） */
+    bio: RichSegment[];
+    /** 名前・自己紹介・項目に使うカスタム絵文字 */
+    emojis: CustomEmoji[];
     /** ubichill のひとことと話せる言語（ほかの実装には無い） */
     statusMessage: string | null;
     spokenLanguages: string[];
@@ -197,9 +204,6 @@ const first = <T>(value: T | readonly T[] | null | undefined): T | undefined =>
 
 const hrefOf = (link: z.infer<typeof LinkSchema> | undefined): string | undefined =>
     typeof link === 'string' ? link : link?.href;
-
-/** ほかの実装の自己紹介を読む長さ（Misskey は 1500 文字まで書ける）。 */
-export const REMOTE_SUMMARY_MAX_LENGTH = 1500;
 
 /**
  * 取りに行った actor の文書を読む。fetchedUrl は実際に取りに行った URL（リダイレクトの前）。
@@ -244,6 +248,7 @@ export function readActorDocument(
         return url && parseFederationUrl(url, options) ? url : null;
     };
     const urlRaw = hrefOf(first(doc.url));
+    const bio = htmlToRichText(doc.summary, REMOTE_SUMMARY_MAX_LENGTH, options);
     const features = [...(doc.implements ?? []), ...(doc.generator?.implements ?? [])].map((i) => i.href);
     return {
         ok: true,
@@ -252,7 +257,9 @@ export function readActorDocument(
             type: doc.type,
             preferredUsername: displayText(doc.preferredUsername, 100),
             name: displayText(doc.name, 100),
-            summary: displayMultilineText(doc.summary, REMOTE_SUMMARY_MAX_LENGTH),
+            summary: richTextPlain(bio) || null,
+            bio,
+            emojis: readCustomEmojis(doc.tag, options),
             url: urlRaw && parseFederationUrl(urlRaw, options) ? urlRaw : null,
             icon: imageUrl(doc.icon),
             banner: imageUrl(doc.image),

@@ -1,6 +1,6 @@
 /** 一覧・検索に出すユーザーの公開情報（UserSummary）を DB から引く。ほかのサーバーの人は actor のキャッシュから。 */
 import { type RemoteActorRecord, remoteActorRepository, type UserRecord, userRepository } from '@ubichill/db';
-import { isRemoteUserId, remoteStatusOf, type UserSummary } from '@ubichill/shared';
+import { isRemoteUserId, remoteEmojisOf, remoteStatusOf, type UserSummary } from '@ubichill/shared';
 
 export const summaryOf = (u: UserRecord, status?: string): UserSummary => ({
     id: u.id,
@@ -14,6 +14,7 @@ export const summaryOf = (u: UserRecord, status?: string): UserSummary => ({
 /** ほかのサーバーの人（handle は `handle@domain`、名前が無ければ handle）。 */
 export const remoteSummaryOf = (a: RemoteActorRecord): UserSummary => {
     const status = remoteStatusOf(a.profile);
+    const emojis = remoteEmojisOf(a.profile);
     return {
         id: a.id,
         name: a.name ?? a.account.split('@')[0] ?? a.account,
@@ -22,6 +23,7 @@ export const remoteSummaryOf = (a: RemoteActorRecord): UserSummary => {
         bio: a.summary ?? null,
         ...(status ? { status } : {}),
         domain: a.domain,
+        ...(emojis.length > 0 ? { emojis } : {}),
     };
 };
 

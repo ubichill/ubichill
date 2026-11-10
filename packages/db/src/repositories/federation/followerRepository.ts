@@ -1,6 +1,6 @@
 import { and, count, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../../index';
-import { federationFollowers, remoteActors } from '../../schema';
+import { federationFollowers, type RemoteActorProfileRecord, remoteActors } from '../../schema';
 import type { Tx } from '../credentialUser';
 import { deliveryRepository, type NewDelivery } from './deliveryRepository';
 import type { RemoteActorRecord } from './remoteActorRepository';
@@ -23,6 +23,8 @@ export interface FollowerWithActor extends FollowerRecord {
     name: string | null;
     icon: string | null;
     url: string | null;
+    /** 名前のカスタム絵文字を出すのに使う（形は shared で確かめる） */
+    profile: RemoteActorProfileRecord;
 }
 
 const pairOf = (userId: string, actorId: string) =>
@@ -95,6 +97,7 @@ export const followerRepository = {
                 name: remoteActors.name,
                 icon: remoteActors.icon,
                 url: remoteActors.url,
+                profile: remoteActors.profile,
             })
             .from(federationFollowers)
             .innerJoin(remoteActors, eq(remoteActors.id, federationFollowers.actorId))
@@ -107,7 +110,14 @@ export const followerRepository = {
             )
             .orderBy(desc(federationFollowers.updatedAt))
             .limit(limit);
-        return rows.map((r) => ({ ...r.follower, account: r.account, name: r.name, icon: r.icon, url: r.url }));
+        return rows.map((r) => ({
+            ...r.follower,
+            account: r.account,
+            name: r.name,
+            icon: r.icon,
+            url: r.url,
+            profile: r.profile,
+        }));
     },
 
     /** フォロワーの数（消えた actor は除く）。 */

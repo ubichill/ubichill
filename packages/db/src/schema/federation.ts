@@ -16,6 +16,10 @@ export interface RemoteActorProfileRecord {
     fields?: Array<{ name: string; value: string; href: string | null }>;
     status?: string | null;
     languages?: string[];
+    /** 自己紹介のリンク・メンションの並び（shared の RichSegment） */
+    bio?: unknown[];
+    /** カスタム絵文字（shared の CustomEmoji） */
+    emojis?: Array<{ name: string; url: string }>;
 }
 
 /** ほかのサーバーの actor（取りに行った文書のキャッシュ。WebFinger の往復で確かめたものだけ）。 */

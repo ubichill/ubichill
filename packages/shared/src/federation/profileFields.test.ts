@@ -129,7 +129,7 @@ describe('ほかのサーバーの人のプロフィール（保存した形か�
             status: read.actor.statusMessage,
             languages: read.actor.spokenLanguages,
         });
-        expect(view).toEqual({ ...profile, fields: [] });
+        expect(view).toEqual({ ...profile, fields: [], bioSegments: null, emojis: [] });
     });
 
     it('Misskey の人: リンクの項目はリンクに、それ以外は表に。ひとこと・言語の名前の項目も、拡張の語が無ければ表に残す', () => {
@@ -154,18 +154,22 @@ describe('ほかのサーバーの人のプロフィール（保存した形か�
             fields: [link(1), link(1), link(2), link(3), link(4), link(5), link(6)],
         });
         expect(view.links.map((l) => l.url)).toEqual([1, 2, 3, 4, 5].map((i) => `https://site${i}.example/`));
-        // 6 件目はリンクの欄にあふれたので、表に残す（失わない）
-        expect(view.fields).toEqual([{ name: 'L6', value: 'site6' }]);
+        // 6 件目はリンクの欄にあふれたので、表に残す（失わない。行き先も持つ）
+        expect(view.fields).toEqual([{ name: 'L6', value: 'site6', href: 'https://site6.example/' }]);
     });
 
     it('保存した形が壊れていても読める（形の違う項目だけ捨てる）', () => {
-        expect(remoteProfileView(null)).toEqual({ status: null, links: [], languages: [], fields: [] });
-        expect(remoteProfileView({ fields: 'x', status: 3, languages: ['ja', 'xx', 1] })).toEqual({
-            status: null,
-            links: [],
-            languages: ['ja'],
-            fields: [],
-        });
+        const empty = { bioSegments: null, emojis: [] };
+        expect(remoteProfileView(null)).toEqual({ status: null, links: [], languages: [], fields: [], ...empty });
+        expect(remoteProfileView({ fields: 'x', status: 3, languages: ['ja', 'xx', 1], bio: 'x', emojis: {} })).toEqual(
+            {
+                status: null,
+                links: [],
+                languages: ['ja'],
+                fields: [],
+                ...empty,
+            },
+        );
         // ひとことは 1 行・60 文字に整え直す
         expect(remoteProfileView({ status: `<b>a</b>\n${'あ'.repeat(100)}` }).status).toHaveLength(60);
     });
