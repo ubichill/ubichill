@@ -1,12 +1,12 @@
 import { ACCESS_TYPE_LABELS, type Instance } from '@ubichill/shared';
-import { type ReactNode, useState } from 'react';
+import { Children, type ReactNode, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { HudIcon, type HudIconName } from '@/components/hud/HudIcon';
 import { useHudNavigation } from '@/components/hud/HudNavigationContext';
 import { css } from '@/styled-system/css';
 import { accessIcon } from './accessIcon';
 import { socialButton } from './buttons';
-import { friendLocationOf } from './friendPresence';
+import { type FriendLocation, friendLocationOf, selfLocationOf } from './friendPresence';
 import { UserAvatar } from './UserAvatar';
 import { useFriendLocations } from './useFriendLocations';
 import { useInviteActions } from './useInviteActions';
@@ -14,19 +14,31 @@ import { useInviteActions } from './useInviteActions';
 const MAX_FACES = 3;
 
 /**
- * フレンドのプロフィールに出す現在地。入れる部屋はサムネイル・人数・そこにいるフレンドと「入る」、
- * 入れない・見えない部屋は「プライベートインスタンス」と「リクエスト」、部屋にいなければ「オフライン」。
- * 自分が部屋にいるときは「招待」も出す（同じ部屋にいるときは除く）。フレンドの一覧に無い人（フレンドでない人）には何も出さない。
+ * プロフィールに出す現在地（誰のプロフィールでも同じ枠を出す）。
+ * - 自分: 今いる部屋（部屋の外なら「部屋にいません」）。
+ * - フレンド: 入れる部屋はサムネイル・人数・そこにいるフレンドと「入る」、入れない・見えない部屋は「プライベートインスタンス」と
+ *   「リクエスト」、部屋にいなければ「オフライン」。自分が部屋にいるときは「招待」も出す（同じ部屋にいるときは除く）。
+ * - フレンドでない人・ログインしていないとき: 「非公開」。
  */
-export function FriendLocationCard({ userId }: { userId: string }) {
+export function ProfileLocationCard({ userId, self, signedIn }: { userId: string; self: boolean; signedIn: boolean }) {
+    if (!signedIn) return <StateCard state={STATES.unknown} />;
+    return <SignedInLocationCard userId={userId} self={self} />;
+}
+
+function SignedInLocationCard({ userId, self }: { userId: string; self: boolean }) {
     const navigate = useNavigate();
     const hud = useHudNavigation();
-    const { data } = useFriendLocations();
+    const { data, error } = useFriendLocations();
     const { canInvite, currentInstanceId, invite, request } = useInviteActions();
     const [done, setDone] = useState({ invited: false, requested: false });
-    if (!data) return null;
-    const location = friendLocationOf(data, userId, currentInstanceId, Date.now());
-    if (location.kind === 'unknown') return null;
+    const location: FriendLocation | null = self
+        ? selfLocationOf(data, hud?.currentInstance ?? null)
+        : data
+          ? friendLocationOf(data, userId, currentInstanceId, Date.now())
+          : error
+            ? { kind: 'unknown' }
+            : null;
+    if (!location) return <section className={card} aria-label="現在地" aria-busy="true" />;
 
     const join = (instance: Instance) => {
         const worldData = { thumbnail: instance.world.thumbnail, displayName: instance.world.displayName };
@@ -34,7 +46,7 @@ export function FriendLocationCard({ userId }: { userId: string }) {
         else navigate(`/instance/${instance.id}`, { state: { worldId: instance.world.id, worldData } });
     };
     const here = location.kind === 'room' && location.here;
-    const inviteButton = canInvite && !here && (
+    const inviteButton = canInvite && !self && !here && (
         <button
             type="button"
             className={socialButton()}
@@ -46,43 +58,25 @@ export function FriendLocationCard({ userId }: { userId: string }) {
     );
 
     if (location.kind !== 'room') {
-        const state = STATES[location.kind];
         return (
-            <section className={card} aria-label="現在地">
-                <div className={css({ display: 'flex', flexDirection: 'column', gap: '3', p: '4' })}>
-                    <div className={css({ display: 'flex', alignItems: 'center', gap: '3' })}>
-                        <span className={stateIcon}>
-                            <HudIcon name={state.icon} size={22} />
-                        </span>
-                        <div className={css({ flex: 1, minW: 0 })}>
-                            <p className={label}>現在地</p>
-                            <p className={stateTitle}>{state.title}</p>
-                            {location.kind === 'unreachable' && location.lastKnown && (
-                                <p className={meta}>{location.lastKnown}</p>
-                            )}
-                        </div>
-                    </div>
-                    {(location.kind === 'private' || inviteButton) && (
-                        <div className={actions}>
-                            {location.kind === 'private' && (
-                                <button
-                                    type="button"
-                                    className={socialButton({ tone: 'primary' })}
-                                    disabled={done.requested}
-                                    onClick={() =>
-                                        void request({ id: userId }).then(
-                                            (ok) => ok && setDone((d) => ({ ...d, requested: true })),
-                                        )
-                                    }
-                                >
-                                    {done.requested ? '招待をリクエスト済み' : '招待をリクエスト'}
-                                </button>
-                            )}
-                            {inviteButton}
-                        </div>
-                    )}
-                </div>
-            </section>
+            <StateCard
+                state={STATES[location.kind]}
+                lastKnown={location.kind === 'unreachable' ? location.lastKnown : undefined}
+            >
+                {location.kind === 'private' && (
+                    <button
+                        type="button"
+                        className={socialButton({ tone: 'primary' })}
+                        disabled={done.requested}
+                        onClick={() =>
+                            void request({ id: userId }).then((ok) => ok && setDone((d) => ({ ...d, requested: true })))
+                        }
+                    >
+                        {done.requested ? '招待をリクエスト済み' : '招待をリクエスト'}
+                    </button>
+                )}
+                {location.kind !== 'unknown' && inviteButton}
+            </StateCard>
         );
     }
 
@@ -97,7 +91,7 @@ export function FriendLocationCard({ userId }: { userId: string }) {
                     ) : (
                         <HudIcon name="globe" size={32} />
                     )}
-                    <span className={thumbLabel}>{here ? 'いっしょにいます' : '現在地'}</span>
+                    <span className={thumbLabel}>{here && !self ? 'いっしょにいます' : '現在地'}</span>
                 </div>
                 <div className={css({ flex: 1, minW: 0, display: 'flex', flexDirection: 'column', gap: '1.5' })}>
                     <h3 className={worldName}>{world.displayName}</h3>
@@ -136,11 +130,36 @@ export function FriendLocationCard({ userId }: { userId: string }) {
     );
 }
 
-const STATES: Record<'private' | 'unreachable' | 'offline', { title: string; icon: HudIconName }> = {
+type LocationState = { title: string; icon: HudIconName };
+
+const STATES: Record<Exclude<FriendLocation['kind'], 'room'>, LocationState> = {
     private: { title: 'プライベートインスタンス', icon: 'lock' },
     unreachable: { title: '確認できません', icon: 'globe' },
     offline: { title: 'オフライン', icon: 'user' },
+    away: { title: '部屋にいません', icon: 'user' },
+    unknown: { title: '非公開', icon: 'lock' },
 };
+
+function StateCard({ state, lastKnown, children }: { state: LocationState; lastKnown?: string; children?: ReactNode }) {
+    const hasActions = Children.toArray(children).length > 0;
+    return (
+        <section className={card} aria-label="現在地">
+            <div className={css({ display: 'flex', flexDirection: 'column', gap: '3', p: '4' })}>
+                <div className={css({ display: 'flex', alignItems: 'center', gap: '3' })}>
+                    <span className={stateIcon}>
+                        <HudIcon name={state.icon} size={22} />
+                    </span>
+                    <div className={css({ flex: 1, minW: 0 })}>
+                        <p className={label}>現在地</p>
+                        <p className={stateTitle}>{state.title}</p>
+                        {lastKnown && <p className={meta}>{lastKnown}</p>}
+                    </div>
+                </div>
+                {hasActions && <div className={actions}>{children}</div>}
+            </div>
+        </section>
+    );
+}
 
 function Meta({ icon, children }: { icon: HudIconName; children: ReactNode }) {
     return (

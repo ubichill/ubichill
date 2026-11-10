@@ -5,7 +5,7 @@ import { css } from '@/styled-system/css';
 import { FriendButton } from './FriendButton';
 
 /**
- * ほかの人のプロフィール: 自分との関係の操作。フレンドのいまいる場所（入る・リクエスト・招待）は FriendLocationCard。
+ * ほかの人のプロフィール: 自分との関係の操作。フレンドのいまいる場所（入る・リクエスト・招待）は ProfileLocationCard。
  */
 export function UserSocialBar({ userId, name }: { userId: string; name: string }) {
     const [friendship, setFriendship] = useState<Friendship | null>(null);

@@ -134,6 +134,7 @@ export type FriendLocation =
     | { kind: 'private' }
     | { kind: 'unreachable'; lastKnown?: string }
     | { kind: 'offline' }
+    | { kind: 'away' }
     | { kind: 'unknown' };
 
 export function friendLocationOf(
@@ -154,6 +155,18 @@ export function friendLocationOf(
     if (unreachable) return { kind: 'unreachable', lastKnown: lastKnownOf(unreachable, now) };
     if (data.elsewhere.some((f) => f.id === userId)) return { kind: 'offline' };
     return { kind: 'unknown' };
+}
+
+/** 自分の現在地（プロフィールで出す）。今いる部屋とそこにいるフレンド。部屋の外なら away。 */
+export function selfLocationOf(data: FriendLocationsResponse | null, current: Instance | null): FriendLocation {
+    if (!current) return { kind: 'away' };
+    const place = data?.locations.find((l) => l.instance.id === current.id);
+    return {
+        kind: 'room',
+        instance: place?.instance ?? current,
+        friends: [...(place?.friends ?? [])].sort(byName),
+        here: true,
+    };
 }
 
 /**
