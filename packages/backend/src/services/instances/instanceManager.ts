@@ -7,7 +7,13 @@ import type {
     WorldMod,
     WorldSource,
 } from '@ubichill/shared';
-import { canJoinInstance, canSeeInstance, type InstanceAudience, isPublishable } from '@ubichill/shared';
+import {
+    blockedByCapacity,
+    canJoinInstance,
+    canSeeInstance,
+    type InstanceAudience,
+    isPublishable,
+} from '@ubichill/shared';
 import { appConfig } from '../../config';
 import { logger } from '../../utils/logger';
 import { friendIdsOf } from '../social/friends';
@@ -70,13 +76,11 @@ class InstanceManager {
     /**
      * インスタンス一覧を取得
      *
-     * status / 人数は Go runtime から導出するため DB の status フィルタは信頼しない。
-     * 全件取って toPublicInstance で正しい値を計算し、includeFull=false なら ここで post-filter する。
+     * status / 人数は Go runtime から導出する（DB の status は見ない）。満員の部屋も出す（画面が「満員」と出す）。
      */
     async listInstances(options?: {
         tag?: string;
         worldId?: string;
-        includeFull?: boolean;
         /** 見る人（公開範囲で絞る。ログインしていなければ null でパブリックだけ）。 */
         viewerId?: string | null;
     }): Promise<Instance[]> {
@@ -92,9 +96,7 @@ class InstanceManager {
                 presence,
             );
         }
-        const dbInstances = (await instanceRepository.findAll({ tag: options?.tag, includeFull: true })).filter(
-            visible,
-        );
+        const dbInstances = (await instanceRepository.findAll({ tag: options?.tag })).filter(visible);
         const mapped = await Promise.all(
             dbInstances.map(async (db: InstanceRecord): Promise<Instance | null> => {
                 const world = await worldRegistry.getWorldByUrl(db.worldRef);
@@ -105,8 +107,7 @@ class InstanceManager {
         const instances: Instance[] = mapped.filter(
             (i: Instance | null): i is Instance => i !== null && isPublishable(i.world.identity),
         );
-        const shown = options?.includeFull ? instances : instances.filter((i: Instance) => i.status === 'active');
-        return this.withViewerAccess(shown, viewerId, friends, presence);
+        return this.withViewerAccess(instances, viewerId, friends, presence);
     }
 
     /**
@@ -119,10 +120,11 @@ class InstanceManager {
         friends: ReadonlySet<string>,
         presence: Map<string, RoomPresence>,
     ): Promise<Instance[]> {
-        const audienceOf = (instance: Instance) => ({
+        const audienceOf = (instance: Instance): InstanceAudience => ({
             accessType: instance.access.type,
             leaderId: instance.leaderId,
             memberIds: presence.get(instance.id)?.memberIds ?? [],
+            maxUsers: instance.stats.maxUsers,
         });
         // 招待を引くのは、招待が無いと入れない部屋だけ（ほとんどの部屋は引かずに済む）
         const needsInvite = instances.filter((i) => !canJoinInstance(audienceOf(i), viewerId, friends));
@@ -178,35 +180,43 @@ class InstanceManager {
         return !!dbInstance && (await this.accessFor(dbInstance, viewerId)).canJoin;
     }
 
-    /** 見えるか・入れるか。招待は期限内のものだけ効く。 */
+    /** 見えるか・入れるか（公開範囲と招待）と、満員で入れないか。招待は期限内のものだけ効く。 */
     private async accessFor(
-        dbInstance: Pick<InstanceRecord, 'id' | 'accessType' | 'leaderId'>,
+        dbInstance: Pick<InstanceRecord, 'id' | 'accessType' | 'leaderId' | 'maxUsers'>,
         viewerId: string | null,
-    ): Promise<{ canSee: boolean; canJoin: boolean }> {
+    ): Promise<{ canSee: boolean; canJoin: boolean; full: boolean; overCapacity: boolean }> {
         const [presence, friends] = await Promise.all([instanceRuntime.presence(), friendIdsOf(viewerId)]);
         const audience = this.audienceOf(dbInstance, presence);
         const canSee = canSeeInstance(audience, viewerId, friends);
-        if (canJoinInstance(audience, viewerId, friends)) return { canSee, canJoin: true };
+        const capacity = {
+            full: blockedByCapacity(audience, viewerId),
+            overCapacity: blockedByCapacity(audience, null) && viewerId === audience.leaderId,
+        };
+        if (canJoinInstance(audience, viewerId, friends)) return { canSee, canJoin: true, ...capacity };
         // 公開範囲で入れないときだけ招待を引く
         const invited = viewerId ? (await inviteRepository.findValid(dbInstance.id, viewerId)) !== undefined : false;
-        return { canSee, canJoin: canJoinInstance(audience, viewerId, friends, { invited }) };
+        return { canSee, canJoin: canJoinInstance(audience, viewerId, friends, { invited }), ...capacity };
     }
 
-    /** 公開範囲の判定に要る情報（参加している人は Go runtime が真）。 */
+    /** 公開範囲と定員の判定に要る情報（参加している人は Go runtime が真）。 */
     audienceOf(
-        dbInstance: Pick<InstanceRecord, 'id' | 'accessType' | 'leaderId'>,
+        dbInstance: Pick<InstanceRecord, 'id' | 'accessType' | 'leaderId' | 'maxUsers'>,
         presence: Map<string, RoomPresence>,
     ): InstanceAudience {
         return {
             accessType: dbInstance.accessType,
             leaderId: dbInstance.leaderId,
             memberIds: presence.get(dbInstance.id)?.memberIds ?? [],
+            maxUsers: dbInstance.maxUsers,
         };
     }
 
     /**
      * SNSの入室可否を確認し、Go用の短期チケットを発行する。
      * 表示名もチケットに入れ、Go はクライアントが送る名前より優先する（ほかの参加者になりすませないように）。
+     * 満員の部屋に作成者が入るときだけ、チケットに作成者の印を付ける（Go は印のあるチケットを満員でも通す）。
+     * 印はいつも付けず満員のときだけにする: Go の管理 API は知らない項目を 400 にするので、backend だけ先に更新された間も
+     * ふだんの入室（ホームなど）を壊さないため。
      */
     async join(instanceId: string, participant: { id: string; name: string }) {
         const userId = participant.id;
@@ -218,10 +228,13 @@ class InstanceManager {
                 access.canSee ? 'このインスタンスに入るには招待が要ります' : 'このインスタンスには入れません',
             );
         }
+        if (access.full) throw new InstanceJoinRejected('満員です');
         const world = await worldRegistry.getWorldByUrl(record.worldRef);
         if (!world) throw new Error('ワールドを取得できません');
         const owner = await instanceRuntime.provision(record.id, record.maxUsers, world);
-        return instanceRuntime.ticket(record.id, userId, ticketName(participant.name), owner);
+        return instanceRuntime.ticket(record.id, userId, ticketName(participant.name), owner, {
+            leader: access.overCapacity,
+        });
     }
 
     /**
@@ -234,7 +247,7 @@ class InstanceManager {
         const world = await worldRegistry.getWorldByUrl(record.worldRef);
         if (!world) throw new Error('ワールドを取得できません');
         const owner = await instanceRuntime.provision(record.id, record.maxUsers, world);
-        return instanceRuntime.ticket(record.id, participant.id, ticketName(participant.name), owner, origin);
+        return instanceRuntime.ticket(record.id, participant.id, ticketName(participant.name), owner, { origin });
     }
 
     /**

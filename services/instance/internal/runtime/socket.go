@@ -236,7 +236,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, relayed bool) {
 			p.batchCursors = batchesCursors(pass.features)
 			s.admission.Lock()
 			old := s.active[t.Subject]
-			err = room.join(p, profile(user, t.ticket), t.Subject, f.ID, s.connectionsFull())
+			err = room.join(p, profile(user, t.ticket), t.Subject, f.ID, t.Leader, s.connectionsFull())
 			if err == nil {
 				// Keep the previous session if the destination rejects admission.
 				if old != nil && old != p && old.room != nil && old.room != room {

@@ -241,9 +241,23 @@
       "breakpoints": true
     },
     {
+      "idx": 34,
+      "version": "7",
+      "when": 1794281683941,
+      "tag": "0034_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1794299606336,
+      "tag": "0035_user_blocks",
+      "breakpoints": true
+    },
+    {
       "idx": 36,
       "version": "7",
-      "when": 1794296854508,
+      "when": 1794299768177,
       "tag": "0036_direct_messages",
       "breakpoints": true
     }

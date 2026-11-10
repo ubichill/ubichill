@@ -6,6 +6,7 @@ import {
     inviteRepository,
     notificationRepository,
     pendingRegistrationRepository,
+    roleRepository,
 } from '@ubichill/db';
 import { LIMITS, MESSAGE_LIMITS, NOTIFICATION_LIMITS } from '@ubichill/shared';
 import cors from 'cors';
@@ -19,6 +20,7 @@ import { requireSharedRateLimitForLogin } from './lib/authRateLimit';
 import { connectSubscriber, redis, redisHealth } from './lib/redis';
 import { sharedRateLimit } from './lib/sharedRateLimit';
 import { blockOfficialPasswordChange } from './middleware/auth';
+import { router as adminRouter } from './routes/adminRouter';
 import { router as authorsRouter } from './routes/authors';
 import { router as cliAuthRouter } from './routes/cliAuth';
 import { federationApiRouter, isFederationInboundPath, mountFederationInbound } from './routes/federation';
@@ -150,6 +152,7 @@ app.use('/api/v1/authors', authorsRouter);
 app.use('/api/v1/cli-auth', cliAuthRouter);
 app.use('/api/v1/federation', federationApiRouter);
 app.use('/api/v1/service-tokens', serviceTokensRouter);
+app.use('/api/v1/admin', adminRouter);
 app.use('/.well-known/webfinger', webfingerRouter);
 
 // HTTPサーバーを作成
@@ -237,6 +240,9 @@ async function startServer() {
                 inviteRepository
                     .deleteExpired()
                     .catch((err: unknown) => logger.error('期限切れの招待の掃除に失敗:', err)),
+                roleRepository
+                    .deleteExpired()
+                    .catch((err: unknown) => logger.error('期限切れのロールのアサインの掃除に失敗:', err)),
                 federation?.sweep().catch((err: unknown) => logger.error('連合の記録の掃除に失敗:', err)),
             ]);
         });

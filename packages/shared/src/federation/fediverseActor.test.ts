@@ -44,6 +44,28 @@ describe('ほかの実装の actor の文書を読む', () => {
         expect(read.actor.sharedInbox).toBe('https://misskey.example/inbox');
     });
 
+    it('自己紹介のリンクの行き先と、名前・自己紹介に使うカスタム絵文字（tag の Emoji）を読む。summary はつないだ文字', () => {
+        const read = readActorDocument(
+            misskeyDoc({
+                name: 'しゅいろ :misskey:',
+                summary: '<p>:ai: <a href="https://misskey-hub.net/">公式</a></p>',
+                tag: [
+                    { type: 'Emoji', name: ':misskey:', icon: { type: 'Image', url: 'https://s3.example/m.png' } },
+                    { type: 'Emoji', name: ':ai:', icon: { type: 'Image', url: 'https://s3.example/ai.webp' } },
+                ],
+            }),
+            MISSKEY,
+        );
+        if (!read.ok) throw new Error('読めない');
+        expect(read.actor.name).toBe('しゅいろ :misskey:');
+        expect(read.actor.bio).toEqual([
+            { kind: 'text', text: ':ai: ' },
+            { kind: 'link', text: '公式', href: 'https://misskey-hub.net/' },
+        ]);
+        expect(read.actor.summary).toBe(':ai: 公式');
+        expect(read.actor.emojis.map((e) => e.name)).toEqual(['misskey', 'ai']);
+    });
+
     it('ほかの actor が持ち主の鍵・actor の下にない鍵・PEM でない鍵は使わない', () => {
         const keys = (publicKey: unknown) => {
             const read = readActorDocument(misskeyDoc({ publicKey }), MISSKEY);

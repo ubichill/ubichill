@@ -142,13 +142,14 @@ function memoryStores() {
     return { notifications, announcements, rows };
 }
 
-function setup(start = '2026-10-20T00:00:00.000Z') {
+function setup(start = '2026-10-20T00:00:00.000Z', blocks: Array<[string, string]> = []) {
     const clock = { now: new Date(start) };
     const stores = memoryStores();
     const delivered: Array<{ to: string; event: NotificationStreamEvent }> = [];
     const service = createNotificationService({
         ...stores,
         hub: { deliver: async (to, event) => void delivered.push({ to, event }) },
+        blocked: async (a, b) => blocks.some(([x, y]) => (x === a && y === b) || (x === b && y === a)),
         now: () => clock.now,
     });
     const tick = (ms = 1000) => {
@@ -186,6 +187,41 @@ describe('通知を作る規則', () => {
         // 別のワールドなら別の通知
         await service.worldLiked('alice', { ...world, url: 'https://x.example/w2.yaml' });
         expect(delivered).toHaveLength(2);
+    });
+
+    it('どちらの向きでもブロックしている 2 人の間には作らない・流さない（ほかの人には届く）', async () => {
+        const remote = 'https://c.example/ap/users/bob';
+        const { service, delivered, rows } = setup(undefined, [
+            ['bob', 'alice'],
+            ['alice', remote],
+        ]);
+        expect(await service.followRequested('alice', 'bob')).toBeUndefined();
+        expect(await service.followRequested('bob', 'alice')).toBeUndefined();
+        expect(
+            await service.worldLiked('alice', { url: 'https://x.example/w.yaml', name: 'W', authorId: 'bob' }),
+        ).toBeUndefined();
+        expect(await service.remoteFriendRequested(remote, 'alice')).toBeUndefined();
+        expect(rows).toEqual([]);
+        expect(delivered).toEqual([]);
+        expect(await service.remoteFriendRequested(remote, 'bob')).toBeDefined();
+    });
+
+    it('ブロックすると、2 人の間の通知は種類によらずすべて消え、受け手の画面にも知らせる', async () => {
+        const remote = 'https://c.example/ap/users/bob';
+        const { service, delivered, rows } = setup();
+        await service.followRequested('alice', 'bob');
+        await service.worldLiked('bob', { url: 'https://x.example/w.yaml', name: 'W', authorId: 'alice' });
+        await service.worldLiked('newcomer', { url: 'https://x.example/w.yaml', name: 'W', authorId: 'bob' });
+        await service.remoteFriendRequested(remote, 'bob');
+        delivered.length = 0;
+        await service.blocked('bob', 'alice');
+        await service.blocked('bob', remote);
+        expect(rows.map((r) => [r.recipientId, r.actorUserId ?? r.actorUri])).toEqual([['bob', 'newcomer']]);
+        expect(delivered.map((d) => [d.to, d.event.type])).toEqual([
+            ['bob', 'removed'],
+            ['alice', 'removed'],
+            ['bob', 'removed'],
+        ]);
     });
 
     it('消えた相手（いないユーザー）には作らない・流さない', async () => {
@@ -457,7 +493,7 @@ describe('一覧・未読・既読', () => {
         for (const n of [1, 2, 3]) {
             await service.worldLiked('alice', { url: `https://x.example/w${n}.yaml`, name: `w${n}`, authorId: 'bob' });
             tick();
-            await service.publishAnnouncement({ id: 'official', handle: 'ubichill' }, { title: `t${n}`, content: 'c' });
+            await service.publishAnnouncement({ id: 'official', isAdmin: true }, { title: `t${n}`, content: 'c' });
             tick();
         }
         const walk = async (cursor: string | undefined, acc: string[]): Promise<string[]> => {
@@ -486,24 +522,21 @@ describe('一覧・未読・既読', () => {
 });
 
 describe('運営のお知らせ', () => {
-    it('公式アカウント以外は出せない（何も配らない）', async () => {
+    it('管理者でなければ出せない（何も配らない）', async () => {
         const { service, delivered } = setup();
         expect(
-            await service.publishAnnouncement({ id: 'alice', handle: 'alice' }, { title: 't', content: 'c' }),
+            await service.publishAnnouncement({ id: 'alice', isAdmin: false }, { title: 't', content: 'c' }),
         ).toEqual({
             ok: false,
             error: 'forbidden',
         });
-        expect(
-            await service.publishAnnouncement({ id: 'alice', handle: undefined }, { title: 't', content: 'c' }),
-        ).toEqual({ ok: false, error: 'forbidden' });
         expect(delivered).toEqual([]);
     });
 
     it('全員に 1 回配り、読む人ごとの既読の位置で未読が決まる', async () => {
         const { service, delivered } = setup();
         const result = await service.publishAnnouncement(
-            { id: 'official', handle: 'ubichill' },
+            { id: 'official', isAdmin: true },
             { title: 't', content: 'c' },
         );
         expect(delivered).toEqual([
@@ -515,7 +548,7 @@ describe('運営のお知らせ', () => {
 
     it('登録より前に出したお知らせは、新しい人には既読で見える（未読に数えない）', async () => {
         const { service, clock } = setup('2026-10-01T00:00:00.000Z');
-        await service.publishAnnouncement({ id: 'official', handle: 'ubichill' }, { title: 'old', content: 'c' });
+        await service.publishAnnouncement({ id: 'official', isAdmin: true }, { title: 'old', content: 'c' });
         clock.now = new Date('2026-10-20T00:00:00.000Z');
         expect(await service.unreadCount('newcomer')).toBe(0);
         const page = await service.listFeed('newcomer', {});
@@ -524,7 +557,7 @@ describe('運営のお知らせ', () => {
 
     it('あるお知らせを既読にすると、それより前のお知らせも既読になる（位置を進めるだけ）', async () => {
         const { service, tick } = setup();
-        const official = { id: 'official', handle: 'ubichill' };
+        const official = { id: 'official', isAdmin: true };
         const first = await service.publishAnnouncement(official, { title: '1', content: 'c' });
         tick();
         const second = await service.publishAnnouncement(official, { title: '2', content: 'c' });
@@ -545,7 +578,7 @@ describe('運営のお知らせ', () => {
     it('全部を既読にすると、通知とお知らせの両方が 0 になり、ほかのタブにも流す', async () => {
         const { service, delivered, tick } = setup();
         await service.followRequested('alice', 'bob');
-        await service.publishAnnouncement({ id: 'official', handle: 'ubichill' }, { title: 't', content: 'c' });
+        await service.publishAnnouncement({ id: 'official', isAdmin: true }, { title: 't', content: 'c' });
         tick();
         delivered.length = 0;
         expect(await service.markRead('bob', { all: true })).toBe(0);

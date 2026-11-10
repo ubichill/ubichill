@@ -8,7 +8,9 @@ const USERS = ['alice', 'bob', 'carol'];
 const summary = (id: string): UserSummary => ({ id, name: id.toUpperCase(), handle: id, image: null, bio: null });
 
 /** DB・フレンド・通知のメモリの偽物。フレンドは双方向の組で持つ。 */
-function setup(options: { friends?: Array<[string, string]>; failNotify?: boolean } = {}) {
+function setup(
+    options: { friends?: Array<[string, string]>; blocks?: Array<[string, string]>; failNotify?: boolean } = {},
+) {
     const clock = { now: START };
     const pairs = new Set((options.friends ?? []).map(([a, b]) => [a, b].sort().join('|')));
     const rows: Array<DirectMessageRecord & { readAt: Date | null }> = [];
@@ -78,6 +80,9 @@ function setup(options: { friends?: Array<[string, string]>; failNotify?: boolea
             },
         },
         areFriends: async (a, b) => pairs.has([a, b].sort().join('|')),
+        isBlockedBetween: async (a, b) =>
+            (options.blocks ?? []).some(([x, y]) => (x === a && y === b) || (x === b && y === a)),
+        hiddenIdsFor: async (me) => new Set((options.blocks ?? []).filter(([x]) => x === me).map(([, y]) => y)),
         summariesOf: async (ids) => ids.filter((id) => USERS.includes(id)).map(summary),
         notify: {
             messageReceived: async (input) => {
@@ -404,5 +409,25 @@ describe('pageSizeOf', () => {
         expect(pageSizeOf(2.9)).toBe(2);
         expect(pageSizeOf(10_000)).toBe(MESSAGE_LIMITS.MAX_PAGE_SIZE);
         expect(pageSizeOf(Number.POSITIVE_INFINITY)).toBe(MESSAGE_LIMITS.DEFAULT_PAGE_SIZE);
+    });
+});
+
+describe('ブロック', () => {
+    it('どちらがブロックしても、フレンドのままでも送れず、リアクションもできない', async () => {
+        const blockedByBob = setup({ friends: [['alice', 'bob']], blocks: [['bob', 'alice']] });
+        expect(await blockedByBob.service.send('alice', 'bob', 'x')).toEqual({ ok: false, reason: 'blocked' });
+        expect(await blockedByBob.service.send('bob', 'alice', 'x')).toEqual({ ok: false, reason: 'blocked' });
+        expect(blockedByBob.rows).toHaveLength(0);
+    });
+
+    it('ブロックした人との会話は一覧にも会話にも出さない。ブロックされた側の一覧には残る（過去の分）', async () => {
+        const blocks: Array<[string, string]> = [];
+        const { service, settle } = setup({ friends: [['alice', 'bob']], blocks });
+        await service.send('alice', 'bob', 'やあ');
+        await settle();
+        blocks.push(['bob', 'alice']);
+        expect(await service.conversations('bob')).toEqual([]);
+        expect(await service.conversation('bob', 'alice', {})).toEqual({ ok: false, error: 'not-found' });
+        expect((await service.conversations('alice')).map((c) => c.user.id)).toEqual(['bob']);
     });
 });

@@ -3,6 +3,7 @@ import { NOTIFICATION_LIMITS, NotificationSchema } from '../notification/activit
 import {
     type DirectMessage,
     MESSAGE_LIMITS,
+    MESSAGE_REFUSAL_MESSAGES,
     MessageContentSchema,
     mergeMessages,
     messageLength,
@@ -13,27 +14,40 @@ import {
 } from './messages';
 
 describe('messageRefusal', () => {
+    it('ブロックがあればフレンドでも送れない。文言はフレンドでないときと同じ（ブロックを明かさない）', () => {
+        expect(messageRefusal('alice', 'bob', { friends: true, blocked: true })).toBe('blocked');
+        expect(messageRefusal('alice', 'bob', { friends: false, blocked: true })).toBe('blocked');
+        expect(MESSAGE_REFUSAL_MESSAGES.blocked).toBe(MESSAGE_REFUSAL_MESSAGES['not-friend']);
+        expect(messageRefusal('alice', 'alice', { friends: false, blocked: true })).toBe('self');
+    });
+
     it('フレンドには送れる', () => {
-        expect(messageRefusal('alice', 'bob', { friends: true })).toBeNull();
+        expect(messageRefusal('alice', 'bob', { friends: true, blocked: false })).toBeNull();
     });
 
     it('フレンドでない（申請中・解除した）なら送れない', () => {
-        expect(messageRefusal('alice', 'bob', { friends: false })).toBe('not-friend');
+        expect(messageRefusal('alice', 'bob', { friends: false, blocked: false })).toBe('not-friend');
     });
 
     it('自分にはフレンドかどうかに関わらず送れない（自分を自分のフレンドと誤って渡しても）', () => {
-        expect(messageRefusal('alice', 'alice', { friends: true })).toBe('self');
+        expect(messageRefusal('alice', 'alice', { friends: true, blocked: false })).toBe('self');
     });
 
     it('ほかのサーバーの人には、フレンドでもまだ送れない（http の開発用の actor も）', () => {
-        expect(messageRefusal('alice', 'https://b.example/ap/users/bob', { friends: true })).toBe('remote');
-        expect(messageRefusal('alice', 'http://localhost:3001/ap/users/bob', { friends: true })).toBe('remote');
-        expect(messageRefusal('https://b.example/ap/users/bob', 'alice', { friends: true })).toBe('remote');
+        expect(messageRefusal('alice', 'https://b.example/ap/users/bob', { friends: true, blocked: false })).toBe(
+            'remote',
+        );
+        expect(messageRefusal('alice', 'http://localhost:3001/ap/users/bob', { friends: true, blocked: false })).toBe(
+            'remote',
+        );
+        expect(messageRefusal('https://b.example/ap/users/bob', 'alice', { friends: true, blocked: false })).toBe(
+            'remote',
+        );
     });
 
     it('理由は「自分」が一番先（自分の URL を宛先にしても remote ではなく self）', () => {
         const me = 'https://a.example/ap/users/me';
-        expect(messageRefusal(me, me, { friends: false })).toBe('self');
+        expect(messageRefusal(me, me, { friends: false, blocked: false })).toBe('self');
     });
 });
 

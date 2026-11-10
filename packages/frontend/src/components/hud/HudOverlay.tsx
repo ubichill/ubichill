@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router';
 import { ConversationView } from '@/components/messages';
 import { useNotifications } from '@/components/notifications';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
+import { useIsAdmin } from '@/lib/account/useIsAdmin';
 import { isHomeInstance } from '@/lib/home';
 import { useHome } from '@/lib/homeStore';
 import { fetchInstance } from '@/lib/instancesApi';
@@ -21,13 +22,16 @@ import {
     type HudTab,
     type HudView,
     INITIAL_HUD_VIEW,
+    isTabVisible,
     openPage,
     openUser,
     pageTitle,
     selectTab,
+    visibleView,
 } from './hudView';
 import { LaunchpadHome } from './LaunchpadHome';
 import { AudioTab } from './tabs/AudioTab';
+import { type ControlPanelSection, ControlPanelTab } from './tabs/ControlPanelTab';
 import { InstanceTab } from './tabs/InstanceTab';
 import { InviteTab } from './tabs/InviteTab';
 import { NotificationsTab } from './tabs/NotificationsTab';
@@ -46,6 +50,8 @@ interface TabItem {
     id: HudTab;
     label: string;
     icon: HudIconName;
+    /** 縦の列で名前を折り返してよい（長い名前。折り返す位置は名前の中の U+200B） */
+    wrap?: boolean;
 }
 
 /** 下: その場のことと通知。 */
@@ -62,6 +68,7 @@ const PERSON_ITEMS: readonly TabItem[] = [
     { id: 'worlds', label: 'ワールド', icon: 'globe' },
     { id: 'social', label: 'ソーシャル', icon: 'users' },
     { id: 'settings', label: '設定', icon: 'gear' },
+    { id: 'control', label: 'コントロール\u200bパネル', icon: 'shield', wrap: true },
 ];
 
 /**
@@ -81,12 +88,15 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
     const [worldsSection, setWorldsSection] = useState<WorldsSection>('local');
     const [socialSection, setSocialSection] = useState<SocialSection>('locations');
     const [settingsSection, setSettingsSection] = useState<SettingsSection>('home');
+    const [controlSection, setControlSection] = useState<ControlPanelSection>('users');
     const [visible, setVisible] = useState(false);
     const instance = useCurrentInstance(currentInstanceId);
     const isHome = !!instance && isHomeInstance(instance, home, session?.user.id);
     const actions = useHudActions({ currentInstanceId, isHome, onClose });
     const contentId = useId();
     const selfId = session?.user.id;
+    const isAdmin = useIsAdmin(selfId);
+    const shown = visibleView(view, isAdmin);
 
     useEffect(() => {
         const frame = requestAnimationFrame(() => setVisible(true));
@@ -120,7 +130,7 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
         onClose();
     };
 
-    const page = currentPage(view);
+    const page = currentPage(shown);
     const title = page ? pageTitle(page) : null;
 
     const pageContent = (p: HudPage): ReactNode => {
@@ -142,7 +152,7 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
     };
 
     const tabContent = (): ReactNode => {
-        switch (view.tab) {
+        switch (shown.tab) {
             case 'launchpad':
                 return (
                     <LaunchpadHome
@@ -188,6 +198,8 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
                 );
             case 'settings':
                 return <SettingsTab section={settingsSection} onSectionChange={setSettingsSection} />;
+            case 'control':
+                return <ControlPanelTab section={controlSection} onSectionChange={setControlSection} />;
         }
     };
 
@@ -195,7 +207,7 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
     const unread = unreadBadge(notifications.feed.unreadCount);
     const unreadMessages = unreadBadge(unreadMessageCount(notifications.feed.items));
     const tabButton = (item: TabItem, placement: 'rail' | 'dock') => {
-        const active = view.tab === item.id;
+        const active = shown.tab === item.id;
         const badge = item.id === 'notifications' ? unread : item.id === 'social' ? unreadMessages : null;
         const icon = item.id === 'audio' && audio.muted ? 'mute' : item.icon;
         return (
@@ -219,7 +231,9 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
                         </span>
                     )}
                 </span>
-                <span className={tabLabel}>{item.id === 'profile' && userName ? userName : item.label}</span>
+                <span className={tabLabel({ wrap: !!item.wrap })}>
+                    {item.id === 'profile' && userName ? userName : item.label}
+                </span>
             </button>
         );
     };
@@ -230,7 +244,9 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
                 <div className={frame} onClick={(e) => e.stopPropagation()}>
                     <div className={main}>
                         <nav className={rail} aria-label="メニュー">
-                            {PERSON_ITEMS.map((item) => tabButton(item, 'rail'))}
+                            {PERSON_ITEMS.filter((item) => isTabVisible(item.id, isAdmin)).map((item) =>
+                                tabButton(item, 'rail'),
+                            )}
                         </nav>
                         <section
                             className={panel}
@@ -501,13 +517,21 @@ const tabButtonStyle = cva({
     },
 });
 
-const tabLabel = css({
-    maxW: 'full',
-    fontSize: { base: '10px', md: '11px' },
-    fontWeight: '700',
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
+const tabLabel = cva({
+    base: {
+        maxW: 'full',
+        fontSize: { base: '10px', md: '11px' },
+        fontWeight: '700',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+    },
+    variants: {
+        wrap: {
+            // 語の途中では折り返さず、名前に入れた折り返しの位置（U+200B）でだけ折り返す
+            true: { whiteSpace: 'normal', wordBreak: 'keep-all', textAlign: 'center', lineHeight: '1.25' },
+        },
+    },
 });
 
 const badgeStyle = css({

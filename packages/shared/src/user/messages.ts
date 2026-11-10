@@ -22,25 +22,31 @@ export const MESSAGE_LIMITS = {
     MAX_CONVERSATIONS: 50,
 } as const;
 
-/** 送れない理由。ブロックはここに足す（判定は messageRefusal に集める）。 */
+/** 送れない理由（判定は messageRefusal に集める）。 */
 export type MessageRefusal =
     /** 自分自身 */
     | 'self'
     /** ほかのサーバーの人（連合のメッセージはまだ無い） */
     | 'remote'
     /** 承認済みのフレンドでない（申請中・解除した・いない人） */
-    | 'not-friend';
+    | 'not-friend'
+    /** どちらかがもう片方をブロックしている */
+    | 'blocked';
 
 export const MESSAGE_REFUSAL_MESSAGES: Record<MessageRefusal, string> = {
     self: '自分には送れません',
     remote: 'ほかのサーバーの人にはまだ送れません',
     'not-friend': 'フレンドにだけ送れます',
+    // ブロックされた人にブロックを明かさない（フレンドでないときと同じ文言）
+    blocked: 'フレンドにだけ送れます',
 };
 
 /** 送る人と相手の関係（集めるのは backend。足す条件はここに項目を増やす）。 */
 export interface MessageRelation {
     /** 承認済みのフレンドか */
     friends: boolean;
+    /** どちらかがもう片方をブロックしている */
+    blocked: boolean;
 }
 
 /** sender が recipient にメッセージを送れるか。送れれば null。 */
@@ -51,6 +57,7 @@ export function messageRefusal(
 ): MessageRefusal | null {
     if (senderId === recipientId) return 'self';
     if (isRemoteUserId(recipientId) || isRemoteUserId(senderId)) return 'remote';
+    if (relation.blocked) return 'blocked';
     if (!relation.friends) return 'not-friend';
     return null;
 }

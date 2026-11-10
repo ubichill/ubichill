@@ -380,6 +380,7 @@ HTTP契約・型生成はOpenAPI、WebSocket契約はAsyncAPI。詳細は
 | `/instances` | 一覧・詳細（見る人が入れるかを `canJoin` に付ける） | 作成（10件/h） | 削除（**リーダーのみ**） |
 | `/instances/:id/invites` | `/instances/:id/invite-candidates`: 招待の画面に出すフレンド（送れるか・どこかにいるか） | 招待（`{userIds, message?}`、1 人ずつの結果。30回/分/人） | — |
 | `/social/invite-requests` | — | リクエストインバイト（`{userId}`）・`/:userId/accept`（招待で答える） | DELETE `/:userId`: 断る（どれも 20回/分/人） |
+| `/social/blocks` | ブロックした人（新しい順。作者アカウント `account` 付き） | ブロック（`{userId}`。フレンド・申請・招待・2 人の間の通知を消す） | DELETE `/:userId`: 解除 |
 | `/users/me` | 自分の情報 | — | — |
 | `/users/me/home` | ホームの設定とワールド | `/instance`: ホームの部屋を新しく作る（`?fallback=default` で既定のワールド。10回/分/人） | PUT: `{worldRef?: string\|null, accessType?}`（20回/分/人） |
 | `/notifications` | 一覧（`?cursor=&limit=`、お知らせを含む新しい順）・`/unread-count` | `/read`（`{ids}` か `{all:true}`） | — |
@@ -395,7 +396,7 @@ HTTP契約・型生成はOpenAPI、WebSocket契約はAsyncAPI。詳細は
 
 ほかのサーバーの部屋・人（連合）は、このサーバーのものと同じ API で扱う。部屋の ID の代わりに住所（`<部屋 ID>@<ドメイン>`）を、
 ユーザー ID の代わりに actor の URL を渡す（`/instances/:id`・`/instances/:id/join`・`/instances/:id/invites`・`/social/friends`・
-`/social/users/:id`・`/social/invite-requests`）。ほかのサーバーの部屋は `Instance.remote`（`{domain, url}`）、
+`/social/users/:id`・`/social/invite-requests`・`/social/blocks`）。ほかのサーバーの部屋は `Instance.remote`（`{domain, url}`）、
 ほかのサーバーの人は `UserSummary.domain` が付く。検索は `@ID@ドメイン` で、そのサーバーに WebFinger で問い合わせる。
 サーバー間の API は [design/federation.md](design/federation.md)。
 

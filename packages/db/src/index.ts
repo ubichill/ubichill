@@ -50,6 +50,14 @@ export {
     type ProfileImageRecordKind,
     profileImageRepository,
 } from './repositories/profileImageRepository';
+export {
+    type RoleAssignmentRecord,
+    type RoleMemberRecord,
+    type RoleRecord,
+    type RoleWithCountRecord,
+    roleRepository,
+} from './repositories/roleRepository';
+export { type BlockRecord, userBlockRepository } from './repositories/userBlockRepository';
 export { type FriendRow, userFriendRepository } from './repositories/userFriendRepository';
 export {
     type ProfileFieldsInput,

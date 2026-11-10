@@ -1,4 +1,5 @@
 import type { Friendship, RemoteRelation, UserSummary } from '@ubichill/shared';
+import { EmojiText } from '@/components/ui/EmojiText';
 import { css } from '@/styled-system/css';
 import { FriendButton } from './FriendButton';
 import { UserAvatar } from './UserAvatar';
@@ -55,7 +56,7 @@ export function UserRow({
                             lineClamp: 1,
                         })}
                     >
-                        {user.name}
+                        <EmojiText text={user.name} emojis={user.emojis} />
                     </span>
                     <span className={css({ display: 'block', fontSize: '12px', color: 'textMuted', lineClamp: 1 })}>
                         @{user.handle}

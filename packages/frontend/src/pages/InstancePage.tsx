@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { InstanceHUD } from '@/components/hud/InstanceHUD';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
+import { blockedAuthorsOf, blockedIdsOf, useBlocks } from '@/lib/blocks';
 import { afterInstanceFailure, readInstanceEntryState, recordEntryOutcome } from '@/lib/home';
 import { fetchInstance } from '@/lib/instancesApi';
 import { HOST_MOD_SOURCE } from '@/lib/modCdn';
@@ -89,6 +90,17 @@ export function InstancePage() {
     // ほかのサーバーの部屋にいる間は、ホームに来訪を知らせ続ける
     useRemoteVisit(id, !failure);
 
+    // ブロックした人の一覧を読むまで入らない（読む前にその人の mod を読み込まないように）。読めなければ止めずに入る
+    const blockState = useBlocks(session?.user.id);
+    const blocksPending = !!session && blockState.blocks === null && blockState.error === null;
+    const blocks = useMemo(
+        () => ({ ids: blockedIdsOf(blockState), modAuthors: blockedAuthorsOf(blockState) }),
+        [blockState],
+    );
+    useEffect(() => {
+        if (blockState.error) pushToast('ブロックした人の一覧を読み込めませんでした', 'warn');
+    }, [blockState.error]);
+
     const userName = session?.user.name ?? new URLSearchParams(location.search).get('name') ?? 'Guest';
     const preview = useMemo(
         () => ({ displayName: entry.worldData?.displayName, thumbnail: entry.worldData?.thumbnail }),
@@ -111,8 +123,9 @@ export function InstancePage() {
             fetchInstance={fetchInstance}
             confirmEntry={confirm}
             modSource={HOST_MOD_SOURCE}
-            authPending={isPending}
+            authPending={isPending || blocksPending}
             selfId={session?.user?.id}
+            blocks={blocks}
             preview={preview}
             recovery={recovery}
             onFailed={handleFailed}

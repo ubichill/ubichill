@@ -3,12 +3,15 @@ import {
     currentPage,
     goBack,
     INITIAL_HUD_VIEW,
+    isTabVisible,
     openPage,
     openUser,
     PERSON_TABS,
     PLACE_TABS,
     pageTitle,
     selectTab,
+    visibleTabs,
+    visibleView,
 } from './hudView';
 
 describe('hudView', () => {
@@ -55,6 +58,21 @@ describe('hudView', () => {
     it('プロフィールには見出しを付けない（名前が本文に大きく出る）', () => {
         expect(pageTitle({ kind: 'invite' })).toBe('招待');
         expect(pageTitle({ kind: 'user', userId: 'u1' })).toBeNull();
+    });
+
+    it('コントロールパネルは管理者にだけ出し、左の最後に置く。ほかのタブは誰にでも出す', () => {
+        expect(visibleTabs(PERSON_TABS, false)).toEqual(['profile', 'worlds', 'social', 'settings']);
+        expect(visibleTabs(PERSON_TABS, true)).toEqual(['profile', 'worlds', 'social', 'settings', 'control']);
+        expect(visibleTabs(PLACE_TABS, false)).toEqual([...PLACE_TABS]);
+        expect(isTabVisible('control', false)).toBe(false);
+    });
+
+    it('管理者でなくなったらコントロールパネルから最初の画面に戻す（重ねた画面も捨てる）', () => {
+        const inPanel = openPage(selectTab('control'), { kind: 'user', userId: 'u1' });
+        expect(visibleView(inPanel, true)).toBe(inPanel);
+        expect(visibleView(inPanel, false)).toEqual(INITIAL_HUD_VIEW);
+        const settings = selectTab('settings');
+        expect(visibleView(settings, false)).toBe(settings);
     });
 });
 

@@ -1,4 +1,4 @@
-import { type Instance, type WorldListItem, WorldSourceKind, worldSourceLabel } from '@ubichill/shared';
+import { type Instance, isFullFor, type WorldListItem, WorldSourceKind, worldSourceLabel } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { createInstance, fetchInstances, fetchWorld } from '@/lib/instancesApi';
@@ -189,7 +189,7 @@ export function WorldPage() {
                 {/* 説明 + 詳細情報（VRChat のワールド情報に相当。ここを優先表示） */}
                 <DetailsSection world={world} />
                 {/* 参加可能なインスタンス */}
-                <InstancesSection instances={instances} onJoin={handleJoin} />
+                <InstancesSection instances={instances} viewerId={session?.user.id ?? null} onJoin={handleJoin} />
                 {/* ubichill の説明・参加方法は最下部に控えめに置く */}
                 <AboutFooter />
             </main>
@@ -545,13 +545,14 @@ function MetaBadge({ icon, label }: { icon: 'user' | 'tag' | 'users' | 'activity
 
 interface InstancesSectionProps {
     instances: Instance[];
+    viewerId: string | null;
     onJoin: (instanceId: string) => void;
 }
 
-function InstancesSection({ instances, onJoin }: InstancesSectionProps) {
+function InstancesSection({ instances, viewerId, onJoin }: InstancesSectionProps) {
     return (
         <section className={css({ width: 'full' })}>
-            <h2 className={css({ fontSize: 'lg', fontWeight: '700', color: 'text', mb: 4 })}>参加可能なインスタンス</h2>
+            <h2 className={css({ fontSize: 'lg', fontWeight: '700', color: 'text', mb: 4 })}>インスタンス</h2>
             {instances.length === 0 && (
                 <p className={css({ color: 'textMuted', fontSize: 'sm' })}>
                     現在アクティブなインスタンスはありません。「インスタンスを作成」で新しく作成できます。
@@ -562,6 +563,7 @@ function InstancesSection({ instances, onJoin }: InstancesSectionProps) {
                     <button
                         key={i.id}
                         type="button"
+                        disabled={isFullFor(i, viewerId)}
                         onClick={() => onJoin(i.id)}
                         className={css({
                             display: 'flex',
@@ -576,6 +578,11 @@ function InstancesSection({ instances, onJoin }: InstancesSectionProps) {
                             cursor: 'pointer',
                             boxShadow: 'card',
                             _hover: { borderColor: 'primaryHighlight', bg: 'surfaceHover' },
+                            _disabled: {
+                                opacity: 0.6,
+                                cursor: 'not-allowed',
+                                _hover: { borderColor: 'border', bg: 'surface' },
+                            },
                         })}
                     >
                         <div className={css({ display: 'flex', flexDir: 'column', gap: 1 })}>

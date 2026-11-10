@@ -9,6 +9,7 @@ import { federation } from '../services/federation';
 import { processProfileImage } from '../services/profiles/images/processImage';
 import { createSharpCodec } from '../services/profiles/images/sharpCodec';
 import { createProfileService } from '../services/profiles/profiles';
+import { roleService } from '../services/roles/roleService';
 import { createJobGate } from '../utils/jobGate';
 import { logger } from '../utils/logger';
 import { createProfilesRouter } from './profiles';
@@ -52,6 +53,7 @@ export const router = createProfilesRouter({
         processImage: (input, kind) => imageGate.run(() => processProfileImage(input, kind, codec)),
         publicBaseUrl: process.env[ENV_KEYS.PUBLIC_BASE_URL] || SERVER_CONFIG.DEV_URL,
         authorOf: selfAccount,
+        publicRolesOf: (userId) => roleService.publicRolesOf(userId),
     }),
     onChanged: (userId) => federation?.profileChanged(userId),
 });

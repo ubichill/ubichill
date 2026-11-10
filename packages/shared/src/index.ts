@@ -256,6 +256,7 @@ export {
     verifyEnvelope,
 } from './signature/envelope';
 export * from './user/authorKeyDirectory';
+export * from './user/blocks';
 export * from './user/cliAuth';
 export * from './user/displayNameChange';
 export * from './user/externalWorks';
@@ -272,6 +273,8 @@ export * from './user/presence';
 export * from './user/profile';
 export * from './user/profileLanguages';
 export * from './user/profileLinks';
+export * from './user/richText';
+export * from './user/roles';
 export * from './user/signingKeys';
 export * from './user/userSearch';
 export * from './world/devEvents';

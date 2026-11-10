@@ -6,6 +6,7 @@ import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { FavoriteButton } from '@/components/worlds/FavoriteButton';
 import { useInstances } from '@/components/worlds/useInstances';
 import { WorldDetailModal } from '@/components/worlds/WorldDetailModal';
+import { useBlockedIds } from '@/lib/blocks';
 import { fetchInstance } from '@/lib/instancesApi';
 import { instanceWorldRef } from '@/lib/worldRef';
 import { css } from '@/styled-system/css';
@@ -42,6 +43,7 @@ export function InstanceTab({ currentInstanceId, onNavigate }: InstanceTabProps)
     const confirm = useConfirm();
     const { users, currentUser } = useSocket();
     const { createInstance } = useInstances();
+    const blockedIds = useBlockedIds();
 
     const [instance, setInstance] = useState<Instance | null>(null);
     const [creating, setCreating] = useState(false);
@@ -118,7 +120,7 @@ export function InstanceTab({ currentInstanceId, onNavigate }: InstanceTabProps)
         navigate(`/world/${world.id}/edit`);
     };
 
-    const participants = [...users.values()];
+    const participants = [...users.values()].filter((u) => !blockedIds.has(u.id));
 
     return (
         <div className={tabPanel} onClick={(e) => e.stopPropagation()}>

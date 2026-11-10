@@ -1,5 +1,6 @@
+import { blockedAuthorKeys } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
-import { describeModRejection, groupRejections } from './modRejection';
+import { blockedAuthorRejection, describeModRejection, groupRejections } from './modRejection';
 
 describe('describeModRejection', () => {
     it('再試行できるのは「いまは確認できない」だけ（確定した拒否に再試行を出さない）', () => {
@@ -14,6 +15,7 @@ describe('describeModRejection', () => {
             'signature-invalid',
             'author-unconfirmed',
             'author-pending',
+            'author-blocked',
         ];
         expect(reasons.filter((r) => describeModRejection(r).retryable)).toEqual(['author-pending']);
         expect(new Set(reasons.map((r) => describeModRejection(r).message)).size).toBe(reasons.length);
@@ -64,5 +66,34 @@ describe('groupRejections', () => {
 
     it('拒否が無ければ空', () => {
         expect(groupRejections(new Map())).toEqual([]);
+    });
+});
+
+describe('blockedAuthorRejection', () => {
+    const blocked = blockedAuthorKeys(['youkan@ubichill.com']);
+
+    it('ブロックした人の作者アカウントの mod は実行しない（再試行も出さない）', () => {
+        expect(blockedAuthorRejection('youkan@ubichill.com', blocked)).toEqual({ rejected: 'author-blocked' });
+        expect(describeModRejection('author-blocked').retryable).toBe(false);
+    });
+
+    it('ほかのサーバーの同じ handle・作者の無い mod は止めない', () => {
+        expect(blockedAuthorRejection('youkan@other.example', blocked)).toBeNull();
+        expect(blockedAuthorRejection(undefined, blocked)).toBeNull();
+    });
+
+    it('同じ mod の部品は 1 つにまとめて、ブロックの理由で出す', () => {
+        const rejections = new Map([
+            ['evil:a', 'author-blocked'],
+            ['evil:b', 'author-blocked'],
+        ]);
+        expect(groupRejections(rejections)).toEqual([
+            {
+                modId: 'evil',
+                message: 'ブロックした人が作った mod です',
+                retryable: false,
+                entityTypes: ['evil:a', 'evil:b'],
+            },
+        ]);
     });
 });

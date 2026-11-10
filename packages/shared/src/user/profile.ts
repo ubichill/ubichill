@@ -7,6 +7,8 @@ import type { Friendship, RemoteRelation, UserSummary } from './friends';
 import { BioSchema } from './handle';
 import { type ProfileLanguageCode, ProfileLanguagesSchema, profileLanguagesView } from './profileLanguages';
 import { type ProfileLink, ProfileLinksSchema, profileLinksView } from './profileLinks';
+import type { RichSegment } from './richText';
+import type { PublicRole } from './roles';
 
 /** ひとこと（今の状態を 1 行で）の最大文字数。 */
 export const PROFILE_STATUS_MAX_LENGTH = 60;
@@ -93,17 +95,25 @@ export interface UserProfile extends UserSummary {
     languages: ProfileLanguageCode[];
     /** ほかのサーバーの人の項目の表（リンクにできないもの。このサーバーの人には無い） */
     fields?: ProfileField[];
+    /** 公開のロール（表示順）。ほかのサーバーの人は空 */
+    roles: PublicRole[];
+    /** ほかのサーバーの人の自己紹介のリンク・メンションの並び（無ければ bio の文字から URL だけリンクにする） */
+    bioSegments?: RichSegment[];
 }
 
 /** 項目の表の 1 行（Mastodon・Misskey のプロフィールの「補足情報」）。 */
 export interface ProfileField {
     name: string;
     value: string;
+    /** 値がリンクなら行き先（http(s)） */
+    href?: string;
 }
 
 /** ID・内部 ID で引いたプロフィール（自分との関係付き。`GET /api/v1/social/users/...`）。 */
 export interface UserProfileWithFriendship extends UserProfile, RemoteRelation {
     friendship: Friendship;
+    /** 見ている人がこの人をブロックしている */
+    blocked?: true;
 }
 
 /** DB に保存してあるプロフィールの項目（links・languages は jsonb なので形を信用しない）。 */
@@ -119,7 +129,7 @@ export interface StoredProfileFields {
     languages: unknown;
 }
 
-export function userProfileOf(user: StoredProfileFields, author: string): UserProfile {
+export function userProfileOf(user: StoredProfileFields, author: string, roles: readonly PublicRole[]): UserProfile {
     return {
         id: user.id,
         name: user.name,
@@ -131,5 +141,6 @@ export function userProfileOf(user: StoredProfileFields, author: string): UserPr
         bannerImage: user.bannerImage ?? null,
         links: profileLinksView(user.links),
         languages: profileLanguagesView(user.languages),
+        roles: [...roles],
     };
 }

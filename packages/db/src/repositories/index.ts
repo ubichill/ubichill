@@ -6,6 +6,7 @@ export * from './federation';
 export * from './federationPeerRepository';
 export * from './instanceRepository';
 export * from './inviteRepository';
+export * from './userBlockRepository';
 export * from './userFriendRepository';
 export * from './userRepository';
 export * from './userSettingsRepository';

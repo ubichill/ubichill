@@ -40,6 +40,7 @@ import { backendEvents } from '../cluster/backendEvents';
 import { instanceManager } from '../instances/instanceManager';
 import { instanceRuntime } from '../instances/instanceRuntime';
 import { notificationService } from '../notifications/notificationService';
+import { isBlockedBetween } from '../social/blockCheck';
 import { friendIdsOf } from '../social/friends';
 import { publishedExternalEntries } from '../worlds/externalWorkStore';
 import { nodeWorldCrypto } from '../worlds/worldCrypto';
@@ -167,6 +168,7 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         identity,
         repo: remoteFriendshipRepository,
         userExists,
+        blocked: isBlockedBetween,
         outbox,
         notify: notificationService,
         seen: federationSeenRepository,
@@ -297,6 +299,7 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         identity,
         repo: followerRepository,
         userExists,
+        blocked: isBlockedBetween,
         settingsOf: (userId) => userSettingsRepository.getFediverse(userId),
         actorOf: async (actorId) => {
             const actor = await actors.get(actorId).catch(() => null);

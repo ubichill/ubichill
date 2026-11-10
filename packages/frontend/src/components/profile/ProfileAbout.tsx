@@ -1,5 +1,8 @@
-import { useState } from 'react';
-import { bioSegments } from '@/lib/bioLinks';
+import type { CustomEmoji, RichSegment } from '@ubichill/shared';
+import { type MouseEvent, useState } from 'react';
+import { useOpenAccount } from '@/components/social/useOpenAccount';
+import { EmojiText } from '@/components/ui/EmojiText';
+import { bioPieces } from '@/lib/bioLinks';
 import { shouldCollapseBio } from '@/lib/profile/bioCollapse';
 import { css, cva } from '@/styled-system/css';
 import { profileSectionTitle } from './profileStyles';
@@ -27,8 +30,23 @@ const more = css({
     _hover: { textDecoration: 'underline' },
 });
 
-/** 自己紹介。長ければ最初は折りたたみ「続きを読む」で開く。 */
-export function ProfileAbout({ bio }: { bio: string | null }) {
+// 新しいタブ・ウィンドウで開く操作はブラウザに任せる
+const opensElsewhere = (e: MouseEvent) => e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey;
+
+/**
+ * 自己紹介。長ければ最初は折りたたみ「続きを読む」で開く。ほかのサーバーの人は、取り込んだリンク（文字と行き先が違うもの）・
+ * メンション（押すとこのサーバーでその人のプロフィール）・カスタム絵文字も出す。
+ */
+export function ProfileAbout({
+    bio,
+    segments,
+    emojis,
+}: {
+    bio: string | null;
+    segments?: readonly RichSegment[];
+    emojis?: readonly CustomEmoji[];
+}) {
+    const openAccount = useOpenAccount();
     const [expanded, setExpanded] = useState(false);
     const collapsible = !!bio && shouldCollapseBio(bio);
     const collapsed = collapsible && !expanded;
@@ -38,22 +56,41 @@ export function ProfileAbout({ bio }: { bio: string | null }) {
             {bio ? (
                 <>
                     <p className={text({ collapsed })}>
-                        {bioSegments(bio).map((s, i) =>
-                            s.kind === 'link' ? (
+                        {bioPieces(bio, segments).map((s, i) => {
+                            const text = <EmojiText text={s.text} emojis={emojis} />;
+                            if (s.kind === 'text') return <span key={i}>{text}</span>;
+                            if (s.kind === 'mention' && s.account) {
+                                const account = s.account;
+                                return (
+                                    <a
+                                        key={i}
+                                        href={`/@${account}`}
+                                        title={`@${account}`}
+                                        className={link}
+                                        onClick={(e) => {
+                                            if (opensElsewhere(e)) return;
+                                            e.preventDefault();
+                                            void openAccount(account);
+                                        }}
+                                    >
+                                        {text}
+                                    </a>
+                                );
+                            }
+                            return (
                                 // 自己紹介はだれでも書けるので、開いた先に元のページを触らせず、リンクの評価も渡さない
                                 <a
                                     key={i}
                                     href={s.href}
+                                    title={s.href}
                                     target="_blank"
                                     rel="noopener noreferrer nofollow ugc"
                                     className={link}
                                 >
-                                    {s.text}
+                                    {text}
                                 </a>
-                            ) : (
-                                <span key={i}>{s.text}</span>
-                            ),
-                        )}
+                            );
+                        })}
                     </p>
                     {collapsible && (
                         <button

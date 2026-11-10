@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { followLabelOf, friendActionsOf, friendshipAfter } from './friendActions';
+import {
+    followerActionsOf,
+    followLabelOf,
+    friendActionsOf,
+    friendshipAfter,
+    relationAfter,
+    relationBadgesOf,
+} from './friendActions';
 
 describe('friendActionsOf', () => {
     it('関係ごとに出す操作を決める', () => {
@@ -23,7 +30,7 @@ describe('フレンドに対応していないサーバーの人（Misskey・Mas
     it('申請は出さない（送っても相手のサーバーが受けられない）。フォローされているかを代わりに出す', () => {
         expect(friendActionsOf('none', 'A', { friendsUnsupported: true })).toEqual([]);
         expect(followLabelOf({ friendsUnsupported: true, followsYou: 'accepted' })).toBe('フォローされています');
-        expect(followLabelOf({ followsYou: 'pending' })).toBe('フォローの承認待ち');
+        expect(followLabelOf({ followsYou: 'pending' })).toBe('フォローリクエストが届いています');
         expect(followLabelOf({})).toBeNull();
     });
 
@@ -41,5 +48,32 @@ describe('friendshipAfter', () => {
         expect(friendshipAfter('accept')).toBe('friends');
         expect(friendshipAfter('decline')).toBe('none');
         expect(friendshipAfter('unfriend')).toBe('none');
+    });
+});
+
+describe('プロフィールでのフォロワーへの操作', () => {
+    it('承認待ちは承認・拒否、フォロワーは外す（確かめる）、フォローされていなければ何も出さない', () => {
+        expect(followerActionsOf({ followsYou: 'pending' }, 'A').map((a) => a.action)).toEqual(['approve', 'reject']);
+        const [remove] = followerActionsOf({ followsYou: 'accepted', friendsUnsupported: true }, 'A');
+        expect(remove?.action).toBe('remove');
+        expect(remove?.confirm).toContain('A さん');
+        expect(followerActionsOf({ friendsUnsupported: true }, 'A')).toEqual([]);
+    });
+
+    it('承認するとフォロワー、拒否・外すとフォローの関係が消える（フレンドに対応しているかは残す）', () => {
+        expect(relationAfter({ followsYou: 'pending', friendsUnsupported: true }, 'approve')).toEqual({
+            followsYou: 'accepted',
+            friendsUnsupported: true,
+        });
+        expect(relationAfter({ followsYou: 'pending', friendsUnsupported: true }, 'reject')).toEqual({
+            friendsUnsupported: true,
+        });
+        expect(relationAfter({ followsYou: 'accepted' }, 'remove')).toEqual({});
+    });
+
+    it('バナーの左上の札: フォローされているか（承認待ちも）とフレンド。どちらも無ければ空', () => {
+        expect(relationBadgesOf('friends', { followsYou: 'accepted' })).toEqual(['フォローされています', 'フレンド']);
+        expect(relationBadgesOf('outgoing', { followsYou: 'pending' })).toEqual(['フォローリクエストが届いています']);
+        expect(relationBadgesOf('none', {})).toEqual([]);
     });
 });

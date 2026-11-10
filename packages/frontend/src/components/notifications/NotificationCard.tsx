@@ -1,20 +1,22 @@
-import type { AppNotification } from '@ubichill/shared';
+import { type AppNotification, isFullFor } from '@ubichill/shared';
 import { type ReactNode, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { HudIcon } from '@/components/hud/HudIcon';
 import { useHudNavigation } from '@/components/hud/HudNavigationContext';
 import { UserAvatar, useOpenUser } from '@/components/social';
 import { answerFollower } from '@/lib/fediverseApi';
+import { fetchInstance } from '@/lib/instancesApi';
 import { acceptInviteRequest, declineInviteRequest } from '@/lib/inviteApi';
 import { messagePreview } from '@/lib/messages';
 import { isExpired, notificationText, relativeTime } from '@/lib/notifications';
+import { useSession } from '@/lib/session';
 import { acceptFriend, removeFriend } from '@/lib/socialApi';
 import { css, cva } from '@/styled-system/css';
 
 /**
  * 通知 1 件（種類ごとの文面と操作）。押すと既読にする。
  * - フレンド申請（返事をしていないもの）: 承認・拒否
- * - 招待: 入る（期限内・今いる部屋でないとき）
+ * - 招待: 入る（期限内・今いる部屋でないとき）。招待のあとで満員になっていたら、移る前にここで満員と出す
  * - リクエストインバイト: 招待する（いま自分がいる部屋へ）・断る
  * - フェディバースのフォローリクエスト: 承認・拒否（片付いたら通知ごと消える）
  * - メッセージ・リアクション: 会話を開く（ランチパッドの中だけ）
@@ -36,6 +38,7 @@ export function NotificationCard({
     const openUser = useOpenUser(onNavigate);
     const hud = useHudNavigation();
     const navigate = useNavigate();
+    const viewerId = useSession().data?.user.id ?? null;
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const { actor } = notification;
@@ -114,7 +117,18 @@ export function NotificationCard({
     if (notification.type === 'Invite' && !expired && notification.object.id !== hud?.currentInstanceId) {
         const instance = notification.object;
         actions.push(
-            <button key="enter" type="button" className={enterButton} onClick={() => enter(instance)}>
+            <button
+                key="enter"
+                type="button"
+                className={enterButton}
+                disabled={busy}
+                onClick={() =>
+                    void act(async () => {
+                        if (isFullFor(await fetchInstance(instance.id), viewerId)) throw new Error('満員です');
+                        enter(instance);
+                    })
+                }
+            >
                 <HudIcon name="enter" size={16} />
                 入る
             </button>,
@@ -332,6 +346,7 @@ const enterButton = css({
     cursor: 'pointer',
     transition: 'background-color 0.16s ease',
     _hover: { bg: 'primaryHover' },
+    _disabled: { opacity: 0.5, cursor: 'default', _hover: { bg: 'primary' } },
 });
 
 const icon = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor' };

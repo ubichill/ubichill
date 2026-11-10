@@ -4,7 +4,7 @@
  *
  * - 承認制でなければすぐ Accept、承認制なら承認待ちにして本人に知らせる（承認・拒否は本人が選ぶ）
  * - 同じ人から Follow が来直したら（相手の記録が外れた・送り直し）、今の状態で答え直す
- * - 新しいつながりを受けないサーバー（limit）・知らないユーザー宛て・承認待ちが多すぎるときは Reject
+ * - 新しいつながりを受けないサーバー（limit）・知らないユーザー宛て・承認待ちが多すぎる・ブロックした人からは Reject
  * - フォロワーを外すときも Reject{Follow}（Mastodon の「フォロワーから削除」と同じ。相手はフォローを外す）
  * - Accept・Reject には受けた Follow をそのまま埋め込む（相手は自分の Follow と突き合わせる）
  * - 読んでから書くまでは 2 人ごとにロックし、送る activity は書き込みと同じトランザクションで送る予定に入れる
@@ -43,6 +43,8 @@ export interface FollowDeps {
     };
     /** このサーバーのユーザーがいるか（Application actor・消えたユーザーは false） */
     userExists(userId: string): Promise<boolean>;
+    /** 2 人のどちらかがブロックしているか */
+    blocked(userId: string, actorId: string): Promise<boolean>;
     settingsOf(userId: string): Promise<FediverseSettings>;
     /** 承認待ちをまとめて承認するとき、actor の inbox を引く */
     actorOf(actorId: string): Promise<FollowActor | null>;
@@ -131,7 +133,16 @@ export function createFollows(deps: FollowDeps) {
             if (await deps.seen.has(`undone-follow|${activity.id}`, now())) return;
             const settings = await deps.settingsOf(userId);
             const welcome = acceptsNewContact(deps.policyOf(actor.domain));
+            const blocked = await deps.blocked(userId, actor.id);
             await withPair(userId, actor, async (row, pair) => {
+                // ブロックしたときに外したフォロワーの行が、行き違いで残っていても消す
+                if (blocked) {
+                    if (row) await pair.remove();
+                    await pair.answer('Reject', activity.id);
+                    if (row?.state === 'pending')
+                        pair.later(() => deps.notify.fediverseFollowSettled(userId, actor.id));
+                    return;
+                }
                 // すでにフォロワー: 相手が覚えていないだけなので、答え直す（新しい Follow の id で）
                 if (row?.state === 'accepted') {
                     await pair.put({ state: 'accepted', followId: activity.id }, now());

@@ -1,5 +1,6 @@
-/** ソーシャル API（ユーザー検索・フレンド・フレンドの現在地）。 */
+/** ソーシャル API（ユーザー検索・フレンド・フレンドの現在地・ブロック）。 */
 import type {
+    BlocksResponse,
     Friendship,
     FriendsResponse,
     Instance,
@@ -64,3 +65,12 @@ export const acceptFriend = (userId: string) =>
 /** フレンドの解除・申請の取り消し・拒否。 */
 export const removeFriend = (userId: string) =>
     request<void>(`/friends/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+
+export const fetchBlocks = () => request<BlocksResponse>('/blocks');
+
+/** ブロックする（フレンド・申請・招待・通知も消える）。 */
+export const blockUser = (userId: string) =>
+    request<void>('/blocks', { method: 'POST', body: JSON.stringify({ userId }) });
+
+export const unblockUser = (userId: string) =>
+    request<void>(`/blocks/${encodeURIComponent(userId)}`, { method: 'DELETE' });

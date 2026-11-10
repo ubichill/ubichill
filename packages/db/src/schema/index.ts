@@ -2,6 +2,7 @@ import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
 
 export * from './authorKeys';
+export * from './blocks';
 export * from './cliAuthRequests';
 export * from './directMessages';
 export * from './externalWorks';
@@ -13,6 +14,7 @@ export * from './invites';
 export * from './notifications';
 export * from './pendingRegistrations';
 export * from './profileImages';
+export * from './roles';
 export * from './users';
 export * from './worlds';
 

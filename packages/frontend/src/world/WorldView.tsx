@@ -36,6 +36,11 @@ export interface WorldViewProps {
     authPending?: boolean;
     /** 入室前に自分と他人のカーソルを分ける ID（SNS のログイン中のユーザー）。 */
     selfId?: string;
+    /**
+     * 自分がブロックした人（SNS だけ）。ids はカーソルを出さない人、modAuthors は作った mod を実行しない作者アカウント。
+     * 一覧を読み終えるまでは authPending で入室を待たせること（読む前に mod を読み込まないように）。
+     */
+    blocks?: { ids: ReadonlySet<string>; modAuthors: ReadonlySet<string> };
     /** ロード画面に出すワールドの見た目。 */
     preview?: { displayName?: string; thumbnail?: string };
     /** 失敗したとき・入室を断ったときの導線。 */
@@ -57,6 +62,7 @@ export function WorldView({
     lock,
     authPending = false,
     selfId,
+    blocks,
     preview,
     recovery,
     onFailed,
@@ -188,6 +194,7 @@ export function WorldView({
                         onStatusChange={setMods}
                         lock={lock ?? modLock}
                         source={modSource}
+                        blockedAuthors={blocks?.modAuthors}
                     >
                         <WorkerLoadingProvider onStatusChange={setWorkers}>
                             <WorldStage />
@@ -196,7 +203,7 @@ export function WorldView({
                     {children}
                 </main>
             )}
-            <CursorLayer fallbackSelfId={selfId} />
+            <CursorLayer fallbackSelfId={selfId} hiddenUserIds={blocks?.ids} />
             <ServerNoticeToasts />
         </>
     );

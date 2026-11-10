@@ -39,6 +39,10 @@ export interface MessageServiceDeps {
         removeReaction(messageId: string, userId: string): Promise<boolean>;
     };
     areFriends(a: string, b: string): Promise<boolean>;
+    /** どちらかがもう片方をブロックしているか */
+    isBlockedBetween(a: string, b: string): Promise<boolean>;
+    /** userId から見えなくする人（userId がブロックした人）。会話の一覧と会話から外す */
+    hiddenIdsFor(userId: string): Promise<ReadonlySet<string>>;
     summariesOf(ids: readonly string[]): Promise<UserSummary[]>;
     notify: {
         messageReceived(input: {
@@ -106,9 +110,13 @@ export const pageSizeOf = (limit: number | undefined): number =>
 
 export function createMessageService(deps: MessageServiceDeps) {
     const refusalBetween = async (senderId: string, recipientId: string): Promise<MessageRefusal | null> => {
-        const pre = messageRefusal(senderId, recipientId, { friends: true });
+        const pre = messageRefusal(senderId, recipientId, { friends: true, blocked: false });
         if (pre) return pre;
-        return messageRefusal(senderId, recipientId, { friends: await deps.areFriends(senderId, recipientId) });
+        const [friends, blocked] = await Promise.all([
+            deps.areFriends(senderId, recipientId),
+            deps.isBlockedBetween(senderId, recipientId),
+        ]);
+        return messageRefusal(senderId, recipientId, { friends, blocked });
     };
 
     return {
@@ -130,9 +138,13 @@ export function createMessageService(deps: MessageServiceDeps) {
             return { ok: true, message: { ...messageBodyOf(record), reactions: [] } };
         },
 
-        /** 会話の一覧（相手が消えた会話は出さない）。 */
+        /** 会話の一覧（相手が消えた会話・ブロックした人との会話は出さない）。 */
         async conversations(userId: string): Promise<ConversationSummary[]> {
-            const records = await deps.messages.conversationsOf(userId, MESSAGE_LIMITS.MAX_CONVERSATIONS);
+            const [all, hidden] = await Promise.all([
+                deps.messages.conversationsOf(userId, MESSAGE_LIMITS.MAX_CONVERSATIONS),
+                deps.hiddenIdsFor(userId),
+            ]);
+            const records = all.filter((r) => !hidden.has(r.peerId));
             const users = new Map((await deps.summariesOf(records.map((r) => r.peerId))).map((u) => [u.id, u]));
             return records.flatMap((r) => {
                 const user = users.get(r.peerId);
@@ -140,7 +152,7 @@ export function createMessageService(deps: MessageServiceDeps) {
             });
         },
 
-        /** 会話の 1 ページ（新しい順）。相手がいなければ not-found。 */
+        /** 会話の 1 ページ（新しい順）。相手がいない・ブロックした人なら not-found。 */
         async conversation(
             userId: string,
             peerId: string,
@@ -148,8 +160,8 @@ export function createMessageService(deps: MessageServiceDeps) {
         ): Promise<ConversationOutcome> {
             const before = options.cursor ? decodeFeedCursor(options.cursor) : undefined;
             if (options.cursor && !before) return { ok: false, error: 'bad-cursor' };
-            const [user] = await deps.summariesOf([peerId]);
-            if (!user || userId === peerId) return { ok: false, error: 'not-found' };
+            const [[user], hidden] = await Promise.all([deps.summariesOf([peerId]), deps.hiddenIdsFor(userId)]);
+            if (!user || userId === peerId || hidden.has(peerId)) return { ok: false, error: 'not-found' };
             const limit = pageSizeOf(options.limit);
             const [rows, refusal] = await Promise.all([
                 deps.messages.listBetween(userId, peerId, { before, limit: limit + 1 }),

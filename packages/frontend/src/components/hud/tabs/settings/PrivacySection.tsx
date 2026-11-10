@@ -6,10 +6,11 @@ import { fetchMyPrivacy, setMyFavoritesVisibility, setMyPresenceVisibility } fro
 import { PRESENCE_VISIBILITY_OPTIONS } from '@/lib/account/presenceVisibility';
 import { pushToast } from '@/lib/toast';
 import { css } from '@/styled-system/css';
+import { BlockedUsersSection } from './BlockedUsersSection';
 import { settingsGroup, settingsHeading } from './settingsStyles';
 
 /**
- * 設定の「プライバシー」: フレンドやほかの人に何を見せるか（オンライン状態・お気に入り）。選んだらすぐ保存する。
+ * 設定の「プライバシー」: フレンドやほかの人に何を見せるか（オンライン状態・お気に入り）と、ブロックした人。選んだらすぐ保存する。
  * フェディバースのフォローの受け方は「フェディバース」の欄。
  */
 export function PrivacySection() {
@@ -72,6 +73,7 @@ export function PrivacySection() {
                     </section>
                 </>
             )}
+            <BlockedUsersSection />
         </div>
     );
 }

@@ -19,6 +19,7 @@ const account: MyAccount = {
     bannerImage: null,
     links: [],
     languages: [],
+    roles: [],
 };
 
 describe('publishReadiness（ログインできる = 公開できる）', () => {
