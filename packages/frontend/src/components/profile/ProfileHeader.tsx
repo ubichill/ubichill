@@ -1,4 +1,5 @@
 import type { UserProfile } from '@ubichill/shared';
+import type { ReactNode } from 'react';
 import { EmojiText } from '@/components/ui/EmojiText';
 import { pushToast } from '@/lib/toast';
 import { userPagePath } from '@/lib/userPath';
@@ -71,21 +72,35 @@ export function ProfileIdentity({ profile }: { profile: Pick<UserProfile, 'name'
     );
 }
 
-/** プロフィールの表示（バナー・アイコン・ひとこと・名前・自己紹介・リンク・言語）。本人には「編集」を出す。 */
+/**
+ * プロフィールの表示（バナー・アイコン・ひとこと・名前・自己紹介・リンク・言語）。本人には「編集」を出す。
+ * ほかの人には、バナーの左上に相手との関係（relation）、右上にその操作（actions）を重ねる（Misskey と同じ置き方）。
+ */
 export function ProfileHeader({
     profile,
     isOwner,
     onEdit,
     editPending,
+    relation,
+    actions,
 }: {
     profile: UserProfile;
     isOwner: boolean;
     onEdit: () => void;
     editPending: boolean;
+    relation?: ReactNode;
+    actions?: ReactNode;
 }) {
     return (
         <article className={profileCard}>
-            <ProfileBanner src={profile.bannerImage} />
+            <ProfileBanner src={profile.bannerImage}>
+                {(relation || actions) && (
+                    <div className={bannerBar}>
+                        <div className={css({ flex: '1 1 auto', minW: 0 })}>{relation}</div>
+                        <div className={css({ flex: '0 1 auto', minW: 0 })}>{actions}</div>
+                    </div>
+                )}
+            </ProfileBanner>
             <div className={profileBody}>
                 <div className={avatarRow}>
                     <ProfileAvatar src={profile.image} name={profile.name} />
@@ -117,3 +132,15 @@ export function ProfileHeader({
         </article>
     );
 }
+
+// 狭い画面で札とボタンが重ならないよう、左右に分けた 1 行にする（入りきらなければ札の側が折り返す）
+const bannerBar = css({
+    position: 'absolute',
+    top: '3',
+    left: '3',
+    right: '3',
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: '2',
+});
