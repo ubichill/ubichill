@@ -9,4 +9,5 @@ export { UserRow } from './UserRow';
 export { UserSearch } from './UserSearch';
 export { useFriendLocations } from './useFriendLocations';
 export { useOpenUser } from './useOpenUser';
+export type { UserRelationSource } from './userRelation';
 export { useUserRelation } from './useUserRelation';

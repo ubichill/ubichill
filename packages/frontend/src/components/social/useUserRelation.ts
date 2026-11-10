@@ -1,43 +1,25 @@
 import type { Friendship, RemoteRelation } from '@ubichill/shared';
-import { useEffect, useState } from 'react';
-import { fetchUserWithFriendship } from '@/lib/socialApi';
+import { useState } from 'react';
+import { type UserRelation, type UserRelationSource, userRelationOf } from './userRelation';
 
-interface Relation {
-    userId: string;
-    friendship: Friendship;
-    relation: RemoteRelation;
-}
-
-/** ほかの人と自分との関係（フレンド・フォローされているか）。userId が null（自分・未ログイン）なら読まない。 */
-export function useUserRelation(userId: string | null) {
-    const [state, setState] = useState<Relation | null>(null);
-
-    useEffect(() => {
-        if (!userId) return;
-        const ctrl = { cancelled: false };
-        fetchUserWithFriendship(userId)
-            .then((u) => {
-                if (ctrl.cancelled) return;
-                setState({
-                    userId,
-                    friendship: u.friendship,
-                    relation: {
-                        ...(u.friendsUnsupported ? { friendsUnsupported: true } : {}),
-                        ...(u.followsYou ? { followsYou: u.followsYou } : {}),
-                    },
-                });
-            })
-            .catch(() => !ctrl.cancelled && setState(null));
-        return () => {
-            ctrl.cancelled = true;
-        };
-    }, [userId]);
-
-    const current = state && state.userId === userId ? state : null;
+/**
+ * ほかの人と自分との関係（フレンド・フォローされているか）。取得は呼ぶ側がプロフィールと一緒に済ませ、ここは
+ * その値と、画面での操作（申請・解除など）による変更だけを持つ。source が null（自分・未ログイン）なら関係は無い。
+ */
+export function useUserRelation(source: UserRelationSource | null) {
+    const [edited, setEdited] = useState<{ source: UserRelationSource; value: UserRelation } | null>(null);
+    const current = source ? (edited?.source === source ? edited.value : userRelationOf(source)) : null;
+    const update = (patch: Partial<UserRelation>) => {
+        if (!source) return;
+        setEdited((prev) => ({
+            source,
+            value: { ...(prev?.source === source ? prev.value : userRelationOf(source)), ...patch },
+        }));
+    };
     return {
         friendship: current?.friendship ?? null,
         relation: current?.relation ?? {},
-        setFriendship: (friendship: Friendship) => setState((s) => s && { ...s, friendship }),
-        setRelation: (relation: RemoteRelation) => setState((s) => s && { ...s, relation }),
+        setFriendship: (friendship: Friendship) => update({ friendship }),
+        setRelation: (relation: RemoteRelation) => update({ relation }),
     };
 }

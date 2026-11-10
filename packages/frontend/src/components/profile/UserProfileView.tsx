@@ -5,18 +5,18 @@ import {
     ProfileLocationCard,
     ProfileRelationActions,
     ProfileRelationBadges,
+    type UserRelationSource,
     useUserRelation,
 } from '@/components/social';
 import { WorldDetailModal } from '@/components/worlds/WorldDetailModal';
 import { fetchMyAccount, type MyAccount } from '@/lib/account/me';
-import { API_BASE } from '@/lib/api';
 import { fetchPublishedMods } from '@/lib/externalWorksApi';
-import { fetchUserProfile } from '@/lib/profile/profileApi';
+import { fetchUserWorlds, type OwnedWorld } from '@/lib/profile/profileApi';
 import { useSession } from '@/lib/session';
 import { fetchUserWithFriendship } from '@/lib/socialApi';
 import { css } from '@/styled-system/css';
 import { FavoriteWorldsSection } from './FavoriteWorldsSection';
-import { type OwnedWorld, OwnedWorldCard } from './OwnedWorldCard';
+import { OwnedWorldCard } from './OwnedWorldCard';
 import { ProfileEditor } from './ProfileEditor';
 import { ProfileHeader } from './ProfileHeader';
 import { PublishedModsSection } from './PublishedModsSection';
@@ -55,7 +55,9 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
     const [error, setError] = useState('');
     // 自分の表示名がほかの人と同じになっている（編集で変えてもらう）
     const [nameConflict, setNameConflict] = useState(false);
-    const people = useUserRelation(!isOwnPage && session && profile ? profile.id : null);
+    // プロフィールと一緒に取った自分との関係（関係のためだけに取り直さない）
+    const [relationSource, setRelationSource] = useState<UserRelationSource | null>(null);
+    const people = useUserRelation(!isOwnPage && session ? relationSource : null);
 
     useEffect(() => {
         if (!isOwnPage) return;
@@ -88,24 +90,19 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
         setError('');
         setEdit({ kind: 'viewing' });
         // ほかのサーバーの人: プロフィールはこのサーバーが問い合わせたもの。ワールド・mod・お気に入りは相手のサーバーにある
-        const load = isRemoteUserId(targetUserId)
-            ? fetchUserWithFriendship(targetUserId).then((p) => ({ p, worlds: [], mods: [] }))
-            : Promise.all([
-                  fetchUserProfile(targetUserId),
-                  fetch(`${API_BASE}/api/v1/users/${encodeURIComponent(targetUserId)}/worlds`, {
-                      credentials: 'include',
-                  }),
-                  fetchPublishedMods(targetUserId),
-              ]).then(async ([p, wRes, mods]) => {
-                  if (!wRes.ok) throw new Error(`ワールド取得失敗 (${wRes.status})`);
-                  return { p, worlds: ((await wRes.json()) as { worlds: OwnedWorld[] }).worlds, mods };
-              });
-        load.then(({ p, worlds: owned, mods: publishedMods }) => {
-            if (ctrl.cancelled) return;
-            setProfile(p);
-            setWorlds(owned);
-            setMods(publishedMods);
-        })
+        const remoteUser = isRemoteUserId(targetUserId);
+        Promise.all([
+            fetchUserWithFriendship(targetUserId),
+            remoteUser ? [] : fetchUserWorlds(targetUserId),
+            remoteUser ? [] : fetchPublishedMods(targetUserId),
+        ])
+            .then(([p, owned, publishedMods]) => {
+                if (ctrl.cancelled) return;
+                setProfile(p);
+                setRelationSource(p);
+                setWorlds(owned);
+                setMods(publishedMods);
+            })
             .catch((e: unknown) => !ctrl.cancelled && setError(e instanceof Error ? e.message : '読み込み失敗'))
             .finally(() => !ctrl.cancelled && setLoading(false));
         return () => {

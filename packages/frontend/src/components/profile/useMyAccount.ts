@@ -2,8 +2,8 @@ import type { UserProfile, WorldIdentity } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { type ResignResult, resignAll } from '@/lib/account/resign';
 import { API_BASE } from '@/lib/api';
+import type { OwnedWorld } from '@/lib/profile/profileApi';
 import { authorSignerFor, browserFetch, signHostedWorld } from '@/lib/signing';
-import type { OwnedWorld } from './OwnedWorldCard';
 
 /** 自分のアカウント（`GET /api/v1/users/me`）。公開プロフィールの項目に、本人だけが見る項目を足したもの。 */
 export interface MyProfile extends UserProfile {
