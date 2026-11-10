@@ -1,5 +1,6 @@
 import type { AdminUserView, Role, RoleInput, RoleMember } from '@ubichill/shared';
-import { API_BASE } from '@/lib/api';
+import { recheckIfForbidden, requestAdminRecheck } from './account/adminStatus';
+import { API_BASE } from './api';
 
 const BASE = `${API_BASE}/api/v1/admin`;
 
@@ -15,7 +16,12 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
         ...init,
         headers: init.body ? { 'Content-Type': 'application/json' } : undefined,
     });
-    if (!res.ok) throw new Error(await errorMessage(res));
+    if (!res.ok) {
+        recheckIfForbidden(res);
+        throw new Error(await errorMessage(res));
+    }
+    // ロールの変更は自分の権限を変えうる（自分に管理者のロールを付けた・外した）
+    if (init.method && init.method !== 'GET' && path.startsWith('/roles')) requestAdminRecheck();
     return res;
 }
 

@@ -7,6 +7,7 @@ import {
     type NotificationStreamEvent,
     NotificationStreamEventSchema,
 } from '@ubichill/shared';
+import { recheckIfForbidden } from './account/adminStatus';
 import { API_BASE } from './api';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -17,6 +18,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         headers: { ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...init?.headers },
     });
     if (!res.ok) {
+        recheckIfForbidden(res);
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(data.error ?? `HTTP ${res.status}`);
     }
