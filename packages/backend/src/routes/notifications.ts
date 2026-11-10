@@ -1,7 +1,7 @@
 /**
  * 通知: 一覧（カーソル）・未読数・既読・SSE・運営のお知らせ。規則は services/notifications/notifications.ts。
  */
-import { announcementRepository, userRepository } from '@ubichill/db';
+import { announcementRepository } from '@ubichill/db';
 import {
     CreateAnnouncementRequestSchema,
     MarkReadRequestSchema,
@@ -16,6 +16,7 @@ import { requireAdmin, requireAuth } from '../middleware/auth';
 import { notificationHub } from '../services/notifications/notificationHub';
 import { notificationService } from '../services/notifications/notificationService';
 import { openNotificationStream } from '../services/notifications/notificationStream';
+import { roleService } from '../services/roles/roleService';
 import { logger } from '../utils/logger';
 
 const router = Router();
@@ -116,12 +117,11 @@ router.post('/announcements', requireAuth, requireAdmin, announceLimiter, async 
             error: `題名（${NOTIFICATION_LIMITS.ANNOUNCEMENT_TITLE_MAX} 文字まで）と本文（${NOTIFICATION_LIMITS.ANNOUNCEMENT_CONTENT_MAX} 文字まで）を指定してください`,
         });
     }
-    const user = await userRepository.findById(req.user.id);
     const result = await notificationService.publishAnnouncement(
-        { id: req.user.id, handle: user?.handle },
+        { id: req.user.id, isAdmin: await roleService.isAdmin(req.user.id) },
         parsed.data,
     );
-    if (!result.ok) return res.status(403).json({ error: 'お知らせを出せるのは公式アカウントだけです' });
+    if (!result.ok) return res.status(403).json({ error: 'お知らせを出せるのは管理者だけです' });
     return res.status(201).json(result.notification);
 });
 

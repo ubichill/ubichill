@@ -8,6 +8,7 @@ import { ProfileBanner } from './ProfileBanner';
 import { ProfileFieldsTable } from './ProfileFieldsTable';
 import { ProfileLanguageChips } from './ProfileLanguageChips';
 import { ProfileLinkButtons } from './ProfileLinkButtons';
+import { ProfileRoleBadges } from './ProfileRoleBadges';
 import { PencilIcon, ShareIcon } from './profileIcons';
 import { avatarRow, profileBody, profileButton, profileCard, roundIconButton } from './profileStyles';
 import { StatusPill } from './StatusPill';
@@ -94,6 +95,7 @@ export function ProfileHeader({
                     <ProfileIdentity profile={profile} />
                     {!isOwner && <ShareButton profile={profile} />}
                 </div>
+                <ProfileRoleBadges roles={profile.roles} />
                 {isOwner && (
                     <div className={css({ display: 'flex', gap: '2', alignItems: 'center' })}>
                         <button

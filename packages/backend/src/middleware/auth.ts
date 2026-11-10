@@ -3,6 +3,7 @@ import { OFFICIAL_HANDLE } from '@ubichill/shared';
 import type { NextFunction, Request, Response } from 'express';
 import { auth } from '../lib/auth';
 import { bearerToken, sha256Base64Url } from '../services/auth/cliAuth';
+import { roleService } from '../services/roles/roleService';
 import { logger } from '../utils/logger';
 
 // Extend Express Request type with user info
@@ -161,11 +162,6 @@ export function toWebHeaders(req: Request): Headers {
     );
 }
 
-/** このサーバーの管理者か（公式アカウント `ubichill` が管理者を兼ねる）。 */
-export function isAdminHandle(handle: string | undefined): boolean {
-    return handle === OFFICIAL_HANDLE;
-}
-
 /**
  * 公式アカウントのパスワードは Secret（OFFICIAL_ACCOUNT_PASSWORD）が正で、起動のたびに合わせ直す。
  * 画面や better-auth の /change-password から変えても次の起動で戻るだけなので、変更そのものを受け付けない。
@@ -188,7 +184,7 @@ export async function blockOfficialPasswordChange(req: Request, res: Response, n
 
 /**
  * 管理者限定ミドルウェア（requireAuth の後に置く）。連合ピアの追加・削除やワールドの再読み込みなど、
- * サーバー全体に影響する操作に使う。
+ * サーバー全体に影響する操作に使う。管理者は公式アカウントと、管理者のロールを持つ人（services/roles）。
  */
 export async function requireAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
     // 管理者の操作はクッキーキャッシュ（最大 5 分）を使わずに DB のセッションを確かめる。
@@ -200,8 +196,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
         res.status(401).json({ error: 'Unauthorized' });
         return;
     }
-    const user = await userRepository.findById(session.user.id);
-    if (!isAdminHandle(user?.handle)) {
+    if (!(await roleService.isAdmin(session.user.id))) {
         res.status(403).json({ error: 'Forbidden: 管理者のみ実行できます' });
         return;
     }

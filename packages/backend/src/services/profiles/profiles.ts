@@ -2,6 +2,7 @@ import {
     type ProfileImageKind,
     type ProfileUpdate,
     ProfileUpdateSchema,
+    type PublicRole,
     profileImagePath,
     type StoredProfileFields,
     type UserProfile,
@@ -31,6 +32,8 @@ export interface ProfileServiceDeps {
     publicBaseUrl: string;
     /** 作者アカウント `handle@domain` */
     authorOf: (handle: string) => string;
+    /** プロフィールに出すロール */
+    publicRolesOf: (userId: string) => Promise<PublicRole[]>;
 }
 
 export type ProfileErrorCode = 'invalid' | 'not-found' | 'busy' | ImageRejectionCode;
@@ -54,8 +57,10 @@ export function createProfileService(deps: ProfileServiceDeps) {
     const baseUrl = deps.publicBaseUrl.replace(/\/+$/, '');
     const imageUrl = (userId: string, kind: ProfileImageKind, hash: string): string =>
         `${baseUrl}${profileImagePath(userId, kind, hash)}`;
-    const outcomeOf = (user: StoredProfileFields | undefined): ProfileOutcome =>
-        user ? { ok: true, profile: userProfileOf(user, deps.authorOf(user.handle)) } : notFound;
+    const outcomeOf = async (user: StoredProfileFields | undefined): Promise<ProfileOutcome> =>
+        user
+            ? { ok: true, profile: userProfileOf(user, deps.authorOf(user.handle), await deps.publicRolesOf(user.id)) }
+            : notFound;
 
     return {
         imageUrl,

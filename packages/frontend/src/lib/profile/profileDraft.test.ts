@@ -32,6 +32,7 @@ const profile: UserProfile = {
     bannerImage: null,
     links: [{ url: 'https://github.com/youkan', kind: 'github' }],
     languages: ['ja'],
+    roles: [],
 };
 
 const apply = (actions: ProfileDraftAction[], from: ProfileDraft = draftOf(profile)) =>

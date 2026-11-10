@@ -46,6 +46,7 @@ import { remoteInstanceOf } from '../services/federation/remoteInstance';
 import { instanceManager } from '../services/instances/instanceManager';
 import { instanceRuntime } from '../services/instances/instanceRuntime';
 import { notificationService, notifyInBackground } from '../services/notifications/notificationService';
+import { roleService } from '../services/roles/roleService';
 import { friendEdgesOf, friendIdsOf } from '../services/social/friends';
 import { remoteSummaryOf, summariesOf, summaryOf } from '../services/social/userSummaries';
 import { logger } from '../utils/logger';
@@ -61,8 +62,12 @@ async function profileWithFriendship(
     viewerId: string | undefined,
     user: UserProfileRecord,
 ): Promise<UserProfileWithFriendship> {
-    const friendship = viewerId ? friendshipOf(await friendEdgesOf(viewerId), viewerId, user.id) : 'none';
-    return { ...userProfileOf(user, selfAccount(user.handle)), friendship };
+    const [edges, roles] = await Promise.all([
+        viewerId ? friendEdgesOf(viewerId) : undefined,
+        roleService.publicRolesOf(user.id),
+    ]);
+    const friendship = viewerId && edges ? friendshipOf(edges, viewerId, user.id) : 'none';
+    return { ...userProfileOf(user, selfAccount(user.handle), roles), friendship };
 }
 
 // ── ほかのサーバーの人（連合） ──
@@ -95,6 +100,7 @@ async function remoteProfileWithFriendship(
         author: actor.account,
         bannerImage: actor.banner,
         ...profile,
+        roles: [],
         ...(fields.length > 0 ? { fields } : {}),
         ...(await remoteRelationOf(viewerId, actor)),
         friendship: await remoteFriendshipOf(viewerId, actor.id),

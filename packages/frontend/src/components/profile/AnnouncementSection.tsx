@@ -34,7 +34,7 @@ const submit = cva({
     },
 });
 
-/** 運営のお知らせを出す（公式アカウントだけに見せる。サーバーも公式アカウント以外を断る）。全員の通知に届く。 */
+/** 運営のお知らせを出す（コントロールパネル。サーバーも管理者以外を断る）。全員の通知に届く。 */
 export function AnnouncementSection() {
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');

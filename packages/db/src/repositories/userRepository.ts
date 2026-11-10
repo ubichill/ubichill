@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
     and,
     asc,
+    desc,
     eq,
     getTableColumns,
     ilike,
@@ -297,6 +298,16 @@ export const userRepository = {
             .from(users)
             .where(and(or(handleMatch, nameMatch), ...(options.excludeIds ?? []).map((id) => ne(users.id, id))))
             .orderBy(rank, asc(users.name))
+            .limit(options.limit);
+    },
+
+    /** 新しく登録した順（コントロールパネルで検索語が無いときの一覧）。 */
+    async listRecent(options: { limit: number; excludeIds?: readonly string[] }): Promise<UserRecord[]> {
+        return db
+            .select()
+            .from(users)
+            .where(and(...(options.excludeIds ?? []).map((id) => ne(users.id, id))))
+            .orderBy(desc(users.createdAt), asc(users.id))
             .limit(options.limit);
     },
 
