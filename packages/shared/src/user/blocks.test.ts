@@ -7,11 +7,38 @@ import {
     blockRefusal,
     hasBlocked,
     hiddenIdsOf,
+    interactionRefusal,
     isBlockedBetween,
     isModAuthorBlocked,
 } from './blocks';
 
 const edge = (blockerId: string, blockedId: string): BlockEdge => ({ blockerId, blockedId });
+
+describe('interactionRefusal', () => {
+    it('自分自身は、自分をブロックした行が紛れていても self', () => {
+        expect(interactionRefusal('a', 'a', [edge('a', 'a')])).toBe('self');
+        expect(interactionRefusal('a', 'a', [])).toBe('self');
+    });
+
+    it('向きで分ける: 自分がブロックしていれば blocking、相手にされていれば blocked', () => {
+        expect(interactionRefusal('a', 'b', [edge('a', 'b')])).toBe('blocking');
+        expect(interactionRefusal('b', 'a', [edge('a', 'b')])).toBe('blocked');
+    });
+
+    it('お互いにブロックしていれば、自分のブロックを先に返す（解除しても相手のブロックで止まる）', () => {
+        expect(interactionRefusal('a', 'b', [edge('b', 'a'), edge('a', 'b')])).toBe('blocking');
+    });
+
+    it('ほかの 2 人の間のブロック・逆向きの別人の行では止めない', () => {
+        expect(interactionRefusal('a', 'b', [edge('a', 'c'), edge('c', 'b'), edge('b', 'c')])).toBeNull();
+    });
+
+    it('ほかのサーバーの actor の URL も ID として同じに扱い、大文字小文字は区別する', () => {
+        const actor = 'https://other.example/users/x';
+        expect(interactionRefusal(actor, 'me', [edge('me', actor)])).toBe('blocked');
+        expect(interactionRefusal('https://other.example/users/X', 'me', [edge('me', actor)])).toBeNull();
+    });
+});
 
 describe('isBlockedBetween', () => {
     it('どちらの向きのブロックでも止める', () => {

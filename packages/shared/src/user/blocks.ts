@@ -3,7 +3,9 @@
  *
  * - ブロックは片方向の行（blocker が blocked をブロックした）。blocked はこのサーバーのユーザー ID か、ほかのサーバーの actor の URL。
  * - 見えなくするのはブロックした側から（{@link hiddenIdsOf}）。ブロックされた側の画面は変えない（ブロックを明かさない）。
- * - やり取り（フレンド申請・招待・リクエスト・メッセージ）は、どちらの向きのブロックでも止める（{@link isBlockedBetween}）。
+ * - やり取り（フレンドの申請・承認、招待、リクエストインバイト、メッセージ、フォロー、通知）は、どちらの向きのブロックでも
+ *   止める（{@link interactionRefusal}）。種類ごとの条件（フレンドか・部屋にいるか）は種類ごとの規則
+ *   （inviteRefusal・inviteRequestRefusal・messageRefusal）にあり、ここは全部に共通の前提だけを持つ。
  * - mod の作者は作者アカウント（`handle@domain`）で突き合わせる（{@link isModAuthorBlocked}）。
  */
 import { z } from 'zod';
@@ -26,10 +28,40 @@ export function hasBlocked(edges: readonly BlockEdge[], blockerId: string, block
     return edges.some((e) => e.blockerId === blockerId && e.blockedId === blockedId);
 }
 
-/** 2 人のどちらかが、もう片方をブロックしているか（やり取りを止める判定）。自分自身とは false。 */
+/**
+ * やり取りを止める共通の理由。
+ * - `self`: 自分自身とはやり取りしない
+ * - `blocking`: from が to をブロックしている（from 本人には理由を明かしてよい）
+ * - `blocked`: to が from をブロックしている（from にはブロックを明かさない）
+ *
+ * 止めたときの答え方は種類ごとに決まっている（ブロックされた側から見て、ブロックと見分けがつかない形にする）:
+ *
+ * | やり取り | blocking | blocked |
+ * |---|---|---|
+ * | フレンドの申請 | 解除を促す（409） | 送れたように見せて何もしない |
+ * | フレンドの承認 | 申請が無いのと同じ（404） | 同じ |
+ * | メッセージ・リアクション | フレンドでないのと同じ | 同じ |
+ * | 招待・リクエストインバイト | ブロックでフレンドが消えるので「フレンドでない」 | 同じ |
+ * | 連合で届いた申請・フォロー・通知 | 黙って捨てる（フォローは Reject） | 同じ |
+ */
+export type InteractionRefusal = 'self' | 'blocking' | 'blocked';
+
+/** from が to に何か（申請・招待・メッセージなど）をしてよいか。よければ null。 */
+export function interactionRefusal(
+    fromId: string,
+    toId: string,
+    edges: readonly BlockEdge[],
+): InteractionRefusal | null {
+    if (fromId === toId) return 'self';
+    if (hasBlocked(edges, fromId, toId)) return 'blocking';
+    if (hasBlocked(edges, toId, fromId)) return 'blocked';
+    return null;
+}
+
+/** 2 人のどちらかが、もう片方をブロックしているか（{@link interactionRefusal} がブロックで止めるか）。自分自身とは false。 */
 export function isBlockedBetween(edges: readonly BlockEdge[], a: string, b: string): boolean {
-    if (a === b) return false;
-    return hasBlocked(edges, a, b) || hasBlocked(edges, b, a);
+    const refusal = interactionRefusal(a, b, edges);
+    return refusal === 'blocking' || refusal === 'blocked';
 }
 
 /** me から見えなくする人（me がブロックした人）。 */
