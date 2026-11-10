@@ -14,8 +14,6 @@ export interface LocalProfileFields {
     status: string | null;
     links: readonly ProfileLink[];
     languages: readonly string[];
-    /** 公開ロールの名前（表示順。ほかの実装はロールを受け取らないので項目の表で見せる） */
-    roles?: readonly string[];
 }
 
 export interface PropertyValue {
@@ -24,7 +22,7 @@ export interface PropertyValue {
     value: string;
 }
 
-export const PROFILE_FIELD_NAMES = { languages: '話せる言語', status: 'ひとこと', roles: 'ロール' } as const;
+export const PROFILE_FIELD_NAMES = { languages: '話せる言語', status: 'ひとこと' } as const;
 
 const linkName = (link: ProfileLink): string =>
     link.kind === 'website' ? (parseFederationUrl(link.url)?.hostname ?? link.url) : PROFILE_LINK_LABELS[link.kind];
@@ -32,7 +30,7 @@ const linkName = (link: ProfileLink): string =>
 /** 表に出す URL（スキームと末尾の / を落とす）。 */
 const shortUrl = (url: string): string => url.replace(/^https?:\/\//, '').replace(/\/$/, '');
 
-/** ほかの実装が出す項目の表（リンク → 話せる言語 → ひとこと → ロール）。リンクは rel="me"（Mastodon の確認済みリンク）。 */
+/** ほかの実装が出す項目の表（リンク → 話せる言語 → ひとこと）。リンクは rel="me"（Mastodon の確認済みリンク）。 */
 export function profileAttachment(fields: LocalProfileFields): PropertyValue[] {
     const field = (name: string, value: string): PropertyValue => ({ type: 'PropertyValue', name, value });
     return [
@@ -46,9 +44,6 @@ export function profileAttachment(fields: LocalProfileFields): PropertyValue[] {
             ? [field(PROFILE_FIELD_NAMES.languages, escapeHtml(fields.languages.map(profileLanguageLabel).join(' / ')))]
             : []),
         ...(fields.status ? [field(PROFILE_FIELD_NAMES.status, escapeHtml(fields.status))] : []),
-        ...(fields.roles && fields.roles.length > 0
-            ? [field(PROFILE_FIELD_NAMES.roles, escapeHtml(fields.roles.join(' / ')))]
-            : []),
     ];
 }
 

@@ -55,27 +55,8 @@ describe('プロフィールの項目をほかの実装に載せる', () => {
         ]);
     });
 
-    it('公開ロールは最後に 1 つの項目にまとめる（名前はエスケープ。ほかの ubichill もこの表で見る）', () => {
-        const fields = profileAttachment({
-            status: 'ねむい',
-            links: [],
-            languages: [],
-            roles: ['管理者', '<i>A&B</i>'],
-        });
-        expect(fields.at(-1)).toEqual({
-            type: 'PropertyValue',
-            name: PROFILE_FIELD_NAMES.roles,
-            value: '管理者 / &lt;i&gt;A&amp;B&lt;/i&gt;',
-        });
-        expect(readProfileAttachment(fields).at(-1)).toEqual({
-            name: PROFILE_FIELD_NAMES.roles,
-            value: '管理者 / <i>A&B</i>',
-            href: null,
-        });
-    });
-
     it('何も無ければ attachment も拡張の語も載せない', () => {
-        const doc = actorOf({ profile: { status: null, links: [], languages: [], roles: [] } });
+        const doc = actorOf({ profile: { status: null, links: [], languages: [] } });
         expect(doc.attachment).toBeUndefined();
         expect(doc.statusMessage).toBeUndefined();
         expect(doc.spokenLanguages).toBeUndefined();
