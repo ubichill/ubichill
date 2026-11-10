@@ -78,6 +78,11 @@ spec:
         - secretRef:
             name: {{ include "ubichill.fullname" . }}-backend-secrets
         {{- end }}
+        {{- range .Values.backend.extraSecretRefs }}
+        - secretRef:
+            name: {{ . }}
+            optional: true
+        {{- end }}
         env:
         {{- if .Values.postgresql.enabled }}
         - name: PG_PASSWORD
@@ -137,6 +142,11 @@ spec:
         {{- else if .Values.backend.secretEnv }}
         - secretRef:
             name: {{ include "ubichill.fullname" . }}-backend-secrets
+        {{- end }}
+        {{- range .Values.backend.extraSecretRefs }}
+        - secretRef:
+            name: {{ . }}
+            optional: true
         {{- end }}
         env:
         - name: INSTANCE_ADMIN_TOKEN
