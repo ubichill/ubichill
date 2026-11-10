@@ -3,10 +3,11 @@ import type { AppNotification, ServerNotice } from '@ubichill/shared';
 /**
  * 通知の種類。通知タブの中のタブに対応する。
  */
-export type NotificationKind = 'invite' | 'friend-request' | 'other';
+export type NotificationKind = 'message' | 'invite' | 'friend-request' | 'other';
 
 /** 通知タブの中のタブ（表示順）。 */
 export const NOTIFICATION_TABS: ReadonlyArray<{ kind: NotificationKind; label: string }> = [
+    { kind: 'message', label: 'メッセージ' },
     { kind: 'invite', label: '招待' },
     { kind: 'friend-request', label: 'フレンド' },
     { kind: 'other', label: 'その他' },
@@ -14,6 +15,9 @@ export const NOTIFICATION_TABS: ReadonlyArray<{ kind: NotificationKind; label: s
 
 export const kindOf = (n: AppNotification): NotificationKind => {
     switch (n.type) {
+        case 'Create':
+        case 'EmojiReact':
+            return 'message';
         case 'Invite':
         case 'Join':
             return 'invite';
@@ -52,6 +56,10 @@ export function notificationText(n: AppNotification): string {
             return `${who} さんにフォローされました`;
         case 'FediverseFollowRequest':
             return `${who} さんからフォローリクエストが届きました`;
+        case 'Create':
+            return `${who} さんからメッセージが届きました`;
+        case 'EmojiReact':
+            return `${who} さんがメッセージに ${n.content} を付けました`;
     }
 }
 

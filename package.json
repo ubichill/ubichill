@@ -20,6 +20,7 @@
     "build:instance": "turbo build --filter=@ubichill/instance",
     "gen:install": "node packages/cli/src/index.ts install --mods-dir=packages/frontend/public/mods",
     "gen:world-locks": "node scripts/world-locks.mjs",
+    "gen:emoji": "node scripts/generate-emoji-data.mjs",
     "verify:mod-locks": "node packages/cli/src/index.ts verify --dist-dir=dist/mods",
     "verify:world-locks": "node scripts/world-locks.mjs --check",
     "check:architecture": "node scripts/check-architecture.mjs",

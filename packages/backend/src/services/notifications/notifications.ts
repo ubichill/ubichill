@@ -12,6 +12,7 @@ import {
     decodeFeedCursor,
     isRemoteUserId,
     type MarkReadRequest,
+    type MessageReaction,
     NOTIFICATION_LIMITS,
     STORED_NOTIFICATION_TYPES,
     type StoredNotificationType,
@@ -47,6 +48,10 @@ export const dedupeKeys = {
     inviteRequest: (requesterId: string) => `Join:${requesterId}`,
     fediverseFollow: (actorUri: string) => `FediverseFollow:${actorUri}`,
     fediverseFollowRequest: (actorUri: string) => `FediverseFollowRequest:${actorUri}`,
+    /** 会話ごとに 1 つ（最新の 1 通で作り直す） */
+    message: (senderId: string) => `Create:${senderId}`,
+    /** 会話ごとに 1 つ（最新のリアクションで作り直す） */
+    reaction: (reactorId: string) => `EmojiReact:${reactorId}`,
 };
 
 export type FeedResult =
@@ -145,6 +150,49 @@ export function createNotificationService(deps: {
                     deps.hub.deliver(recipientId, { type: 'removed', ids: rows.map((r) => r.id) }),
                 ),
             );
+        },
+
+        /** senderId からメッセージが届いた。会話ごとに最新の 1 通だけを通知にする（届くたびに作り直して未読にする）。 */
+        messageReceived: (input: { senderId: string; recipientId: string; message: { id: string; content: string } }) =>
+            replace({
+                recipientId: input.recipientId,
+                type: 'Create',
+                actorUserId: input.senderId,
+                object: { type: 'Note', id: input.message.id, content: input.message.content },
+                dedupeKey: dedupeKeys.message(input.senderId),
+            }),
+
+        /** recipientId が senderId との会話を読んだ。その会話の通知（メッセージ・リアクション）も既読にする。 */
+        async messagesRead(recipientId: string, senderId: string): Promise<void> {
+            const at = now();
+            const read = (
+                await Promise.all([
+                    deps.notifications.markReadByKey(recipientId, dedupeKeys.message(senderId), at),
+                    deps.notifications.markReadByKey(recipientId, dedupeKeys.reaction(senderId), at),
+                ])
+            ).flat();
+            if (read.length > 0) await deps.hub.deliver(recipientId, { type: 'read', ids: read });
+        },
+
+        /** reactorId が recipientId のメッセージにリアクションした。会話ごとに最新の 1 つだけを通知にする。 */
+        messageReacted: (input: {
+            reactorId: string;
+            recipientId: string;
+            message: { id: string; content: string };
+            emoji: string;
+        }) =>
+            replace({
+                recipientId: input.recipientId,
+                type: 'EmojiReact',
+                actorUserId: input.reactorId,
+                object: { type: 'Note', id: input.message.id, content: input.message.content },
+                content: input.emoji,
+                dedupeKey: dedupeKeys.reaction(input.reactorId),
+            }),
+
+        /** 会話の 2 人の画面（ほかのタブ・端末を含む）にリアクションの変化を流す。 */
+        async reactionsChanged(userIds: readonly string[], messageId: string, reactions: MessageReaction[]) {
+            await Promise.all(userIds.map((id) => deps.hub.deliver(id, { type: 'reaction', messageId, reactions })));
         },
 
         /** blockerId が otherId（このサーバーのユーザー ID か actor の URL）をブロックした。2 人の間の通知をすべて消す。 */

@@ -1,5 +1,7 @@
 import type { FriendsResponse, Instance } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
+import { ConversationList } from '@/components/messages';
+import { useNotifications } from '@/components/notifications';
 import {
     FriendGrid,
     FriendGroup,
@@ -16,15 +18,16 @@ import {
     requestTargetOf,
 } from '@/components/social/friendPresence';
 import { useInviteActions } from '@/components/social/useInviteActions';
+import { unreadMessageCount } from '@/lib/messages';
 import { fetchFriends } from '@/lib/socialApi';
 import { css } from '@/styled-system/css';
 import { SplitTab, type SplitTabItem } from './SplitTab';
 import type { JoinInstanceHandler } from './shared';
 
-export type SocialSection = 'locations' | 'friends' | 'search';
+export type SocialSection = 'locations' | 'messages' | 'friends' | 'search';
 
 /**
- * ソーシャル: ユーザー検索（一番上・色を変える）・フレンドの現在地（部屋ごと。自分の部屋は一番上）・すべてのフレンドを左で切り替える。
+ * ソーシャル: ユーザー検索（一番上・色を変える）・フレンドの現在地（部屋ごと。自分の部屋は一番上）・メッセージ・すべてのフレンドを左で切り替える。
  * 開いたときはフレンドの現在地。
  * 届いた申請は通知、フレンドの解除はその人のプロフィール。
  */
@@ -42,6 +45,7 @@ export function SocialTab({
     onFriendshipChange?: () => void;
 }) {
     const locations = useFriendLocations();
+    const unreadMessages = unreadMessageCount(useNotifications().feed.items);
     const [friends, setFriends] = useState<FriendsResponse | null>(null);
     const loadFriends = useCallback(() => {
         fetchFriends()
@@ -62,6 +66,12 @@ export function SocialTab({
     const items: ReadonlyArray<SplitTabItem<SocialSection>> = [
         { id: 'search', label: 'ユーザーを検索', icon: 'search', accent: true },
         { id: 'locations', label: 'フレンドの現在地', icon: 'pin', count: presence?.onlineCount },
+        {
+            id: 'messages',
+            label: 'メッセージ',
+            icon: 'message',
+            count: unreadMessages > 0 ? unreadMessages : undefined,
+        },
         { id: 'friends', label: 'すべてのフレンド', icon: 'users', count: directory?.total },
     ];
     const status = locations.error ? (
@@ -120,6 +130,7 @@ export function SocialTab({
                     )}
                 </div>
             )}
+            {section === 'messages' && <ConversationList />}
             {section === 'search' && <UserSearch onFriendshipChange={changed} />}
         </SplitTab>
     );

@@ -1,6 +1,7 @@
 import type { Instance } from '@ubichill/shared';
 import { type ReactNode, useEffect, useId, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { ConversationView } from '@/components/messages';
 import { useNotifications } from '@/components/notifications';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { useIsAdmin } from '@/lib/account/useIsAdmin';
@@ -8,6 +9,7 @@ import { isHomeInstance } from '@/lib/home';
 import { useHome } from '@/lib/homeStore';
 import { fetchInstance } from '@/lib/instancesApi';
 import { useMediaOutput } from '@/lib/mediaOutputSetting';
+import { unreadMessageCount } from '@/lib/messages';
 import { unreadBadge } from '@/lib/notifications';
 import { useSession } from '@/lib/session';
 import { css, cva } from '@/styled-system/css';
@@ -110,6 +112,7 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
                 setView(selectTab('worlds'));
             },
             openUser: (userId) => setView((v) => openUser(v, userId, selfId)),
+            openConversation: (userId) => setView((v) => openPage(v, { kind: 'conversation', userId })),
             joinInstance: actions.joinInstance,
         }),
         [currentInstanceId, instance, selfId, actions.joinInstance],
@@ -143,6 +146,8 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
                 );
             case 'user':
                 return <ProfileTab userId={p.userId} onNavigate={onClose} onJoinInstance={actions.joinInstance} />;
+            case 'conversation':
+                return <ConversationView key={p.userId} userId={p.userId} />;
         }
     };
 
@@ -200,9 +205,10 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
 
     const userName = session?.user.name ?? '';
     const unread = unreadBadge(notifications.feed.unreadCount);
+    const unreadMessages = unreadBadge(unreadMessageCount(notifications.feed.items));
     const tabButton = (item: TabItem, placement: 'rail' | 'dock') => {
         const active = shown.tab === item.id;
-        const badge = item.id === 'notifications' ? unread : null;
+        const badge = item.id === 'notifications' ? unread : item.id === 'social' ? unreadMessages : null;
         const icon = item.id === 'audio' && audio.muted ? 'mute' : item.icon;
         return (
             <button

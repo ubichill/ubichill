@@ -35,7 +35,7 @@ describe('groupNotifications', () => {
         expect(groups['friend-request'].map((n) => n.id)).toEqual(['2', '3']);
         expect(groups.other.map((n) => n.id)).toEqual(['1', '4']);
         expect(groups.invite.map((n) => n.id)).toEqual(['5', '6']);
-        expect(NOTIFICATION_TABS.map((t) => t.kind)).toEqual(['invite', 'friend-request', 'other']);
+        expect(NOTIFICATION_TABS.map((t) => t.kind)).toEqual(['message', 'invite', 'friend-request', 'other']);
     });
 });
 

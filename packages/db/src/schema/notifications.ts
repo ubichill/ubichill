@@ -3,7 +3,7 @@ import { check, index, jsonb, pgTable, text, timestamp, uniqueIndex } from 'driz
 import { users } from './users';
 
 /**
- * 本人に関わる出来事の通知（ActivityStreams 2.0 の Follow・Accept・Like・Invite・Join）。object の形は種類ごとに shared のスキーマで確かめる。
+ * 本人に関わる出来事の通知（ActivityStreams 2.0 の Follow・Accept・Like・Invite・Join・Create（メッセージ）・EmojiReact（メッセージへのリアクション））。object の形は種類ごとに shared のスキーマで確かめる。
  * actor はこのサーバーのユーザー（actor_user_id、消えたら通知も消える）か、将来のリモートの actor の URI（actor_uri）のどちらか 1 つ。
  */
 export const notifications = pgTable(
@@ -29,7 +29,7 @@ export const notifications = pgTable(
     (table) => [
         check(
             'notifications_type_check',
-            sql`${table.type} IN ('Follow', 'Accept', 'Like', 'Invite', 'Join', 'FediverseFollow', 'FediverseFollowRequest')`,
+            sql`${table.type} IN ('Follow', 'Accept', 'Like', 'Invite', 'Join', 'FediverseFollow', 'FediverseFollowRequest', 'Create', 'EmojiReact')`,
         ),
         check('notifications_actor_check', sql`num_nonnulls(${table.actorUserId}, ${table.actorUri}) = 1`),
         uniqueIndex('notifications_recipient_dedupe_idx').on(table.recipientId, table.dedupeKey),

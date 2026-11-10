@@ -51,6 +51,8 @@ function activityExtras(record: NotificationRecord): Record<string, unknown> {
             return { content: record.content, endTime };
         case 'Join':
             return { endTime };
+        case 'EmojiReact':
+            return { content: record.content };
         default:
             return {};
     }

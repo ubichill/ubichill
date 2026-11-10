@@ -267,6 +267,8 @@ export * from './user/handle';
 export * from './user/home';
 export * from './user/instanceAccess';
 export * from './user/limits';
+export * from './user/messageReactions';
+export * from './user/messages';
 export * from './user/presence';
 export * from './user/profile';
 export * from './user/profileLanguages';

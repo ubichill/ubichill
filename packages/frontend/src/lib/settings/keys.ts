@@ -13,6 +13,8 @@ export const SETTINGS_KEYS = {
     permissionPolicy: 'ubichill:permission-policy',
     /** ワールドのメディア全体の音量・ミュート（HUD の「音声」）。 */
     mediaOutput: 'ubichill:media-output',
+    /** 絵文字を選ぶ画面の「最近使ったもの」（新しい順）。 */
+    recentEmojis: 'ubichill:recent-emojis',
 } as const;
 
 export type SettingsKey = (typeof SETTINGS_KEYS)[keyof typeof SETTINGS_KEYS];

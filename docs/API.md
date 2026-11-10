@@ -384,8 +384,11 @@ HTTP契約・型生成はOpenAPI、WebSocket契約はAsyncAPI。詳細は
 | `/users/me` | 自分の情報 | — | — |
 | `/users/me/home` | ホームの設定とワールド | `/instance`: ホームの部屋を新しく作る（`?fallback=default` で既定のワールド。10回/分/人） | PUT: `{worldRef?: string\|null, accessType?}`（20回/分/人） |
 | `/notifications` | 一覧（`?cursor=&limit=`、お知らせを含む新しい順）・`/unread-count` | `/read`（`{ids}` か `{all:true}`） | — |
-| `/notifications/stream` | SSE（`notification`・`read`・`removed`、25 秒ごとに keep-alive、15 分で閉じる） | — | — |
+| `/notifications/stream` | SSE（`notification`・`read`・`removed`・`reaction`、25 秒ごとに keep-alive、15 分で閉じる） | — | — |
 | `/notifications/announcements` | 一覧 | 作成（**公式アカウントのみ**、20件/h） | — |
+| `/messages` | 会話の一覧（新しい順に 50 件・相手ごとの未読の数） | — | — |
+| `/messages/:userId` | 会話（`?cursor=&limit=`、新しい順。1 通ごとに `reactions`。送れなければ `refusal`） | 送る（`{content}`、500 文字まで。フレンドのみ。20回/分・300回/h/人）・`/read`: 既読 | — |
+| `/messages/:userId/:messageId/reaction` | — | PUT: リアクションを付ける（`{emoji}`、Unicode 絵文字 1 つ。1 人 1 つで付け直すと置き換え。フレンドのみ。60回/分/人） | DELETE: 外す |
 | `/instances/:id/visit` | — | ほかのサーバーの部屋（`<部屋 ID>@<ドメイン>`）にいる間の知らせ（30 秒ごと） | DELETE: 来訪をやめる |
 | `/federation` | 連合しているか・このサーバーのドメイン（誰でも） | — | — |
 | `/federation/servers` | 知っているほかのサーバーと配送の調子（**管理者**） | — | — |
@@ -399,5 +402,8 @@ HTTP契約・型生成はOpenAPI、WebSocket契約はAsyncAPI。詳細は
 
 通知の形は ActivityStreams 2.0 に寄せる（`shared/notification/activity.ts`）。フレンド申請 = `Follow`、承認 = `Accept`、
 ワールドのお気に入り = `Like`（object は拡張の型 `World`）、招待 = `Invite`（object は拡張の型 `Instance`、content は一言、
-endTime は期限）、リクエストインバイト = `Join`（object は頼まれた人、endTime は答えられる期限）、運営のお知らせ = `Announce`（object は `Note`）。
+endTime は期限）、リクエストインバイト = `Join`（object は頼まれた人、endTime は答えられる期限）、運営のお知らせ = `Announce`（object は `Note`）、
+フレンドからのメッセージ = `Create`（object は `Note`。会話ごとに最新の 1 通だけを通知にする）、
+メッセージへのリアクション = `EmojiReact`（object はその `Note`、content は絵文字。会話ごとに最新の 1 つ）。
+SSE の `reaction` は通知ではなく、会話の 2 人に流す「その 1 通のリアクションの全部」（`{messageId, reactions}`）。
 SSE は取りこぼしがあり得る（Redis の障害・切断中）ので、クライアントは繋ぎ直すたびに一覧を取り直す。

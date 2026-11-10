@@ -342,6 +342,99 @@ describe('招待・リクエストインバイトの通知', () => {
     });
 });
 
+describe('メッセージの通知', () => {
+    const send = (service: ReturnType<typeof setup>['service'], id: string, content: string) =>
+        service.messageReceived({ senderId: 'alice', recipientId: 'bob', message: { id, content } });
+
+    it('会話ごとに最新の 1 通だけが通知になり、読んだあとに届いた分はまた未読になる', async () => {
+        const { service, rows, tick } = setup();
+        const first = await send(service, 'm1', 'やあ');
+        expect(first).toMatchObject({ type: 'Create', object: { type: 'Note', id: 'm1', content: 'やあ' } });
+        await service.messagesRead('bob', 'alice');
+        expect(await service.unreadCount('bob')).toBe(0);
+        tick();
+        const second = await send(service, 'm2', 'まだいる？');
+        expect(rows.filter((r) => r.recipientId === 'bob')).toHaveLength(1);
+        expect(second).toMatchObject({ read: false, object: { id: 'm2' } });
+        expect(await service.unreadCount('bob')).toBe(1);
+    });
+
+    it('会話を読むと、その会話の通知だけを既読にして SSE に流す（ほかの人からの通知は残す）', async () => {
+        const { service, delivered } = setup();
+        const fromAlice = await send(service, 'm1', 'a');
+        await service.followRequested('newcomer', 'bob');
+        delivered.length = 0;
+        await service.messagesRead('bob', 'alice');
+        expect(delivered).toEqual([{ to: 'bob', event: { type: 'read', ids: [fromAlice?.id] } }]);
+        expect(await service.unreadCount('bob')).toBe(1);
+        // もう読んだ会話を読み直しても何も流さない
+        delivered.length = 0;
+        await service.messagesRead('bob', 'alice');
+        expect(delivered).toEqual([]);
+    });
+
+    it('フレンドでなくなってもメッセージの通知は消さない（過去の分は読める）', async () => {
+        const { service, rows } = setup();
+        await send(service, 'm1', 'a');
+        await service.friendshipRemoved('alice', 'bob');
+        expect(rows.map((r) => r.type)).toEqual(['Create']);
+    });
+});
+
+describe('リアクションの通知', () => {
+    const react = (service: ReturnType<typeof setup>['service'], id: string, emoji: string) =>
+        service.messageReacted({ reactorId: 'alice', recipientId: 'bob', message: { id, content: '本文' }, emoji });
+
+    it('会話ごとに最新の 1 つだけ。付け直すと作り直して未読にし、絵文字は content に載る', async () => {
+        const { service, rows, tick } = setup();
+        expect(await react(service, 'm1', '👍')).toMatchObject({
+            type: 'EmojiReact',
+            content: '👍',
+            object: { type: 'Note', id: 'm1' },
+        });
+        await service.messagesRead('bob', 'alice');
+        tick();
+        expect(await react(service, 'm2', '🎉')).toMatchObject({ read: false, content: '🎉', object: { id: 'm2' } });
+        expect(rows.filter((r) => r.type === 'EmojiReact')).toHaveLength(1);
+    });
+
+    it('会話を読むとメッセージとリアクションの通知をまとめて既読にする', async () => {
+        const { service, delivered } = setup();
+        const message = await service.messageReceived({
+            senderId: 'alice',
+            recipientId: 'bob',
+            message: { id: 'm1', content: 'a' },
+        });
+        const reaction = await react(service, 'm0', '👍');
+        delivered.length = 0;
+        await service.messagesRead('bob', 'alice');
+        expect(delivered).toEqual([{ to: 'bob', event: { type: 'read', ids: [message?.id, reaction?.id] } }]);
+        expect(await service.unreadCount('bob')).toBe(0);
+    });
+
+    it('自分で自分に付けても通知しない', async () => {
+        const { service, rows } = setup();
+        await service.messageReacted({
+            reactorId: 'bob',
+            recipientId: 'bob',
+            message: { id: 'm1', content: 'a' },
+            emoji: '👍',
+        });
+        expect(rows).toEqual([]);
+    });
+
+    it('リアクションの変化は通知を作らず、2 人の SSE に同じ形で流す', async () => {
+        const { service, rows, delivered } = setup();
+        const reactions = [{ userId: 'alice', emoji: '👍' }];
+        await service.reactionsChanged(['alice', 'bob'], 'm1', reactions);
+        expect(rows).toEqual([]);
+        expect(delivered).toEqual([
+            { to: 'alice', event: { type: 'reaction', messageId: 'm1', reactions } },
+            { to: 'bob', event: { type: 'reaction', messageId: 'm1', reactions } },
+        ]);
+    });
+});
+
 describe('ほかのサーバーの actor からの通知（連合）', () => {
     const BOB = 'https://c.example/ap/users/bob';
 
@@ -475,7 +568,7 @@ describe('運営のお知らせ', () => {
         // 古いお知らせを既読にしても位置は戻らない
         expect(await service.markRead('alice', { ids: [first.notification.id] })).toBe(1);
         const page = await service.listFeed('alice', {});
-        expect(page.ok && page.items.map((i) => [i.object.type === 'Note' && i.object.summary, i.read])).toEqual([
+        expect(page.ok && page.items.map((i) => [i.type === 'Announce' && i.object.summary, i.read])).toEqual([
             ['3', false],
             ['2', true],
             ['1', true],

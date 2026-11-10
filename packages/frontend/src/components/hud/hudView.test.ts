@@ -75,3 +75,20 @@ describe('hudView', () => {
         expect(visibleView(settings, false)).toBe(settings);
     });
 });
+
+describe('会話', () => {
+    it('プロフィールから会話を開き、会話から同じ人のプロフィールを開くと戻る（積み上がらない）', () => {
+        const profile = openUser(selectTab('social'), 'u1', 'me');
+        const chat = openPage(profile, { kind: 'conversation', userId: 'u1' });
+        expect(chat.pages).toHaveLength(2);
+        expect(openUser(chat, 'u1', 'me')).toEqual(profile);
+        // 別の人のプロフィールなら重ねる
+        expect(openUser(chat, 'u2', 'me').pages).toHaveLength(3);
+    });
+
+    it('同じ人でもプロフィールと会話は別の画面', () => {
+        const profile = openPage(INITIAL_HUD_VIEW, { kind: 'user', userId: 'u1' });
+        expect(openPage(profile, { kind: 'conversation', userId: 'u1' }).pages).toHaveLength(2);
+        expect(pageTitle({ kind: 'conversation', userId: 'u1' })).toBeNull();
+    });
+});

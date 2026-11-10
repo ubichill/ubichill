@@ -14,6 +14,8 @@ export interface HudNavigation {
     currentInstance: Instance | null;
     openWorlds: (section: WorldsSection) => void;
     openUser: (userId: string) => void;
+    /** フレンドとのメッセージの会話を開く */
+    openConversation: (userId: string) => void;
     /** 部屋へ移る（ほかの人がいれば確認し、今の部屋を抜けてから） */
     joinInstance: JoinInstanceHandler;
 }

@@ -1,12 +1,14 @@
-import type { Friendship, RemoteRelation } from '@ubichill/shared';
+import { type Friendship, messageRefusal, type RemoteRelation } from '@ubichill/shared';
 import { useState } from 'react';
+import { HudIcon } from '@/components/hud/HudIcon';
+import { useHudNavigation } from '@/components/hud/HudNavigationContext';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { blockAndReload, unblockAndReload } from '@/lib/blocks';
 import { answerFollower } from '@/lib/fediverseApi';
 import { type FollowerAction, followerActionsOf, relationAfter, relationBadgesOf } from '@/lib/friendActions';
 import { useSession } from '@/lib/session';
 import { pushToast } from '@/lib/toast';
-import { css } from '@/styled-system/css';
+import { css, cx } from '@/styled-system/css';
 import { socialButton } from './buttons';
 import { FriendButton } from './FriendButton';
 
@@ -35,7 +37,7 @@ export function ProfileRelationBadges({
 
 /**
  * バナーの右上: フレンドの操作と、フォローしてきた人への操作（承認・拒否・フォロワーから外す）、ブロック。
- * ブロック中は解除だけを出す。
+ * ブロック中は解除だけを出す。「メッセージ」は会話をランチパッドの中で開くので、ランチパッドの外のページでは出さない。
  */
 export function ProfileRelationActions({
     user,
@@ -58,6 +60,9 @@ export function ProfileRelationActions({
     const confirm = useConfirm();
     const [busy, setBusy] = useState(false);
     const owner = session?.user.id;
+    const hud = useHudNavigation();
+    const canMessage =
+        !!hud && !!owner && messageRefusal(owner, user.id, { friends: friendship === 'friends', blocked }) === null;
 
     const toggleBlock = async () => {
         if (!owner) return;
@@ -119,6 +124,16 @@ export function ProfileRelationActions({
                     {a.label}
                 </button>
             ))}
+            {canMessage && (
+                <button
+                    type="button"
+                    className={cx(socialButton({ tone: 'primary' }), withIcon)}
+                    onClick={() => hud.openConversation(user.id)}
+                >
+                    <HudIcon name="message" size={14} />
+                    メッセージ
+                </button>
+            )}
             {/* 関係（フレンド・フォロー）は左上の札で出すので、ここはボタンだけ */}
             <FriendButton
                 user={user}
@@ -131,6 +146,8 @@ export function ProfileRelationActions({
         </span>
     );
 }
+
+const withIcon = css({ display: 'inline-flex', alignItems: 'center', gap: '1.5' });
 
 const badge = css({
     px: '2.5',

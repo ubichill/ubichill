@@ -5,6 +5,7 @@ import { css, cva } from '@/styled-system/css';
 import { tabPanel, tabSection } from './shared';
 
 const EMPTY: Record<NotificationKind, string> = {
+    message: 'メッセージの通知はありません。',
     invite: '招待はありません。',
     'friend-request': 'フレンドの通知はありません。',
     other: 'その他の通知はありません。',
