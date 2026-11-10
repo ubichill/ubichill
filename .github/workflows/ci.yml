@@ -58,6 +58,10 @@ jobs:
       - name: Check architecture
         run: pnpm check:architecture
 
+      # drizzle は最後に当てたものより when が新しいものしか当てない。並行した PR で順が逆になると黙って飛ばされる
+      - name: Check migration order
+        run: pnpm check:migrations
+
       # .changeset/*.md のフロントマターが実ワークスペースのpackage.json名と一致するかを
       # PR時点で検証する。ここを飛ばすと不一致は push to main 後の changeset-release/main
       # ジョブでのみ発覚し、リリースフローがブロックされるまで気づけない
