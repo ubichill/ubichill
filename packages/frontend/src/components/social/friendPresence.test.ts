@@ -8,6 +8,7 @@ import {
     onlineFriends,
     placeFriendCards,
     requestTargetOf,
+    selfLocationOf,
     whereLabel,
 } from './friendPresence';
 
@@ -201,6 +202,25 @@ describe('friendLocationOf（プロフィールの現在地）', () => {
 
     it('一覧に無い人（フレンドでない・なったばかり）は unknown（オフラインと決めつけない）', () => {
         expect(friendLocationOf(withRooms, 'nobody', undefined, NOW)).toEqual({ kind: 'unknown' });
+    });
+});
+
+describe('selfLocationOf（自分のプロフィールの現在地）', () => {
+    it('今いる部屋を、フレンドの一覧に無くても出す（招待が要る部屋でも隠さない）', () => {
+        const locked = { ...room('lk', '秘密基地'), canJoin: false } as Instance;
+        expect(selfLocationOf(data, locked)).toEqual({ kind: 'room', instance: locked, friends: [], here: true });
+        expect(selfLocationOf(null, locked)).toMatchObject({ kind: 'room', here: true });
+    });
+
+    it('一覧にあればそちらの部屋（人数が新しい）とそこにいるフレンドを出す', () => {
+        const stale = room('r2', 'ゲーム', 1);
+        const at = selfLocationOf(data, stale);
+        expect(at.kind === 'room' && at.instance.stats.currentUsers).toBe(8);
+        expect(at.kind === 'room' && at.friends.map((f) => f.id)).toEqual(['c', 'b']);
+    });
+
+    it('部屋の外なら away（オフラインとは言わない）', () => {
+        expect(selfLocationOf(data, null)).toEqual({ kind: 'away' });
     });
 });
 

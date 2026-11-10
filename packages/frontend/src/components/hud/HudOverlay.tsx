@@ -94,6 +94,7 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
     const navigation = useMemo<HudNavigation>(
         () => ({
             currentInstanceId,
+            currentInstance: instance,
             openWorlds: (section) => {
                 setWorldsSection(section);
                 setView(selectTab('worlds'));
@@ -101,7 +102,7 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
             openUser: (userId) => setView((v) => openUser(v, userId, selfId)),
             joinInstance: actions.joinInstance,
         }),
-        [currentInstanceId, selfId, actions.joinInstance],
+        [currentInstanceId, instance, selfId, actions.joinInstance],
     );
     const open = (page: HudPage) => setView((v) => openPage(v, page));
     const select = (tab: HudTab) => setView(selectTab(tab));

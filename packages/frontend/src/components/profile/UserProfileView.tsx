@@ -1,7 +1,7 @@
 import { isRemoteUserId, type PublishedMod, type UserProfile } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { FriendLocationCard, UserSocialBar } from '@/components/social';
+import { ProfileLocationCard, UserSocialBar } from '@/components/social';
 import { WorldDetailModal } from '@/components/worlds/WorldDetailModal';
 import { fetchMyAccount, type MyAccount } from '@/lib/account/me';
 import { API_BASE } from '@/lib/api';
@@ -144,7 +144,7 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                     ほかの人と同じ表示名になっています。「編集」から表示名を変えてください。
                 </p>
             )}
-            {/* 広い画面では、フレンドの現在地を右に並べる */}
+            {/* 広い画面では、現在地を右に並べる（誰のプロフィールでも同じ形） */}
             <div className={top}>
                 <div className={css({ flex: 1, minW: 0 })}>
                     {profile &&
@@ -160,7 +160,7 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                         ))}
                     {!isOwnPage && session && profile && <UserSocialBar userId={profile.id} name={profile.name} />}
                 </div>
-                {!isOwnPage && session && profile && <FriendLocationCard userId={profile.id} />}
+                {profile && <ProfileLocationCard userId={profile.id} self={isOwnPage} signedIn={!!session} />}
             </div>
 
             {error && (
