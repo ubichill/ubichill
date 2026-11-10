@@ -118,18 +118,6 @@ export async function publishedExternalEntries(userId: string, account: string):
     });
 }
 
-/** ユーザーページに出す外部の作品（いま本人の署名付きで配られていると確かめられたものだけ）。 */
-export async function publishedExternalWorks(
-    userId: string,
-    account: string,
-): Promise<{ worlds: WorldListItem[]; mods: PublishedMod[] }> {
-    const entries = await publishedExternalEntries(userId, account);
-    return {
-        worlds: entries.flatMap((e) => (e.world ? [e.world] : [])),
-        mods: entries.flatMap((e) => (e.mod ? [e.mod] : [])),
-    };
-}
-
 /** 本人の設定画面の一覧（確かめた状態つき）。`fresh` なら使い回さずに確かめ直す（再確認）。 */
 export async function externalWorkStatuses(userId: string, account: string, fresh: boolean): Promise<ExternalWork[]> {
     const records = await externalWorkRepository.listByUser(userId);

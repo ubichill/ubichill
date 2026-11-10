@@ -39,6 +39,7 @@ import { logger } from '../../utils/logger';
 import { isAuthorKey, resolveAuthorDisplayName } from '../authors/authorKeyStore';
 import { selfAccount, selfDomain } from '../authors/authorKeys';
 import { type BackendEvents, backendEvents } from '../cluster/backendEvents';
+import { SYSTEM_USER_ID } from '../users/systemUser';
 import { authorSharePath, localAuthorWorldOf, worldConfirmation } from './externalWorks';
 import { federatedCandidates, uniqueByWorldId } from './federatedWorlds';
 import { createRemoteWorldCache } from './remoteWorldCache';
@@ -49,10 +50,6 @@ import {
     WorldIntegrityError,
     worldRefOf,
 } from './worldResolver';
-
-// ── システム定数 ──────────────────────────────────────────────────
-
-const SYSTEM_AUTHOR_ID = '00000000-0000-0000-0000-000000000000';
 
 export type WorldResolution =
     | {
@@ -299,7 +296,7 @@ class WorldRegistry {
                 `${ENV_KEYS.PUBLIC_BASE_URL} が未設定です。ワールドの正規 URL が ${SERVER_CONFIG.DEV_URL} になり連合が壊れます。`,
             );
         }
-        await userRepository.ensureSystemUser(SYSTEM_AUTHOR_ID);
+        await userRepository.ensureSystemUser(SYSTEM_USER_ID);
         await this._scanLocal();
         this._startWatcher();
         await this._loadPeers();

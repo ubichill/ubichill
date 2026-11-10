@@ -1,9 +1,7 @@
 import { ENV_KEYS, ModLockEntrySchema, normalizeServiceAudience, SERVER_CONFIG } from '@ubichill/shared';
 import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { redis } from '../lib/redis';
-import { sharedRateLimit } from '../lib/sharedRateLimit';
+import { perUserLimiter } from '../lib/rateLimit';
 import { requireFreshAuth } from '../middleware/auth';
 import { modAuthorForToken, type ServiceTokenIssuer, serviceTokenIssuerFromEnv } from '../services/auth/serviceTokens';
 import { isAuthorKey } from '../services/authors/authorKeyStore';
@@ -30,15 +28,12 @@ const IssueRequestSchema = z.object({
 });
 
 // ホストはトークンを期限まで使い回すので、通常の利用ではこの上限に届かない。
-const issueLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    limit: 60,
-    standardHeaders: true,
-    legacyHeaders: false,
-    keyGenerator: (req) => req.user?.id ?? 'anonymous',
-    message: { error: 'サービストークンの発行が多すぎます。しばらくしてから再試行してください。' },
-    ...sharedRateLimit('service-tokens', redis, logger),
-});
+const issueLimiter = perUserLimiter(
+    'service-tokens',
+    60 * 1000,
+    60,
+    'サービストークンの発行が多すぎます。しばらくしてから再試行してください。',
+);
 
 router.get('/keys', (_req, res) => {
     const issuer = tokenIssuer;

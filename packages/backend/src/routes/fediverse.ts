@@ -15,25 +15,14 @@ import {
     remoteEmojisOf,
 } from '@ubichill/shared';
 import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
-import { redis } from '../lib/redis';
-import { sharedRateLimit } from '../lib/sharedRateLimit';
+import { perUserLimiter } from '../lib/rateLimit';
 import { requireAuth } from '../middleware/auth';
 import { selfAccount } from '../services/authors/authorKeys';
 import { federation } from '../services/federation';
-import { logger } from '../utils/logger';
 
 const router = Router();
 
-const writeLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    limit: 60,
-    standardHeaders: true,
-    legacyHeaders: false,
-    keyGenerator: (req) => req.user?.id ?? 'anonymous',
-    message: { error: '操作が多すぎます。少し待ってから試してください' },
-    ...sharedRateLimit('fediverse-write', redis, logger),
-});
+const writeLimiter = perUserLimiter('fediverse-write', 60 * 1000, 60, '操作が多すぎます。少し待ってから試してください');
 
 const followerOf = (row: FollowerWithActor): FediverseFollower => ({
     actorId: row.actorId,
