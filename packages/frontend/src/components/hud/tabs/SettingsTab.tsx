@@ -1,8 +1,6 @@
 import { isPublishable } from '@ubichill/shared';
-import { ServerPoliciesSection, WorldPeersSection } from '@/components/federation';
 import { HomeSettingsSection } from '@/components/home/HomeSettingsSection';
 import { useMyAccount } from '@/components/profile';
-import { AnnouncementSection } from '@/components/profile/AnnouncementSection';
 import { PasswordSection } from '@/components/profile/PasswordSection';
 import { PublishingSection } from '@/components/profile/PublishingSection';
 import { css } from '@/styled-system/css';
@@ -12,34 +10,24 @@ import { LogoutSection } from './settings/LogoutSection';
 import { ModPermissionsSettings } from './settings/ModPermissionsSettings';
 import { PrivacySection } from './settings/PrivacySection';
 
-export type SettingsSection =
-    | 'home'
-    | 'privacy'
-    | 'fediverse'
-    | 'publishing'
-    | 'account'
-    | 'federation'
-    | 'announcements'
-    | 'mods';
+export type SettingsSection = 'home' | 'privacy' | 'fediverse' | 'publishing' | 'account' | 'mods';
 
-const SECTIONS: ReadonlyArray<SplitTabItem<SettingsSection> & { adminOnly?: boolean }> = [
+const SECTIONS: ReadonlyArray<SplitTabItem<SettingsSection>> = [
     { id: 'home', label: 'ホーム', icon: 'home' },
     { id: 'privacy', label: 'プライバシー', icon: 'lock' },
     { id: 'fediverse', label: 'フェディバース', icon: 'fediverse' },
     { id: 'publishing', label: '公開', icon: 'key' },
     { id: 'account', label: 'アカウント', icon: 'user' },
     { id: 'mods', label: 'mod の権限', icon: 'puzzle' },
-    { id: 'federation', label: '連合', icon: 'server', adminOnly: true },
-    { id: 'announcements', label: 'お知らせ', icon: 'megaphone', adminOnly: true },
 ];
 
 /** 自分のアカウントを読み込んでから出す欄（ほかの欄はそれぞれ自分で読み込む）。 */
-const NEEDS_ACCOUNT: ReadonlySet<SettingsSection> = new Set(['publishing', 'account', 'federation', 'announcements']);
+const NEEDS_ACCOUNT: ReadonlySet<SettingsSection> = new Set(['publishing', 'account']);
 
 /**
  * 設定タブ。ホーム・プライバシー（だれに何を見せるか）・フェディバース（フォローの受け方とフォロワー）・
- * 公開（公開環境）・アカウント（パスワード・ログアウト）・mod の権限・管理者だけの欄を、左で切り替える。
- * プロフィールはプロフィールの画面でその場で編集する。
+ * 公開（公開環境）・アカウント（パスワード・ログアウト）・mod の権限を、左で切り替える。
+ * プロフィールはプロフィールの画面でその場で編集する。管理者の設定（連合・お知らせ）はコントロールパネル。
  */
 export function SettingsTab({
     section,
@@ -50,13 +38,12 @@ export function SettingsTab({
 }) {
     const account = useMyAccount();
     const { profile } = account;
-    const sections = SECTIONS.filter((s) => !s.adminOnly || profile?.isAdmin);
-    const current = sections.some((s) => s.id === section) ? section : 'home';
+    const current = SECTIONS.some((s) => s.id === section) ? section : 'home';
     const unsignedCount = account.worlds.filter((w) => !isPublishable(w.identity)).length;
     const needsAccount = NEEDS_ACCOUNT.has(current);
 
     return (
-        <SplitTab label="設定" items={sections} current={current} onSelect={onSectionChange}>
+        <SplitTab label="設定" items={SECTIONS} current={current} onSelect={onSectionChange}>
             <div className={css({ display: 'flex', flexDirection: 'column', gap: '6', maxW: '720px' })}>
                 {needsAccount && account.error && (
                     <p className={css({ fontSize: '13px', color: 'errorText' })}>{account.error}</p>
@@ -94,13 +81,6 @@ export function SettingsTab({
                     />
                 )}
                 {current === 'account' && <LogoutSection />}
-                {current === 'federation' && profile?.isAdmin && (
-                    <>
-                        <ServerPoliciesSection />
-                        <WorldPeersSection />
-                    </>
-                )}
-                {current === 'announcements' && profile?.isAdmin && <AnnouncementSection />}
                 {current === 'mods' && <ModPermissionsSettings />}
             </div>
         </SplitTab>

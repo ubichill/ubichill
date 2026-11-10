@@ -89,6 +89,8 @@ app.use(
             processImage,
             publicBaseUrl: `${BASE}/`,
             authorOf: (handle) => `${handle}@ubichill.example`,
+            publicRolesOf: async (userId) =>
+                userId === 'u1' ? [{ id: 'r1', name: 'スタッフ', color: '#ff8800' }] : [],
         }),
     }),
 );
@@ -163,6 +165,8 @@ describe('プロフィールの API', () => {
                 bannerImage: null,
                 links: [{ url: 'https://github.com/u1', kind: 'github' }],
                 languages: ['ja', 'en'],
+                // 編集のあとも公開のロールを返す（画面のバッジが消えない）
+                roles: [{ id: 'r1', name: 'スタッフ', color: '#ff8800' }],
             });
             expect(users.rows.get('u2')?.status).toBeNull();
         });

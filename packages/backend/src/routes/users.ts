@@ -46,14 +46,7 @@ import yaml from 'yaml';
 import { auth, createPendingRegistration, resendOTP, sendAccountNotice, verifyAndRegister } from '../lib/auth';
 import { redis } from '../lib/redis';
 import { sharedRateLimit } from '../lib/sharedRateLimit';
-import {
-    isAdminHandle,
-    optionalAuth,
-    requireAuth,
-    requireFreshAuth,
-    requirePublisher,
-    toWebHeaders,
-} from '../middleware/auth';
+import { optionalAuth, requireAuth, requireFreshAuth, requirePublisher, toWebHeaders } from '../middleware/auth';
 import { invalidateAuthorKey, isAuthorKey } from '../services/authors/authorKeyStore';
 import { selfAccount } from '../services/authors/authorKeys';
 import {
@@ -65,6 +58,7 @@ import {
 import { backendEvents } from '../services/cluster/backendEvents';
 import { federation } from '../services/federation';
 import { notificationService, notifyInBackground } from '../services/notifications/notificationService';
+import { roleService } from '../services/roles/roleService';
 import { externalWorkStatuses, publishedExternalWorks } from '../services/worlds/externalWorkStore';
 import { verifyRegistration } from '../services/worlds/externalWorks';
 import { favoriteRefOf, resolveFavoriteWorlds } from '../services/worlds/favorites';
@@ -234,9 +228,10 @@ router.get('/me', requirePublisher, async (req, res) => {
     if (!user) {
         return res.status(404).json({ error: 'User not found' });
     }
+    const [roles, isAdmin] = await Promise.all([roleService.publicRolesOf(user.id), roleService.isAdmin(user.id)]);
     return res.json({
         // 公開プロフィールと同じ項目（プロフィールの編集の元にする）
-        ...userProfileOf(user, selfAccount(user.handle)),
+        ...userProfileOf(user, selfAccount(user.handle), roles),
         // 取り消されていない公開環境の鍵（このブラウザの鍵が登録済みかの判定に使う）
         signingKeys: (await authorKeyRepository.listByUser(user.id))
             .filter((e) => !e.revokedAt)
@@ -249,12 +244,19 @@ router.get('/me', requirePublisher, async (req, res) => {
         passwordChangeRequired: user.passwordChangeRequired,
         // パスワードを Secret で管理している（画面から変更できない）
         passwordManagedBySecret: user.handle === OFFICIAL_HANDLE,
-        isAdmin: isAdminHandle(user.handle),
+        isAdmin,
         // API トークン（CLI・CI）で呼んだときの公開環境（ubichill whoami で表示する）
         ...(req.publishingEnvironment
             ? { publishingEnvironment: { id: req.publishingEnvironment.id, kind: req.publishingEnvironment.kind } }
             : {}),
     });
+});
+
+// 管理者かどうかだけ（画面が 1 分ごとに確かめる。/me は重いので分ける）
+router.get('/me/admin', requireAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    res.set('Cache-Control', 'no-store');
+    return res.json({ isAdmin: await roleService.isAdmin(req.user.id) });
 });
 
 // パスワードを変更する。現在のパスワードの確認は better-auth に任せ、他の端末のセッションは無効にする。
@@ -628,7 +630,8 @@ router.get('/:userId', async (req, res) => {
     if (!user) {
         return res.status(404).json({ error: 'User not found' });
     }
-    return res.json(userProfileOf(user, selfAccount(user.handle)) satisfies UserProfile);
+    const roles = await roleService.publicRolesOf(user.id);
+    return res.json(userProfileOf(user, selfAccount(user.handle), roles) satisfies UserProfile);
 });
 
 // お気に入りの公開範囲を変更する（private / friends / public）。

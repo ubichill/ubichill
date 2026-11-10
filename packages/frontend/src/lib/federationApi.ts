@@ -1,4 +1,5 @@
-import { API_BASE } from '@/lib/api';
+import { recheckIfForbidden } from './account/adminStatus';
+import { API_BASE } from './api';
 
 /** 連合でフォローしているサーバー（ワールド一覧の「グローバル」に、そのサーバーの公開ワールドが出る）。 */
 export interface FederationPeer {
@@ -9,6 +10,7 @@ export interface FederationPeer {
 }
 
 async function errorMessage(res: Response): Promise<string> {
+    recheckIfForbidden(res);
     const data = (await res.json().catch(() => ({}))) as { error?: string };
     return data.error ?? `HTTP ${res.status}`;
 }
