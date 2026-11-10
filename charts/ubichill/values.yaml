@@ -149,6 +149,10 @@ backend:
   # Existing secret containing the secrets (skips secretEnv creation and injects it)
   existingSecret: ""
 
+  # 追加で読む Secret（envFrom で上の Secret の後に読むので、同じキーはこちらが勝つ）。無くても起動する（optional）。
+  # 例: preview の全環境で dev と同じ OFFICIAL_ACCOUNT_PASSWORD を使う（home-manifests の preview の namespace に置く）
+  extraSecretRefs: []
+
   # Pod-level security context (fsGroup でマウントされた emptyDir をグループ書き込み可能にする)
   podSecurityContext:
     fsGroup: 1000
