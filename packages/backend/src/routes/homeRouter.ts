@@ -1,29 +1,20 @@
 import { userSettingsRepository } from '@ubichill/db';
-import rateLimit from 'express-rate-limit';
-import { redis } from '../lib/redis';
-import { sharedRateLimit } from '../lib/sharedRateLimit';
+import { perUserLimiter } from '../lib/rateLimit';
 import { requireAuth } from '../middleware/auth';
 import { createHomeService } from '../services/instances/homeInstance';
 import { instanceManager } from '../services/instances/instanceManager';
 import { worldRegistry } from '../services/worlds/worldRegistry';
-import { logger } from '../utils/logger';
 import { createHomeRouter } from './home';
-
-const perUser = (name: string, windowMs: number, limit: number, error: string) =>
-    rateLimit({
-        windowMs,
-        limit,
-        standardHeaders: true,
-        legacyHeaders: false,
-        keyGenerator: (req) => req.user?.id ?? 'anonymous',
-        message: { error },
-        ...sharedRateLimit(name, redis, logger),
-    });
 
 export const router = createHomeRouter({
     requireAuth,
-    writeLimiter: perUser('home-write', 60 * 1000, 20, 'ホームの変更が多すぎます。少し待ってから試してください'),
-    ensureLimiter: perUser('home-instance', 60 * 1000, 10, 'ホームへの移動が多すぎます。少し待ってから試してください'),
+    writeLimiter: perUserLimiter('home-write', 60 * 1000, 20, 'ホームの変更が多すぎます。少し待ってから試してください'),
+    ensureLimiter: perUserLimiter(
+        'home-instance',
+        60 * 1000,
+        10,
+        'ホームへの移動が多すぎます。少し待ってから試してください',
+    ),
     home: createHomeService({
         settings: {
             get: (userId) => userSettingsRepository.getHome(userId),
