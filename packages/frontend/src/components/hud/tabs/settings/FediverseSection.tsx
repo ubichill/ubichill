@@ -1,7 +1,6 @@
 import type { FediverseFollower, FediverseOverview, FediverseSettingsUpdate } from '@ubichill/shared';
 import { type ReactNode, useEffect, useState } from 'react';
 import { UserAvatar, useOpenUser } from '@/components/social';
-import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { Switch } from '@/components/ui/Switch';
 import { withFollowerAnswered } from '@/lib/fediverse';
 import { answerFollower, fetchFediverse, updateFediverseSettings } from '@/lib/fediverseApi';
@@ -40,7 +39,7 @@ function FollowerRow({
 }: {
     follower: FediverseFollower;
     busy: boolean;
-    children: ReactNode;
+    children?: ReactNode;
 }) {
     const openUser = useOpenUser();
     const name = follower.name ?? follower.account;
@@ -61,7 +60,7 @@ function FollowerRow({
                     </span>
                 </span>
             </button>
-            <div className={css({ display: 'flex', gap: '2', flexShrink: 0 })}>{children}</div>
+            {children && <div className={css({ display: 'flex', gap: '2', flexShrink: 0 })}>{children}</div>}
         </li>
     );
 }
@@ -82,10 +81,10 @@ const who = css({
 
 /**
  * 設定の「フェディバース」（Mastodon・Misskey など）: アカウント・フォローの受け方・承認待ち・フォロワー。押すとその人のプロフィール。
+ * フォロワーから外すのは、その人のプロフィール（バナーの右上）で行う。
  * フォロワーに見えるのはプロフィールだけ（現在地や招待はフレンドだけ）。
  */
 export function FediverseSection() {
-    const confirm = useConfirm();
     const [overview, setOverview] = useState<FediverseOverview | null>(null);
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
@@ -119,12 +118,6 @@ export function FediverseSection() {
     };
 
     const answer = async (follower: FediverseFollower, action: 'approve' | 'reject') => {
-        if (
-            follower.state === 'accepted' &&
-            !(await confirm(`${follower.name ?? follower.account} さんをフォロワーから外しますか？`))
-        ) {
-            return;
-        }
         setBusyIds((s) => new Set(s).add(follower.actorId));
         try {
             await answerFollower(follower.actorId, action);
@@ -216,16 +209,7 @@ export function FediverseSection() {
                 ) : (
                     <ul>
                         {overview.followers.map((f) => (
-                            <FollowerRow key={f.actorId} follower={f} busy={busyIds.has(f.actorId)}>
-                                <button
-                                    type="button"
-                                    className={smallButton({ tone: 'plain' })}
-                                    disabled={busyIds.has(f.actorId)}
-                                    onClick={() => void answer(f, 'reject')}
-                                >
-                                    外す
-                                </button>
-                            </FollowerRow>
+                            <FollowerRow key={f.actorId} follower={f} busy={false} />
                         ))}
                     </ul>
                 )}

@@ -1,7 +1,12 @@
 import { isRemoteUserId, type PublishedMod, type UserProfile } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { ProfileLocationCard, UserSocialBar } from '@/components/social';
+import {
+    ProfileLocationCard,
+    ProfileRelationActions,
+    ProfileRelationBadges,
+    useUserRelation,
+} from '@/components/social';
 import { WorldDetailModal } from '@/components/worlds/WorldDetailModal';
 import { fetchMyAccount, type MyAccount } from '@/lib/account/me';
 import { API_BASE } from '@/lib/api';
@@ -50,6 +55,7 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
     const [error, setError] = useState('');
     // 自分の表示名がほかの人と同じになっている（編集で変えてもらう）
     const [nameConflict, setNameConflict] = useState(false);
+    const people = useUserRelation(!isOwnPage && session && profile ? profile.id : null);
 
     useEffect(() => {
         if (!isOwnPage) return;
@@ -156,9 +162,28 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                                 isOwner={isOwnPage}
                                 onEdit={startEditing}
                                 editPending={edit.kind === 'loading'}
+                                relation={
+                                    people.friendship && (
+                                        <ProfileRelationBadges
+                                            friendship={people.friendship}
+                                            relation={people.relation}
+                                        />
+                                    )
+                                }
+                                actions={
+                                    people.friendship &&
+                                    people.friendship !== 'self' && (
+                                        <ProfileRelationActions
+                                            user={{ id: profile.id, name: profile.name }}
+                                            friendship={people.friendship}
+                                            relation={people.relation}
+                                            onFriendshipChange={people.setFriendship}
+                                            onRelationChange={people.setRelation}
+                                        />
+                                    )
+                                }
                             />
                         ))}
-                    {!isOwnPage && session && profile && <UserSocialBar userId={profile.id} name={profile.name} />}
                 </div>
                 {profile && <ProfileLocationCard userId={profile.id} self={isOwnPage} signedIn={!!session} />}
             </div>
