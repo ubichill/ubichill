@@ -6,7 +6,15 @@
 - 約束ごとの種類は [PROTOCOLS.md](../PROTOCOLS.md) の C（版の違うほかのサーバーが相手。**足すだけ**）。
 - 形は ActivityPub（AS2）に合わせるが、相手は ubichill のサーバーだけ（Mastodon などとフレンドにはならない）。
 - 規則のコードは `shared/src/federation/`（署名・actor・activity・部屋 RPC・配送・URL の確かめ）、
-  実体は `backend/src/services/federation/`、口は `backend/src/routes/federation/`。
+  実体は `backend/src/services/federation/`、口は `backend/src/routes/federation/`。どちらも相手で分ける:
+
+| 置き場所 | 相手 | shared | backend の services |
+|---|---|---|---|
+| `ubichill/` | ubichill どうし | RFC 9421 の署名 `httpSignature`・Multikey・部屋 RPC `rpc`・部屋の住所 `roomAddress` | 部屋の答え `rooms`・来訪 `travel`・`remoteInstance`・現在地 `presence`・フレンド `friendships`・`friendshipCheck`・招待 `invites` |
+| `fediverse/` | Mastodon・Misskey など | draft-cavage の署名 `cavageSignature`・HTML とリッチテキスト `html`・`text`・`richText`・プロフィールの項目 `profileFields`・固定ノート `featured` | フォロー `follows`・固定ノート `featured`・`featuredSources` |
+| 共通 | 両方 | 直下（`protocol`・`activities`・`actor`・`delivery`・`domainPolicy`・`nodeinfo`・`urls`・`structuredFields`） | `transport/`（送受信 `transport`・照合 `verification`・鍵 `keys`・`rsaKeys`・actor `actors`・`documents`・`inbox`・`outbox`・`servers`・`domains`・プロフィールの更新 `profileUpdates`）。直下は配線 `index`・設定 `config`・URL `identity`・`localStore`・掃除 `maintenance` |
+
+- routes は 1 ファイル 1 面なので分けない（`rpc.ts` が ubichill どうし、`activitypub.ts`・`nodeinfo.ts`・`signed.ts` が共通）。
 
 ## 2 つの面
 
@@ -97,7 +105,7 @@
 | `POST /federation/v1/presence` | 見る人 | フレンドの現在地（見る人とフレンドの人についてだけ答える） |
 | `POST /federation/v1/friendships/check` | Application | 2 人がフレンドか。尋ねられるのは、相手（other）のホームと、本人（user）が来訪中の部屋のサーバーだけ |
 
-エラーは problem+json（RFC 9457）。`code` は `invite-required`・`full`・`domain-limited`・`rate-limited`・`not-inside` など（`shared/federation/rpc.ts`）。
+エラーは problem+json（RFC 9457）。`code` は `invite-required`・`full`・`domain-limited`・`rate-limited`・`not-inside` など（`shared/federation/ubichill/rpc.ts`）。
 部屋の作りは人の一覧を出さず人数だけ。ワールドの名前・画像は表示のヒントで、作者の確認は見る人のサーバーがワールドの URL から行う。
 
 ## 来訪（ほかのサーバーの部屋に入る）

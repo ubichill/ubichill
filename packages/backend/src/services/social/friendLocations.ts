@@ -17,8 +17,8 @@ import {
 } from '@ubichill/shared';
 import { logger } from '../../utils/logger';
 import { federation } from '../federation';
-import { type FriendPresence, limitFriendPresence, visitorVisibility } from '../federation/presence';
-import { remoteInstanceOf } from '../federation/remoteInstance';
+import { type FriendPresence, limitFriendPresence, visitorVisibility } from '../federation/ubichill/presence';
+import { remoteInstanceOf } from '../federation/ubichill/remoteInstance';
 import { instanceManager } from '../instances/instanceManager';
 import { instanceRuntime } from '../instances/instanceRuntime';
 import { friendIdsOf } from './friends';

@@ -24,7 +24,9 @@ shared（`@ubichill/shared` の純粋な規則。画面と同じ関数）。DB �
 | 通知 | `notifications.ts` | `notifications/` | `notification/` |
 | インスタンス（部屋） | `instances.ts` | `instances/` | `user/instanceAccess.ts` |
 | ロール・コントロールパネル | `admin.ts` | `roles/` | `user/roles.ts` |
-| 連合（AP・部屋 RPC） | `federation/`・`webfinger.ts`・`fediverse.ts` | `federation/`（`index.ts` は配線だけ） | `federation/` |
+| 連合: ubichill どうし（来訪・現在地・フレンド・招待・部屋 RPC） | `federation/rpc.ts` | `federation/ubichill/` | `federation/ubichill/` |
+| 連合: Misskey・Mastodon（フォロー・固定ノート） | `fediverse.ts` | `federation/fediverse/` | `federation/fediverse/` |
+| 連合: 共通の土台（署名・鍵・actor・inbox・配送・ドメインの方針） | `federation/`・`webfinger.ts` | `federation/transport/`（直下は配線 `index.ts`・設定・`identity.ts`） | `federation/` 直下 |
 | サービストークン・CLI | `serviceTokens.ts`・`cliAuth.ts` | `auth/` | `user/cliAuth.ts` |
 
 - やり取り（申請・承認・招待・メッセージ・フォロー・通知）を止める共通の前提は shared の `interactionRefusal`（自分自身・ブロック）。

@@ -10,7 +10,6 @@
  */
 import { z } from 'zod';
 import { type CustomEmoji, type RichSegment, richTextPlain } from '../user/richText';
-import { parseEd25519Multikey } from './multikey';
 import {
     type LocalProfileFields,
     profileAttachment,
@@ -19,10 +18,11 @@ import {
     type RemoteProfileField,
     readProfileAttachment,
     readProfileExtensions,
-} from './profileFields';
+} from './fediverse/profileFields';
+import { htmlToRichText, readCustomEmojis } from './fediverse/richText';
+import { displayText, escapeHtml } from './fediverse/text';
 import { ACTOR_CONTEXT, AP_ACCEPT, FEDERATION_FEATURES, isActivityMediaType } from './protocol';
-import { htmlToRichText, readCustomEmojis } from './richText';
-import { displayText, escapeHtml } from './text';
+import { parseEd25519Multikey } from './ubichill/multikey';
 import { parseFederationUrl, sameOrigin } from './urls';
 
 export interface LocalActorInput {

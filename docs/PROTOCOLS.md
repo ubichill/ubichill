@@ -82,10 +82,10 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
   使う前に相手が告知しているかを見る。機能を足すときは URI（`FEDERATION_FEATURES`）を足す。
 - 受けるときは知らない activity の型・知らない項目を捨てる（202。`.strict()` にしない）。部屋 RPC の本文も同じ。
 - 署名の形（RFC 9421 の ubichill プロファイル: Ed25519・`sig1`・含める項目・時刻の幅）を変えるときは、新しいラベル・`alg` を足して
-  両方を受ける期間を置く。今の形は RFC 9421 付録 B.2.6 と RFC 9530 の値でテストで固定している（`backend/src/services/federation/httpSignature.test.ts`）。
+  両方を受ける期間を置く。今の形は RFC 9421 付録 B.2.6 と RFC 9530 の値でテストで固定している（`backend/src/services/federation/transport/httpSignature.test.ts`）。
 - id の形（`/ap/users/<ユーザー ID>`・`/ap/instances/<部屋 ID>`）はほかのサーバーが持つので変えない。
 - ほかの実装（Mastodon・Misskey など）とは draft-cavage の `rsa-sha256` で話す（keyId は `<actor>#main-key`）。受けるのは inbox だけ。
-  形は `shared/src/federation/cavageSignature.ts`、送受信の往復は `backend/src/services/federation/cavage.test.ts` で固定している。
+  形は `shared/src/federation/fediverse/cavageSignature.ts`、送受信の往復は `backend/src/services/federation/transport/cavage.test.ts` で固定している。
 
 ## D. 内部の API
 
@@ -120,6 +120,6 @@ API の `/api/version` は診断用で、再読み込みで画面が更新され
 | `loader-main-is-browser-safe` | loader の既定の入口はブラウザで読める |
 | `backend-runs-built-packages-only` | backend はソースのまま配るパッケージに依存しない |
 | `mods-use-public-sdk-only` | mod は公開パッケージ `ubichill` だけに依存する |
-| `signatures-in-one-place` | Ed25519 の照合は shared の署名・鍵の証明の部品（`signature/envelope.ts`・`world/identity.ts`・`user/cliAuth.ts`・連合の HTTP の署名 `federation/httpSignature.ts`）の中だけ |
+| `signatures-in-one-place` | Ed25519 の照合は shared の署名・鍵の証明の部品（`signature/envelope.ts`・`world/identity.ts`・`user/cliAuth.ts`・連合の HTTP の署名 `federation/ubichill/httpSignature.ts`）の中だけ |
 
 規則を足すときは、何を守るのかを `why` に書く。

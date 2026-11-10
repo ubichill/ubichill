@@ -14,7 +14,7 @@ import {
     remoteEmojisOf,
     type UserSummary,
 } from '@ubichill/shared';
-import type { RemoteFriendships } from '../federation/friendships';
+import type { RemoteFriendships } from '../federation/ubichill/friendships';
 import type { People } from './people';
 import type { Relations } from './relations';
 
