@@ -80,11 +80,11 @@ describe('htmlToRichText', () => {
 
     it('閉じない <a> や < を並べた壊れた HTML（actor の上限 256KiB）も、長さに比例する時間で読む', () => {
         const time = (html: string) => {
-            const start = performance.now();
+            const start = Date.now();
             htmlToRichText(html, 1500);
             displayText(html, 100);
             displayMultilineText(html, 1500);
-            return performance.now() - start;
+            return Date.now() - start;
         };
         const unit = '<a href="https://x.example/">x';
         const small = time(unit.repeat(Math.floor(16_000 / unit.length)));
