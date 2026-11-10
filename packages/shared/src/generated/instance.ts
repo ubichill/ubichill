@@ -178,6 +178,8 @@ export interface components {
             name?: string;
             /** @description 連合で、ほかの ubichill サーバーの画面から来る来訪者のブラウザの origin（scheme://host[:port]）。指定したチケットはその origin の接続でだけ使え、ほかのサーバーの画面からの接続はこのチケットでだけ入れる。 */
             origin?: string;
+            /** @description 部屋の作成者のチケット。満員でも入れる（定員を超えるのは 1 人まで）。 */
+            leader?: boolean;
         };
         Error: {
             /** @enum {boolean} */

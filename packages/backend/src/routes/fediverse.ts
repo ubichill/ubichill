@@ -6,11 +6,13 @@
  */
 import { type FollowerWithActor, followerRepository, userRepository, userSettingsRepository } from '@ubichill/db';
 import {
+    type CustomEmoji,
     FEDIVERSE_LIMITS,
     type FediverseFollower,
     type FediverseOverview,
     FediverseSettingsUpdateSchema,
     FollowerActionSchema,
+    remoteEmojisOf,
 } from '@ubichill/shared';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
@@ -41,7 +43,13 @@ const followerOf = (row: FollowerWithActor): FediverseFollower => ({
     url: row.url,
     state: row.state,
     since: row.updatedAt.toISOString(),
+    ...emojisOf(row.profile),
 });
+
+function emojisOf(profile: unknown): { emojis?: CustomEmoji[] } {
+    const emojis = remoteEmojisOf(profile);
+    return emojis.length > 0 ? { emojis } : {};
+}
 
 async function overviewOf(userId: string): Promise<FediverseOverview | null> {
     const user = await userRepository.findById(userId);

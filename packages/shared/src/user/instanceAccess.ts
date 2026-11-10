@@ -10,9 +10,12 @@
  * | 招待のみ | 中にいる人のフレンド（URL だけでは見えない） | 招待された人 |
  *
  * 作成者と参加者はいつも見えて入れる。招待された人は、公開範囲にかかわらず入れる（送った人が送れる人か、送るときに確かめる）。
+ *
+ * 満員（定員ちょうどから）の部屋も一覧に出す。入れるのは作成者と中にいる人（入り直し）だけで、招待・リクエストインバイトも断る。
+ * 作成者が満員の部屋に入ると定員を 1 人超える（Go も作成者のチケットだけ 1 人分の超過を許す）。
  */
 import { z } from 'zod';
-import type { AccessType } from '../schemas/instance.schema';
+import type { AccessType, Instance } from '../schemas/instance.schema';
 import type { UserSummary } from './friends';
 import type { PresenceVisibility } from './presence';
 
@@ -30,6 +33,8 @@ export interface InstanceAudience {
     leaderId: string;
     /** いま参加している人。 */
     memberIds: readonly string[];
+    /** 定員。 */
+    maxUsers: number;
 }
 
 const isInside = (audience: InstanceAudience, userId: string): boolean =>
@@ -37,6 +42,16 @@ const isInside = (audience: InstanceAudience, userId: string): boolean =>
 
 const friendOfAnyoneInside = (audience: InstanceAudience, friendIds: ReadonlySet<string>): boolean =>
     friendIds.has(audience.leaderId) || audience.memberIds.some((id) => friendIds.has(id));
+
+/** 満員で入れないか。作成者と中にいる人（入り直し）は満員でも入れる。 */
+export function blockedByCapacity(audience: InstanceAudience, userId: string | null): boolean {
+    return audience.memberIds.length >= audience.maxUsers && !(userId !== null && isInside(audience, userId));
+}
+
+/** 一覧の部屋が見る人にとって満員か（画面の「入る」を押せなくする）。中にいる人は一覧からは分からないので作成者だけ除く。 */
+export function isFullFor(instance: Pick<Instance, 'leaderId' | 'stats'>, viewerId: string | null): boolean {
+    return instance.stats.currentUsers >= instance.stats.maxUsers && instance.leaderId !== viewerId;
+}
 
 /** インスタンスが一覧・フレンドの現在地に見えるか。見えない人には、あることも伏せる。 */
 export function canSeeInstance(
@@ -56,7 +71,7 @@ export function canSeeInstance(
     }
 }
 
-/** インスタンスに入れるか。招待のみは招待された人だけ（見えるフレンドでも、招待が要る）。 */
+/** 公開範囲と招待で入れるか（定員は見ない。満員は {@link blockedByCapacity}）。招待のみは招待された人だけ。 */
 export function canJoinInstance(
     audience: InstanceAudience,
     viewerId: string | null,
@@ -97,7 +112,9 @@ export type InviteRefusal =
     /** 相手のサーバー・部屋のサーバーとやり取りできない（連合） */
     | 'unavailable'
     /** 相手のサーバーが招待に対応していない（連合） */
-    | 'unsupported';
+    | 'unsupported'
+    /** 部屋が満員 */
+    | 'full';
 
 export const INVITE_REFUSAL_MESSAGES: Record<InviteRefusal, string> = {
     self: '自分には送れません',
@@ -107,6 +124,7 @@ export const INVITE_REFUSAL_MESSAGES: Record<InviteRefusal, string> = {
     'needs-leader': '部屋を作った人に招待してもらってください',
     unavailable: '相手のサーバーとやり取りできません',
     unsupported: '相手のサーバーは招待に対応していません',
+    full: '満員です',
 };
 
 /**
@@ -116,6 +134,8 @@ export const INVITE_REFUSAL_MESSAGES: Record<InviteRefusal, string> = {
  * |---|---|---|
  * | パブリック・フレンド+ | 送れる | 送れる |
  * | フレンドのみ・招待のみ | 送れる | 相手が作成者のフレンドのときだけ |
+ *
+ * 満員なら、相手が作成者でない限り送れない（公開範囲で送れない理由があればそちらを先に返す）。
  */
 export function inviteRefusal(
     audience: InstanceAudience,
@@ -127,35 +147,48 @@ export function inviteRefusal(
     if (!isInside(audience, inviterId)) return 'not-inside';
     if (!friends.inviter.has(inviteeId)) return 'not-friend';
     if (isInside(audience, inviteeId)) return 'already-inside';
-    if (inviterId === audience.leaderId) return null;
+    if (accessRefusal(audience, inviterId, inviteeId, friends.leader)) return 'needs-leader';
+    return blockedByCapacity(audience, inviteeId) ? 'full' : null;
+}
+
+const accessRefusal = (
+    audience: InstanceAudience,
+    inviterId: string,
+    inviteeId: string,
+    leaderFriends: ReadonlySet<string>,
+): boolean => {
+    if (inviterId === audience.leaderId) return false;
     switch (audience.accessType) {
         case 'public':
         case 'friend_plus':
-            return null;
+            return false;
         case 'friend_only':
         case 'invite_only':
-            return friends.leader.has(inviteeId) ? null : 'needs-leader';
+            return !leaderFriends.has(inviteeId);
     }
-}
+};
 
 /** リクエストインバイトを送れない理由。 */
-export type InviteRequestRefusal = 'self' | 'not-friend' | 'offline' | 'can-join' | 'unsupported';
+export type InviteRequestRefusal = 'self' | 'not-friend' | 'offline' | 'can-join' | 'full' | 'unsupported';
 
 export const INVITE_REQUEST_REFUSAL_MESSAGES: Record<InviteRequestRefusal, string> = {
     self: '自分には送れません',
     'not-friend': 'フレンドにだけ送れます',
     offline: 'いま部屋にいません',
     'can-join': 'そのまま入れます',
+    full: '満員です',
     unsupported: '相手のサーバーはリクエストに対応していません',
 };
 
 /**
  * requester が target（フレンド）に「部屋に入れて」と頼めるか。target のいる部屋（いなければ null）で決める。
- * もう入れる部屋なら頼まず入ればよい。
+ * もう入れる部屋なら頼まず入ればよい。満員の部屋なら頼んでも入れないので断る（頼む人が作成者なら入れるので「そのまま入れます」）。
  *
  * 断る理由で相手の様子を漏らさない（target の見せ方に従う）:
- * - 見せない（hidden）: いるかどうかも伏せるので、部屋にいなくても入れる部屋でも断らない（届けて本人が決める）
- * - オンラインだけ（online）: いるかは見えてよいが、場所は伏せるので「そのまま入れます」で断らない（頼む人は行き先を知らない）
+ * - 見せない（hidden）: いるかどうかも伏せるので、部屋にいなくても入れる部屋でも満員でも断らない（届けて本人が決める）
+ * - オンラインだけ（online）: いるかは見えてよいが、場所は伏せるので「そのまま入れます」「満員です」で断らない（頼む人は行き先を知らない）
+ * - 場所を見せる（location）でも、頼む人に見えない部屋（フレンドのみなど）なら満員かは伏せる
+ * 断らなかった満員の部屋は、本人が答える（招待を送る）ときに満員で断る。
  */
 export function inviteRequestRefusal(
     requesterId: string,
@@ -169,14 +202,11 @@ export function inviteRequestRefusal(
     if (!requesterFriendIds.has(targetId)) return 'not-friend';
     if (targetVisibility === 'hidden') return null;
     if (!targetRoom) return 'offline';
-    if (
-        targetVisibility === 'location' &&
-        targetRoom !== 'remote' &&
-        canJoinInstance(targetRoom, requesterId, requesterFriendIds)
-    ) {
-        return 'can-join';
+    if (targetVisibility !== 'location' || targetRoom === 'remote') return null;
+    if (canSeeInstance(targetRoom, requesterId, requesterFriendIds) && blockedByCapacity(targetRoom, requesterId)) {
+        return 'full';
     }
-    return null;
+    return canJoinInstance(targetRoom, requesterId, requesterFriendIds) ? 'can-join' : null;
 }
 
 // ── API の形 ──────────────────────────────────────────────

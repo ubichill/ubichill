@@ -79,7 +79,7 @@ export class InstanceReaper {
     async sweepOnce(checkpoint: () => Promise<boolean> = async () => true): Promise<number> {
         const graceMs = appConfig.instance.emptyTimeoutMs;
         const now = Date.now();
-        const all = await instanceRepository.findAll({ includeFull: true });
+        const all = await instanceRepository.findAll();
         const presence = await instanceRuntime.presence();
 
         if (!(await checkpoint())) return 0;

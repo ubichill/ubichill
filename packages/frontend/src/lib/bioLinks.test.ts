@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bioSegments } from './bioLinks';
+import { bioPieces, bioSegments } from './bioLinks';
 
 const links = (bio: string) => bioSegments(bio).flatMap((s) => (s.kind === 'link' ? [s.href] : []));
 
@@ -51,5 +51,29 @@ describe('bioSegments', () => {
                 .map((s) => s.text)
                 .join(''),
         ).toBe(bio);
+    });
+});
+
+describe('bioPieces', () => {
+    it('並びが無ければ文字の URL だけリンクにする（このサーバーの人）', () => {
+        expect(bioPieces('see https://x.example/', undefined)).toEqual(bioSegments('see https://x.example/'));
+        expect(bioPieces('see https://x.example/', [])).toEqual(bioSegments('see https://x.example/'));
+    });
+
+    it('ほかのサーバーの人: リンク・メンションはそのまま、文字の区切りの中の URL もリンクにする', () => {
+        const mention = { kind: 'mention' as const, text: '@a', href: 'https://x.example/@a', account: 'a@x.example' };
+        expect(
+            bioPieces('（文字は使わない）', [
+                { kind: 'text', text: '詳しくは https://y.example/ と ' },
+                { kind: 'link', text: '公式', href: 'https://z.example/' },
+                mention,
+            ]),
+        ).toEqual([
+            { kind: 'text', text: '詳しくは ' },
+            { kind: 'link', text: 'https://y.example/', href: 'https://y.example/' },
+            { kind: 'text', text: ' と ' },
+            { kind: 'link', text: '公式', href: 'https://z.example/' },
+            mention,
+        ]);
     });
 });

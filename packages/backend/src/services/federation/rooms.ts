@@ -11,6 +11,7 @@
 import {
     type AccessType,
     acceptsNewContact,
+    blockedByCapacity,
     canJoinInstance,
     canSeeInstance,
     type DomainPolicy,
@@ -105,6 +106,7 @@ export function createRooms(deps: RoomsDeps) {
         accessType: record.accessType,
         leaderId: record.leaderId,
         memberIds: presence.get(record.id)?.memberIds ?? [],
+        maxUsers: record.maxUsers,
     });
 
     /** 部屋の作り（RoomCard）。人の一覧は出さず人数だけ。リーダーはこのサーバーのユーザーなので actor の URL にする。 */
@@ -234,8 +236,8 @@ export function createRooms(deps: RoomsDeps) {
                     ? fail(403, 'invite-required', '入るには招待が要ります')
                     : fail(404, 'not-found', '部屋が見つかりません');
             }
+            if (blockedByCapacity(audience, visitor.id)) return fail(409, 'full', '満員です');
             const inside = audience.memberIds.includes(visitor.id);
-            if (!inside && audience.memberIds.length >= record.maxUsers) return fail(409, 'full', '満員です');
             const fromSameDomain = [...presence.values()]
                 .flatMap((room) => room.memberIds)
                 .filter((id) => hostOf(id) === visitor.domain).length;

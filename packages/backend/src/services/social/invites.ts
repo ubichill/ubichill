@@ -20,6 +20,7 @@ export interface InviteRoom {
     id: string;
     leaderId: string;
     accessType: AccessType;
+    maxUsers: number;
 }
 
 export interface InviteServiceDeps {
@@ -118,6 +119,7 @@ export function createInviteService(deps: InviteServiceDeps) {
             accessType: room.accessType,
             leaderId: room.leaderId,
             memberIds: presence.get(room.id)?.memberIds ?? [],
+            maxUsers: room.maxUsers,
         };
     };
 

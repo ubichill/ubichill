@@ -1,8 +1,9 @@
-import { ACCESS_TYPE_LABELS, type Instance } from '@ubichill/shared';
+import { ACCESS_TYPE_LABELS, type Instance, isFullFor } from '@ubichill/shared';
 import { Children, type ReactNode, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { HudIcon, type HudIconName } from '@/components/hud/HudIcon';
 import { useHudNavigation } from '@/components/hud/HudNavigationContext';
+import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
 import { accessIcon } from './accessIcon';
 import { socialButton } from './buttons';
@@ -28,6 +29,7 @@ export function ProfileLocationCard({ userId, self, signedIn }: { userId: string
 function SignedInLocationCard({ userId, self }: { userId: string; self: boolean }) {
     const navigate = useNavigate();
     const hud = useHudNavigation();
+    const viewerId = useSession().data?.user.id ?? null;
     const { data, error } = useFriendLocations();
     const { canInvite, currentInstanceId, invite, request } = useInviteActions();
     const [done, setDone] = useState({ invited: false, requested: false });
@@ -117,9 +119,10 @@ function SignedInLocationCard({ userId, self }: { userId: string; self: boolean 
                             <button
                                 type="button"
                                 className={socialButton({ tone: 'primary' })}
+                                disabled={isFullFor(instance, viewerId)}
                                 onClick={() => join(instance)}
                             >
-                                入る
+                                {isFullFor(instance, viewerId) ? '満員' : '入る'}
                             </button>
                         )}
                         {inviteButton}

@@ -63,7 +63,14 @@ export interface FederatedInvitesDeps {
     now(): number;
 }
 
-const REFUSALS: readonly InviteRefusal[] = ['self', 'not-inside', 'not-friend', 'already-inside', 'needs-leader'];
+const REFUSALS: readonly InviteRefusal[] = [
+    'self',
+    'not-inside',
+    'not-friend',
+    'already-inside',
+    'needs-leader',
+    'full',
+];
 const refusalOf = (reason: string | undefined): InviteRefusal => REFUSALS.find((r) => r === reason) ?? 'unavailable';
 
 export function createFederatedInvites(deps: FederatedInvitesDeps) {

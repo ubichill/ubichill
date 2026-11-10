@@ -1,4 +1,9 @@
+import type { RichSegment } from '@ubichill/shared';
+
 export type BioSegment = { kind: 'text'; text: string } | { kind: 'link'; text: string; href: string };
+
+/** 自己紹介を出す単位（メンションはほかのサーバーの人の自己紹介にだけある）。 */
+export type BioPiece = BioSegment | Extract<RichSegment, { kind: 'mention' }>;
 
 // 空白・全角の句読点やかっこで URL は終わる（日本語の文に続けて書かれても巻き込まない）
 const URL_PATTERN = /https?:\/\/[^\s<>"'`、。，．「」『』（）【】＜＞]+/g;
@@ -37,4 +42,13 @@ export function bioSegments(bio: string): BioSegment[] {
     });
     const rest = bio.slice(matches.at(-1)?.end ?? 0);
     return rest ? [...pieces, { kind: 'text', text: rest }] : pieces;
+}
+
+/**
+ * 自己紹介を出す単位にする。ほかのサーバーの人は取り込んだリンク・メンションの並び（文字の中の URL もリンクにする）、
+ * 並びが無ければ（このサーバーの人・古い取り込み）文字の URL だけをリンクにする。
+ */
+export function bioPieces(bio: string, segments?: readonly RichSegment[]): BioPiece[] {
+    if (!segments || segments.length === 0) return bioSegments(bio);
+    return segments.flatMap((s): BioPiece[] => (s.kind === 'text' ? bioSegments(s.text) : [s]));
 }

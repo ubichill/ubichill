@@ -13,6 +13,7 @@ import {
     userSettingsRepository,
 } from '@ubichill/db';
 import {
+    type CustomEmoji,
     canSeeInstance,
     DEFAULT_PRESENCE_VISIBILITY,
     FEDERATION_FEATURES,
@@ -29,6 +30,7 @@ import {
     parseAuthorAccount,
     parseUserSearchQuery,
     type RemoteRelation,
+    remoteEmojisOf,
     remoteProfileView,
     type UserProfileWithFriendship,
     type UserSearchResponse,
@@ -76,6 +78,11 @@ async function profileWithFriendship(
 const remoteFriendshipOf = async (viewerId: string | undefined, actorId: string): Promise<Friendship> =>
     viewerId ? friendshipViewOf(await remoteFriendshipRepository.get(viewerId, actorId)) : 'none';
 
+const emojisOf = (profile: unknown): { emojis?: CustomEmoji[] } => {
+    const emojis = remoteEmojisOf(profile);
+    return emojis.length > 0 ? { emojis } : {};
+};
+
 /** 人として引ける actor（消えた actor・サーバーの actor は出さない）。 */
 const personOf = (actor: RemoteActorRecord | null | undefined): RemoteActorRecord | null =>
     actor && !actor.deletedAt && actor.type === 'Person' ? actor : null;
@@ -94,7 +101,7 @@ async function remoteProfileWithFriendship(
     viewerId: string | undefined,
     actor: RemoteActorRecord,
 ): Promise<UserProfileWithFriendship> {
-    const { fields, ...profile } = remoteProfileView(actor.profile);
+    const { fields, bioSegments, emojis: _emojis, ...profile } = remoteProfileView(actor.profile);
     return {
         ...remoteSummaryOf(actor),
         author: actor.account,
@@ -102,6 +109,7 @@ async function remoteProfileWithFriendship(
         ...profile,
         roles: [],
         ...(fields.length > 0 ? { fields } : {}),
+        ...(bioSegments && bioSegments.length > 0 ? { bioSegments } : {}),
         ...(await remoteRelationOf(viewerId, actor)),
         friendship: await remoteFriendshipOf(viewerId, actor.id),
     };
@@ -205,6 +213,7 @@ router.get('/friends', requireAuth, async (req, res) => {
                 image: r.icon,
                 bio: r.summary,
                 domain: r.domain,
+                ...emojisOf(r.profile),
                 at: r.updatedAt,
             }));
     const strip = ({ at: _at, ...summary }: UserSummary & { at: Date }): UserSummary => summary;

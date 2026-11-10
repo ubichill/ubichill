@@ -1,6 +1,6 @@
 import { and, count, eq, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '../../index';
-import { remoteActors, remoteFriendships } from '../../schema';
+import { type RemoteActorProfileRecord, remoteActors, remoteFriendships } from '../../schema';
 import type { Tx } from '../credentialUser';
 import { deliveryRepository, type NewDelivery } from './deliveryRepository';
 
@@ -62,6 +62,8 @@ export interface RemoteFriendshipWithActor extends RemoteFriendshipRecord {
     name: string | null;
     icon: string | null;
     summary: string | null;
+    /** 名前のカスタム絵文字を出すのに使う（形は shared で確かめる） */
+    profile: RemoteActorProfileRecord;
 }
 
 /** このサーバーのユーザーと、ほかのサーバーの actor のフレンドの関係。規則は backend の federation/friendships.ts。 */
@@ -139,6 +141,7 @@ export const remoteFriendshipRepository = {
                 name: remoteActors.name,
                 icon: remoteActors.icon,
                 summary: remoteActors.summary,
+                profile: remoteActors.profile,
                 deletedAt: remoteActors.deletedAt,
             })
             .from(remoteFriendships)
@@ -153,6 +156,7 @@ export const remoteFriendshipRepository = {
                 name: r.name,
                 icon: r.icon,
                 summary: r.summary,
+                profile: r.profile,
             }));
     },
 
