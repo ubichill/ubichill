@@ -10,6 +10,7 @@ import {
     type CreateAnnouncementRequest,
     decodeFeedCursor,
     type MarkReadRequest,
+    type MessageReaction,
     NOTIFICATION_LIMITS,
     OFFICIAL_HANDLE,
     type StoredNotificationType,
@@ -47,6 +48,8 @@ export const dedupeKeys = {
     fediverseFollowRequest: (actorUri: string) => `FediverseFollowRequest:${actorUri}`,
     /** 会話ごとに 1 つ（最新の 1 通で作り直す） */
     message: (senderId: string) => `Create:${senderId}`,
+    /** 会話ごとに 1 つ（最新のリアクションで作り直す） */
+    reaction: (reactorId: string) => `EmojiReact:${reactorId}`,
 };
 
 export type FeedResult =
@@ -153,10 +156,37 @@ export function createNotificationService(deps: {
                 dedupeKey: dedupeKeys.message(input.senderId),
             }),
 
-        /** recipientId が senderId との会話を読んだ。その会話の通知も既読にする。 */
+        /** recipientId が senderId との会話を読んだ。その会話の通知（メッセージ・リアクション）も既読にする。 */
         async messagesRead(recipientId: string, senderId: string): Promise<void> {
-            const read = await deps.notifications.markReadByKey(recipientId, dedupeKeys.message(senderId), now());
+            const at = now();
+            const read = (
+                await Promise.all([
+                    deps.notifications.markReadByKey(recipientId, dedupeKeys.message(senderId), at),
+                    deps.notifications.markReadByKey(recipientId, dedupeKeys.reaction(senderId), at),
+                ])
+            ).flat();
             if (read.length > 0) await deps.hub.deliver(recipientId, { type: 'read', ids: read });
+        },
+
+        /** reactorId が recipientId のメッセージにリアクションした。会話ごとに最新の 1 つだけを通知にする。 */
+        messageReacted: (input: {
+            reactorId: string;
+            recipientId: string;
+            message: { id: string; content: string };
+            emoji: string;
+        }) =>
+            replace({
+                recipientId: input.recipientId,
+                type: 'EmojiReact',
+                actorUserId: input.reactorId,
+                object: { type: 'Note', id: input.message.id, content: input.message.content },
+                content: input.emoji,
+                dedupeKey: dedupeKeys.reaction(input.reactorId),
+            }),
+
+        /** 会話の 2 人の画面（ほかのタブ・端末を含む）にリアクションの変化を流す。 */
+        async reactionsChanged(userIds: readonly string[], messageId: string, reactions: MessageReaction[]) {
+            await Promise.all(userIds.map((id) => deps.hub.deliver(id, { type: 'reaction', messageId, reactions })));
         },
 
         /** likerId がワールドをお気に入りにした。作者がこのサーバーのユーザーのときだけ作者に届ける。 */

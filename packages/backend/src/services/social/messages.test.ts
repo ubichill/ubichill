@@ -1,4 +1,4 @@
-import type { ConversationRecord, DirectMessageRecord } from '@ubichill/db';
+import type { ConversationRecord, DirectMessageRecord, MessageReactionRecord } from '@ubichill/db';
 import { decodeFeedCursor, MESSAGE_LIMITS, type UserSummary } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
 import { createMessageService, type MessageServiceDeps, pageSizeOf } from './messages';
@@ -12,7 +12,9 @@ function setup(options: { friends?: Array<[string, string]>; failNotify?: boolea
     const clock = { now: START };
     const pairs = new Set((options.friends ?? []).map(([a, b]) => [a, b].sort().join('|')));
     const rows: Array<DirectMessageRecord & { readAt: Date | null }> = [];
+    const reactions: Array<MessageReactionRecord & { at: number }> = [];
     const notified: Array<{ kind: string; to: string; from: string; content?: string }> = [];
+    const streamed: Array<{ to: readonly string[]; messageId: string; reactions: unknown }> = [];
     const background: Array<Promise<unknown>> = [];
     const seq = { n: 0 };
     const between = (a: string, b: string) => (r: DirectMessageRecord) =>
@@ -58,6 +60,22 @@ function setup(options: { friends?: Array<[string, string]>; failNotify?: boolea
                 for (const r of hit) r.readAt = now;
                 return hit.length;
             },
+            findById: async (id) => rows.find((r) => r.id === id),
+            reactionsOf: async (ids) =>
+                reactions
+                    .filter((r) => ids.includes(r.messageId))
+                    .toSorted((x, y) => x.at - y.at)
+                    .map(({ messageId, userId, emoji }) => ({ messageId, userId, emoji })),
+            setReaction: async (messageId, userId, emoji, now) => {
+                const i = reactions.findIndex((r) => r.messageId === messageId && r.userId === userId);
+                if (i >= 0) reactions.splice(i, 1);
+                reactions.push({ messageId, userId, emoji, at: now.getTime() });
+            },
+            removeReaction: async (messageId, userId) => {
+                const i = reactions.findIndex((r) => r.messageId === messageId && r.userId === userId);
+                if (i >= 0) reactions.splice(i, 1);
+                return i >= 0;
+            },
         },
         areFriends: async (a, b) => pairs.has([a, b].sort().join('|')),
         summariesOf: async (ids) => ids.filter((id) => USERS.includes(id)).map(summary),
@@ -74,6 +92,14 @@ function setup(options: { friends?: Array<[string, string]>; failNotify?: boolea
             messagesRead: async (recipientId, senderId) => {
                 notified.push({ kind: 'read', to: recipientId, from: senderId });
             },
+            messageReacted: async (input) => {
+                if (options.failNotify) throw new Error('down');
+                notified.push({ kind: 'reacted', to: input.recipientId, from: input.reactorId, content: input.emoji });
+            },
+            reactionsChanged: async (to, messageId, list) => {
+                if (options.failNotify) throw new Error('down');
+                streamed.push({ to, messageId, reactions: list });
+            },
         },
         background: (task) => void background.push(task.catch(() => undefined)),
         now: () => clock.now,
@@ -84,7 +110,9 @@ function setup(options: { friends?: Array<[string, string]>; failNotify?: boolea
     return {
         service: createMessageService(deps),
         rows,
+        reactions,
         notified,
+        streamed,
         tick,
         settle: () => Promise.all(background),
         unfriend: (a: string, b: string) => pairs.delete([a, b].sort().join('|')),
@@ -98,7 +126,7 @@ describe('送る', () => {
         await settle();
         expect(outcome).toEqual({
             ok: true,
-            message: { id: 'm001', senderId: 'alice', content: 'やあ', published: START.toISOString() },
+            message: { id: 'm001', senderId: 'alice', content: 'やあ', published: START.toISOString(), reactions: [] },
         });
         expect(rows).toHaveLength(1);
         expect(notified).toEqual([{ kind: 'received', to: 'bob', from: 'alice', content: 'やあ' }]);
@@ -247,6 +275,123 @@ describe('会話の一覧と既読', () => {
             readAt: null,
         });
         expect((await service.conversations('alice')).map((c) => c.user.id)).toEqual(['bob']);
+    });
+});
+
+describe('リアクション', () => {
+    const sent = async (service: ReturnType<typeof setup>['service'], from: string, to: string) => {
+        const outcome = await service.send(from, to, 'x');
+        if (!outcome.ok) throw new Error('not sent');
+        return outcome.message.id;
+    };
+
+    it('相手のメッセージに付けると相手に通知し、2 人の画面に流す', async () => {
+        const { service, notified, streamed, settle } = setup({ friends: [['alice', 'bob']] });
+        const id = await sent(service, 'bob', 'alice');
+        notified.length = 0;
+        expect(await service.react('alice', 'bob', id, '👍')).toEqual({
+            ok: true,
+            reactions: [{ userId: 'alice', emoji: '👍' }],
+        });
+        await settle();
+        expect(notified).toEqual([{ kind: 'reacted', to: 'bob', from: 'alice', content: '👍' }]);
+        expect(streamed).toEqual([
+            { to: ['alice', 'bob'], messageId: id, reactions: [{ userId: 'alice', emoji: '👍' }] },
+        ]);
+    });
+
+    it('自分のメッセージにも付けられるが、通知はしない（画面には流す）', async () => {
+        const { service, notified, streamed, settle } = setup({ friends: [['alice', 'bob']] });
+        const id = await sent(service, 'alice', 'bob');
+        notified.length = 0;
+        expect((await service.react('alice', 'bob', id, '🎉')).ok).toBe(true);
+        await settle();
+        expect(notified).toEqual([]);
+        expect(streamed).toHaveLength(1);
+    });
+
+    it('1 人 1 つ。付け直すと置き換わり、外すと消える。外したときは通知しない', async () => {
+        const { service, notified, tick, settle } = setup({ friends: [['alice', 'bob']] });
+        const id = await sent(service, 'bob', 'alice');
+        await service.react('bob', 'alice', id, '😂');
+        tick();
+        await service.react('alice', 'bob', id, '👍');
+        tick();
+        expect(await service.react('alice', 'bob', id, '🎉')).toEqual({
+            ok: true,
+            reactions: [
+                { userId: 'bob', emoji: '😂' },
+                { userId: 'alice', emoji: '🎉' },
+            ],
+        });
+        notified.length = 0;
+        expect(await service.react('alice', 'bob', id, null)).toEqual({
+            ok: true,
+            reactions: [{ userId: 'bob', emoji: '😂' }],
+        });
+        await settle();
+        expect(notified).toEqual([]);
+    });
+
+    it('同じものを付け直す・付けていないものを外すのは何もしない（通知を作り直さない）', async () => {
+        const { service, notified, streamed, settle } = setup({ friends: [['alice', 'bob']] });
+        const id = await sent(service, 'bob', 'alice');
+        await service.react('alice', 'bob', id, '👍');
+        await settle();
+        notified.length = 0;
+        streamed.length = 0;
+        expect(await service.react('alice', 'bob', id, '👍')).toEqual({
+            ok: true,
+            reactions: [{ userId: 'alice', emoji: '👍' }],
+        });
+        expect((await service.react('bob', 'alice', id, null)).ok).toBe(true);
+        await settle();
+        expect(notified).toEqual([]);
+        expect(streamed).toEqual([]);
+    });
+
+    it('フレンドでなくなったら付けも外しもできない', async () => {
+        const { service, reactions, unfriend } = setup({ friends: [['alice', 'bob']] });
+        const id = await sent(service, 'bob', 'alice');
+        await service.react('alice', 'bob', id, '👍');
+        unfriend('alice', 'bob');
+        expect(await service.react('alice', 'bob', id, '🎉')).toEqual({ ok: false, reason: 'not-friend' });
+        expect(await service.react('alice', 'bob', id, null)).toEqual({ ok: false, reason: 'not-friend' });
+        expect(reactions.map((r) => r.emoji)).toEqual(['👍']);
+    });
+
+    it('会話に無い 1 通は not-found（ほかの人の会話の id・相手を取り違えた・無い id）', async () => {
+        const { service, reactions } = setup({
+            friends: [
+                ['alice', 'bob'],
+                ['bob', 'carol'],
+                ['alice', 'carol'],
+            ],
+        });
+        const bobCarol = await sent(service, 'bob', 'carol');
+        expect(await service.react('alice', 'bob', bobCarol, '👍')).toEqual({ ok: false, error: 'not-found' });
+        expect(await service.react('alice', 'carol', bobCarol, '👍')).toEqual({ ok: false, error: 'not-found' });
+        expect(await service.react('alice', 'bob', 'missing', '👍')).toEqual({ ok: false, error: 'not-found' });
+        expect(reactions).toEqual([]);
+    });
+
+    it('通知・配送に失敗してもリアクションは成功にする', async () => {
+        const { service, reactions, settle } = setup({ friends: [['alice', 'bob']], failNotify: true });
+        const id = await sent(service, 'bob', 'alice');
+        expect((await service.react('alice', 'bob', id, '👍')).ok).toBe(true);
+        await settle();
+        expect(reactions).toHaveLength(1);
+    });
+
+    it('会話のページは 1 通ごとにリアクションを付けて返す', async () => {
+        const { service, tick } = setup({ friends: [['alice', 'bob']] });
+        const first = await sent(service, 'bob', 'alice');
+        tick();
+        await sent(service, 'alice', 'bob');
+        await service.react('alice', 'bob', first, '👍');
+        const page = await service.conversation('alice', 'bob', {});
+        if (!page.ok) throw new Error('not ok');
+        expect(page.messages.map((m) => m.reactions)).toEqual([[], [{ userId: 'alice', emoji: '👍' }]]);
     });
 });
 

@@ -345,6 +345,60 @@ describe('メッセージの通知', () => {
     });
 });
 
+describe('リアクションの通知', () => {
+    const react = (service: ReturnType<typeof setup>['service'], id: string, emoji: string) =>
+        service.messageReacted({ reactorId: 'alice', recipientId: 'bob', message: { id, content: '本文' }, emoji });
+
+    it('会話ごとに最新の 1 つだけ。付け直すと作り直して未読にし、絵文字は content に載る', async () => {
+        const { service, rows, tick } = setup();
+        expect(await react(service, 'm1', '👍')).toMatchObject({
+            type: 'EmojiReact',
+            content: '👍',
+            object: { type: 'Note', id: 'm1' },
+        });
+        await service.messagesRead('bob', 'alice');
+        tick();
+        expect(await react(service, 'm2', '🎉')).toMatchObject({ read: false, content: '🎉', object: { id: 'm2' } });
+        expect(rows.filter((r) => r.type === 'EmojiReact')).toHaveLength(1);
+    });
+
+    it('会話を読むとメッセージとリアクションの通知をまとめて既読にする', async () => {
+        const { service, delivered } = setup();
+        const message = await service.messageReceived({
+            senderId: 'alice',
+            recipientId: 'bob',
+            message: { id: 'm1', content: 'a' },
+        });
+        const reaction = await react(service, 'm0', '👍');
+        delivered.length = 0;
+        await service.messagesRead('bob', 'alice');
+        expect(delivered).toEqual([{ to: 'bob', event: { type: 'read', ids: [message?.id, reaction?.id] } }]);
+        expect(await service.unreadCount('bob')).toBe(0);
+    });
+
+    it('自分で自分に付けても通知しない', async () => {
+        const { service, rows } = setup();
+        await service.messageReacted({
+            reactorId: 'bob',
+            recipientId: 'bob',
+            message: { id: 'm1', content: 'a' },
+            emoji: '👍',
+        });
+        expect(rows).toEqual([]);
+    });
+
+    it('リアクションの変化は通知を作らず、2 人の SSE に同じ形で流す', async () => {
+        const { service, rows, delivered } = setup();
+        const reactions = [{ userId: 'alice', emoji: '👍' }];
+        await service.reactionsChanged(['alice', 'bob'], 'm1', reactions);
+        expect(rows).toEqual([]);
+        expect(delivered).toEqual([
+            { to: 'alice', event: { type: 'reaction', messageId: 'm1', reactions } },
+            { to: 'bob', event: { type: 'reaction', messageId: 'm1', reactions } },
+        ]);
+    });
+});
+
 describe('ほかのサーバーの actor からの通知（連合）', () => {
     const BOB = 'https://c.example/ap/users/bob';
 

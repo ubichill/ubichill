@@ -92,4 +92,45 @@ describe.skipIf(!RUN)('directMessageRepository（DB統合）', () => {
         );
         expect(n?.type).toBe('Create');
     });
+
+    it('リアクションは 1 人 1 つ。付け直すと置き換わり、付けた順に並ぶ', async () => {
+        const [m] = await directMessageRepository.listBetween(ids.a, ids.b, { limit: 1 });
+        if (!m) throw new Error('empty');
+        await directMessageRepository.setReaction(m.id, ids.a, '👍', at(20));
+        await directMessageRepository.setReaction(m.id, ids.b, '🎉', at(21));
+        await directMessageRepository.setReaction(m.id, ids.a, '👨‍👩‍👧‍👦', at(22));
+        expect(await directMessageRepository.reactionsOf([m.id])).toEqual([
+            { messageId: m.id, userId: ids.b, emoji: '🎉' },
+            { messageId: m.id, userId: ids.a, emoji: '👨‍👩‍👧‍👦' },
+        ]);
+        expect(await directMessageRepository.removeReaction(m.id, ids.a)).toBe(true);
+        expect(await directMessageRepository.removeReaction(m.id, ids.a)).toBe(false);
+        expect((await directMessageRepository.reactionsOf([m.id])).map((r) => r.userId)).toEqual([ids.b]);
+        expect(await directMessageRepository.reactionsOf([])).toEqual([]);
+        expect((await directMessageRepository.findById(m.id))?.id).toBe(m.id);
+        expect(await directMessageRepository.findById('missing')).toBeUndefined();
+    });
+
+    it('長すぎる絵文字は DB が断り、メッセージが消えたらリアクションも消える', async () => {
+        const m = await directMessageRepository.create({ senderId: ids.a, recipientId: ids.c, content: 'x' }, at(30));
+        await expect(directMessageRepository.setReaction(m.id, ids.c, 'x'.repeat(33), at(31))).rejects.toThrow();
+        await directMessageRepository.setReaction(m.id, ids.c, '👍', at(31));
+        await directMessageRepository.deleteExpired(at(40));
+        expect(await directMessageRepository.reactionsOf([m.id])).toEqual([]);
+    });
+
+    it('通知の種類に EmojiReact を書ける', async () => {
+        const n = await notificationRepository.create(
+            {
+                recipientId: ids.b,
+                type: 'EmojiReact',
+                actorUserId: ids.a,
+                object: { type: 'Note', id: 'm', content: 'x' },
+                content: '👍',
+                dedupeKey: `EmojiReact:${ids.a}`,
+            },
+            T0,
+        );
+        expect(n?.content).toBe('👍');
+    });
 });

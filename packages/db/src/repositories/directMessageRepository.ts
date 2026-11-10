@@ -1,8 +1,8 @@
 import type { FeedPosition } from '@ubichill/shared';
-import { and, count, desc, eq, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../index';
-import { directMessages } from '../schema';
+import { directMessageReactions, directMessages } from '../schema';
 
 export interface DirectMessageRecord {
     id: string;
@@ -10,6 +10,12 @@ export interface DirectMessageRecord {
     recipientId: string;
     content: string;
     createdAt: Date;
+}
+
+export interface MessageReactionRecord {
+    messageId: string;
+    userId: string;
+    emoji: string;
 }
 
 export interface ConversationRecord {
@@ -110,6 +116,45 @@ export const directMessageRepository = {
             )
             .returning({ id: directMessages.id });
         return rows.length;
+    },
+
+    async findById(id: string): Promise<DirectMessageRecord | undefined> {
+        const [row] = await db.select(selection).from(directMessages).where(eq(directMessages.id, id)).limit(1);
+        return row;
+    },
+
+    /** メッセージたちのリアクション（付けた順。付け直したものはその時刻）。 */
+    async reactionsOf(messageIds: readonly string[]): Promise<MessageReactionRecord[]> {
+        if (messageIds.length === 0) return [];
+        return db
+            .select({
+                messageId: directMessageReactions.messageId,
+                userId: directMessageReactions.userId,
+                emoji: directMessageReactions.emoji,
+            })
+            .from(directMessageReactions)
+            .where(inArray(directMessageReactions.messageId, [...messageIds]))
+            .orderBy(asc(directMessageReactions.createdAt), asc(directMessageReactions.userId));
+    },
+
+    /** userId のリアクションを emoji にする（1 人 1 つなので、付けていれば置き換える）。 */
+    async setReaction(messageId: string, userId: string, emoji: string, now = new Date()): Promise<void> {
+        await db
+            .insert(directMessageReactions)
+            .values({ messageId, userId, emoji, createdAt: now })
+            .onConflictDoUpdate({
+                target: [directMessageReactions.messageId, directMessageReactions.userId],
+                set: { emoji, createdAt: now },
+            });
+    },
+
+    /** userId のリアクションを外す。外したら true。 */
+    async removeReaction(messageId: string, userId: string): Promise<boolean> {
+        const rows = await db
+            .delete(directMessageReactions)
+            .where(and(eq(directMessageReactions.messageId, messageId), eq(directMessageReactions.userId, userId)))
+            .returning({ messageId: directMessageReactions.messageId });
+        return rows.length > 0;
     },
 
     /** cutoff より前のメッセージを消す。消した件数。 */

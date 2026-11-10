@@ -9,6 +9,7 @@ import {
     messageRefusal,
     SendMessageRequestSchema,
     unreadConversationCount,
+    withMessageReactions,
 } from './messages';
 
 describe('messageRefusal', () => {
@@ -108,6 +109,7 @@ const msg = (id: string, published: string, content = id): DirectMessage => ({
     senderId: 'alice',
     content,
     published,
+    reactions: [],
 });
 
 describe('mergeMessages', () => {
@@ -129,6 +131,21 @@ describe('mergeMessages', () => {
 
     it('空どうしは空', () => {
         expect(mergeMessages([], [])).toEqual([]);
+    });
+});
+
+describe('withMessageReactions', () => {
+    it('その 1 通だけを置き換え、ほかと元の配列は変えない', () => {
+        const before = [msg('a', '2026-11-10T00:00:00.000Z'), msg('b', '2026-11-10T00:00:01.000Z')];
+        const after = withMessageReactions(before, 'b', [{ userId: 'bob', emoji: '👍' }]);
+        expect(after[0]).toBe(before[0]);
+        expect(after[1]?.reactions).toEqual([{ userId: 'bob', emoji: '👍' }]);
+        expect(before[1]?.reactions).toEqual([]);
+    });
+
+    it('会話に無い id なら何も変えない（読み込む前の 1 通への SSE）', () => {
+        const before = [msg('a', '2026-11-10T00:00:00.000Z')];
+        expect(withMessageReactions(before, 'zzz', [{ userId: 'bob', emoji: '👍' }])).toEqual(before);
     });
 });
 

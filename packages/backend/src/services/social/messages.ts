@@ -3,15 +3,18 @@
  * DB・フレンド・通知は注入する。
  * - 送れるのは今フレンドの相手だけ。フレンドでなくなっても、過去の会話は読める（送れない理由を添える）
  * - 会話を読むと、相手から届いた分とその会話の通知を既読にする
+ * - リアクションも送るのと同じ規則（いまフレンドの相手との会話の 1 通だけ。自分と相手どちらのメッセージにも付けられる）
  */
-import type { ConversationRecord, DirectMessageRecord } from '@ubichill/db';
+import type { ConversationRecord, DirectMessageRecord, MessageReactionRecord } from '@ubichill/db';
 import {
     type ConversationSummary,
     type DirectMessage,
+    type DirectMessageBody,
     decodeFeedCursor,
     encodeFeedCursor,
     feedPositionOf,
     MESSAGE_LIMITS,
+    type MessageReaction,
     type MessageRefusal,
     messageRefusal,
     type UserSummary,
@@ -30,6 +33,10 @@ export interface MessageServiceDeps {
         ): Promise<DirectMessageRecord[]>;
         conversationsOf(userId: string, limit: number): Promise<ConversationRecord[]>;
         markReadFrom(recipientId: string, senderId: string, now: Date): Promise<number>;
+        findById(id: string): Promise<DirectMessageRecord | undefined>;
+        reactionsOf(messageIds: readonly string[]): Promise<MessageReactionRecord[]>;
+        setReaction(messageId: string, userId: string, emoji: string, now: Date): Promise<void>;
+        removeReaction(messageId: string, userId: string): Promise<boolean>;
     };
     areFriends(a: string, b: string): Promise<boolean>;
     summariesOf(ids: readonly string[]): Promise<UserSummary[]>;
@@ -40,20 +47,46 @@ export interface MessageServiceDeps {
             message: { id: string; content: string };
         }): Promise<unknown>;
         messagesRead(recipientId: string, senderId: string): Promise<unknown>;
+        /** 自分のメッセージに相手がリアクションした（自分で自分のものに付けたときは呼ばない） */
+        messageReacted(input: {
+            reactorId: string;
+            recipientId: string;
+            message: { id: string; content: string };
+            emoji: string;
+        }): Promise<unknown>;
+        /** 会話の 2 人の画面にリアクションの変化を流す（通知ではない） */
+        reactionsChanged(userIds: readonly string[], messageId: string, reactions: MessageReaction[]): Promise<unknown>;
     };
     /** 通知の失敗で送信を失敗にしない（本番はログに残して捨てる） */
     background(task: Promise<unknown>, what: string): void;
     now(): Date;
 }
 
-export const directMessageOf = (r: DirectMessageRecord): DirectMessage => ({
+export const messageBodyOf = (r: DirectMessageRecord): DirectMessageBody => ({
     id: r.id,
     senderId: r.senderId,
     content: r.content,
     published: r.createdAt.toISOString(),
 });
 
+const reactionOf = (r: MessageReactionRecord): MessageReaction => ({ userId: r.userId, emoji: r.emoji });
+
+/** 行とリアクションを合わせる（リアクションは付けた順のまま）。 */
+export const directMessagesOf = (
+    records: readonly DirectMessageRecord[],
+    reactions: readonly MessageReactionRecord[],
+): DirectMessage[] =>
+    records.map((r) => ({
+        ...messageBodyOf(r),
+        reactions: reactions.filter((x) => x.messageId === r.id).map(reactionOf),
+    }));
+
 export type SendOutcome = { ok: true; message: DirectMessage } | { ok: false; reason: MessageRefusal };
+
+export type ReactOutcome =
+    | { ok: true; reactions: MessageReaction[] }
+    | { ok: false; reason: MessageRefusal }
+    | { ok: false; error: 'not-found' };
 
 export type ConversationOutcome =
     | {
@@ -94,7 +127,7 @@ export function createMessageService(deps: MessageServiceDeps) {
                 }),
                 'メッセージ',
             );
-            return { ok: true, message: directMessageOf(record) };
+            return { ok: true, message: { ...messageBodyOf(record), reactions: [] } };
         },
 
         /** 会話の一覧（相手が消えた会話は出さない）。 */
@@ -103,7 +136,7 @@ export function createMessageService(deps: MessageServiceDeps) {
             const users = new Map((await deps.summariesOf(records.map((r) => r.peerId))).map((u) => [u.id, u]));
             return records.flatMap((r) => {
                 const user = users.get(r.peerId);
-                return user ? [{ user, last: directMessageOf(r.last), unreadCount: r.unreadCount }] : [];
+                return user ? [{ user, last: messageBodyOf(r.last), unreadCount: r.unreadCount }] : [];
             });
         },
 
@@ -122,7 +155,8 @@ export function createMessageService(deps: MessageServiceDeps) {
                 deps.messages.listBetween(userId, peerId, { before, limit: limit + 1 }),
                 refusalBetween(userId, peerId),
             ]);
-            const messages = rows.slice(0, limit).map(directMessageOf);
+            const page = rows.slice(0, limit);
+            const messages = directMessagesOf(page, await deps.messages.reactionsOf(page.map((r) => r.id)));
             const last = messages.at(-1);
             return {
                 ok: true,
@@ -139,6 +173,43 @@ export function createMessageService(deps: MessageServiceDeps) {
             // 通知だけ未読で残ることがある（ほかの端末で読んだ・通知の作成が遅れた）ので、数に関わらず揃える
             await deps.notify.messagesRead(userId, peerId);
             return read;
+        },
+
+        /**
+         * peerId との会話の messageId に、userId のリアクションを emoji にする（null なら外す）。
+         * 会話に無い 1 通は not-found（ほかの人の会話の id を当てても、あるかどうかを漏らさない）。
+         */
+        async react(userId: string, peerId: string, messageId: string, emoji: string | null): Promise<ReactOutcome> {
+            const message = await deps.messages.findById(messageId);
+            const inConversation =
+                message &&
+                ((message.senderId === userId && message.recipientId === peerId) ||
+                    (message.senderId === peerId && message.recipientId === userId));
+            if (!message || !inConversation) return { ok: false, error: 'not-found' };
+            const refusal = await refusalBetween(userId, peerId);
+            if (refusal) return { ok: false, reason: refusal };
+
+            const current = (await deps.messages.reactionsOf([messageId])).map(reactionOf);
+            const mine = current.find((r) => r.userId === userId)?.emoji ?? null;
+            // 同じものを付け直す・付けていないものを外すのは何もしない（通知を作り直さない）
+            if (mine === emoji) return { ok: true, reactions: current };
+
+            if (emoji) await deps.messages.setReaction(messageId, userId, emoji, deps.now());
+            else await deps.messages.removeReaction(messageId, userId);
+            const reactions = (await deps.messages.reactionsOf([messageId])).map(reactionOf);
+            deps.background(deps.notify.reactionsChanged([userId, peerId], messageId, reactions), 'リアクション');
+            if (emoji && message.senderId !== userId) {
+                deps.background(
+                    deps.notify.messageReacted({
+                        reactorId: userId,
+                        recipientId: message.senderId,
+                        message: { id: message.id, content: message.content },
+                        emoji,
+                    }),
+                    'リアクション',
+                );
+            }
+            return { ok: true, reactions };
         },
     };
 }

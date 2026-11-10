@@ -4,6 +4,7 @@
  */
 import { z } from 'zod';
 import { isRemoteUserId, type UserSummary } from './friends';
+import type { MessageReaction } from './messageReactions';
 
 export const MESSAGE_LIMITS = {
     /** 本文の最大文字数（正規化したあとのコードポイント数） */
@@ -91,8 +92,8 @@ export const MessageContentSchema = z
 export const SendMessageRequestSchema = z.object({ content: MessageContentSchema }).strict();
 export type SendMessageRequest = z.input<typeof SendMessageRequestSchema>;
 
-/** 1 通。既読かどうかは送った人には見せない（既読を気にさせない）ので持たせない。 */
-export interface DirectMessage {
+/** 1 通の中身。既読かどうかは送った人には見せない（既読を気にさせない）ので持たせない。 */
+export interface DirectMessageBody {
     id: string;
     senderId: string;
     content: string;
@@ -100,10 +101,15 @@ export interface DirectMessage {
     published: string;
 }
 
+/** 会話の中の 1 通。 */
+export interface DirectMessage extends DirectMessageBody {
+    reactions: MessageReaction[];
+}
+
 /** 会話の一覧の 1 件。 */
 export interface ConversationSummary {
     user: UserSummary;
-    last: DirectMessage;
+    last: DirectMessageBody;
     /** 相手から届いて、まだ読んでいない数 */
     unreadCount: number;
 }
@@ -130,6 +136,13 @@ export function mergeMessages(current: readonly DirectMessage[], incoming: reado
         return diff !== 0 ? diff : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
     });
 }
+
+/** messageId のリアクションを置き換える（その 1 通が無ければそのまま）。 */
+export const withMessageReactions = (
+    messages: readonly DirectMessage[],
+    messageId: string,
+    reactions: readonly MessageReaction[],
+): DirectMessage[] => messages.map((m) => (m.id === messageId ? { ...m, reactions: [...reactions] } : m));
 
 /** 未読の会話の数（タブの件数）。 */
 export const unreadConversationCount = (conversations: readonly ConversationSummary[]): number =>

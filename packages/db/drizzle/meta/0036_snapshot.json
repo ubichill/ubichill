@@ -1,5 +1,5 @@
 {
-  "id": "e03bd311-9a5f-4a22-843e-0e2486c61585",
+  "id": "7217cf3f-6442-4890-973b-570a2c2f0c18",
   "prevId": "5c8012e9-5107-4bba-b1b5-87be666c911e",
   "version": "7",
   "dialect": "postgresql",
@@ -397,6 +397,84 @@
       },
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.direct_message_reactions": {
+      "name": "direct_message_reactions",
+      "schema": "",
+      "columns": {
+        "message_id": {
+          "name": "message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "emoji": {
+          "name": "emoji",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "direct_message_reactions_message_id_direct_messages_id_fk": {
+          "name": "direct_message_reactions_message_id_direct_messages_id_fk",
+          "tableFrom": "direct_message_reactions",
+          "tableTo": "direct_messages",
+          "columnsFrom": [
+            "message_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "direct_message_reactions_user_id_users_id_fk": {
+          "name": "direct_message_reactions_user_id_users_id_fk",
+          "tableFrom": "direct_message_reactions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "direct_message_reactions_message_id_user_id_pk": {
+          "name": "direct_message_reactions_message_id_user_id_pk",
+          "columns": [
+            "message_id",
+            "user_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "direct_message_reactions_emoji_check": {
+          "name": "direct_message_reactions_emoji_check",
+          "value": "char_length(\"direct_message_reactions\".\"emoji\") BETWEEN 1 AND 32"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.direct_messages": {
@@ -2375,7 +2453,7 @@
       "checkConstraints": {
         "notifications_type_check": {
           "name": "notifications_type_check",
-          "value": "\"notifications\".\"type\" IN ('Follow', 'Accept', 'Like', 'Invite', 'Join', 'FediverseFollow', 'FediverseFollowRequest', 'Create')"
+          "value": "\"notifications\".\"type\" IN ('Follow', 'Accept', 'Like', 'Invite', 'Join', 'FediverseFollow', 'FediverseFollowRequest', 'Create', 'EmojiReact')"
         },
         "notifications_actor_check": {
           "name": "notifications_actor_check",

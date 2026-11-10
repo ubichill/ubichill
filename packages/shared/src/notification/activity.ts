@@ -9,9 +9,11 @@
  * - FediverseFollow / FediverseFollowRequest: フェディバース（Mastodon・Misskey など）の人がフォローした・フォローを申請した
  *   （object はフォローされた人。Follow はフレンド申請に使っているので、片方向のフォローは別の種類にする）
  * - Create: フレンドからのメッセージ（object は Note。会話ごとに最新の 1 通だけを通知にする）
+ * - EmojiReact: 自分のメッセージにリアクションされた（object はその Note、content は絵文字。会話ごとに最新の 1 つ）
  */
 import { z } from 'zod';
 import { INVITE_LIMITS } from '../user/instanceAccess';
+import { ReactionEmojiSchema } from '../user/messageReactions';
 import { MESSAGE_LIMITS } from '../user/messages';
 
 export const NOTIFICATION_TYPES = [
@@ -24,6 +26,7 @@ export const NOTIFICATION_TYPES = [
     'FediverseFollow',
     'FediverseFollowRequest',
     'Create',
+    'EmojiReact',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -37,6 +40,7 @@ export const STORED_NOTIFICATION_TYPES = [
     'FediverseFollow',
     'FediverseFollowRequest',
     'Create',
+    'EmojiReact',
 ] as const satisfies readonly NotificationType[];
 export type StoredNotificationType = (typeof STORED_NOTIFICATION_TYPES)[number];
 
@@ -141,6 +145,7 @@ export const NOTIFICATION_OBJECT_SCHEMAS = {
     FediverseFollow: PersonRefSchema,
     FediverseFollowRequest: PersonRefSchema,
     Create: MessageNoteObjectSchema,
+    EmojiReact: MessageNoteObjectSchema,
 } as const satisfies Record<NotificationType, z.ZodType>;
 
 export type NotificationObjectOf<T extends NotificationType> = z.infer<(typeof NOTIFICATION_OBJECT_SCHEMAS)[T]>;
@@ -181,6 +186,15 @@ export const NotificationSchema = z.discriminatedUnion('type', [
     z.object({ ...base, type: z.literal('FediverseFollow'), object: PersonRefSchema }).strict(),
     z.object({ ...base, type: z.literal('FediverseFollowRequest'), object: PersonRefSchema }).strict(),
     z.object({ ...base, type: z.literal('Create'), object: MessageNoteObjectSchema }).strict(),
+    z
+        .object({
+            ...base,
+            type: z.literal('EmojiReact'),
+            object: MessageNoteObjectSchema,
+            /** 付けた絵文字 */
+            content: ReactionEmojiSchema,
+        })
+        .strict(),
 ]);
 export type AppNotification = z.infer<typeof NotificationSchema>;
 
@@ -231,11 +245,19 @@ export interface Announcement {
  * - notification: 新しい通知（お知らせを含む）
  * - read: ほかのタブ・端末で既読にした（ids が無ければ全部）
  * - removed: 通知が要らなくなった（申請の取り消し・拒否など）
+ * - reaction: 自分が入っている会話の 1 通のリアクションが変わった（通知ではない。開いている会話にそのまま当てる）
  */
 export const NotificationStreamEventSchema = z.discriminatedUnion('type', [
     z.object({ type: z.literal('notification'), notification: NotificationSchema }).strict(),
     z.object({ type: z.literal('read'), ids: z.array(z.string()).optional() }).strict(),
     z.object({ type: z.literal('removed'), ids: z.array(z.string()).min(1) }).strict(),
+    z
+        .object({
+            type: z.literal('reaction'),
+            messageId: z.string().min(1).max(64),
+            reactions: z.array(z.object({ userId: z.string().min(1), emoji: ReactionEmojiSchema }).strict()),
+        })
+        .strict(),
 ]);
 export type NotificationStreamEvent = z.infer<typeof NotificationStreamEventSchema>;
 

@@ -22,6 +22,7 @@ export {
     type ConversationRecord,
     type DirectMessageRecord,
     directMessageRepository,
+    type MessageReactionRecord,
 } from './repositories/directMessageRepository';
 export {
     type ExternalWorkKey,

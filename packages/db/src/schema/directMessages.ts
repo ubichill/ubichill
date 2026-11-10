@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { check, index, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { check, index, pgTable, primaryKey, text, timestamp } from 'drizzle-orm/pg-core';
 import { users } from './users';
 
 /**
@@ -33,5 +33,27 @@ export const directMessages = pgTable(
         index('direct_messages_recipient_created_idx').on(table.recipientId, table.createdAt.desc()),
         index('direct_messages_unread_idx').on(table.recipientId, table.senderId).where(sql`${table.readAt} IS NULL`),
         index('direct_messages_created_at_idx').on(table.createdAt),
+    ],
+);
+
+/**
+ * メッセージへのリアクション（Unicode 絵文字 1 つ）。1 人が 1 通に付けられるのは 1 つなので (メッセージ, 付けた人) が主キー。
+ * 絵文字として正しいかは shared の isSingleEmoji で確かめてから書く（ここでは長さだけ縛る）。
+ */
+export const directMessageReactions = pgTable(
+    'direct_message_reactions',
+    {
+        messageId: text('message_id')
+            .notNull()
+            .references(() => directMessages.id, { onDelete: 'cascade' }),
+        userId: text('user_id')
+            .notNull()
+            .references(() => users.id, { onDelete: 'cascade' }),
+        emoji: text('emoji').notNull(),
+        createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    },
+    (table) => [
+        primaryKey({ columns: [table.messageId, table.userId] }),
+        check('direct_message_reactions_emoji_check', sql`char_length(${table.emoji}) BETWEEN 1 AND 32`),
     ],
 );
