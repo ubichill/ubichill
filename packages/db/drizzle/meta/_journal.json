@@ -239,6 +239,13 @@
       "when": 1794209362845,
       "tag": "0033_presence_visibility",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1794292880320,
+      "tag": "0035_user_blocks",
+      "breakpoints": true
     }
   ]
 }

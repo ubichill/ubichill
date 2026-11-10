@@ -10,6 +10,7 @@ import {
     isNull,
     lte,
     ne,
+    notInArray,
     or,
     type SQL,
     sql,
@@ -295,7 +296,12 @@ export const userRepository = {
         return db
             .select()
             .from(users)
-            .where(and(or(handleMatch, nameMatch), ...(options.excludeIds ?? []).map((id) => ne(users.id, id))))
+            .where(
+                and(
+                    or(handleMatch, nameMatch),
+                    options.excludeIds?.length ? notInArray(users.id, [...options.excludeIds]) : undefined,
+                ),
+            )
             .orderBy(rank, asc(users.name))
             .limit(options.limit);
     },

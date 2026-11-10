@@ -94,4 +94,25 @@ describe.skipIf(!RUN)('inviteRepository（DB統合）', () => {
         expect(removed).toBeGreaterThanOrEqual(2);
         expect(await inviteRepository.findValid(rooms[0] as string, ids.guest, T0)).toBeUndefined();
     });
+
+    it('2 人の間の招待とリクエストを向きによらず消す（ほかの人との分は残す）', async () => {
+        const room = rooms[0] as string;
+        await inviteRepository.upsert(
+            { instanceId: room, inviterId: ids.guest, inviteeId: ids.leader, message: null, expiresAt: later(1000) },
+            T0,
+        );
+        await inviteRepository.upsert(
+            { instanceId: room, inviterId: ids.leader, inviteeId: ids.other, message: null, expiresAt: later(1000) },
+            T0,
+        );
+        await inviteRepository.createRequest(
+            { requesterId: ids.leader, targetId: ids.guest, expiresAt: later(1000) },
+            T0,
+        );
+        await inviteRepository.removeBetween(ids.leader, ids.guest);
+        expect(await inviteRepository.findValid(room, ids.leader, T0)).toBeUndefined();
+        expect(await inviteRepository.hasRequest(ids.leader, ids.guest, T0)).toBe(false);
+        expect(await inviteRepository.findValid(room, ids.other, T0)).toBeDefined();
+        await inviteRepository.removeBetween(ids.leader, ids.other);
+    });
 });

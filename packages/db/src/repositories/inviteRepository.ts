@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, lte } from 'drizzle-orm';
+import { and, eq, gt, inArray, lte, or } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../index';
 import { instanceInvites, inviteRequests } from '../schema';
@@ -110,6 +110,26 @@ export const inviteRepository = {
             .where(and(eq(inviteRequests.requesterId, requesterId), eq(inviteRequests.targetId, targetId)))
             .returning({ requesterId: inviteRequests.requesterId });
         return rows.length > 0;
+    },
+
+    /** 2 人の間の招待とリクエストを消す（向きは問わない。ブロックしたとき）。 */
+    async removeBetween(a: string, b: string): Promise<void> {
+        await db
+            .delete(instanceInvites)
+            .where(
+                or(
+                    and(eq(instanceInvites.inviterId, a), eq(instanceInvites.inviteeId, b)),
+                    and(eq(instanceInvites.inviterId, b), eq(instanceInvites.inviteeId, a)),
+                ),
+            );
+        await db
+            .delete(inviteRequests)
+            .where(
+                or(
+                    and(eq(inviteRequests.requesterId, a), eq(inviteRequests.targetId, b)),
+                    and(eq(inviteRequests.requesterId, b), eq(inviteRequests.targetId, a)),
+                ),
+            );
     },
 
     /** 期限の過ぎた招待とリクエストを消す。消した件数。 */

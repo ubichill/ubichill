@@ -61,7 +61,9 @@ export const ModRegistryProvider: React.FC<{
     lock?: ModLock;
     /** mod の取得元と、未署名の mod を許すか。 */
     source: ModSource;
-}> = ({ children, onStatusChange, lock, source }) => {
+    /** ブロックした人の作者アカウント（突き合わせる形）。この人たちが作った mod は実行しない */
+    blockedAuthors?: ReadonlySet<string>;
+}> = ({ children, onStatusChange, lock, source, blockedAuthors }) => {
     const [modMap, setModMap] = useState<Map<string, AnyModDefinition>>(new Map());
     const [loadCounts, setLoadCounts] = useState<ModLoadingStatus>({ completed: 0, total: 0 });
     // Component 型 → 実行しなかった理由
@@ -121,7 +123,7 @@ export const ModRegistryProvider: React.FC<{
                     return next;
                 });
 
-            return loadVerifiedMod(entityType, { lock, source })
+            return loadVerifiedMod(entityType, { lock, source, blockedAuthors })
                 .then((result) => {
                     if (typeof result === 'object' && 'workerCode' in result) {
                         addMod(result);
@@ -168,7 +170,7 @@ export const ModRegistryProvider: React.FC<{
                     setLoadCounts((c) => ({ ...c, completed: c.completed + 1 }));
                 });
         },
-        [addMod, lock, source],
+        [addMod, lock, source, blockedAuthors],
     );
 
     const retryRejected = useCallback(

@@ -44,6 +44,7 @@ export {
     type ProfileImageRecordKind,
     profileImageRepository,
 } from './repositories/profileImageRepository';
+export { type BlockRecord, userBlockRepository } from './repositories/userBlockRepository';
 export { type FriendRow, userFriendRepository } from './repositories/userFriendRepository';
 export {
     type ProfileFieldsInput,

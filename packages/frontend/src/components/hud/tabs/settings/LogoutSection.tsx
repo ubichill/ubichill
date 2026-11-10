@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router';
 import { HudIcon } from '@/components/hud/HudIcon';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { signOut } from '@/lib/auth-client';
+import { resetBlocks } from '@/lib/blocks';
 import { resetHome } from '@/lib/homeStore';
 import { css } from '@/styled-system/css';
 
@@ -20,6 +21,7 @@ export function LogoutSection() {
         await leaveWorld();
         await signOut();
         resetHome();
+        resetBlocks();
         navigate('/auth');
     };
 

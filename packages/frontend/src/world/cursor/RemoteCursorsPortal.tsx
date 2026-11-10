@@ -27,6 +27,8 @@ interface RemoteCursorsPortalProps {
     scrollEl: HTMLElement;
     users: Map<string, User>;
     selfId: string | undefined;
+    /** 出さない人（自分がブロックした人） */
+    hiddenUserIds: ReadonlySet<string>;
 }
 
 // 50ms throttle の broadcast 間にちょうど 1〜2 フレームかかるくらいの補間時間
@@ -94,14 +96,14 @@ const RemoteCursor = memo(function RemoteCursor({ user }: { user: User }) {
     );
 });
 
-export function RemoteCursorsPortal({ scrollEl, users, selfId }: RemoteCursorsPortalProps) {
+export function RemoteCursorsPortal({ scrollEl, users, selfId, hiddenUserIds }: RemoteCursorsPortalProps) {
     // useSocket は move したユーザーだけ新 User instance を作るので、ここで filter+map した
     // 配列要素のうち変化してないものは memo'd RemoteCursor が同じ user 参照で bail out する。
     const visible = useMemo(() => {
         const out: User[] = [];
-        for (const u of users.values()) if (u.id !== selfId) out.push(u);
+        for (const u of users.values()) if (u.id !== selfId && !hiddenUserIds.has(u.id)) out.push(u);
         return out;
-    }, [users, selfId]);
+    }, [users, selfId, hiddenUserIds]);
 
     return createPortal(
         visible.map((u) => <RemoteCursor key={u.id} user={u} />),

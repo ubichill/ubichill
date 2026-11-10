@@ -18,7 +18,9 @@ const MISSKEY: FollowActor = {
 };
 const follow = (id = 'https://misskey.example/follows/9x/alice', object = ALICE_URL) => ({ id, object });
 
-function setup(options: { manual?: boolean; policy?: DomainPolicy; failSend?: boolean } = {}) {
+function setup(
+    options: { manual?: boolean; policy?: DomainPolicy; failSend?: boolean; blocks?: Array<[string, string]> } = {},
+) {
     const rows: FollowerRecord[] = [];
     const sent: Array<{ inbox: string; activity: Record<string, unknown> }> = [];
     const notes: string[] = [];
@@ -96,6 +98,8 @@ function setup(options: { manual?: boolean; policy?: DomainPolicy; failSend?: bo
             },
         },
         userExists: async (userId) => userId === 'alice' || userId.startsWith('user'),
+        blocked: async (userId, actorId) =>
+            (options.blocks ?? []).some(([a, b]) => (a === userId && b === actorId) || (a === actorId && b === userId)),
         settingsOf: async (userId) =>
             settings.get(userId) ?? { ...DEFAULT_FEDIVERSE_SETTINGS, manuallyApprovesFollowers: !!options.manual },
         actorOf: async (actorId) => ({
@@ -195,6 +199,32 @@ describe('フェディバースからのフォロー', () => {
         expect(rows).toEqual([]);
         expect(answers(sent).map((a) => a.type)).toEqual(['Reject']);
         expect(notes).toEqual([]);
+    });
+
+    it('ブロックした人からのフォローは、承認制でなくても記録せずに断り、知らせない', async () => {
+        const { follows, rows, sent, notes } = setup({ blocks: [['alice', MISSKEY.id]] });
+        await follows.onFollow(MISSKEY, follow());
+        expect(rows).toEqual([]);
+        expect(answers(sent).map((a) => a.type)).toEqual(['Reject']);
+        expect(notes).toEqual([]);
+    });
+
+    it('ブロックした人の承認待ち・フォロワーの行が残っていても、Follow が来直したら消して断る', async () => {
+        const manual = setup({ manual: true });
+        await manual.follows.onFollow(MISSKEY, follow());
+        expect(manual.rows).toMatchObject([{ state: 'pending' }]);
+        const blocked = setup({ manual: true, blocks: [['alice', MISSKEY.id]] });
+        blocked.rows.push(...manual.rows);
+        await blocked.follows.onFollow(MISSKEY, follow('https://misskey.example/follows/again'));
+        expect(blocked.rows).toEqual([]);
+        expect(answers(blocked.sent).map((a) => a.type)).toEqual(['Reject']);
+        expect(blocked.notes).toEqual([`settled alice ← ${MISSKEY.id}`]);
+    });
+
+    it('ブロックはほかのユーザー宛ての Follow には効かない', async () => {
+        const { follows, rows } = setup({ blocks: [['user2', MISSKEY.id]] });
+        await follows.onFollow(MISSKEY, follow());
+        expect(rows).toMatchObject([{ userId: 'alice', state: 'accepted' }]);
     });
 
     it('このサーバーにいない人・ほかのサーバーの人・サーバーの actor 宛ての Follow は何もしない', async () => {

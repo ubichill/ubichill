@@ -142,13 +142,14 @@ function memoryStores() {
     return { notifications, announcements, rows };
 }
 
-function setup(start = '2026-10-20T00:00:00.000Z') {
+function setup(start = '2026-10-20T00:00:00.000Z', blocks: Array<[string, string]> = []) {
     const clock = { now: new Date(start) };
     const stores = memoryStores();
     const delivered: Array<{ to: string; event: NotificationStreamEvent }> = [];
     const service = createNotificationService({
         ...stores,
         hub: { deliver: async (to, event) => void delivered.push({ to, event }) },
+        blocked: async (a, b) => blocks.some(([x, y]) => (x === a && y === b) || (x === b && y === a)),
         now: () => clock.now,
     });
     const tick = (ms = 1000) => {
@@ -186,6 +187,41 @@ describe('通知を作る規則', () => {
         // 別のワールドなら別の通知
         await service.worldLiked('alice', { ...world, url: 'https://x.example/w2.yaml' });
         expect(delivered).toHaveLength(2);
+    });
+
+    it('どちらの向きでもブロックしている 2 人の間には作らない・流さない（ほかの人には届く）', async () => {
+        const remote = 'https://c.example/ap/users/bob';
+        const { service, delivered, rows } = setup(undefined, [
+            ['bob', 'alice'],
+            ['alice', remote],
+        ]);
+        expect(await service.followRequested('alice', 'bob')).toBeUndefined();
+        expect(await service.followRequested('bob', 'alice')).toBeUndefined();
+        expect(
+            await service.worldLiked('alice', { url: 'https://x.example/w.yaml', name: 'W', authorId: 'bob' }),
+        ).toBeUndefined();
+        expect(await service.remoteFriendRequested(remote, 'alice')).toBeUndefined();
+        expect(rows).toEqual([]);
+        expect(delivered).toEqual([]);
+        expect(await service.remoteFriendRequested(remote, 'bob')).toBeDefined();
+    });
+
+    it('ブロックすると、2 人の間の通知は種類によらずすべて消え、受け手の画面にも知らせる', async () => {
+        const remote = 'https://c.example/ap/users/bob';
+        const { service, delivered, rows } = setup();
+        await service.followRequested('alice', 'bob');
+        await service.worldLiked('bob', { url: 'https://x.example/w.yaml', name: 'W', authorId: 'alice' });
+        await service.worldLiked('newcomer', { url: 'https://x.example/w.yaml', name: 'W', authorId: 'bob' });
+        await service.remoteFriendRequested(remote, 'bob');
+        delivered.length = 0;
+        await service.blocked('bob', 'alice');
+        await service.blocked('bob', remote);
+        expect(rows.map((r) => [r.recipientId, r.actorUserId ?? r.actorUri])).toEqual([['bob', 'newcomer']]);
+        expect(delivered.map((d) => [d.to, d.event.type])).toEqual([
+            ['bob', 'removed'],
+            ['alice', 'removed'],
+            ['bob', 'removed'],
+        ]);
     });
 
     it('消えた相手（いないユーザー）には作らない・流さない', async () => {

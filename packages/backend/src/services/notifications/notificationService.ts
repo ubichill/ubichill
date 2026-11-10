@@ -1,5 +1,6 @@
 import { announcementRepository, notificationRepository } from '@ubichill/db';
 import { logger } from '../../utils/logger';
+import { isBlockedBetween } from '../social/blockCheck';
 import { notificationHub } from './notificationHub';
 import { createNotificationService } from './notifications';
 
@@ -8,6 +9,7 @@ export const notificationService = createNotificationService({
     notifications: notificationRepository,
     announcements: announcementRepository,
     hub: notificationHub,
+    blocked: isBlockedBetween,
 });
 
 /** 通知の失敗で元の操作（申請・お気に入り）を失敗にしない。 */

@@ -104,6 +104,8 @@ export interface ProfileField {
 /** ID・内部 ID で引いたプロフィール（自分との関係付き。`GET /api/v1/social/users/...`）。 */
 export interface UserProfileWithFriendship extends UserProfile, RemoteRelation {
     friendship: Friendship;
+    /** 見ている人がこの人をブロックしている */
+    blocked?: true;
 }
 
 /** DB に保存してあるプロフィールの項目（links・languages は jsonb なので形を信用しない）。 */

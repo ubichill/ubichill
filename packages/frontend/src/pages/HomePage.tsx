@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { signOut } from '@/lib/auth-client';
+import { resetBlocks } from '@/lib/blocks';
 import { canAutoHome, homeInstanceEntry, readHomeEntryState, readHomeFailures, recordEntryOutcome } from '@/lib/home';
 import { ensureHomeInstance } from '@/lib/homeApi';
 import { resetHome } from '@/lib/homeStore';
@@ -61,6 +62,7 @@ export function HomePage() {
     const handleLogout = useCallback(async () => {
         await signOut();
         resetHome();
+        resetBlocks();
         navigate('/auth', { replace: true });
     }, [navigate]);
 
