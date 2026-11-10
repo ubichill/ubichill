@@ -1,11 +1,11 @@
 # フレンド・インスタンスの公開範囲・招待
 
-規則は shared の `user/friends.ts`（フレンド）と `user/instanceAccess.ts`（公開範囲・招待・リクエストインバイト）。
+規則は shared の `social/friends.ts`（フレンド）と `social/instanceAccess.ts`（公開範囲・招待・リクエストインバイト）。
 backend の認可と画面の表示で同じ関数を使う。
 
 ## やり取りを止める共通の前提（ブロック）
 
-- 申請・承認・招待・リクエストインバイト・メッセージ・フォロー・通知は、shared の `interactionRefusal`（`user/blocks.ts`）で
+- 申請・承認・招待・リクエストインバイト・メッセージ・フォロー・通知は、shared の `interactionRefusal`（`social/blocks.ts`）で
   自分自身（`self`）・自分がブロックしている（`blocking`）・相手にブロックされている（`blocked`）を先に止める。
   答え方の表はその関数のコメント。ブロックされた側には、どのやり取りでもブロックと見分けがつかない形で答える。
 - 種類ごとの条件（フレンドか・部屋にいるか）は種類ごとの関数（`inviteRefusal`・`inviteRequestRefusal`・`messageRefusal`）。

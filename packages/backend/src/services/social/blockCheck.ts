@@ -1,5 +1,5 @@
 /**
- * ブロックの有無の読み出し（DB）。規則は shared の user/blocks.ts の interactionRefusal（やり取りを止める共通の前提）。
+ * ブロックの有無の読み出し（DB）。規則は shared の social/blocks.ts の interactionRefusal（やり取りを止める共通の前提）。
  * やり取り（フレンド申請・招待・連合・メッセージ・通知）を止めるかの判定はここを使う。ブロックする・解除するのは blockService.ts。
  * 連合・通知の配線からも import するので、ここは DB と shared だけに依存させる（blockService は連合に依存する）。
  */

@@ -22,7 +22,7 @@ export interface RoleMemberRecord {
 
 const activeAt = (now: Date) => or(isNull(roleAssignments.expiresAt), gt(roleAssignments.expiresAt, now));
 
-/** ロールとアサインの保存。入力の規則・管理者の判定・並びは shared の user/roles.ts（ここは保存だけ）。 */
+/** ロールとアサインの保存。入力の規則・管理者の判定・並びは shared の account/roles.ts（ここは保存だけ）。 */
 export const roleRepository = {
     /** すべてのロールと、期限の切れていないメンバーの数。 */
     async list(now = new Date()): Promise<RoleWithCountRecord[]> {

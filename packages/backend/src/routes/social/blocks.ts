@@ -13,7 +13,7 @@ export interface BlocksRouterDeps {
 }
 
 /**
- * ブロック（`/api/v1/social` の下）。規則は shared の user/blocks.ts。
+ * ブロック（`/api/v1/social` の下）。規則は shared の social/blocks.ts。
  * - `GET /blocks`: ブロックした人（新しい順）
  * - `POST /blocks`: ブロックする（フレンド・申請・招待・通知を消し、ほかのサーバーの人ならフォロワーからも外す）
  * - `DELETE /blocks/:userId`: 解除する（消したフレンドの関係は戻さない）

@@ -112,7 +112,7 @@ describe('signatures-in-one-place', () => {
     it('署名の部品・暗号の実装（定義）・テストは対象にしない', () => {
         const call = 'await crypto.verifyEd25519(key, message, sig)';
         expect(violations('packages/shared/src/signature/envelope.ts', call)).toEqual([]);
-        expect(violations('packages/shared/src/user/cliAuth.ts', call)).toEqual([]);
+        expect(violations('packages/shared/src/publishing/cliAuth.ts', call)).toEqual([]);
         expect(violations('packages/loader/src/worldCrypto.ts', 'verifyEd25519: async (publicKey, message, signature) => {')).toEqual([]);
         expect(violations('packages/backend/src/x.test.ts', call)).toEqual([]);
     });

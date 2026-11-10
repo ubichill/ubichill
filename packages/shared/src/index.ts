@@ -228,6 +228,16 @@ export const SERVER_CONFIG = {
 // Re-export Schemas and Mods
 // ============================================
 
+export * from './account/displayNameChange';
+export * from './account/favoritesVisibility';
+export * from './account/handle';
+export * from './account/home';
+export * from './account/limits';
+export * from './account/profile';
+export * from './account/profileLanguages';
+export * from './account/profileLinks';
+export * from './account/richText';
+export * from './account/roles';
 export * from './federation';
 export type { components as InstanceAPI } from './generated/instance';
 export * from './mod/capability';
@@ -243,6 +253,10 @@ export * from './mod/types';
 export * from './mod/vnode';
 export * from './notification/activity';
 export * from './notification/serverNotice';
+export * from './publishing/authorKeyDirectory';
+export * from './publishing/cliAuth';
+export * from './publishing/externalWorks';
+export * from './publishing/signingKeys';
 export * from './schemas';
 export {
     confirmEnvelopeAuthor,
@@ -255,28 +269,14 @@ export {
     signEnvelope,
     verifyEnvelope,
 } from './signature/envelope';
-export * from './user/authorKeyDirectory';
-export * from './user/blocks';
-export * from './user/cliAuth';
-export * from './user/displayNameChange';
-export * from './user/externalWorks';
-export * from './user/favoritesVisibility';
-export * from './user/fediverse';
-export * from './user/friends';
-export * from './user/handle';
-export * from './user/home';
-export * from './user/instanceAccess';
-export * from './user/limits';
-export * from './user/messageReactions';
-export * from './user/messages';
-export * from './user/presence';
-export * from './user/profile';
-export * from './user/profileLanguages';
-export * from './user/profileLinks';
-export * from './user/richText';
-export * from './user/roles';
-export * from './user/signingKeys';
-export * from './user/userSearch';
+export * from './social/blocks';
+export * from './social/fediverse';
+export * from './social/friends';
+export * from './social/instanceAccess';
+export * from './social/messageReactions';
+export * from './social/messages';
+export * from './social/presence';
+export * from './social/userSearch';
 export * from './world/devEvents';
 export * from './world/identity';
 export * from './world/instanceDefinition';

@@ -12,9 +12,9 @@
  * - EmojiReact: 自分のメッセージにリアクションされた（object はその Note、content は絵文字。会話ごとに最新の 1 つ）
  */
 import { z } from 'zod';
-import { INVITE_LIMITS } from '../user/instanceAccess';
-import { ReactionEmojiSchema } from '../user/messageReactions';
-import { MESSAGE_LIMITS } from '../user/messages';
+import { INVITE_LIMITS } from '../social/instanceAccess';
+import { ReactionEmojiSchema } from '../social/messageReactions';
+import { MESSAGE_LIMITS } from '../social/messages';
 
 export const NOTIFICATION_TYPES = [
     'Follow',

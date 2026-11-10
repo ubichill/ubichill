@@ -8,8 +8,8 @@
  * 同じ部屋にいる人には、この設定に関係なく見える（部屋の参加者として）。
  */
 import { z } from 'zod';
+import type { FavoritesVisibility } from '../account/favoritesVisibility';
 import type { PresenceStatus } from '../federation/ubichill/rpc';
-import type { FavoritesVisibility } from './favoritesVisibility';
 
 export const PRESENCE_VISIBILITIES = ['location', 'online', 'hidden'] as const;
 export const PresenceVisibilitySchema = z.enum(PRESENCE_VISIBILITIES);

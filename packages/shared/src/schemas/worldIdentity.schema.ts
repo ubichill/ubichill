@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AuthorAccountSchema } from '../user/handle';
+import { AuthorAccountSchema } from '../account/handle';
 import { IntegritySchema } from './modLock.schema';
 
 // ============================================

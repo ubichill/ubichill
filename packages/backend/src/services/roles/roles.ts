@@ -118,7 +118,7 @@ const memberView = (member: StoredMember): RoleMember => ({
 
 /**
  * ロール（コントロールパネル）と管理者の判定。HTTP の形には依存しない（routes/admin.ts が対応付ける）。
- * 入力の規則・判定・並びは shared の user/roles.ts。
+ * 入力の規則・判定・並びは shared の account/roles.ts。
  */
 export function createRoleService(deps: RoleServiceDeps) {
     const now = deps.now ?? (() => new Date());

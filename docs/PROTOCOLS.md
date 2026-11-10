@@ -120,6 +120,6 @@ API の `/api/version` は診断用で、再読み込みで画面が更新され
 | `loader-main-is-browser-safe` | loader の既定の入口はブラウザで読める |
 | `backend-runs-built-packages-only` | backend はソースのまま配るパッケージに依存しない |
 | `mods-use-public-sdk-only` | mod は公開パッケージ `ubichill` だけに依存する |
-| `signatures-in-one-place` | Ed25519 の照合は shared の署名・鍵の証明の部品（`signature/envelope.ts`・`world/identity.ts`・`user/cliAuth.ts`・連合の HTTP の署名 `federation/ubichill/httpSignature.ts`）の中だけ |
+| `signatures-in-one-place` | Ed25519 の照合は shared の署名・鍵の証明の部品（`signature/envelope.ts`・`world/identity.ts`・`publishing/cliAuth.ts`・連合の HTTP の署名 `federation/ubichill/httpSignature.ts`）の中だけ |
 
 規則を足すときは、何を守るのかを `why` に書く。

@@ -5,8 +5,9 @@
  * このサーバーのアカウントなら ID の完全一致で引き、ほかのサーバーのアカウントは
  * そのサーバーに WebFinger で問い合わせて引く（連合）ので、ここでは種類だけ分ける。
  */
+
+import { displayNameKey, formatAuthorAccount, parseAuthorAccount } from '../account/handle';
 import type { UserWithFriendship } from './friends';
-import { displayNameKey, formatAuthorAccount, parseAuthorAccount } from './handle';
 
 export const USER_SEARCH_MAX_LENGTH = 50;
 

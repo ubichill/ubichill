@@ -1,4 +1,4 @@
-/** ブロックの実体（DB・フレンド・招待・通知・連合をつなぐ）。規則は blocks.ts と shared の user/blocks.ts。 */
+/** ブロックの実体（DB・フレンド・招待・通知・連合をつなぐ）。規則は blocks.ts と shared の social/blocks.ts。 */
 import {
     followerRepository,
     inviteRepository,

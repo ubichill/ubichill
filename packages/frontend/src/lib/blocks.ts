@@ -1,7 +1,7 @@
 /**
  * 自分がブロックした人（設定の一覧・プロフィール・部屋の中・mod の読み込みで共有する）。
  * どこかでブロック・解除したら、ほかの表示も同じ一覧に変わる。一覧は持ち主（ログインしているユーザー）ごと。
- * 判定の規則は shared の user/blocks.ts。
+ * 判定の規則は shared の social/blocks.ts。
  */
 import { useEffect, useSyncExternalStore } from 'react';
 import {

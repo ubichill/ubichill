@@ -1,6 +1,6 @@
 /**
  * ソーシャル（`/api/v1/social`）: 人を探す・フレンド・ブロック・フレンドの現在地。招待・リクエストインバイトは invitesRouter。
- * 業務の流れは services/social/、規則は shared の user/friends.ts・user/blocks.ts。ここは実体をつなぐだけ。
+ * 業務の流れは services/social/、規則は shared の social/friends.ts・social/blocks.ts。ここは実体をつなぐだけ。
  */
 import { Router } from 'express';
 import { perUserLimiter } from '../../lib/rateLimit';

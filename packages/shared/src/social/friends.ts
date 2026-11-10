@@ -1,7 +1,7 @@
 /**
  * フレンドの関係の純粋なロジック（backend と frontend で同じ規則を使う）。公開範囲・招待は instanceAccess.ts。
  */
-import type { CustomEmoji } from './richText';
+import type { CustomEmoji } from '../account/richText';
 
 /** フレンドの行（`userId` が `friendId` に申請した。承認されると accepted）。 */
 export interface FriendEdge {

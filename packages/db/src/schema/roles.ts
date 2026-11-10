@@ -2,7 +2,7 @@ import { boolean, index, integer, pgTable, primaryKey, text, timestamp, varchar 
 import { users } from './users';
 
 /**
- * ロール（Misskey のロールに合わせた属性）。入力の規則と判定は shared の user/roles.ts。
+ * ロール（Misskey のロールに合わせた属性）。入力の規則と判定は shared の account/roles.ts。
  * 公式アカウントはロールに関係なく管理者なので、ここには持たない。
  */
 export const roles = pgTable('roles', {

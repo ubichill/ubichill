@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DISPLAY_NAME_WEBFINGER_PROPERTY } from '../account/handle';
 import { AUTHOR_CHECK_STALE_MS } from '../world/identity';
 import {
     AUTHOR_KEYS_FRESH_MS,
@@ -11,7 +12,6 @@ import {
     resolveSameOriginStrict,
     webFingerLinks,
 } from './authorKeyDirectory';
-import { DISPLAY_NAME_WEBFINGER_PROPERTY } from './handle';
 import { SIGNING_KEYS_WEBFINGER_REL, type SigningKeyEntry } from './signingKeys';
 
 const HASH = 'sha256-content';

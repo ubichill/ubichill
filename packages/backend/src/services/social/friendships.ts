@@ -1,5 +1,5 @@
 /**
- * フレンドの操作（申請・承認・解除）と一覧。関係の規則は shared の user/friends.ts、止めるかは interactionRefusal（relations）。
+ * フレンドの操作（申請・承認・解除）と一覧。関係の規則は shared の social/friends.ts、止めるかは interactionRefusal（relations）。
  * ほかのサーバーの人は連合（federation/friendships.ts）に任せ、ここは同じ形の結果にそろえる。
  */
 import type { FriendRow, RemoteActorRecord, RemoteFriendshipWithActor } from '@ubichill/db';

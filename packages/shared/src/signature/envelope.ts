@@ -9,9 +9,9 @@
  * 暗号（sha256 / ed25519）は呼び出し側が注入する（{@link WorldCrypto}）。
  */
 import { z } from 'zod';
+import { isCanonicalAuthorAccount } from '../account/handle';
 import { IntegritySchema } from '../schemas/modLock.schema';
 import { Ed25519PublicKeySchema, Ed25519SignatureSchema } from '../schemas/worldIdentity.schema';
-import { isCanonicalAuthorAccount } from '../user/handle';
 import {
     type AuthorKeyCheck,
     type AuthorKeyCheckResult,

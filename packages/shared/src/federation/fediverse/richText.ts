@@ -4,7 +4,7 @@
  * actor の `tag` にあるカスタム絵文字（`type: Emoji`）も読む。
  */
 import { z } from 'zod';
-import { formatAuthorAccount, parseAuthorAccount } from '../../user/handle';
+import { formatAuthorAccount, parseAuthorAccount } from '../../account/handle';
 import {
     CUSTOM_EMOJI_NAME,
     type CustomEmoji,
@@ -13,7 +13,7 @@ import {
     MAX_RICH_SEGMENTS,
     RICH_LINK_TEXT_MAX,
     type RichSegment,
-} from '../../user/richText';
+} from '../../account/richText';
 import { parseFederationUrl } from '../urls';
 import { type HtmlToken, tokenizeHtml } from './html';
 import { decodeEntities, displayText, tagText } from './text';

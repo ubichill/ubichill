@@ -6,8 +6,8 @@
  * 取り消した鍵の署名は、いつ署名されたものでも作者を付けない（署名に信頼できる時刻が無いため）。
  */
 import { z } from 'zod';
+import { AuthorAccountSchema, parseAuthorAccount } from '../account/handle';
 import { Ed25519PublicKeySchema } from '../schemas/worldIdentity.schema';
-import { AuthorAccountSchema, parseAuthorAccount } from './handle';
 
 /** WebFinger（JRD）の links で公開環境の鍵一覧へ案内する rel。 */
 export const SIGNING_KEYS_WEBFINGER_REL = 'https://ubichill.com/ns/signing-keys';

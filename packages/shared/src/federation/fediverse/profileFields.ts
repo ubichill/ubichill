@@ -4,10 +4,10 @@
  * ubichill どうしは拡張の語（`statusMessage`・`spokenLanguages`）で元の形に戻す。
  */
 import { z } from 'zod';
-import { PROFILE_STATUS_MAX_LENGTH, type ProfileField } from '../../user/profile';
-import { type ProfileLanguageCode, profileLanguageLabel, profileLanguagesView } from '../../user/profileLanguages';
-import { MAX_PROFILE_LINKS, PROFILE_LINK_LABELS, type ProfileLink, parseProfileLink } from '../../user/profileLinks';
-import { type CustomEmoji, type RichSegment, storedCustomEmojisOf, storedRichTextOf } from '../../user/richText';
+import { PROFILE_STATUS_MAX_LENGTH, type ProfileField } from '../../account/profile';
+import { type ProfileLanguageCode, profileLanguageLabel, profileLanguagesView } from '../../account/profileLanguages';
+import { MAX_PROFILE_LINKS, PROFILE_LINK_LABELS, type ProfileLink, parseProfileLink } from '../../account/profileLinks';
+import { type CustomEmoji, type RichSegment, storedCustomEmojisOf, storedRichTextOf } from '../../account/richText';
 import { parseFederationUrl } from '../urls';
 import { displayText, escapeHtml } from './text';
 

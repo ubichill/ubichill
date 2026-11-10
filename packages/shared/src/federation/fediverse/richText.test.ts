@@ -6,7 +6,7 @@ import {
     splitCustomEmojis,
     storedCustomEmojisOf,
     storedRichTextOf,
-} from '../../user/richText';
+} from '../../account/richText';
 import { htmlToRichText, readCustomEmojis } from './richText';
 import { displayMultilineText, displayText } from './text';
 

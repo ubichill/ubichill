@@ -6,7 +6,7 @@
  * - discoverable: ほかのサーバーのおすすめ・検索に出してよいか。アカウントを直接検索すれば、どちらでも見つかる
  */
 import { z } from 'zod';
-import type { CustomEmoji } from './richText';
+import type { CustomEmoji } from '../account/richText';
 
 export interface FediverseSettings {
     manuallyApprovesFollowers: boolean;

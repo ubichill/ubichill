@@ -2,7 +2,7 @@
  * 部屋の住所。このサーバーの部屋は ID だけ、ほかのサーバーの部屋は `<部屋の ID>@<ドメイン>`（アカウントの `handle@domain` と同じ形）。
  * 画面の URL（`/instance/:住所`）・招待の通知・フレンドの現在地で同じ形を使い、どのサーバーの部屋でも同じ流れで入れる。
  */
-import { isServerDomain } from '../../user/handle';
+import { isServerDomain } from '../../account/handle';
 
 /** 部屋の ID（nanoid・UUID）。`@` を含まないので住所と取り違えない。 */
 const ROOM_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;

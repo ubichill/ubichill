@@ -9,7 +9,7 @@
  * - 鍵は controller（owner）が actor で、id が `<actor の id>#…` のものだけ（Ed25519 の Multikey と RSA の PEM）
  */
 import { z } from 'zod';
-import { type CustomEmoji, type RichSegment, richTextPlain } from '../user/richText';
+import { type CustomEmoji, type RichSegment, richTextPlain } from '../account/richText';
 import {
     type LocalProfileFields,
     profileAttachment,

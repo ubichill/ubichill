@@ -3,7 +3,7 @@ import { check, index, pgTable, primaryKey, text, timestamp } from 'drizzle-orm/
 import { users } from './users';
 
 /**
- * ユーザーのブロック（blocker が blocked をブロックした。片方向）。判定の規則は shared の user/blocks.ts。
+ * ユーザーのブロック（blocker が blocked をブロックした。片方向）。判定の規則は shared の social/blocks.ts。
  * blocked はこのサーバーのユーザー ID か、ほかのサーバーの actor の URL（連合）なので外部キーを付けない。
  */
 export const userBlocks = pgTable(

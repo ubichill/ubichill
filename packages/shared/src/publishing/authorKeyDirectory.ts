@@ -15,8 +15,14 @@
  *   取り直し（refresh）は作者ごとに T_fresh に 1 回で数が限られるので上限をかけない（攻撃者が上限を使い切って、
  *   既知の作者の取り直しを止められないように）。
  */
+
+import {
+    DISPLAY_NAME_WEBFINGER_PROPERTY,
+    DisplayNameSchema,
+    formatAuthorAccount,
+    parseAuthorAccount,
+} from '../account/handle';
 import { AUTHOR_CHECK_STALE_MS, type AuthorKeyCheck } from '../world/identity';
-import { DISPLAY_NAME_WEBFINGER_PROPERTY, DisplayNameSchema, formatAuthorAccount, parseAuthorAccount } from './handle';
 import { parseSigningKeyList, SIGNING_KEYS_WEBFINGER_REL, type SigningKeyEntry, signingKeyStatus } from './signingKeys';
 
 /**

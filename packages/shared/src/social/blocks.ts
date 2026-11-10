@@ -9,8 +9,8 @@
  * - mod の作者は作者アカウント（`handle@domain`）で突き合わせる（{@link isModAuthorBlocked}）。
  */
 import { z } from 'zod';
+import { parseAuthorAccount } from '../account/handle';
 import type { UserSummary } from './friends';
-import { parseAuthorAccount } from './handle';
 
 /** ブロックの行（blockerId が blockedId をブロックした）。 */
 export interface BlockEdge {
