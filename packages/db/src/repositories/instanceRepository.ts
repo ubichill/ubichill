@@ -1,4 +1,4 @@
-import { and, eq, type SQL, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../index';
 import { instances } from '../schema';
 
@@ -37,23 +37,14 @@ export const instanceRepository = {
         return db.select().from(instances).where(eq(instances.leaderId, leaderId));
     },
 
-    async findAll(options?: { includeFull?: boolean; tag?: string }): Promise<InstanceRecord[]> {
-        const conditions: SQL[] = [];
-
-        if (!options?.includeFull) {
-            conditions.push(eq(instances.status, 'active'));
-        }
-
+    /** 全件（満員かは Go の在室で決まるので、DB の status では絞らない）。 */
+    async findAll(options?: { tag?: string }): Promise<InstanceRecord[]> {
         // jsonb の @> 演算子でDBレベルにフィルタ（全件取得→メモリフィルタを回避）
-        if (options?.tag) {
-            conditions.push(sql`${instances.accessTags} @> ${JSON.stringify([options.tag])}::jsonb`);
-        }
-
-        return conditions.length > 0
+        return options?.tag
             ? db
                   .select()
                   .from(instances)
-                  .where(and(...conditions))
+                  .where(sql`${instances.accessTags} @> ${JSON.stringify([options.tag])}::jsonb`)
             : db.select().from(instances);
     },
 

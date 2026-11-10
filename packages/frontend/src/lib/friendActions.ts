@@ -50,6 +50,48 @@ export function friendshipAfter(action: FriendAction): Friendship {
 /** フェディバースでの関係（フォローされているか）。無ければ null。 */
 export function followLabelOf(relation: RemoteRelation): string | null {
     if (relation.followsYou === 'accepted') return 'フォローされています';
-    if (relation.followsYou === 'pending') return 'フォローの承認待ち';
+    if (relation.followsYou === 'pending') return 'フォローリクエストが届いています';
     return null;
+}
+
+/** プロフィールのバナーの左上に出す、相手との関係（フォローされているか・フレンドか）。 */
+export function relationBadgesOf(friendship: Friendship, relation: RemoteRelation): string[] {
+    const follow = followLabelOf(relation);
+    return [...(follow ? [follow] : []), ...(friendship === 'friends' ? ['フレンド'] : [])];
+}
+
+export type FollowerAction = 'approve' | 'reject' | 'remove';
+
+export interface FollowerActionView {
+    action: FollowerAction;
+    label: string;
+    tone: 'primary' | 'secondary' | 'danger';
+    confirm?: string;
+}
+
+/** フォローしてきた人への操作（その人のプロフィールで行う）。承認待ちなら承認・拒否、フォロワーなら外す。 */
+export function followerActionsOf(relation: RemoteRelation, name: string): FollowerActionView[] {
+    if (relation.followsYou === 'pending') {
+        return [
+            { action: 'approve', label: 'フォローを承認', tone: 'primary' },
+            { action: 'reject', label: '拒否', tone: 'secondary' },
+        ];
+    }
+    if (relation.followsYou === 'accepted') {
+        return [
+            {
+                action: 'remove',
+                label: 'フォロワーから外す',
+                tone: 'danger',
+                confirm: `${name} さんをフォロワーから外しますか？ 相手には知らせずに外れます。`,
+            },
+        ];
+    }
+    return [];
+}
+
+/** フォロワーへの操作のあとの関係。 */
+export function relationAfter(relation: RemoteRelation, action: FollowerAction): RemoteRelation {
+    const { followsYou: _followsYou, ...rest } = relation;
+    return action === 'approve' ? { ...rest, followsYou: 'accepted' } : rest;
 }

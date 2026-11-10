@@ -37,6 +37,13 @@ export async function fetchMyAccount(): Promise<MyAccount> {
     return (await res.json()) as MyAccount;
 }
 
+/** ログイン中の人がこのサーバーの管理者か（`GET /api/v1/users/me/admin`）。 */
+export async function fetchIsAdmin(): Promise<boolean> {
+    const res = await fetch(`${API_BASE}/api/v1/users/me/admin`, { credentials: 'include', cache: 'no-store' });
+    if (!res.ok) throw new Error(await errorMessage(res));
+    return ((await res.json()) as { isAdmin: boolean }).isAdmin;
+}
+
 /** パスワードを変更する（他の端末のセッションは無効になる）。 */
 export async function changeMyPassword(currentPassword: string, newPassword: string): Promise<void> {
     const res = await fetch(`${API_BASE}/api/v1/users/me/password`, {

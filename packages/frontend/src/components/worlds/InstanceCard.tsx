@@ -1,5 +1,18 @@
 import type { Instance } from '@ubichill/shared';
-import { css } from '@/styled-system/css';
+import { css, cva } from '@/styled-system/css';
+
+const STATUS_LABELS: Record<Instance['status'], string> = {
+    active: '参加可能',
+    full: '満員',
+    closing: '終了中',
+};
+
+const statusDot = cva({
+    base: { width: '8px', height: '8px', borderRadius: '50%' },
+    variants: {
+        status: { active: { bg: 'success' }, full: { bg: 'warning' }, closing: { bg: 'info' } },
+    },
+});
 
 interface InstanceCardProps {
     instance: Instance;
@@ -10,12 +23,6 @@ interface InstanceCardProps {
 }
 
 export function InstanceCard({ instance, isCurrent = false, onOpenDetail }: InstanceCardProps) {
-    const statusColors: Record<string, string> = {
-        active: '#8ad29b', // success token value
-        full: '#f1c86c', // warning token value
-        closing: '#9ea7bd', // info token value
-    };
-
     return (
         <div
             onClick={onOpenDetail}
@@ -115,15 +122,8 @@ export function InstanceCard({ instance, isCurrent = false, onOpenDetail }: Inst
                                 gap: '4px',
                             })}
                         >
-                            <span
-                                style={{
-                                    width: '8px',
-                                    height: '8px',
-                                    borderRadius: '50%',
-                                    backgroundColor: statusColors[instance.status] || '#868e96',
-                                }}
-                            />
-                            {instance.status}
+                            <span className={statusDot({ status: instance.status })} />
+                            {STATUS_LABELS[instance.status]}
                         </span>
                         <span className={css({ display: 'flex', alignItems: 'center', gap: '4px' })}>
                             <svg

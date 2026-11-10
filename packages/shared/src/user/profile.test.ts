@@ -149,6 +149,7 @@ describe('userProfileOf', () => {
                     languages: 'ja',
                 },
                 'youkan@ubichill.example',
+                [{ id: 'r1', name: 'スタッフ', color: '#ff0000' }],
             ),
         ).toEqual({
             id: 'u1',
@@ -161,6 +162,7 @@ describe('userProfileOf', () => {
             bannerImage: 'https://ubichill.example/b.webp',
             links: [{ url: 'https://github.com/a', kind: 'github' }],
             languages: [],
+            roles: [{ id: 'r1', name: 'スタッフ', color: '#ff0000' }],
         });
     });
 });

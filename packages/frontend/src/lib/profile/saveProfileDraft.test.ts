@@ -14,6 +14,7 @@ const profile: UserProfile = {
     bannerImage: null,
     links: [],
     languages: [],
+    roles: [],
 };
 const file = new Blob(['x'], { type: 'image/png' });
 const noChanges: DraftChanges = { name: null, fields: null, images: [] };

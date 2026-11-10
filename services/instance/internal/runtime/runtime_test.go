@@ -69,7 +69,7 @@ func join(t *testing.T, s *Server, h *httptest.Server, room, user string) (*webs
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = c.Close() })
-	token := s.sign(ticket{room, user, time.Now().Add(time.Minute).Unix(), "member", "", ""})
+	token := s.sign(ticket{room, user, time.Now().Add(time.Minute).Unix(), "member", "", "", false})
 	_ = c.WriteJSON(Frame{Event: "world:join", ID: "join", Data: encoded(Object{"instanceId": room, "token": token, "user": Object{"name": user, "status": "online", "position": Object{"x": 0, "y": 0}}})})
 	f := receive(t, c, "join")
 	var result Object
@@ -113,7 +113,7 @@ func TestGuestAndManagementBoundary(t *testing.T) {
 }
 func TestTicketValidation(t *testing.T) {
 	s, _ := start(t, false)
-	valid := ticket{"a", "alice", time.Now().Add(time.Minute).Unix(), "member", "", ""}
+	valid := ticket{"a", "alice", time.Now().Add(time.Minute).Unix(), "member", "", "", false}
 	if _, err := s.verify(s.sign(valid), "a"); err != nil {
 		t.Fatal(err)
 	}
@@ -190,10 +190,40 @@ func TestFullRoomAndAtomicReaping(t *testing.T) {
 	}
 	c, _, _ := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(h.URL, "http")+"/realtime/v1/ws", nil)
 	defer c.Close()
-	_ = c.WriteJSON(Frame{Event: "world:join", ID: "full", Data: encoded(Object{"instanceId": "a", "token": s.sign(ticket{"a", "bob", time.Now().Add(time.Minute).Unix(), "member", "", ""}), "user": Object{"name": "Bob", "position": Object{"x": 0, "y": 0}, "status": "online"}})})
+	_ = c.WriteJSON(Frame{Event: "world:join", ID: "full", Data: encoded(Object{"instanceId": "a", "token": s.sign(ticket{"a", "bob", time.Now().Add(time.Minute).Unix(), "member", "", "", false}), "user": Object{"name": "Bob", "position": Object{"x": 0, "y": 0}, "status": "online"}})})
 	result, _ := object(receive(t, c, "full").Data)
 	if result["success"] != false {
 		t.Fatal("capacity bypass")
+	}
+}
+
+// 作成者のチケットは満員でも通る。超えるのは 1 人まで（作成者の印を持つチケットがほかにあっても）。
+func TestLeaderJoinsFullRoom(t *testing.T) {
+	s, h := start(t, false)
+	s.room("a").definition.MaxUsers = 1
+	_ = connect(t, s, h, "a", "alice")
+	joinAs := func(user string, leader bool) Object {
+		c, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(h.URL, "http")+"/realtime/v1/ws", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = c.Close() })
+		token := s.sign(ticket{"a", user, time.Now().Add(time.Minute).Unix(), "member", "", "", leader})
+		_ = c.WriteJSON(Frame{Event: "world:join", ID: "j", Data: encoded(Object{"instanceId": "a", "token": token, "user": Object{"name": user, "position": Object{"x": 0, "y": 0}, "status": "online"}})})
+		result, _ := object(receive(t, c, "j").Data)
+		return result
+	}
+	if r := joinAs("bob", false); r["success"] != false {
+		t.Fatal("non-leader joined a full room")
+	}
+	if r := joinAs("leader", true); r["success"] != true {
+		t.Fatalf("leader refused: %v", r)
+	}
+	if r := joinAs("second", true); r["success"] != false {
+		t.Fatal("more than one over capacity")
+	}
+	if n := len(s.room("a").presence().MemberIDs); n != 2 {
+		t.Fatalf("members: %d", n)
 	}
 }
 func TestConcurrentCreation(t *testing.T) {

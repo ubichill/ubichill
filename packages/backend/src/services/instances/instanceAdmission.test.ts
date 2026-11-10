@@ -59,7 +59,7 @@ describe('GoインスタンスへのSNS参加受付', () => {
             token: 'ticket',
         });
         // チケットは割り当てた owner の Pod へ、その世代で発行する
-        expect(mocks.ticket).toHaveBeenCalledWith('room', 'visitor', 'Visitor', owner);
+        expect(mocks.ticket).toHaveBeenCalledWith('room', 'visitor', 'Visitor', owner, { leader: false });
     });
     it('招待のみ: 作成者のフレンドでも招待が無ければ入れず、招待が要ると伝える', async () => {
         mocks.findById.mockResolvedValue({ ...record, accessType: 'invite_only' });
@@ -83,6 +83,34 @@ describe('GoインスタンスへのSNS参加受付', () => {
             token: 'ticket',
         });
         expect(mocks.findValidInvite).toHaveBeenCalledWith('room', 'guest');
+    });
+    it('満員（定員ちょうど）なら、入れる人でも満員と伝えてチケットを出さない', async () => {
+        mocks.findById.mockResolvedValue({ ...record, accessType: 'public', maxUsers: 2 });
+        mocks.presence.mockResolvedValue(new Map([['room', { memberIds: ['a', 'b'] }]]));
+        await expect(instanceManager.join('room', { id: 'visitor', name: 'V' })).rejects.toThrow('満員です');
+        expect(mocks.ticket).not.toHaveBeenCalled();
+    });
+    it('招待されていても、満員なら入れない（招待のあとで満員になった）', async () => {
+        mocks.findById.mockResolvedValue({ ...record, accessType: 'invite_only', maxUsers: 2 });
+        mocks.findValidInvite.mockResolvedValue({ id: 'inv' });
+        mocks.presence.mockResolvedValue(new Map([['room', { memberIds: ['a', 'b'] }]]));
+        await expect(instanceManager.join('room', { id: 'guest', name: 'G' })).rejects.toThrow('満員です');
+    });
+    it('作成者は満員でも入れ、そのときだけチケットに作成者の印を付ける（Go が定員を 1 人超えて通す）', async () => {
+        mocks.findById.mockResolvedValue({ ...record, maxUsers: 2 });
+        mocks.presence.mockResolvedValue(new Map([['room', { memberIds: ['a', 'b'] }]]));
+        await expect(instanceManager.join('room', { id: 'owner', name: 'Owner' })).resolves.toEqual({
+            token: 'ticket',
+        });
+        expect(mocks.ticket).toHaveBeenCalledWith('room', 'owner', 'Owner', owner, { leader: true });
+        mocks.presence.mockResolvedValue(new Map([['room', { memberIds: ['a'] }]]));
+        await instanceManager.join('room', { id: 'owner', name: 'Owner' });
+        expect(mocks.ticket).toHaveBeenLastCalledWith('room', 'owner', 'Owner', owner, { leader: false });
+    });
+    it('中にいる人の入り直しは満員でも通す', async () => {
+        mocks.findById.mockResolvedValue({ ...record, accessType: 'public', maxUsers: 2 });
+        mocks.presence.mockResolvedValue(new Map([['room', { memberIds: ['a', 'b'] }]]));
+        await expect(instanceManager.join('room', { id: 'a', name: 'A' })).resolves.toEqual({ token: 'ticket' });
     });
     it('Goに接続できない場合に公開範囲を迂回しない', async () => {
         mocks.presence.mockRejectedValue(new Error('runtime unavailable'));

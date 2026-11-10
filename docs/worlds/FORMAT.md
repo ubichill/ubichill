@@ -136,7 +136,7 @@ Host が持つ Component。mod を読み込まずに使え、`dependencies` に�
 - ワールドを配信できる URL の例：
   - 本体がホストするワールド：`https://<host>/api/v1/authors/<ID>/worlds/<name>.yaml`（外部ホストと同じ形。共有 URL `https://<host>/@<ID>/<name>` も受け付ける）
   - GitHub の生 YAML：`https://raw.githubusercontent.com/<owner>/<repo>/<ref>/worlds/<name>.yaml`（`blob` URL も可、自動で raw 化）
-- ほかの ubichill サーバーのワールドを一覧（グローバル）に出すには、公式アカウントが設定の「連合」でそのサーバーをフォローする。
+- ほかの ubichill サーバーのワールドを一覧（グローバル）に出すには、管理者がコントロールパネルの「連合」でそのサーバーをフォローする。
 - 受け手のインスタンスは URL を渡すだけでインスタンスを作成できる（`worldId` に id ではなく URL を渡す）。取得した定義は取り込み元（provenance）を `source`（`local`/`github`/`registry`/`remote-instance`/`url`）として保持する。
 
 ## 作者署名（`<world>.sig.json`）

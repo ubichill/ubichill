@@ -400,7 +400,7 @@ describe('一覧・未読・既読', () => {
         for (const n of [1, 2, 3]) {
             await service.worldLiked('alice', { url: `https://x.example/w${n}.yaml`, name: `w${n}`, authorId: 'bob' });
             tick();
-            await service.publishAnnouncement({ id: 'official', handle: 'ubichill' }, { title: `t${n}`, content: 'c' });
+            await service.publishAnnouncement({ id: 'official', isAdmin: true }, { title: `t${n}`, content: 'c' });
             tick();
         }
         const walk = async (cursor: string | undefined, acc: string[]): Promise<string[]> => {
@@ -429,24 +429,21 @@ describe('一覧・未読・既読', () => {
 });
 
 describe('運営のお知らせ', () => {
-    it('公式アカウント以外は出せない（何も配らない）', async () => {
+    it('管理者でなければ出せない（何も配らない）', async () => {
         const { service, delivered } = setup();
         expect(
-            await service.publishAnnouncement({ id: 'alice', handle: 'alice' }, { title: 't', content: 'c' }),
+            await service.publishAnnouncement({ id: 'alice', isAdmin: false }, { title: 't', content: 'c' }),
         ).toEqual({
             ok: false,
             error: 'forbidden',
         });
-        expect(
-            await service.publishAnnouncement({ id: 'alice', handle: undefined }, { title: 't', content: 'c' }),
-        ).toEqual({ ok: false, error: 'forbidden' });
         expect(delivered).toEqual([]);
     });
 
     it('全員に 1 回配り、読む人ごとの既読の位置で未読が決まる', async () => {
         const { service, delivered } = setup();
         const result = await service.publishAnnouncement(
-            { id: 'official', handle: 'ubichill' },
+            { id: 'official', isAdmin: true },
             { title: 't', content: 'c' },
         );
         expect(delivered).toEqual([
@@ -458,7 +455,7 @@ describe('運営のお知らせ', () => {
 
     it('登録より前に出したお知らせは、新しい人には既読で見える（未読に数えない）', async () => {
         const { service, clock } = setup('2026-10-01T00:00:00.000Z');
-        await service.publishAnnouncement({ id: 'official', handle: 'ubichill' }, { title: 'old', content: 'c' });
+        await service.publishAnnouncement({ id: 'official', isAdmin: true }, { title: 'old', content: 'c' });
         clock.now = new Date('2026-10-20T00:00:00.000Z');
         expect(await service.unreadCount('newcomer')).toBe(0);
         const page = await service.listFeed('newcomer', {});
@@ -467,7 +464,7 @@ describe('運営のお知らせ', () => {
 
     it('あるお知らせを既読にすると、それより前のお知らせも既読になる（位置を進めるだけ）', async () => {
         const { service, tick } = setup();
-        const official = { id: 'official', handle: 'ubichill' };
+        const official = { id: 'official', isAdmin: true };
         const first = await service.publishAnnouncement(official, { title: '1', content: 'c' });
         tick();
         const second = await service.publishAnnouncement(official, { title: '2', content: 'c' });
@@ -488,7 +485,7 @@ describe('運営のお知らせ', () => {
     it('全部を既読にすると、通知とお知らせの両方が 0 になり、ほかのタブにも流す', async () => {
         const { service, delivered, tick } = setup();
         await service.followRequested('alice', 'bob');
-        await service.publishAnnouncement({ id: 'official', handle: 'ubichill' }, { title: 't', content: 'c' });
+        await service.publishAnnouncement({ id: 'official', isAdmin: true }, { title: 't', content: 'c' });
         tick();
         delivered.length = 0;
         expect(await service.markRead('bob', { all: true })).toBe(0);

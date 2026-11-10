@@ -1,6 +1,7 @@
 /**
  * フレンドの関係の純粋なロジック（backend と frontend で同じ規則を使う）。公開範囲・招待は instanceAccess.ts。
  */
+import type { CustomEmoji } from './richText';
 
 /** フレンドの行（`userId` が `friendId` に申請した。承認されると accepted）。 */
 export interface FriendEdge {
@@ -70,6 +71,8 @@ export interface UserSummary {
     status?: string | null;
     /** ほかのサーバーの人ならそのドメイン（id は actor の URL、handle は `handle@domain`） */
     domain?: string;
+    /** ほかのサーバーの人の名前・自己紹介に使うカスタム絵文字（このサーバーの人には無い） */
+    emojis?: CustomEmoji[];
 }
 
 /** ほかのサーバーの人の ID（actor の URL）か。このサーバーのユーザー ID は URL にならない。 */

@@ -2,7 +2,6 @@
 "@ubichill/shared": minor
 "@ubichill/db": minor
 "@ubichill/backend": minor
-"@ubichill/frontend": minor
 ---
 
 ユーザーをブロックできるようにした（このサーバーの人と、ほかのサーバーの人）。

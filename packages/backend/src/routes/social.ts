@@ -18,6 +18,7 @@ import {
     type BlockedUser,
     BlockRequestSchema,
     type BlocksResponse,
+    type CustomEmoji,
     canSeeInstance,
     DEFAULT_PRESENCE_VISIBILITY,
     FEDERATION_FEATURES,
@@ -34,6 +35,7 @@ import {
     parseAuthorAccount,
     parseUserSearchQuery,
     type RemoteRelation,
+    remoteEmojisOf,
     remoteProfileView,
     type UserProfileWithFriendship,
     type UserSearchResponse,
@@ -54,6 +56,7 @@ import { remoteInstanceOf } from '../services/federation/remoteInstance';
 import { instanceManager } from '../services/instances/instanceManager';
 import { instanceRuntime } from '../services/instances/instanceRuntime';
 import { notificationService, notifyInBackground } from '../services/notifications/notificationService';
+import { roleService } from '../services/roles/roleService';
 import { hasBlockedUser, hiddenIdsFor, isBlockedBetween } from '../services/social/blockCheck';
 import { blockService } from '../services/social/blockService';
 import { friendEdgesOf, friendIdsOf } from '../services/social/friends';
@@ -82,13 +85,13 @@ async function profileWithFriendship(
     viewerId: string | undefined,
     user: UserProfileRecord,
 ): Promise<UserProfileWithFriendship> {
-    const [friendship, blocked] = viewerId
-        ? await Promise.all([
-              friendEdgesOf(viewerId).then((edges) => friendshipOf(edges, viewerId, user.id)),
-              hasBlockedUser(viewerId, user.id),
-          ])
-        : (['none', false] as const);
-    return { ...userProfileOf(user, selfAccount(user.handle)), friendship, ...blockedFlag(blocked) };
+    const [edges, roles, blocked] = await Promise.all([
+        viewerId ? friendEdgesOf(viewerId) : undefined,
+        roleService.publicRolesOf(user.id),
+        viewerId ? hasBlockedUser(viewerId, user.id) : false,
+    ]);
+    const friendship = viewerId && edges ? friendshipOf(edges, viewerId, user.id) : 'none';
+    return { ...userProfileOf(user, selfAccount(user.handle), roles), friendship, ...blockedFlag(blocked) };
 }
 
 /** 見ている人がこの人をブロックしているときだけ付ける。 */
@@ -99,6 +102,11 @@ const blockedFlag = (blocked: boolean): { blocked?: true } => (blocked ? { block
 /** ほかのサーバーの人との関係（このサーバーのフレンドと同じ語）。 */
 const remoteFriendshipOf = async (viewerId: string | undefined, actorId: string): Promise<Friendship> =>
     viewerId ? friendshipViewOf(await remoteFriendshipRepository.get(viewerId, actorId)) : 'none';
+
+const emojisOf = (profile: unknown): { emojis?: CustomEmoji[] } => {
+    const emojis = remoteEmojisOf(profile);
+    return emojis.length > 0 ? { emojis } : {};
+};
 
 /** 人として引ける actor（消えた actor・サーバーの actor は出さない）。 */
 const personOf = (actor: RemoteActorRecord | null | undefined): RemoteActorRecord | null =>
@@ -118,14 +126,16 @@ async function remoteProfileWithFriendship(
     viewerId: string | undefined,
     actor: RemoteActorRecord,
 ): Promise<UserProfileWithFriendship> {
-    const { fields, ...profile } = remoteProfileView(actor.profile);
+    const { fields, bioSegments, emojis: _emojis, ...profile } = remoteProfileView(actor.profile);
     const blocked = viewerId ? await hasBlockedUser(viewerId, actor.id) : false;
     return {
         ...remoteSummaryOf(actor),
         author: actor.account,
         bannerImage: actor.banner,
         ...profile,
+        roles: [],
         ...(fields.length > 0 ? { fields } : {}),
+        ...(bioSegments && bioSegments.length > 0 ? { bioSegments } : {}),
         ...(await remoteRelationOf(viewerId, actor)),
         friendship: await remoteFriendshipOf(viewerId, actor.id),
         ...blockedFlag(blocked),
@@ -235,6 +245,7 @@ router.get('/friends', requireAuth, async (req, res) => {
                 image: r.icon,
                 bio: r.summary,
                 domain: r.domain,
+                ...emojisOf(r.profile),
                 at: r.updatedAt,
             }));
     const strip = ({ at: _at, ...summary }: UserSummary & { at: Date }): UserSummary => summary;

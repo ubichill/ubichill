@@ -23,12 +23,15 @@ export function FriendButton({
     user,
     friendship,
     relation = {},
+    showStatus = true,
     onChange,
 }: {
     user: Pick<UserSummary, 'id' | 'name'>;
     friendship: Friendship;
     /** ほかのサーバーの人: フレンドに対応しているか・フェディバースでフォローされているか */
     relation?: RemoteRelation;
+    /** 申請中・フレンド・フォローされているかの文字も出す（プロフィールでは札で出すので出さない） */
+    showStatus?: boolean;
     onChange: (next: Friendship) => void;
 }) {
     const followLabel = followLabelOf(relation);
@@ -51,11 +54,15 @@ export function FriendButton({
 
     return (
         <span className={css({ display: 'inline-flex', alignItems: 'center', gap: '2', flexWrap: 'wrap' })}>
-            {friendship === 'outgoing' && <span className={css({ fontSize: '12px', color: 'textMuted' })}>申請中</span>}
-            {friendship === 'friends' && (
+            {showStatus && friendship === 'outgoing' && (
+                <span className={css({ fontSize: '12px', color: 'textMuted' })}>申請中</span>
+            )}
+            {showStatus && friendship === 'friends' && (
                 <span className={css({ fontSize: '12px', color: 'successText', fontWeight: '600' })}>フレンド</span>
             )}
-            {followLabel && <span className={css({ fontSize: '12px', color: 'textMuted' })}>{followLabel}</span>}
+            {showStatus && followLabel && (
+                <span className={css({ fontSize: '12px', color: 'textMuted' })}>{followLabel}</span>
+            )}
             {friendActionsOf(friendship, user.name, relation).map((a) => (
                 <button
                     key={a.action}

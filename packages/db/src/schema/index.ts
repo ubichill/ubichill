@@ -13,6 +13,7 @@ export * from './invites';
 export * from './notifications';
 export * from './pendingRegistrations';
 export * from './profileImages';
+export * from './roles';
 export * from './users';
 export * from './worlds';
 

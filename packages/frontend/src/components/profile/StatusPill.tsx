@@ -1,3 +1,5 @@
+import type { CustomEmoji } from '@ubichill/shared';
+import { EmojiText } from '@/components/ui/EmojiText';
 import { css } from '@/styled-system/css';
 
 const pill = css({
@@ -21,11 +23,13 @@ const dot = css({ width: '8px', height: '8px', borderRadius: 'full', bg: 'border
 const text = css({ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
 
 /** ひとこと（1 行）。長ければ省略し、全文は title で見せる。 */
-export function StatusPill({ status }: { status: string }) {
+export function StatusPill({ status, emojis }: { status: string; emojis?: readonly CustomEmoji[] }) {
     return (
         <span className={pill} title={status}>
             <span className={dot} aria-hidden />
-            <span className={text}>{status}</span>
+            <span className={text}>
+                <EmojiText text={status} emojis={emojis} />
+            </span>
         </span>
     );
 }

@@ -13,7 +13,6 @@ import {
     isRemoteUserId,
     type MarkReadRequest,
     NOTIFICATION_LIMITS,
-    OFFICIAL_HANDLE,
     STORED_NOTIFICATION_TYPES,
     type StoredNotificationType,
 } from '@ubichill/shared';
@@ -304,12 +303,12 @@ export function createNotificationService(deps: {
                 expiresAt: input.expiresAt,
             }),
 
-        /** 運営のお知らせを出す。出せるのは公式アカウントだけ。全員の SSE に届ける。 */
+        /** 運営のお知らせを出す。出せるのは管理者（公式アカウントと管理者のロールを持つ人）だけ。全員の SSE に届ける。 */
         async publishAnnouncement(
-            author: { id: string; handle: string | undefined },
+            author: { id: string; isAdmin: boolean },
             input: CreateAnnouncementRequest,
         ): Promise<AnnounceResult> {
-            if (author.handle !== OFFICIAL_HANDLE) return { ok: false, error: 'forbidden' };
+            if (!author.isAdmin) return { ok: false, error: 'forbidden' };
             const record = await deps.announcements.create({ authorId: author.id, ...input }, now());
             // 受け手ごとの既読は読むときに合わせる。配る時点では誰にとっても未読
             const notification = announcementNotificationOf(record, new Date(0));

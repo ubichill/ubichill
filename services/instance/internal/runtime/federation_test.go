@@ -48,7 +48,7 @@ func joinFederated(t *testing.T, c *websocket.Conn, token string) Object {
 }
 
 func visitTicket(user, origin string) ticket {
-	return ticket{"a", user, time.Now().Add(time.Minute).Unix(), "member", "", origin}
+	return ticket{"a", user, time.Now().Add(time.Minute).Unix(), "member", "", origin, false}
 }
 
 func TestFederatedVisitorJoinsOnlyWithTicketBoundToItsOrigin(t *testing.T) {
