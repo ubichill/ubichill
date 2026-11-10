@@ -42,6 +42,9 @@ import {
     userProfileOf,
 } from '@ubichill/shared';
 import { type Response, Router } from 'express';
+import rateLimit from 'express-rate-limit';
+import { redis } from '../lib/redis';
+import { sharedRateLimit } from '../lib/sharedRateLimit';
 import { optionalAuth, requireAuth } from '../middleware/auth';
 import { selfAccount, selfDomain } from '../services/authors/authorKeys';
 import { federation } from '../services/federation';
@@ -58,6 +61,17 @@ import { remoteSummaryOf, summariesOf, summaryOf } from '../services/social/user
 import { logger } from '../utils/logger';
 
 const router = Router();
+
+// ほかのサーバーの人のブロック・解除は連合へ送信が出るので、連打で増やさせない
+const blockLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => req.user?.id ?? 'anonymous',
+    message: { error: '操作が多すぎます。少し待ってから試してください' },
+    ...sharedRateLimit('social-blocks', redis, logger),
+});
 
 /** システムユーザーは検索・フレンドに出さない。 */
 const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
@@ -331,7 +345,7 @@ router.get('/blocks', requireAuth, async (req, res) => {
 });
 
 // ブロックする。フレンド・申請・招待・通知を消し、ほかのサーバーの人ならフォロワーからも外す。
-router.post('/blocks', requireAuth, async (req, res) => {
+router.post('/blocks', requireAuth, blockLimiter, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const parsed = BlockRequestSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'userId が必要です' });
@@ -353,7 +367,7 @@ router.post('/blocks', requireAuth, async (req, res) => {
 });
 
 // ブロックを解除する（消したフレンドの関係は戻さない）。
-router.delete('/blocks/:userId', requireAuth, async (req, res) => {
+router.delete('/blocks/:userId', requireAuth, blockLimiter, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     if (!(await blockService.unblock(req.user.id, String(req.params.userId)))) {
         return res.status(404).json({ error: 'ブロックしていません' });
