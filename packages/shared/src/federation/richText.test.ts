@@ -8,6 +8,7 @@ import {
     storedRichTextOf,
 } from '../user/richText';
 import { htmlToRichText, readCustomEmojis } from './richText';
+import { displayMultilineText, displayText } from './text';
 
 // mi.youkan.uk の actor の summary（2026-11-10 に取ったもの）
 const MISSKEY_SUMMARY =
@@ -69,11 +70,39 @@ describe('htmlToRichText', () => {
         ]);
     });
 
-    it('元の文字に印の文字（私用領域）があっても区切りを偽造できない', () => {
-        const segments = htmlToRichText('a0b<a href="https://x.example/">x</a>', 1500);
+    it('本文の文字（実体参照で書いた私用領域の文字も）は文字のまま。別のリンクに置き換わったり消えたりしない', () => {
+        const segments = htmlToRichText('a&#xE000;0&#xE001;b\uE0000\uE001c<a href="https://x.example/">x</a>', 1500);
         expect(segments).toEqual([
-            { kind: 'text', text: 'a0b' },
+            { kind: 'text', text: 'a\uE0000\uE001b\uE0000\uE001c' },
             { kind: 'link', text: 'x', href: 'https://x.example/' },
+        ]);
+    });
+
+    it('閉じない <a> や < を並べた壊れた HTML（actor の上限 256KiB）も、長さに比例する時間で読む', () => {
+        const time = (html: string) => {
+            const start = performance.now();
+            htmlToRichText(html, 1500);
+            displayText(html, 100);
+            displayMultilineText(html, 1500);
+            return performance.now() - start;
+        };
+        const unit = '<a href="https://x.example/">x';
+        const small = time(unit.repeat(Math.floor(16_000 / unit.length)));
+        const large = time(unit.repeat(Math.floor(256_000 / unit.length)));
+        // 16 倍の入力で、時間が 2 乗（256 倍）に伸びない
+        expect(large).toBeLessThan(Math.max(small, 1) * 64);
+        expect(large).toBeLessThan(500);
+        expect(time('<'.repeat(256_000))).toBeLessThan(500);
+        expect(time('</p><p a'.repeat(32_000))).toBeLessThan(500);
+    });
+
+    it('閉じない <a> はタグとして捨て、後ろの閉じた <a> はリンクにする', () => {
+        expect(htmlToRichText('前<a href="https://a.example/">後<a href="https://b.example/">b</a>', 1500)).toEqual([
+            { kind: 'text', text: '前' },
+            { kind: 'link', text: '後b', href: 'https://a.example/' },
+        ]);
+        expect(htmlToRichText('前<a href="https://a.example/">閉じない', 1500)).toEqual([
+            { kind: 'text', text: '前閉じない' },
         ]);
     });
 
