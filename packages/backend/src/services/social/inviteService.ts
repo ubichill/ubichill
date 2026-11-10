@@ -22,7 +22,14 @@ export const inviteService = createInviteService({
     rooms: {
         async find(instanceId) {
             const record = await instanceRepository.findById(instanceId);
-            return record && { id: record.id, leaderId: record.leaderId, accessType: record.accessType };
+            return (
+                record && {
+                    id: record.id,
+                    leaderId: record.leaderId,
+                    accessType: record.accessType,
+                    maxUsers: record.maxUsers,
+                }
+            );
         },
         async describe(instanceId) {
             const record = await instanceRepository.findById(instanceId);

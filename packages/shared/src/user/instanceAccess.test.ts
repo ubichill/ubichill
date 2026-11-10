@@ -1,18 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import {
+    blockedByCapacity,
     canJoinInstance,
     canSeeInstance,
     type InstanceAudience,
     inviteRefusal,
     inviteRequestRefusal,
+    isFullFor,
     SendInvitesRequestSchema,
 } from './instanceAccess';
 
-const audience = (accessType: InstanceAudience['accessType'], memberIds: string[] = []): InstanceAudience => ({
+const audience = (
+    accessType: InstanceAudience['accessType'],
+    memberIds: string[] = [],
+    maxUsers = 10,
+): InstanceAudience => ({
     accessType,
     leaderId: 'leader',
     memberIds,
+    maxUsers,
 });
+/** 定員 2 で、ちょうど 2 人いる部屋。 */
+const fullRoom = (accessType: InstanceAudience['accessType'], memberIds = ['m1', 'm2']) =>
+    audience(accessType, memberIds, 2);
 const none = new Set<string>();
 const friendOfLeader = new Set(['leader']);
 const friendOfMember = new Set(['m1']);
@@ -71,6 +81,35 @@ describe('canSeeInstance / canJoinInstance', () => {
     });
 });
 
+describe('blockedByCapacity / isFullFor', () => {
+    it('定員ちょうどで満員。1 人空いていれば入れる', () => {
+        expect(blockedByCapacity(audience('public', ['m1'], 2), 'v')).toBe(false);
+        expect(blockedByCapacity(fullRoom('public'), 'v')).toBe(true);
+    });
+
+    it('作成者は満員でも入れる。作成者が入って定員を超えた部屋にも入り直せる', () => {
+        expect(blockedByCapacity(fullRoom('public'), 'leader')).toBe(false);
+        expect(blockedByCapacity(fullRoom('public', ['m1', 'm2', 'leader']), 'leader')).toBe(false);
+        expect(blockedByCapacity(fullRoom('public', ['m1', 'm2', 'leader']), 'v')).toBe(true);
+    });
+
+    it('中にいる人（入り直し）は満員でも入れる。ログインしていない人は入れない', () => {
+        expect(blockedByCapacity(fullRoom('public'), 'm1')).toBe(false);
+        expect(blockedByCapacity(fullRoom('public'), null)).toBe(true);
+    });
+
+    it('一覧の部屋: 人数が定員以上なら、作成者以外には満員', () => {
+        const at = (currentUsers: number, maxUsers: number) => ({
+            leaderId: 'leader',
+            stats: { currentUsers, maxUsers },
+        });
+        expect(isFullFor(at(1, 2), 'v')).toBe(false);
+        expect(isFullFor(at(2, 2), 'v')).toBe(true);
+        expect(isFullFor(at(3, 2), null)).toBe(true);
+        expect(isFullFor(at(3, 2), 'leader')).toBe(false);
+    });
+});
+
 describe('inviteRefusal', () => {
     const friends = (inviter: string[], leader: string[] = []) => ({
         inviter: new Set(inviter),
@@ -107,6 +146,17 @@ describe('inviteRefusal', () => {
         expect(inviteRefusal(audience('public', ['s']), 's', 's', friends(['s']))).toBe('self');
         expect(inviteRefusal(audience('public', ['s', 't']), 's', 't', friends(['t']))).toBe('already-inside');
         expect(inviteRefusal(audience('public', ['s']), 's', 'leader', friends(['leader']))).toBe('already-inside');
+    });
+
+    it('満員の部屋には送れない（作成者が送っても）。ちょうど 1 人空いていれば送れる', () => {
+        expect(inviteRefusal(fullRoom('public', ['s', 'm2']), 's', 't', friends(['t']))).toBe('full');
+        expect(inviteRefusal(fullRoom('public', ['leader', 'm2']), 'leader', 't', friends(['t']))).toBe('full');
+        expect(inviteRefusal(audience('public', ['s'], 2), 's', 't', friends(['t']))).toBeNull();
+    });
+
+    it('満員で公開範囲でも送れないときは、公開範囲の理由を返す（空くのを待っても送れない）', () => {
+        expect(inviteRefusal(fullRoom('friend_only', ['s', 'm2']), 's', 't', friends(['t']))).toBe('needs-leader');
+        expect(inviteRefusal(fullRoom('public', ['s', 't']), 's', 't', friends(['t']))).toBe('already-inside');
     });
 });
 
@@ -153,6 +203,26 @@ describe('inviteRequestRefusal', () => {
         const remote = 'https://b.example/ap/users/f';
         expect(inviteRequestRefusal('me', remote, new Set([remote]), 'remote')).toBeNull();
         expect(SendInvitesRequestSchema.safeParse({ userIds: [remote] }).success).toBe(true);
+    });
+
+    it('場所を見せている相手の部屋が満員なら頼めない（入れる部屋でも、招待が要る部屋でも）', () => {
+        expect(inviteRequestRefusal('me', 'f', friendsOfMe, fullRoom('public', ['f', 'm2']))).toBe('full');
+        expect(inviteRequestRefusal('me', 'f', friendsOfMe, fullRoom('invite_only', ['f', 'm2']))).toBe('full');
+        expect(inviteRequestRefusal('me', 'f', friendsOfMe, audience('invite_only', ['f'], 2))).toBeNull();
+    });
+
+    it('満員でも、頼む人が作成者ならそのまま入れる', () => {
+        const mine = { ...fullRoom('public', ['f', 'm2']), leaderId: 'me' };
+        expect(inviteRequestRefusal('me', 'f', friendsOfMe, mine)).toBe('can-join');
+    });
+
+    it('満員かは、相手が場所を見せていて頼む人に部屋が見えるときだけ理由にする（様子を漏らさない）', () => {
+        const full = fullRoom('public', ['f', 'm2']);
+        expect(inviteRequestRefusal('me', 'f', friendsOfMe, full, 'hidden')).toBeNull();
+        expect(inviteRequestRefusal('me', 'f', friendsOfMe, full, 'online')).toBeNull();
+        // フレンドのみで作成者のフレンドでない: 現在地は「プライベート」なので、満員かも伏せる
+        const hiddenRoom = { ...fullRoom('friend_only', ['f', 'm2']), leaderId: 'x' };
+        expect(inviteRequestRefusal('me', 'f', friendsOfMe, hiddenRoom)).toBeNull();
     });
 
     it('部屋にいない・フレンドでない・自分自身には頼めない', () => {

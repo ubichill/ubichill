@@ -458,9 +458,10 @@ func TestHandoffEndpointRejectsBadRequests(t *testing.T) {
 		t.Fatalf("broken state: %d", code)
 	}
 	crowd := *snapshot
-	crowd.Members = []handoffMember{{ID: "a", User: Object{}}, {ID: "b", User: Object{}}, {ID: "c", User: Object{}}, {ID: "d", User: Object{}}}
+	// 作成者の 1 人分を超えて定員より多い（定員 3 に 5 人）
+	crowd.Members = []handoffMember{{ID: "a", User: Object{}}, {ID: "b", User: Object{}}, {ID: "c", User: Object{}}, {ID: "d", User: Object{}}, {ID: "e", User: Object{}}}
 	if code := send(handoffRequest{Phase: "prepare", Snapshot: &crowd}); code != 409 {
-		t.Fatalf("more members than maxUsers: %d", code)
+		t.Fatalf("more members than maxUsers + leader: %d", code)
 	}
 	other := *snapshot
 	other.Definition.ID = "other"

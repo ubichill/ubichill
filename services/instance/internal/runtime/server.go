@@ -405,6 +405,7 @@ func (s *Server) Handler() http.Handler {
 			UserID string `json:"userId"`
 			Name   string `json:"name"`
 			Origin string `json:"origin"`
+			Leader bool   `json:"leader"`
 		}
 		if !decode(w, r, &body) {
 			return
@@ -423,7 +424,7 @@ func (s *Server) Handler() http.Handler {
 			writeJSON(w, 400, failure("invalid participant or instance"))
 			return
 		}
-		s.grantFor(w, room, ticket{r.PathValue("id"), body.UserID, time.Now().Add(time.Minute * 2).Unix(), "member", body.Name, body.Origin})
+		s.grantFor(w, room, ticket{r.PathValue("id"), body.UserID, time.Now().Add(time.Minute * 2).Unix(), "member", body.Name, body.Origin, body.Leader})
 	})
 	mux.HandleFunc("POST /realtime/v1/instances/{id}/guest", func(w http.ResponseWriter, r *http.Request) {
 		if !s.config.Guests {
@@ -479,7 +480,7 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request) bool {
 
 // grant はチケットを発行する。発行するのは owner 自身なので、部屋の今の世代を入れる。
 func (s *Server) grant(w http.ResponseWriter, r *http.Request, room *Room, id, name, kind string, ttl time.Duration) {
-	s.grantFor(w, room, ticket{r.PathValue("id"), id, time.Now().Add(ttl).Unix(), kind, name, ""})
+	s.grantFor(w, room, ticket{r.PathValue("id"), id, time.Now().Add(ttl).Unix(), kind, name, "", false})
 }
 func (s *Server) grantFor(w http.ResponseWriter, room *Room, t ticket) {
 	if room == nil {

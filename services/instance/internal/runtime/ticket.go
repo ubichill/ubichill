@@ -22,6 +22,8 @@ type ticket struct {
 	// Such a ticket is accepted only from a connection with exactly that Origin, and a connection from an origin
 	// this server does not serve can join only with such a ticket.
 	Origin string `json:"origin,omitempty"`
+	// Leader marks the room's creator, who may join a full room (one over MaxUsers at most).
+	Leader bool `json:"leader,omitempty"`
 }
 
 // claims は署名する値。部屋の世代 (Gen, Epoch) を入れ、同じ部屋 ID で作り直された部屋に前の部屋のチケットを通さない
