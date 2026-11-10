@@ -118,14 +118,16 @@ function setup() {
     const users = memoryUsers([user('root', 'ubichill'), user('alice'), user('bob'), user(SYSTEM, 'system')]);
     const roles = memoryRoles(users.map);
     const clock = { now: NOW };
+    const announced: string[][] = [];
     const service = createRoleService({
         roles,
         users,
         localDomain: () => 'ubichill.example',
         hiddenUserIds: [SYSTEM],
+        publicRolesChanged: (ids) => announced.push([...ids]),
         now: () => clock.now,
     });
-    return { service, roles, users, clock };
+    return { service, roles, users, clock, announced };
 }
 
 const input = (patch: Partial<RoleFields> = {}) => ({
@@ -323,5 +325,39 @@ describe('ユーザーの一覧', () => {
         }
         const result = await service.searchUsers('');
         expect(result.ok && result.value).toHaveLength(USER_LIST_LIMIT);
+    });
+});
+
+describe('ほかのサーバーへの知らせ（actor の項目の表に公開ロールを載せている）', () => {
+    it('公開ロールを付けた・外した人だけに知らせ、非公開ロールでは知らせない', async () => {
+        const { service, announced } = setup();
+        const open = await createRole(service);
+        const secret = await createRole(service, { name: '裏', isPublic: false });
+        await service.assign(open.id, 'alice', { expiresAt: null });
+        await service.assign(secret.id, 'bob', { expiresAt: null });
+        await service.unassign(secret.id, 'bob');
+        await service.unassign(open.id, 'alice');
+        await service.unassign(open.id, 'alice');
+        expect(announced).toEqual([['alice'], ['alice']]);
+    });
+
+    it('ロールを変えたら、公開の前後どちらかならメンバー全員に。消したら消す前のメンバーに', async () => {
+        const { service, announced } = setup();
+        const secret = await createRole(service, { isPublic: false });
+        await service.assign(secret.id, 'alice', { expiresAt: null });
+        await service.assign(secret.id, 'bob', { expiresAt: null });
+        await service.updateRole(secret.id, input({ isPublic: false, name: '裏2' }));
+        expect(announced).toEqual([]);
+        await service.updateRole(secret.id, input({ isPublic: true }));
+        await service.updateRole(secret.id, input({ isPublic: false }));
+        await service.updateRole(secret.id, input({ isPublic: true }));
+        await service.deleteRole(secret.id);
+        await service.deleteRole(secret.id);
+        expect(announced).toEqual([
+            ['alice', 'bob'],
+            ['alice', 'bob'],
+            ['alice', 'bob'],
+            ['alice', 'bob'],
+        ]);
     });
 });

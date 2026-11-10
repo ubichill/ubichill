@@ -16,6 +16,7 @@ import {
     remoteFriendshipRepository,
     remoteServerRepository,
     remoteVisitRepository,
+    roleRepository,
     userRepository,
     userSettingsRepository,
     worldRepository,
@@ -30,6 +31,7 @@ import {
     parseRoomAddress,
     profileLanguagesView,
     profileLinksView,
+    publicRolesOf,
     worldPagePath,
 } from '@ubichill/shared';
 import { appConfig } from '../../config';
@@ -329,7 +331,10 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         profileOrigin: frontendOrigin,
         async findUser(userId) {
             if (userId === SYSTEM_USER_ID) return undefined;
-            const user = await userRepository.findProfileById(userId);
+            const [user, assignments] = await Promise.all([
+                userRepository.findProfileById(userId),
+                roleRepository.assignmentsOf([userId]),
+            ]);
             return (
                 user && {
                     id: user.id,
@@ -343,6 +348,7 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
                         status: user.status,
                         links: profileLinksView(user.links),
                         languages: profileLanguagesView(user.languages),
+                        roles: publicRolesOf(assignments, new Date()).map((role) => role.name),
                     },
                 }
             );

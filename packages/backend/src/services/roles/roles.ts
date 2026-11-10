@@ -78,6 +78,8 @@ export interface RoleServiceDeps {
     localDomain: () => string;
     /** ロールを付けられず、検索にも出さないユーザー（システムユーザー） */
     hiddenUserIds: readonly string[];
+    /** プロフィールに出すロールが変わったかもしれない人（ほかのサーバーに actor の取り直しを頼む） */
+    publicRolesChanged?: (userIds: readonly string[]) => void;
     now?: () => Date;
 }
 
@@ -122,6 +124,11 @@ const memberView = (member: StoredMember): RoleMember => ({
  */
 export function createRoleService(deps: RoleServiceDeps) {
     const now = deps.now ?? (() => new Date());
+    const changed = (userIds: readonly string[]) => {
+        if (userIds.length > 0) deps.publicRolesChanged?.(userIds);
+    };
+    const memberIdsOf = async (roleId: string, at: Date) =>
+        (await deps.roles.members(roleId, at)).map((m) => m.user.id);
     const hidden = new Set(deps.hiddenUserIds);
     const findUser = async (userId: string): Promise<RoleUser | undefined> =>
         hidden.has(userId) ? undefined : deps.users.findById(userId);
@@ -173,14 +180,21 @@ export function createRoleService(deps: RoleServiceDeps) {
             const parsed = RoleInputSchema.safeParse(body);
             if (!parsed.success) return invalid(parsed.error);
             const at = now();
+            const before = await deps.roles.findById(roleId, at);
             const updated = await deps.roles.update(roleId, parsed.data, at);
             if (!updated) return notFound('ロールがありません');
             const counted = await deps.roles.findById(roleId, at);
+            if (before?.isPublic || updated.isPublic) changed(await memberIdsOf(roleId, at));
             return ok(roleView(updated, counted?.memberCount ?? 0));
         },
 
         async deleteRole(roleId: string): Promise<RoleOutcome<null>> {
-            return (await deps.roles.remove(roleId)) ? ok(null) : notFound('ロールがありません');
+            const at = now();
+            const role = await deps.roles.findById(roleId, at);
+            const memberIds = role?.isPublic ? await memberIdsOf(roleId, at) : [];
+            if (!(await deps.roles.remove(roleId))) return notFound('ロールがありません');
+            changed(memberIds);
+            return ok(null);
         },
 
         async members(roleId: string): Promise<RoleOutcome<RoleMember[]>> {
@@ -200,6 +214,7 @@ export function createRoleService(deps: RoleServiceDeps) {
             if (!role) return notFound('ロールがありません');
             if (!user) return notFound('ユーザーがいません');
             const saved = await deps.roles.assign({ roleId, userId, expiresAt: expiry.expiresAt }, at);
+            if (role.isPublic) changed([user.id]);
             return ok(
                 memberView({
                     user: { id: user.id, name: user.name, handle: user.handle, image: user.image },
@@ -209,7 +224,10 @@ export function createRoleService(deps: RoleServiceDeps) {
         },
 
         async unassign(roleId: string, userId: string): Promise<RoleOutcome<null>> {
-            return (await deps.roles.unassign(roleId, userId)) ? ok(null) : notFound('アサインがありません');
+            const role = await deps.roles.findById(roleId, now());
+            if (!(await deps.roles.unassign(roleId, userId))) return notFound('アサインがありません');
+            if (role?.isPublic) changed([userId]);
+            return ok(null);
         },
 
         /**
