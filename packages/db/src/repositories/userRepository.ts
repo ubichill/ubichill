@@ -17,7 +17,7 @@ import {
     sql,
 } from 'drizzle-orm';
 import { type Database, db } from '../index';
-import { accounts, instances, sessions, userProfiles, users, worlds, worldVersions } from '../schema';
+import { accounts, instances, sessions, userBlocks, userProfiles, users, worlds, worldVersions } from '../schema';
 import { insertCredentialUser, type NewCredentialUser } from './credentialUser';
 
 export type UserRecord = typeof users.$inferSelect;
@@ -325,6 +325,7 @@ export const userRepository = {
     /**
      * ユーザーを削除する（ワールド・お気に入り等は FK の cascade で消える）。ほかの人のインスタンスが
      * このユーザーのワールドの版を指していると版を消せない（RESTRICT）ので、先に参照を外す。
+     * ほかの人がこのユーザーをブロックした行は、blocked_id が actor の URL も入る列で FK が無いので、ここで消す。
      */
     async deleteById(id: string): Promise<void> {
         await db.transaction(async (tx) => {
@@ -341,6 +342,7 @@ export const userRepository = {
                             .where(eq(worlds.authorId, id)),
                     ),
                 );
+            await tx.delete(userBlocks).where(eq(userBlocks.blockedId, id));
             await tx.delete(users).where(eq(users.id, id));
         });
     },

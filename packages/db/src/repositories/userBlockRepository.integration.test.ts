@@ -58,4 +58,12 @@ describe.skipIf(!RUN)('userBlockRepository (DB統合)', () => {
         await userRepository.deleteById(ids.c);
         expect(await userBlockRepository.findBetween(ids.a, ids.c)).toEqual([]);
     });
+
+    it('ブロックされた人が消えたら、ブロックした人の一覧からも消える（blocked_id には FK が無い）', async () => {
+        await userBlockRepository.add(ids.a, ids.b);
+        await userRepository.deleteById(ids.b);
+        expect(await userBlockRepository.findBetween(ids.a, ids.b)).toEqual([]);
+        expect((await userBlockRepository.listForUser(ids.a)).map((r) => r.blockedId)).toEqual([ACTOR]);
+        expect(await userBlockRepository.countForUser(ids.a)).toBe(1);
+    });
 });
