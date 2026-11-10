@@ -2,7 +2,12 @@ import { DOMAIN_POLICY_LABELS } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { HudIcon } from '@/components/hud/HudIcon';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import { type DomainPolicy, fetchDomainPolicies, fetchFederationServers, setDomainPolicy } from '@/lib/federationApi';
+import {
+    type DomainPolicy,
+    fetchDomainPolicies,
+    fetchFederationServers,
+    setDomainPolicy,
+} from '@/lib/admin/federationApi';
 import { css, cva } from '@/styled-system/css';
 import { domainFromInput, type ServerRow, serverRows } from './serverRows';
 

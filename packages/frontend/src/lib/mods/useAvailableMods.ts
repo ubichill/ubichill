@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { MOD_CDN_URL } from '@/lib/modCdn';
+import { MOD_CDN_URL } from '@/lib/mods/modCdn';
 
 /**
  * 利用可能modの 1 エントリ。

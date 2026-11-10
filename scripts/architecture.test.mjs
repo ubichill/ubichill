@@ -43,7 +43,7 @@ describe('host-runs-mods-without-backend', () => {
     it('説明のコメント・テスト・mod の経路の外は対象にしない', () => {
         expect(violations('packages/sandbox/src/host/fetchHandler.ts', '/**\n * コアの `/api/v1/…` は null\n */')).toEqual([]);
         expect(violations('packages/frontend/src/world/x.test.ts', "fetch('/api/v1/x')")).toEqual([]);
-        expect(violations('packages/frontend/src/lib/serviceTokens.ts', "fetch(`${API_BASE}/api/v1/service-tokens`)")).toEqual([]);
+        expect(violations('packages/frontend/src/lib/mods/serviceTokens.ts', "fetch(`${API_BASE}/api/v1/service-tokens`)")).toEqual([]);
     });
 });
 

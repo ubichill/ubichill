@@ -4,8 +4,7 @@ import { useNavigate } from 'react-router';
 import yaml from 'yaml';
 import { fetchMyAccount } from '@/lib/account/me';
 import { API_BASE } from '@/lib/api';
-import { createInstance as createInstanceApi } from '@/lib/instancesApi';
-import { MOD_CDN_URL } from '@/lib/modCdn';
+import { MOD_CDN_URL } from '@/lib/mods/modCdn';
 import {
     authorSignerFor,
     browserFetch,
@@ -14,6 +13,7 @@ import {
     type SavedWorld,
     saveWorldBundle,
 } from '@/lib/signing';
+import { createInstance as createInstanceApi } from '@/lib/worlds/instancesApi';
 import { buildWorldLock } from '@/world';
 import type { PublishState } from './useDefinition';
 import type { PublishDecision } from './usePublishSetup';

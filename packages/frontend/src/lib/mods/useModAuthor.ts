@@ -1,6 +1,6 @@
 import { MOD_AUTHOR_CACHE_TTL_MS } from '@ubichill/loader';
 import { useCallback, useEffect, useState } from 'react';
-import { HOST_MOD_SOURCE, MOD_CDN_URL } from '@/lib/modCdn';
+import { HOST_MOD_SOURCE, MOD_CDN_URL } from '@/lib/mods/modCdn';
 import { type ModAuthorCheck, modAuthorFetcher } from '@/world';
 import type { AvailableMod } from './useAvailableMods';
 

@@ -4,8 +4,8 @@ import { useNavigate } from 'react-router';
 import { HudIcon } from '@/components/hud/HudIcon';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { signOut } from '@/lib/auth-client';
-import { resetBlocks } from '@/lib/blocks';
-import { resetHome } from '@/lib/homeStore';
+import { resetHome } from '@/lib/home/homeStore';
+import { resetBlocks } from '@/lib/social/blocks';
 import { css } from '@/styled-system/css';
 
 /** ログアウト（設定の「アカウント」）。部屋から抜けてからサインアウトする。 */

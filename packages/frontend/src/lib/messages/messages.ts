@@ -15,7 +15,7 @@ import {
     type UserSummary,
     withMessageReactions,
 } from '@ubichill/shared';
-import { notificationText } from './notifications';
+import { notificationText } from '../notifications/notifications';
 
 /** 開いている会話（メッセージは古い順）。 */
 export interface ConversationState {

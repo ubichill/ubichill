@@ -3,12 +3,12 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useHudNavigation } from '@/components/hud/HudNavigationContext';
 import { useOpenUser } from '@/components/social';
-import { answerFollower } from '@/lib/fediverseApi';
-import { fetchInstance } from '@/lib/instancesApi';
-import { acceptInviteRequest, declineInviteRequest } from '@/lib/inviteApi';
-import { type NotificationActionId, notificationActionsOf } from '@/lib/notificationActions';
+import { type NotificationActionId, notificationActionsOf } from '@/lib/notifications/notificationActions';
 import { useSession } from '@/lib/session';
-import { acceptFriend, removeFriend } from '@/lib/socialApi';
+import { answerFollower } from '@/lib/social/fediverseApi';
+import { acceptInviteRequest, declineInviteRequest } from '@/lib/social/inviteApi';
+import { acceptFriend, removeFriend } from '@/lib/social/socialApi';
+import { fetchInstance } from '@/lib/worlds/instancesApi';
 
 /** 通知 1 件に出す操作と、その実行（API・画面の移動）。 */
 export function useNotificationActions(

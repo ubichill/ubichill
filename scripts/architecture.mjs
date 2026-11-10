@@ -176,7 +176,7 @@ export const WORLD_APP_ALLOWED = [
     'components/permissions/',
     'lib/toast.ts',
     'lib/settings/',
-    'lib/notifications.ts',
+    'lib/notifications/notifications.ts',
 ];
 
 const FRONTEND_SRC = 'packages/frontend/src/';

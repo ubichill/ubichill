@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import { type FederationPeer, fetchPeers, followPeer, unfollowPeer } from '@/lib/federationApi';
-import { peerOriginOf } from '@/lib/peerOrigin';
+import { type FederationPeer, fetchPeers, followPeer, unfollowPeer } from '@/lib/admin/federationApi';
+import { peerOriginOf } from '@/lib/admin/peerOrigin';
 import { css, cva } from '@/styled-system/css';
 
 const button = cva({

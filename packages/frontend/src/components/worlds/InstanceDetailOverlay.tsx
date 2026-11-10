@@ -1,9 +1,9 @@
 import { type Instance, isFullFor, type WorldListItem, worldOriginDomain } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useDialogLayer } from '@/components/ui/dialogLayer';
-import { createInstance, fetchInstances, fetchWorld } from '@/lib/instancesApi';
 import { useSession } from '@/lib/session';
-import { instanceWorldRef } from '@/lib/worldRef';
+import { createInstance, fetchInstances, fetchWorld } from '@/lib/worlds/instancesApi';
+import { instanceWorldRef } from '@/lib/worlds/worldRef';
 import { css } from '@/styled-system/css';
 import { FavoriteButton } from './FavoriteButton';
 import { useWorldPagePath } from './useWorldPagePath';

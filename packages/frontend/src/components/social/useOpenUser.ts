@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router';
 import { useHudNavigation } from '@/components/hud/HudNavigationContext';
-import { userPagePath } from '@/lib/userPath';
+import { userPagePath } from '@/lib/profile/userPath';
 
 /** 人のプロフィールを開く。ランチパッドの中ならその場で重ね（部屋から抜けない）、外ならユーザーページへ移る。 */
 export function useOpenUser(onNavigate?: () => void) {

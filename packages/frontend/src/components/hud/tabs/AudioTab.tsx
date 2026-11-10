@@ -1,5 +1,5 @@
 import { useId } from 'react';
-import { useMediaOutput } from '@/lib/mediaOutputSetting';
+import { useMediaOutput } from '@/lib/settings/mediaOutputSetting';
 import { css, cva } from '@/styled-system/css';
 import { HudIcon } from '../HudIcon';
 import { tabPanel, tabSection } from './shared';

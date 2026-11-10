@@ -16,7 +16,7 @@ import type {
 } from '@ubichill/shared';
 import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { HOST_MOD_SOURCE, MOD_CDN_URL } from '@/lib/modCdn';
+import { HOST_MOD_SOURCE, MOD_CDN_URL } from '@/lib/mods/modCdn';
 import { css } from '@/styled-system/css';
 import { buildWorldLock, EntityRenderer, ModRegistryProvider, useModRegistry } from '@/world';
 

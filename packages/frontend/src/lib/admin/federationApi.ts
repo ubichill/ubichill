@@ -1,5 +1,5 @@
-import { recheckIfForbidden } from './account/adminStatus';
-import { API_BASE } from './api';
+import { recheckIfForbidden } from '../account/adminStatus';
+import { API_BASE } from '../api';
 
 /** 連合でフォローしているサーバー（ワールド一覧の「グローバル」に、そのサーバーの公開ワールドが出る）。 */
 export interface FederationPeer {

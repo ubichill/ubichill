@@ -7,13 +7,13 @@ import {
     type NotificationActionId,
     type NotificationActionTone,
     notificationDetailOf,
-} from '@/lib/notificationActions';
-import { isExpired, notificationText, relativeTime } from '@/lib/notifications';
+} from '@/lib/notifications/notificationActions';
+import { isExpired, notificationText, relativeTime } from '@/lib/notifications/notifications';
 import { css, cva } from '@/styled-system/css';
 import { useNotificationActions } from './useNotificationActions';
 
 /**
- * 通知 1 件（文面と操作）。押すと既読にする。種類ごとに何を出すかは lib/notificationActions.ts。
+ * 通知 1 件（文面と操作）。押すと既読にする。種類ごとに何を出すかは lib/notifications/notificationActions.ts。
  */
 export function NotificationCard({
     notification,

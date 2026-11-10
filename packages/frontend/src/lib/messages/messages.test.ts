@@ -1,5 +1,6 @@
 import { type AppNotification, type ConversationPage, type DirectMessage, MESSAGE_LIMITS } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
+import { groupNotifications } from '../notifications/notifications';
 import {
     composerKeyAction,
     draftState,
@@ -13,7 +14,6 @@ import {
     withReactions,
     withSentMessage,
 } from './messages';
-import { groupNotifications } from './notifications';
 
 const person = (id: string) =>
     ({ type: 'Person', id, name: id.toUpperCase(), preferredUsername: id, icon: null }) as const;

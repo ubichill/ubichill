@@ -1,7 +1,7 @@
 import { resolveLatestVersion } from '@ubichill/loader';
 import { type Dependency, displayAuthorAccount } from '@ubichill/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { HOST_MOD_SOURCE, MOD_CDN_URL } from '@/lib/modCdn';
+import { HOST_MOD_SOURCE, MOD_CDN_URL } from '@/lib/mods/modCdn';
 import { type AvailableMod, useAvailableMods } from '@/lib/mods/useAvailableMods';
 import { useModAuthor } from '@/lib/mods/useModAuthor';
 import { SETTINGS_KEYS, useSetting } from '@/lib/settings';

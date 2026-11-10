@@ -1,6 +1,6 @@
 import type { AdminUserView, Role, RoleInput, RoleMember } from '@ubichill/shared';
-import { recheckIfForbidden, requestAdminRecheck } from './account/adminStatus';
-import { API_BASE } from './api';
+import { recheckIfForbidden, requestAdminRecheck } from '../account/adminStatus';
+import { API_BASE } from '../api';
 
 const BASE = `${API_BASE}/api/v1/admin`;
 

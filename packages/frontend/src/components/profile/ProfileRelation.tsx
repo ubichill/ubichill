@@ -1,6 +1,6 @@
 import { HudIcon } from '@/components/hud/HudIcon';
 import { socialButton } from '@/components/social/buttons';
-import type { ProfileAction } from '@/lib/profileActions';
+import type { ProfileAction } from '@/lib/profile/profileActions';
 import { css, cx } from '@/styled-system/css';
 
 /** バナーの左上: 相手との関係（フォローされている・フレンド・ブロック中）。 */
@@ -17,7 +17,7 @@ export function ProfileRelationBadges({ badges }: { badges: readonly string[] })
     );
 }
 
-/** バナーの右上: 相手への操作（何を出すかは lib/profileActions.ts）。 */
+/** バナーの右上: 相手への操作（何を出すかは lib/profile/profileActions.ts）。 */
 export function ProfileRelationActions({
     actions,
     busy,

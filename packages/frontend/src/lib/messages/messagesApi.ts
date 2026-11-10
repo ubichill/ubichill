@@ -5,7 +5,7 @@ import type {
     DirectMessage,
     MessageReactionsResponse,
 } from '@ubichill/shared';
-import { API_BASE } from './api';
+import { API_BASE } from '../api';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const res = await fetch(`${API_BASE}/api/v1/messages${path}`, {

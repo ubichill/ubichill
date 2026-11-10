@@ -2,8 +2,8 @@ import type { FediverseFollower, FediverseOverview, FediverseSettingsUpdate } fr
 import { type ReactNode, useEffect, useState } from 'react';
 import { UserIdentity, useOpenUser } from '@/components/social';
 import { Switch } from '@/components/ui/Switch';
-import { withFollowerAnswered } from '@/lib/fediverse';
-import { answerFollower, fetchFediverse, updateFediverseSettings } from '@/lib/fediverseApi';
+import { withFollowerAnswered } from '@/lib/social/fediverse';
+import { answerFollower, fetchFediverse, updateFediverseSettings } from '@/lib/social/fediverseApi';
 import { pushToast } from '@/lib/toast';
 import { css, cva } from '@/styled-system/css';
 import { settingsGroup, settingsHeading, settingsNote } from './settingsStyles';

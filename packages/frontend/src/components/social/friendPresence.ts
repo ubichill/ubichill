@@ -2,8 +2,8 @@
  * フレンドの現在地の並べ方（ソーシャルとランチパッドで共有する純粋な関数）。
  */
 import type { Instance, UserSummary } from '@ubichill/shared';
-import type { FriendLocationsResponse, UnreachableFriend } from '@/lib/socialApi';
-import { relativeTime } from '../../lib/notifications';
+import type { FriendLocationsResponse, UnreachableFriend } from '@/lib/social/socialApi';
+import { relativeTime } from '../../lib/notifications/notifications';
 
 export interface FriendPlace {
     instance: Instance;

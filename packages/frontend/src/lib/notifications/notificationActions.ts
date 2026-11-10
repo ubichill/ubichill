@@ -1,9 +1,9 @@
 /**
  * 通知のカードに出す操作と 2 行目（通知の種類 → 出すもの）。実行は components/notifications/useNotificationActions.ts。
- * 種類を足したら、ここと lib/notifications.ts（文面・タブ）に足す。
+ * 種類を足したら、ここと notifications.ts（文面・タブ）に足す。
  */
 import type { AppNotification } from '@ubichill/shared';
-import { messagePreview } from './messages';
+import { messagePreview } from '../messages/messages';
 import { isExpired } from './notifications';
 
 export type NotificationActionId =

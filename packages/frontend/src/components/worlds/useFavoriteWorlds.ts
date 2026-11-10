@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchMyFavoriteWorlds } from '@/lib/favoritesApi';
+import { fetchMyFavoriteWorlds } from '@/lib/worlds/favoritesApi';
 import { type LoadedFavorites, needsReload, visibleFavorites } from './favoriteWorldsView';
 import { useFavorites } from './useFavorites';
 

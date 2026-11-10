@@ -1,6 +1,6 @@
 import type { RequestServiceToken } from '@ubichill/react';
 import { type RpcIdentityTokenResult, UbiError, UbiErrorCode } from '@ubichill/shared';
-import { API_BASE } from './api';
+import { API_BASE } from '../api';
 
 /**
  * 発行の失敗を、mod に返す UbiError にする（純粋）。`code` はサーバーが返す理由。

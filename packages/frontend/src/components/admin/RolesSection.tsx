@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { HudIcon } from '@/components/hud/HudIcon';
 import { settingsNote } from '@/components/hud/tabs/settings/settingsStyles';
 import { RoleBadge } from '@/components/profile/ProfileRoleBadges';
-import { fetchRoles } from '@/lib/adminApi';
+import { fetchRoles } from '@/lib/admin/adminApi';
 import { css } from '@/styled-system/css';
 import { adminButton, adminError, adminIconButton, adminList, adminRow, adminStack, adminTag } from './adminStyles';
 import { RoleEditor } from './RoleEditor';

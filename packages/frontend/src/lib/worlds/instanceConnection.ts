@@ -1,6 +1,6 @@
 import { type InstanceGrant, InstanceJoinRejected, type ResolveInstance } from '@ubichill/react';
 import { isJoinRejection } from '@/world';
-import { API_BASE } from './api';
+import { API_BASE } from '../api';
 import { viaOf } from './joinVia';
 
 /** SNS backend でチケットを取る（入室の認可は backend が行う）。 */

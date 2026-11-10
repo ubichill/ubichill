@@ -6,9 +6,9 @@ import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { FavoriteButton } from '@/components/worlds/FavoriteButton';
 import { useInstances } from '@/components/worlds/useInstances';
 import { WorldDetailModal } from '@/components/worlds/WorldDetailModal';
-import { useBlockedIds } from '@/lib/blocks';
-import { fetchInstance } from '@/lib/instancesApi';
-import { instanceWorldRef } from '@/lib/worldRef';
+import { useBlockedIds } from '@/lib/social/blocks';
+import { fetchInstance } from '@/lib/worlds/instancesApi';
+import { instanceWorldRef } from '@/lib/worlds/worldRef';
 import { css } from '@/styled-system/css';
 import { sectionHeading, tabPanel, tabSection } from './shared';
 

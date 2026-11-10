@@ -1,5 +1,5 @@
 import type { ExternalWork, ExternalWorkStatus, PublishedMod } from '@ubichill/shared';
-import { API_BASE } from './api';
+import { API_BASE } from '../api';
 
 /** 登録した外部の作品（本人）。`refresh` なら公開先を確かめ直す（再確認）。 */
 export async function fetchMyExternalWorks(refresh = false): Promise<ExternalWork[]> {

@@ -2,8 +2,8 @@ import { useSocket } from '@ubichill/react';
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import { homeInstanceEntry, type InstanceEntryState, instanceInviteUrl } from '@/lib/home';
-import { ensureHomeInstance } from '@/lib/homeApi';
+import { homeInstanceEntry, type InstanceEntryState, instanceInviteUrl } from '@/lib/home/home';
+import { ensureHomeInstance } from '@/lib/home/homeApi';
 import { pushToast } from '@/lib/toast';
 import type { JoinInstanceHandler } from './tabs/shared';
 

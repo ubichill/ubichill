@@ -101,7 +101,7 @@ backend の認可と画面の表示で同じ関数を使う。
   未読の会話の数をソーシャルのタブに出す。会話はランチパッドに重ねて開き、上の名前からプロフィールへ行ける。
   フレンドのプロフィールには「メッセージ」（ランチパッドの中だけ。外のユーザーページでは出さない）。
 - **招待**: ランチパッドの現在地の「招待」から。フレンドを選んで送る（招待のみでない部屋はリンクのコピーも）。
-- **通知**: 種類ごとのタブ（メッセージ・招待・フレンドリクエスト・その他）。種類は `frontend/src/lib/notifications.ts` の
+- **通知**: 種類ごとのタブ（メッセージ・招待・フレンドリクエスト・その他）。種類は `frontend/src/lib/notifications/notifications.ts` の
   `NotificationKind` に足す。未対応の件数を HUD の通知タブに出す。
   - 通知を 1 種類足す手順:
     1. shared の `notification/activity.ts`: `NOTIFICATION_TYPES`（保存するなら `STORED_NOTIFICATION_TYPES` の**末尾**にも）・
@@ -109,7 +109,7 @@ backend の認可と画面の表示で同じ関数を使う。
     2. `pnpm db:generate`: DB の CHECK 制約は `STORED_NOTIFICATION_TYPES` から組み立てるので、制約を作り直すマイグレーションが出る
        （途中に挿すと並びが変わるだけの差分も出るので末尾に足す）。`pnpm check:migrations` で順を確かめる。
     3. backend の `services/notifications` で作る（同じ出来事を 1 つにする `dedupeKeys`）。
-    4. frontend: `lib/notifications.ts`（文面・タブ）と `lib/notificationActions.ts`（カードの操作・2 行目）に足し、テストする。
+    4. frontend: `lib/notifications/notifications.ts`（文面・タブ）と `lib/notifications/notificationActions.ts`（カードの操作・2 行目）に足し、テストする。
        操作の実行は `components/notifications/useNotificationActions.ts`。
 - **マイページ**: タブバーには出さない。ランチパッドの左上の自分の名前を押すと、マイページを開く
   （アドレスバーの URL をそのまま共有できる）。インスタンス内の HUD では、インスタンスから抜けないよう HUD の中で開く。

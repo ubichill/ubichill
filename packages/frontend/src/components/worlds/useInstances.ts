@@ -2,7 +2,7 @@ import type { CreateInstanceRequest, Instance, WorldListItem } from '@ubichill/s
 import { useCallback, useEffect, useState } from 'react';
 
 import { API_BASE } from '@/lib/api';
-import { createInstance as createInstanceApi, fetchInstances } from '@/lib/instancesApi';
+import { createInstance as createInstanceApi, fetchInstances } from '@/lib/worlds/instancesApi';
 
 interface UseInstancesReturn {
     instances: Instance[];

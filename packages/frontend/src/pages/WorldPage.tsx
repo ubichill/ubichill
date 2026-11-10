@@ -1,9 +1,9 @@
 import { type Instance, isFullFor, type WorldListItem, WorldSourceKind, worldSourceLabel } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
-import { createInstance, fetchInstances, fetchWorld } from '@/lib/instancesApi';
 import { useSession } from '@/lib/session';
-import { localWorldPagePath } from '@/lib/worldRef';
+import { createInstance, fetchInstances, fetchWorld } from '@/lib/worlds/instancesApi';
+import { localWorldPagePath } from '@/lib/worlds/worldRef';
 import { css } from '@/styled-system/css';
 
 /**

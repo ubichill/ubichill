@@ -8,7 +8,7 @@ import {
     followerActionsOf,
     friendActionsOf,
     relationBadgesOf,
-} from './friendActions';
+} from '../social/friendActions';
 
 type Tone = 'primary' | 'secondary' | 'danger';
 

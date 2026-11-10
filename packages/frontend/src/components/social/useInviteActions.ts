@@ -1,7 +1,7 @@
 import { INVITE_REFUSAL_MESSAGES } from '@ubichill/shared';
 import { useCallback } from 'react';
 import { useHudNavigation } from '@/components/hud/HudNavigationContext';
-import { requestInvite, sendInvites } from '@/lib/inviteApi';
+import { requestInvite, sendInvites } from '@/lib/social/inviteApi';
 import { pushToast } from '@/lib/toast';
 
 /**

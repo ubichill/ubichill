@@ -7,7 +7,7 @@ import {
 } from '@ubichill/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { UserAvatar } from '@/components/social';
-import { fetchInviteCandidates, sendInvites } from '@/lib/inviteApi';
+import { fetchInviteCandidates, sendInvites } from '@/lib/social/inviteApi';
 import { pushToast } from '@/lib/toast';
 import { css, cva } from '@/styled-system/css';
 import { HudIcon } from '../HudIcon';

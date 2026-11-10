@@ -1,8 +1,8 @@
 import type { ConversationSummary } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNotifications } from '@/components/notifications';
-import { messageSignalOf } from '@/lib/messages';
-import { fetchConversations } from '@/lib/messagesApi';
+import { messageSignalOf } from '@/lib/messages/messages';
+import { fetchConversations } from '@/lib/messages/messagesApi';
 
 /** 会話の一覧。メッセージが届くたび（通知が作り直されるたび）に取り直す。 */
 export function useConversations() {

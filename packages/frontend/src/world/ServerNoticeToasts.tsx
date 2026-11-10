@@ -1,7 +1,7 @@
 import { useSocket } from '@ubichill/react';
 import { parseServerNotice } from '@ubichill/shared';
 import { useEffect } from 'react';
-import { serverNoticeMessage } from '@/lib/notifications';
+import { serverNoticeMessage } from '@/lib/notifications/notifications';
 import { pushToast } from '@/lib/toast';
 
 /** インスタンスのその場だけの知らせ（切断の予告など）をトーストに出す。保存しない。知らない種類は読み飛ばす。 */

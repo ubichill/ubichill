@@ -1,5 +1,5 @@
 /**
- * ブロックした人の一覧のストア（lib/blocks.ts）の状態遷移。読み込みの副作用は blocks.ts が持ち、ここは決めるだけ。
+ * ブロックした人の一覧のストア（blocks.ts）の状態遷移。読み込みの副作用は blocks.ts が持ち、ここは決めるだけ。
  */
 import { type BlockedUser, blockedAuthorKeys } from '@ubichill/shared';
 

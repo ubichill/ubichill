@@ -1,7 +1,7 @@
 import type { WorldListItem } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
-import { fetchWorld } from '@/lib/instancesApi';
-import { needsSharePathLookup, worldPagePath } from '@/lib/worldRef';
+import { fetchWorld } from '@/lib/worlds/instancesApi';
+import { needsSharePathLookup, worldPagePath } from '@/lib/worlds/worldRef';
 
 /** URL ごとに一度だけ問い合わせる（詳細を開くたびに外部のワールドを取り直さない）。 */
 const lookups = new Map<string, Promise<string | undefined>>();

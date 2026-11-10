@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { WorldCard } from '@/components/worlds/WorldCard';
 import { WorldDetailModal } from '@/components/worlds/WorldDetailModal';
 import { setMyFavoritesVisibility } from '@/lib/account/me';
-import { fetchUserFavorites } from '@/lib/favoritesApi';
+import { fetchUserFavorites } from '@/lib/worlds/favoritesApi';
 import { css } from '@/styled-system/css';
 import { FavoritesVisibilityPicker } from './FavoritesVisibilityPicker';
 

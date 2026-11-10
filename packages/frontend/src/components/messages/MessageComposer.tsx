@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import { EmojiPicker } from '@/components/emoji';
 import { HudIcon } from '@/components/hud/HudIcon';
 import { insertAtSelection } from '@/lib/emoji/emojiCatalog';
-import { composerKeyAction, draftState } from '@/lib/messages';
+import { composerKeyAction, draftState } from '@/lib/messages/messages';
 import { css, cva } from '@/styled-system/css';
 
 /**

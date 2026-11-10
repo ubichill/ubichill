@@ -1,6 +1,6 @@
 import { useHudNavigation } from '@/components/hud/HudNavigationContext';
 import { UserAvatar } from '@/components/social/UserAvatar';
-import { messagePreview, messageTime } from '@/lib/messages';
+import { messagePreview, messageTime } from '@/lib/messages/messages';
 import { useSession } from '@/lib/session';
 import { css, cva } from '@/styled-system/css';
 import { useConversations } from './useConversations';

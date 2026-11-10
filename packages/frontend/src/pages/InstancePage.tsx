@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { InstanceHUD } from '@/components/hud/InstanceHUD';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import { useBlocks } from '@/lib/blocks';
-import { blockedAuthorsOf, blockedIdsOf } from '@/lib/blocksState';
-import { afterInstanceFailure, readInstanceEntryState, recordEntryOutcome } from '@/lib/home';
-import { fetchInstance } from '@/lib/instancesApi';
-import { HOST_MOD_SOURCE } from '@/lib/modCdn';
+import { afterInstanceFailure, readInstanceEntryState, recordEntryOutcome } from '@/lib/home/home';
+import { HOST_MOD_SOURCE } from '@/lib/mods/modCdn';
 import { useSession } from '@/lib/session';
+import { useBlocks } from '@/lib/social/blocks';
+import { blockedAuthorsOf, blockedIdsOf } from '@/lib/social/blocksState';
 import { dismissToast, pushToast } from '@/lib/toast';
-import { useRemoteVisit } from '@/lib/useRemoteVisit';
+import { fetchInstance } from '@/lib/worlds/instancesApi';
+import { useRemoteVisit } from '@/lib/worlds/useRemoteVisit';
 import { type InstanceFailure, WorldView } from '@/world';
 
 /** 失敗したら一定時間後に自動でホームへ戻す（ロード画面で詰まらないように）。 */

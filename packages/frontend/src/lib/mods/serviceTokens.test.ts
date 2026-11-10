@@ -1,7 +1,7 @@
 import { UbiErrorCode } from '@ubichill/shared';
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('./api', () => ({ API_BASE: 'https://ubichill.example' }));
+vi.mock('../api', () => ({ API_BASE: 'https://ubichill.example' }));
 
 import { serviceTokenErrorOf } from './serviceTokens';
 

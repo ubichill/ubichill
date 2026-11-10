@@ -4,7 +4,7 @@
  */
 import type { HomeSettingsUpdate, HomeView } from '@ubichill/shared';
 import { useEffect, useSyncExternalStore } from 'react';
-import { fetchHome, updateHome } from '@/lib/homeApi';
+import { fetchHome, updateHome } from '@/lib/home/homeApi';
 
 export interface HomeState {
     home: HomeView | null;

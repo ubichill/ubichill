@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router';
 import { UserProfileView } from '@/components/profile';
-import { fetchUserByHandle, fetchUserWithFriendship } from '@/lib/socialApi';
+import { fetchUserByHandle, fetchUserWithFriendship } from '@/lib/social/socialApi';
 import { css } from '@/styled-system/css';
 
 /** ユーザーページ（/user/:userId と /@ID）。 */

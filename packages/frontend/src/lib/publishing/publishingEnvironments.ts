@@ -1,5 +1,5 @@
 import type { RevokeReason } from '@ubichill/shared';
-import type { PublishingEnvironment } from './me';
+import type { PublishingEnvironment } from '../account/me';
 
 /** これより長く使われていない公開環境は、取り消し忘れとして目立たせる。 */
 export const STALE_ENVIRONMENT_MS = 90 * 24 * 60 * 60 * 1000;

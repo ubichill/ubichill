@@ -6,7 +6,7 @@
  */
 import type { CreateInstanceRequest, Instance, WorldListItem } from '@ubichill/shared';
 import { InstanceNotFoundError } from '@/world';
-import { API_BASE } from './api';
+import { API_BASE } from '../api';
 import { viaOf } from './joinVia';
 
 async function readErrorMessage(res: Response, fallback: string): Promise<string> {

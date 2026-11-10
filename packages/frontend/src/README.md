@@ -19,10 +19,18 @@
 
 ## lib
 
-- `*Api.ts`: backend の API を呼ぶだけ（`socialApi`・`notificationsApi`・`messagesApi`・`fediverseApi`・`adminApi` など）。
-- 何を出すかの規則（純粋・テストあり）:
-  - 通知: `notifications.ts`（文面・タブ・期限）、`notificationActions.ts`（種類 → カードの操作）
-  - プロフィール: `profileActions.ts`（関係 → バナーの札と操作）、`friendActions.ts`（フレンド・フォロワーの操作）
-  - メッセージ: `messages.ts`
-  - ブロック: `blocksState.ts`（ストアの状態遷移）。購読は `blocks.ts`
-- `account/`・`profile/`・`signing/`・`settings/`・`admin/`・`emoji/`・`mods/`: 機能ごとの規則と hook。
+`components/<機能>/` と対になる `lib/<機能>/` に置く。API の呼び出し（`*Api.ts`。backend の API を呼ぶだけ）も同じ機能の中に置く。
+直下は機能をまたぐ土台だけ（`api.ts`・`auth-client.ts`・`session.tsx`・`toast.ts`・`versionSkew.ts`）。
+
+| lib | 中身（純粋な規則はテストあり） | 対になる components |
+| --- | --- | --- |
+| `social/` | `socialApi`・`inviteApi`・`fediverseApi`、`friendActions`（フレンド・フォロワーの操作）、`blocks`（購読）・`blocksState`（ストアの状態遷移）、`fediverse`（フォロワーの操作の反映） | `social/` |
+| `profile/` | `profileApi`、`profileActions`（関係 → バナーの札と操作）、`bioLinks`・`bioCollapse`・`profileDraft`・`userPath` など | `profile/` |
+| `messages/` | `messagesApi`、`messages`（届いたことの検知・未読・入力） | `messages/` |
+| `notifications/` | `notificationsApi`、`notifications`（文面・タブ・期限）、`notificationActions`（種類 → カードの操作）、`notificationFeed`（一覧の合成） | `notifications/` |
+| `home/` | `homeApi`・`homeStore`、`home`（ホームへの入り方） | `home/` |
+| `worlds/` | `instancesApi`・`favoritesApi`・`instanceConnection`・`useRemoteVisit`、`joinVia`・`worldName`・`worldRef`・`worldProblems` | `worlds/` |
+| `publishing/` | `externalWorksApi`・`cliAuthApi`、`publishingEnvironments`・`resign`・`keyFingerprint`（署名の部品は `signing/`） | `publishing/` |
+| `admin/` | `adminApi`・`federationApi`、`roleForm`・`peerOrigin` | `admin/` |
+| `account/` | 自分のアカウント（`me`・`useIsAdmin`・`adminStatus`・プライバシーの `favoritesVisibility`・`presenceVisibility`） | `hud/tabs/settings/`・`profile/` |
+| `mods/`・`settings/`・`emoji/`・`signing/` | mod の取得元 `modCdn`・`serviceTokens`、端末の設定（`mediaOutputSetting` を含む）、絵文字、署名 | — |

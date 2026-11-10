@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PublishingEnvironment } from './me';
+import type { PublishingEnvironment } from '../account/me';
 import {
     isRecentlyAdded,
     isStaleEnvironment,

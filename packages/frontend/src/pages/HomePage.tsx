@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { signOut } from '@/lib/auth-client';
-import { resetBlocks } from '@/lib/blocks';
-import { canAutoHome, homeInstanceEntry, readHomeEntryState, readHomeFailures, recordEntryOutcome } from '@/lib/home';
-import { ensureHomeInstance } from '@/lib/homeApi';
-import { resetHome } from '@/lib/homeStore';
+import {
+    canAutoHome,
+    homeInstanceEntry,
+    readHomeEntryState,
+    readHomeFailures,
+    recordEntryOutcome,
+} from '@/lib/home/home';
+import { ensureHomeInstance } from '@/lib/home/homeApi';
+import { resetHome } from '@/lib/home/homeStore';
+import { resetBlocks } from '@/lib/social/blocks';
 import { css, cva } from '@/styled-system/css';
 import { InstanceLoadingScreen } from '@/world/InstanceLoadingScreen';
 

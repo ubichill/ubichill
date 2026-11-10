@@ -8,7 +8,7 @@ import type {
     UserSearchResponse,
     UserSummary,
 } from '@ubichill/shared';
-import { API_BASE } from './api';
+import { API_BASE } from '../api';
 import type { FriendAction } from './friendActions';
 
 export interface FriendLocationsResponse {
