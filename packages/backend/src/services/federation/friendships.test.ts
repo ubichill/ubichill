@@ -18,7 +18,9 @@ const CAROL: FriendshipActor = {
 };
 const ALICE_URL = identity.actorUrl('alice');
 
-function setup(options: { policy?: DomainPolicy; failSend?: boolean; lacking?: string[] } = {}) {
+function setup(
+    options: { policy?: DomainPolicy; failSend?: boolean; lacking?: string[]; blocks?: Array<[string, string]> } = {},
+) {
     const clock = { now: Date.parse('2026-11-07T00:00:00Z') };
     const rows: RemoteFriendshipRecord[] = [];
     const sent: Array<{ to: string; activity: Record<string, unknown> }> = [];
@@ -91,6 +93,8 @@ function setup(options: { policy?: DomainPolicy; failSend?: boolean; lacking?: s
             findByAccept: async (acceptId) => rows.filter((r) => r.acceptId === acceptId),
         },
         userExists: async (userId) => userId === 'alice' || userId.startsWith('user'),
+        blocked: async (userId, actorId) =>
+            (options.blocks ?? []).some(([a, b]) => (a === userId && b === actorId) || (a === actorId && b === userId)),
         outbox: {
             prepare: (message) => ({
                 id: message.activity.id,
@@ -208,6 +212,14 @@ describe('相手から申請が来る', () => {
             offerId: 'https://c.example/ap/activities/o2',
         });
         expect(notes).toEqual([`requested ${BOB.id} → alice`]);
+    });
+
+    it('ブロックした人からの申請は、記録も通知も返事もしない（拒否と見分けがつかない）', async () => {
+        const { friendships, rows, sent, notes } = setup({ blocks: [['alice', BOB.id]] });
+        await friendships.onOffer(BOB, offerFrom(BOB, 'https://c.example/ap/activities/o1'));
+        expect(rows).toEqual([]);
+        expect(sent).toEqual([]);
+        expect(notes).toEqual([]);
     });
 
     it('承認すると、相手の Offer を指す Accept を送ってフレンドになる', async () => {

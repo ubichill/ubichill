@@ -3,14 +3,17 @@
  * - 自分の操作は自分に通知しない
  * - 同じ出来事は受け手ごとに 1 つ（dedupeKey）。消えた相手には作らない（DB の外部キーで弾く）
  * - フレンドの関係が消えたら、2 人の間の申請・承認の通知も消す（もう操作できないため。申請し直せば新しく届く）
+ * - どちらかがブロックしている 2 人の間には作らない。ブロックしたら 2 人の間の通知をすべて消す
  */
 import type { announcementRepository, notificationRepository } from '@ubichill/db';
 import {
     type AppNotification,
     type CreateAnnouncementRequest,
     decodeFeedCursor,
+    isRemoteUserId,
     type MarkReadRequest,
     NOTIFICATION_LIMITS,
+    STORED_NOTIFICATION_TYPES,
     type StoredNotificationType,
 } from '@ubichill/shared';
 import type { NotificationHub } from './notificationHub';
@@ -56,6 +59,8 @@ export function createNotificationService(deps: {
     notifications: NotificationStore;
     announcements: AnnouncementStore;
     hub: Pick<NotificationHub, 'deliver'>;
+    /** 2 人のどちらかがブロックしているか（相手はこのサーバーのユーザー ID か actor の URL） */
+    blocked: (recipientId: string, actorId: string) => Promise<boolean>;
     now?: () => Date;
 }) {
     const now = deps.now ?? (() => new Date());
@@ -74,6 +79,8 @@ export function createNotificationService(deps: {
         expiresAt?: Date;
     }): Promise<AppNotification | undefined> => {
         if (input.recipientId === input.actorUserId) return undefined;
+        const actorId = input.actorUserId ?? input.actorUri;
+        if (actorId && (await deps.blocked(input.recipientId, actorId))) return undefined;
         const record = await deps.notifications.create(input, now());
         const notification = record ? notificationOf(record) : undefined;
         if (notification) await deps.hub.deliver(input.recipientId, { type: 'notification', notification });
@@ -132,6 +139,21 @@ export function createNotificationService(deps: {
         /** 2 人の関係が消えた（解除・取り消し・拒否）。招待・リクエストの通知も、もう使えないので消す。 */
         async friendshipRemoved(a: string, b: string): Promise<void> {
             const removed = await deps.notifications.removeBetween(a, b, ['Follow', 'Accept', 'Invite', 'Join']);
+            const byRecipient = Map.groupBy(removed, (r) => r.recipientId);
+            await Promise.all(
+                [...byRecipient].map(([recipientId, rows]) =>
+                    deps.hub.deliver(recipientId, { type: 'removed', ids: rows.map((r) => r.id) }),
+                ),
+            );
+        },
+
+        /** blockerId が otherId（このサーバーのユーザー ID か actor の URL）をブロックした。2 人の間の通知をすべて消す。 */
+        async blocked(blockerId: string, otherId: string): Promise<void> {
+            const removed = isRemoteUserId(otherId)
+                ? (await deps.notifications.removeFromActorUri(blockerId, otherId, STORED_NOTIFICATION_TYPES)).map(
+                      (id) => ({ id, recipientId: blockerId }),
+                  )
+                : await deps.notifications.removeBetween(blockerId, otherId, STORED_NOTIFICATION_TYPES);
             const byRecipient = Map.groupBy(removed, (r) => r.recipientId);
             await Promise.all(
                 [...byRecipient].map(([recipientId, rows]) =>

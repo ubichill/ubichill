@@ -35,10 +35,19 @@ import { useBroadcastCursor } from './useBroadcastCursor';
 import { riddenTransformPosition, useRideFollow } from './useRideFollow';
 import { useScrollWorldEl } from './useScrollWorldEl';
 
+const NO_ONE: ReadonlySet<string> = new Set();
+
 /**
  * @param fallbackSelfId 入室前に自分と他人を分ける ID（SNS はログイン中のユーザー）。入室後は入室で決まった ID を使う。
+ * @param hiddenUserIds カーソルとネームプレートを出さない人（自分がブロックした人）。
  */
-export function CursorLayer({ fallbackSelfId }: { fallbackSelfId?: string }) {
+export function CursorLayer({
+    fallbackSelfId,
+    hiddenUserIds = NO_ONE,
+}: {
+    fallbackSelfId?: string;
+    hiddenUserIds?: ReadonlySet<string>;
+}) {
     const { users, currentUser, isConnected, socket, updatePosition } = useSocket();
     const { entities, environment } = useWorld();
     const scrollEl = useScrollWorldEl();
@@ -106,5 +115,7 @@ export function CursorLayer({ fallbackSelfId }: { fallbackSelfId?: string }) {
 
     // 自分のカーソル位置: OS コンポジタが描画するため JSX には何もない。
     // リモートユーザー分だけ JS で overlay する。
-    return isConnected && scrollEl ? <RemoteCursorsPortal scrollEl={scrollEl} users={users} selfId={selfId} /> : null;
+    return isConnected && scrollEl ? (
+        <RemoteCursorsPortal scrollEl={scrollEl} users={users} selfId={selfId} hiddenUserIds={hiddenUserIds} />
+    ) : null;
 }

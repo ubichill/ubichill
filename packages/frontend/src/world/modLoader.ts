@@ -9,6 +9,7 @@
 import { type AcquireResult, acquireMod, type LoadedMod } from '@ubichill/loader';
 import type { WorkerModDefinition } from '@ubichill/react';
 import type { ModLock } from '@ubichill/shared';
+import { blockedAuthorRejection } from './modRejection';
 import { browserSignatureVerifier, isUnsignedModAllowed } from './modSignature';
 import type { ModSource } from './modSource';
 
@@ -41,6 +42,8 @@ export interface LoadModOptions {
     /** ワールドの lock。固定されていない mod は、置き場所に関係なく実行しない。 */
     lock?: ModLock;
     source: ModSource;
+    /** ブロックした人の作者アカウント（突き合わせる形）。作者がここにある mod は実行しない */
+    blockedAuthors?: ReadonlySet<string>;
 }
 
 /** Component 型から検証済み WorkerModDefinition を構築する（loader へ委譲）。 */
@@ -52,6 +55,8 @@ export async function loadVerifiedMod(entityType: string, opts: LoadModOptions):
         allowUnsigned: (baseUrl) =>
             isUnsignedModAllowed({ devHost: opts.source.devHost, baseUrl, origin: window.location.origin }),
     });
-    if (typeof result === 'object' && 'workerCode' in result) return toWorkerModDefinition(result);
+    if (typeof result === 'object' && 'workerCode' in result) {
+        return blockedAuthorRejection(result.author, opts.blockedAuthors ?? new Set()) ?? toWorkerModDefinition(result);
+    }
     return result;
 }

@@ -256,6 +256,7 @@ export {
     verifyEnvelope,
 } from './signature/envelope';
 export * from './user/authorKeyDirectory';
+export * from './user/blocks';
 export * from './user/cliAuth';
 export * from './user/displayNameChange';
 export * from './user/externalWorks';

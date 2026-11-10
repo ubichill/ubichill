@@ -32,6 +32,7 @@ describe.skipIf(!RUN)('通知の配送（DB・Redis 統合）', () => {
             notifications: notificationRepository,
             announcements: announcementRepository,
             hub,
+            blocked: async () => false,
         });
         return { hub, service };
     };

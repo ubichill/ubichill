@@ -54,6 +54,8 @@ export interface FriendshipDeps {
         findByAccept(acceptId: string): Promise<RemoteFriendshipRecord[]>;
     };
     userExists(userId: string): Promise<boolean>;
+    /** 2 人のどちらかがブロックしているか */
+    blocked(userId: string, actorId: string): Promise<boolean>;
     outbox: Pick<Outbox, 'prepare'>;
     notify: {
         remoteFriendRequested(actorUri: string, userId: string): Promise<unknown>;
@@ -232,6 +234,8 @@ export function createRemoteFriendships(deps: FriendshipDeps) {
             const userId = deps.identity.localUserIdOf(activity.target);
             if (!userId || !(await deps.userExists(userId))) return;
             if (await deps.seen.has(`undone|${activity.id}`, now())) return;
+            // ブロックした人からの申請は、拒否と同じく何も返さずに捨てる（ブロックを明かさない）
+            if (await deps.blocked(userId, actor.id)) return;
             await withPair(userId, actor, async (row, pair) => {
                 if (row?.state === 'accepted') {
                     // もうフレンド（承認が届いていなかった）。承認を送り直す

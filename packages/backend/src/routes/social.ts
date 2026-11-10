@@ -1,6 +1,6 @@
 /**
- * ソーシャル: ユーザー検索・フレンド（申請・承認・解除）・フレンドの現在地。
- * 関係と公開範囲の規則は shared の user/friends.ts（画面と同じ規則）。
+ * ソーシャル: ユーザー検索・フレンド（申請・承認・解除）・フレンドの現在地・ブロック。
+ * 関係と公開範囲の規則は shared の user/friends.ts、ブロックは user/blocks.ts（画面と同じ規則）。
  */
 import {
     followerRepository,
@@ -8,11 +8,16 @@ import {
     type RemoteActorRecord,
     remoteFriendshipRepository,
     type UserProfileRecord,
+    userBlockRepository,
     userFriendRepository,
     userRepository,
     userSettingsRepository,
 } from '@ubichill/db';
 import {
+    BLOCK_REFUSAL_MESSAGES,
+    type BlockedUser,
+    BlockRequestSchema,
+    type BlocksResponse,
     type CustomEmoji,
     canSeeInstance,
     DEFAULT_PRESENCE_VISIBILITY,
@@ -39,6 +44,9 @@ import {
     userProfileOf,
 } from '@ubichill/shared';
 import { type Response, Router } from 'express';
+import rateLimit from 'express-rate-limit';
+import { redis } from '../lib/redis';
+import { sharedRateLimit } from '../lib/sharedRateLimit';
 import { optionalAuth, requireAuth } from '../middleware/auth';
 import { selfAccount, selfDomain } from '../services/authors/authorKeys';
 import { federation } from '../services/federation';
@@ -49,11 +57,24 @@ import { instanceManager } from '../services/instances/instanceManager';
 import { instanceRuntime } from '../services/instances/instanceRuntime';
 import { notificationService, notifyInBackground } from '../services/notifications/notificationService';
 import { roleService } from '../services/roles/roleService';
+import { hasBlockedUser, hiddenIdsFor, isBlockedBetween } from '../services/social/blockCheck';
+import { blockService } from '../services/social/blockService';
 import { friendEdgesOf, friendIdsOf } from '../services/social/friends';
 import { remoteSummaryOf, summariesOf, summaryOf } from '../services/social/userSummaries';
 import { logger } from '../utils/logger';
 
 const router = Router();
+
+// ほかのサーバーの人のブロック・解除は連合へ送信が出るので、連打で増やさせない
+const blockLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => req.user?.id ?? 'anonymous',
+    message: { error: '操作が多すぎます。少し待ってから試してください' },
+    ...sharedRateLimit('social-blocks', redis, logger),
+});
 
 /** システムユーザーは検索・フレンドに出さない。 */
 const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
@@ -64,13 +85,17 @@ async function profileWithFriendship(
     viewerId: string | undefined,
     user: UserProfileRecord,
 ): Promise<UserProfileWithFriendship> {
-    const [edges, roles] = await Promise.all([
+    const [edges, roles, blocked] = await Promise.all([
         viewerId ? friendEdgesOf(viewerId) : undefined,
         roleService.publicRolesOf(user.id),
+        viewerId ? hasBlockedUser(viewerId, user.id) : false,
     ]);
     const friendship = viewerId && edges ? friendshipOf(edges, viewerId, user.id) : 'none';
-    return { ...userProfileOf(user, selfAccount(user.handle), roles), friendship };
+    return { ...userProfileOf(user, selfAccount(user.handle), roles), friendship, ...blockedFlag(blocked) };
 }
+
+/** 見ている人がこの人をブロックしているときだけ付ける。 */
+const blockedFlag = (blocked: boolean): { blocked?: true } => (blocked ? { blocked: true } : {});
 
 // ── ほかのサーバーの人（連合） ──
 
@@ -102,6 +127,7 @@ async function remoteProfileWithFriendship(
     actor: RemoteActorRecord,
 ): Promise<UserProfileWithFriendship> {
     const { fields, bioSegments, emojis: _emojis, ...profile } = remoteProfileView(actor.profile);
+    const blocked = viewerId ? await hasBlockedUser(viewerId, actor.id) : false;
     return {
         ...remoteSummaryOf(actor),
         author: actor.account,
@@ -112,6 +138,7 @@ async function remoteProfileWithFriendship(
         ...(bioSegments && bioSegments.length > 0 ? { bioSegments } : {}),
         ...(await remoteRelationOf(viewerId, actor)),
         friendship: await remoteFriendshipOf(viewerId, actor.id),
+        ...blockedFlag(blocked),
     };
 }
 
@@ -131,10 +158,13 @@ router.get('/users', requireAuth, async (req, res) => {
     const query = parseUserSearchQuery(typeof req.query.q === 'string' ? req.query.q : '', selfDomain());
     if (query.kind === 'tooLong') return res.status(400).json({ error: '検索語が長すぎます' });
     if (query.kind === 'empty') return res.json({ users: [] } satisfies UserSearchResponse);
+    // ブロックした人は出さない
+    const hidden = await hiddenIdsFor(req.user.id);
     // ほかのサーバーのアカウントは、そのサーバーに WebFinger で問い合わせて引く
     if (query.kind === 'remote') {
         const actor = await findRemotePerson(query.account).catch(() => null);
-        if (!actor) return res.json({ users: [], remoteAccount: query.account } satisfies UserSearchResponse);
+        if (!actor || hidden.has(actor.id))
+            return res.json({ users: [], remoteAccount: query.account } satisfies UserSearchResponse);
         const [friendship, relation] = await Promise.all([
             remoteFriendshipOf(req.user.id, actor.id),
             remoteRelationOf(req.user.id, actor),
@@ -145,8 +175,10 @@ router.get('/users', requireAuth, async (req, res) => {
     }
     const [users, edges] = await Promise.all([
         query.kind === 'local'
-            ? userRepository.findByHandle(query.handle).then((u) => (u && u.id !== SYSTEM_USER_ID ? [u] : []))
-            : userRepository.search(query, { limit: SEARCH_LIMIT, excludeIds: [SYSTEM_USER_ID] }),
+            ? userRepository
+                  .findByHandle(query.handle)
+                  .then((u) => (u && u.id !== SYSTEM_USER_ID && !hidden.has(u.id) ? [u] : []))
+            : userRepository.search(query, { limit: SEARCH_LIMIT, excludeIds: [SYSTEM_USER_ID, ...hidden] }),
         friendEdgesOf(req.user.id),
     ]);
     const me = req.user.id;
@@ -233,6 +265,9 @@ router.post('/friends', requireAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const me = req.user.id;
     const targetId = typeof req.body?.userId === 'string' ? req.body.userId : '';
+    if (targetId && (await hasBlockedUser(me, targetId))) {
+        return res.status(409).json({ error: 'ブロックを解除してから申請してください' });
+    }
     if (isRemoteUserId(targetId)) {
         const actor = await findRemotePerson(targetId).catch(() => null);
         if (!actor || !federation) return remoteUnavailable(res);
@@ -252,6 +287,8 @@ router.post('/friends', requireAuth, async (req, res) => {
     const target = targetId ? await userRepository.findById(targetId) : undefined;
     if (!target || target.id === SYSTEM_USER_ID) return res.status(404).json({ error: 'User not found' });
     if (target.id === me) return res.status(400).json({ error: '自分には申請できません' });
+    // 相手にブロックされていたら、送ったように見せて何もしない（すぐに断られたのと見分けがつかない）
+    if (await isBlockedBetween(me, target.id)) return res.json({ friendship: 'outgoing' satisfies Friendship });
     const edges = await userFriendRepository.requestOrAccept(me, target.id);
     const friendship = friendshipOf(edges, me, target.id);
     // 申請し直し・承認済みへの申請でも呼ぶ（同じ出来事は dedupeKey で 1 つにまとまる）
@@ -271,7 +308,9 @@ router.post('/friends/:userId/accept', requireAuth, async (req, res) => {
         }
         return res.json({ friendship: 'friends' });
     }
-    const accepted = await userFriendRepository.accept(req.user.id, String(req.params.userId));
+    const accepted =
+        !(await isBlockedBetween(req.user.id, String(req.params.userId))) &&
+        (await userFriendRepository.accept(req.user.id, String(req.params.userId)));
     if (!accepted) return res.status(404).json({ error: '申請が見つかりません' });
     notifyInBackground(notificationService.friendAccepted(req.user.id, String(req.params.userId)), '承認');
     return res.json({ friendship: 'friends' });
@@ -293,6 +332,57 @@ router.delete('/friends/:userId', requireAuth, async (req, res) => {
     const removed = await userFriendRepository.remove(req.user.id, String(req.params.userId));
     if (!removed) return res.status(404).json({ error: 'フレンド・申請が見つかりません' });
     notifyInBackground(notificationService.friendshipRemoved(req.user.id, String(req.params.userId)), '関係の解消');
+    return res.status(204).send();
+});
+
+// ブロックした人（新しい順）。作者アカウントは、この人が作った mod を読み込まないために画面が使う。
+router.get('/blocks', requireAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const rows = await userBlockRepository.listForUser(req.user.id);
+    const users = new Map((await summariesOf(rows.map((r) => r.blockedId))).map((u) => [u.id, u]));
+    res.set('Cache-Control', 'no-store');
+    return res.json({
+        // 消えたユーザー・引けない actor も解除できるよう一覧に残す（名前は ID で代える）
+        blocks: rows.map((r): BlockedUser => {
+            const user = users.get(r.blockedId);
+            const remote = isRemoteUserId(r.blockedId);
+            return {
+                ...(user ?? { id: r.blockedId, name: r.blockedId, handle: r.blockedId, image: null, bio: null }),
+                blockedAt: r.createdAt.toISOString(),
+                account: user ? (remote ? user.handle : selfAccount(user.handle)) : null,
+            };
+        }),
+    } satisfies BlocksResponse);
+});
+
+// ブロックする。フレンド・申請・招待・通知を消し、ほかのサーバーの人ならフォロワーからも外す。
+router.post('/blocks', requireAuth, blockLimiter, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const parsed = BlockRequestSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'userId が必要です' });
+    const targetId = parsed.data.userId;
+    const exists = isRemoteUserId(targetId)
+        ? (await findRemotePerson(targetId).catch(() => null)) !== null
+        : targetId !== SYSTEM_USER_ID && (await userRepository.findById(targetId)) !== undefined;
+    if (!exists) return res.status(404).json({ error: 'User not found' });
+    try {
+        const outcome = await blockService.block(req.user.id, targetId);
+        if (!outcome.ok) return res.status(400).json({ error: BLOCK_REFUSAL_MESSAGES[outcome.reason] });
+        return res.status(204).send();
+    } catch (error) {
+        logger.error('ブロックの後片付けに失敗しました:', error);
+        return res
+            .status(503)
+            .json({ error: 'ブロックしましたが、関係を消しきれませんでした。もう一度ブロックしてください' });
+    }
+});
+
+// ブロックを解除する（消したフレンドの関係は戻さない）。
+router.delete('/blocks/:userId', requireAuth, blockLimiter, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    if (!(await blockService.unblock(req.user.id, String(req.params.userId)))) {
+        return res.status(404).json({ error: 'ブロックしていません' });
+    }
     return res.status(204).send();
 });
 

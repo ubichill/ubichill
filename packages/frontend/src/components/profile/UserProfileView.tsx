@@ -164,6 +164,7 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                                         <ProfileRelationBadges
                                             friendship={people.friendship}
                                             relation={people.relation}
+                                            blocked={people.blocked}
                                         />
                                     )
                                 }
@@ -175,7 +176,9 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                                             friendship={people.friendship}
                                             relation={people.relation}
                                             onFriendshipChange={people.setFriendship}
+                                            blocked={people.blocked}
                                             onRelationChange={people.setRelation}
+                                            onBlockedChange={people.setBlocked}
                                         />
                                     )
                                 }

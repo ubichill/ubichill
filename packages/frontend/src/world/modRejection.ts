@@ -1,7 +1,8 @@
 /**
  * 実行しなかった mod の理由を、利用者向けの文にする（純粋）。
- * 理由は loader の `{ rejected }`（lock の照合・作者署名の確認）。
+ * 理由は loader の `{ rejected }`（lock の照合・作者署名の確認）と、作者をブロックしている（{@link blockedAuthorRejection}）。
  */
+import { isModAuthorBlocked } from '@ubichill/shared';
 
 export interface ModRejectionText {
     message: string;
@@ -24,7 +25,19 @@ const TEXTS: Record<string, ModRejectionText> = {
         retryable: false,
     },
     'author-pending': { message: 'いまは作者を確認できません（通信、または作者のサーバーの都合）', retryable: true },
+    'author-blocked': { message: 'ブロックした人が作った mod です', retryable: false },
 };
+
+/**
+ * 署名で確かめた作者がブロックした人なら、実行しない理由を返す。作者の無い mod（データだけ・開発の未署名）は止めない。
+ * 作者は署名を確かめたあとの値なので、作者を名乗るだけの mod では一致しない（作者の鍵で署名されたものだけが一致する）。
+ */
+export function blockedAuthorRejection(
+    author: string | undefined,
+    blockedAuthors: ReadonlySet<string>,
+): { rejected: 'author-blocked' } | null {
+    return isModAuthorBlocked(author, blockedAuthors) ? { rejected: 'author-blocked' } : null;
+}
 
 // 理由は外から来る文字列なので、Object のプロパティ（constructor など）を引かないよう Map で引く
 const TEXT_BY_REASON: ReadonlyMap<string, ModRejectionText> = new Map(Object.entries(TEXTS));
