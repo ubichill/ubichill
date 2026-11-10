@@ -23,7 +23,26 @@ function setup(options: { edges?: BlockEdge[]; failSever?: boolean; count?: numb
                 edges.filter(
                     (e) => (e.blockerId === a && e.blockedId === b) || (e.blockerId === b && e.blockedId === a),
                 ),
+            listForUser: async (blockerId) =>
+                edges
+                    .filter((e) => e.blockerId === blockerId)
+                    .map((e, i) => ({ ...e, createdAt: new Date(Date.UTC(2026, 10, 10 - i)) })),
         },
+        summariesOf: async (ids) =>
+            ids.flatMap((id) =>
+                id === 'gone'
+                    ? []
+                    : [
+                          {
+                              id,
+                              name: id.toUpperCase(),
+                              handle: id.startsWith('https://') ? 'x@b.example' : id,
+                              image: null,
+                              bio: null,
+                          },
+                      ],
+            ),
+        accountOf: (handle) => `${handle}@a.example`,
         sever: async (blockerId, blockedId) => {
             severed.push([blockerId, blockedId]);
             if (options.failSever) throw new Error('関係を消せない');
@@ -101,5 +120,38 @@ describe('ブロックを解除する', () => {
         expect(await service.unblock('alice', 'bob')).toBe(true);
         expect(edges).toEqual([{ blockerId: 'bob', blockedId: 'alice' }]);
         expect(await service.unblock('alice', 'bob')).toBe(false);
+    });
+});
+
+describe('ブロックした人の一覧', () => {
+    it('このサーバーの人は作者アカウントを付け、ほかのサーバーの人は handle をそのまま使う。ブロックされた行は出さない', async () => {
+        const actor = 'https://b.example/users/x';
+        const { service } = setup({
+            edges: [
+                { blockerId: 'alice', blockedId: 'bob' },
+                { blockerId: 'alice', blockedId: actor },
+                { blockerId: 'carol', blockedId: 'alice' },
+            ],
+        });
+        const list = await service.list('alice');
+        expect(list.map((u) => [u.id, u.account, u.blockedAt])).toEqual([
+            ['bob', 'bob@a.example', '2026-11-10T00:00:00.000Z'],
+            [actor, 'x@b.example', '2026-11-09T00:00:00.000Z'],
+        ]);
+    });
+
+    it('消えたユーザーも解除できるよう残し、名前は ID で代えて作者アカウントは null', async () => {
+        const { service } = setup({ edges: [{ blockerId: 'alice', blockedId: 'gone' }] });
+        expect(await service.list('alice')).toEqual([
+            {
+                id: 'gone',
+                name: 'gone',
+                handle: 'gone',
+                image: null,
+                bio: null,
+                blockedAt: '2026-11-10T00:00:00.000Z',
+                account: null,
+            },
+        ]);
     });
 });

@@ -7,9 +7,11 @@ import {
     userFriendRepository,
 } from '@ubichill/db';
 import { isRemoteUserId } from '@ubichill/shared';
+import { selfAccount } from '../authors/authorKeys';
 import { federation } from '../federation';
 import { notificationService } from '../notifications/notificationService';
 import { createBlockService } from './blocks';
+import { summariesOf } from './userSummaries';
 
 /**
  * ほかのサーバーの人との関係を消す。相手の文書が引ければフレンドの解除・フォロワーから外すことを相手にも知らせ、
@@ -37,5 +39,7 @@ export const blockService = createBlockService({
         // フレンド・招待の通知も含めて、2 人の間の通知はすべてここで消える
         await notificationService.blocked(blockerId, blockedId);
     },
+    summariesOf,
+    accountOf: selfAccount,
     now: () => new Date(),
 });
