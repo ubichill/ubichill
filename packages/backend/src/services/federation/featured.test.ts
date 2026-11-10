@@ -1,6 +1,6 @@
 import type { FavoritesVisibility } from '@ubichill/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createDebouncer, createFeatured, type FeaturedSource, featuredKeyOf } from './featured';
+import { createDebouncer, createFeatured, type FeaturedSource } from './featured';
 import { createFederationIdentity } from './identity';
 
 const identity = createFederationIdentity('https://api.example');
@@ -8,7 +8,6 @@ const PROFILE = 'https://app.example';
 const day = (n: number) => new Date(Date.UTC(2026, 10, n));
 
 const source = (id: string, n: number, patch: Partial<FeaturedSource> = {}): FeaturedSource => ({
-    id,
     name: id,
     description: null,
     image: null,
@@ -51,28 +50,29 @@ function setup(
     return { featured, calls, logs };
 }
 
-type Collection = { orderedItems: Array<{ id: string; content: string; url: string; attachment?: unknown }> };
+type Note = { id: string; content: string; attachment?: Array<{ url: string; mediaType: string }> };
 const notesOf = async (featured: ReturnType<typeof setup>['featured']) =>
-    ((await featured.collection('alice')) as Collection | undefined)?.orderedItems ?? [];
+    ((await featured.collection('alice')) as { orderedItems: Note[] } | undefined)?.orderedItems ?? [];
+const keyOf = (note: Note | undefined) => note?.id.slice(note.id.lastIndexOf('/') + 1) ?? '';
 
 describe('フェディバースの固定ノート', () => {
-    it('作ったワールド 2・mod 2・お気に入り 1 を、それぞれ新しい順に出す', async () => {
+    it('作ったワールド・mod・お気に入りを種類ごとに 1 つのノートにまとめ、それぞれ新しい順に並べる', async () => {
         const { featured } = setup({
             worlds: [source('w1', 1), source('w2', 3), source('w3', 2)],
             mods: [source('m1', 1, { version: '1.0.0', path: '/@alice' }), source('m2', 2, { path: '/@alice' })],
             favorites: [source('f1', 5), source('f2', 4)],
         });
         const notes = await notesOf(featured);
-        expect(notes.map((n) => n.id)).toEqual(
-            [
-                featuredKeyOf('world', 'w2'),
-                featuredKeyOf('world', 'w3'),
-                featuredKeyOf('mod', 'm2'),
-                featuredKeyOf('mod', 'm1'),
-                featuredKeyOf('favorite', 'f1'),
-            ].map((key) => identity.featuredNoteUrl('alice', key)),
-        );
-        expect(notes[0]?.url).toBe(`${PROFILE}/world/w2`);
+        expect(notes.map((n) => keyOf(n)[0])).toEqual(['w', 'm', 'f']);
+        const namesIn = (note: Note | undefined) =>
+            [...(note?.content ?? '').matchAll(/>([^<]+)<\/a>/g)].map((m) => m[1]);
+        expect(notes.map(namesIn)).toEqual([
+            ['w2', 'w3', 'w1'],
+            ['m2', 'm1'],
+            ['f1', 'f2'],
+        ]);
+        expect(notes[0]?.content).toContain(`href="${PROFILE}/world/w2"`);
+        expect(notes[1]?.content).toContain('>m1</a> v1.0.0');
     });
 
     it('お気に入りは公開範囲がパブリックのときだけ出す（フレンドだけ・本人だけなら材料も読まない）', async () => {
@@ -85,11 +85,13 @@ describe('フェディバースの固定ノート', () => {
         expect(await notesOf(featured)).toHaveLength(1);
     });
 
-    it('ノートの id は並びが変わっても項目ごとに同じで、取りに来られたら同じノートを返す', async () => {
+    it('ノートの id は中身が同じなら同じで、取りに来られたら同じノートを返す', async () => {
         const { featured } = setup({ worlds: [source('w1', 1, { image: '/api/v1/worlds/w1/thumbnail.png' })] });
         const [note] = await notesOf(featured);
-        const key = featuredKeyOf('world', 'w1');
+        const key = keyOf(note);
         expect(key).toMatch(/^w-[A-Za-z0-9_-]{16}$/);
+        featured.invalidate('alice');
+        expect(keyOf((await notesOf(featured))[0])).toBe(key);
         expect(await featured.note('alice', key)).toMatchObject({
             id: note?.id,
             type: 'Note',
@@ -101,6 +103,20 @@ describe('フェディバースの固定ノート', () => {
         expect(await featured.note('alice', 'w-unknown')).toBeUndefined();
         expect(await featured.note('ghost', key)).toBeUndefined();
         expect(await featured.collection('ghost')).toBeUndefined();
+    });
+
+    it('中身（項目の追加・名前・サムネイル）が変わったら id を変え、前の id は返さない（相手は同じ id を取り直さない）', async () => {
+        const keys = await Promise.all(
+            [
+                [source('w1', 1)],
+                [source('w1', 1), source('w2', 2)],
+                [source('w1', 1, { name: 'renamed' })],
+                [source('w1', 1, { image: '/thumb.png' })],
+            ].map(async (worlds) => keyOf((await notesOf(setup({ worlds }).featured))[0])),
+        );
+        expect(new Set(keys).size).toBe(keys.length);
+        const { featured } = setup({ worlds: [source('w1', 1)] });
+        expect(await featured.note('alice', keys[1] ?? '')).toBeUndefined();
     });
 
     it('材料の 1 つが読めなくても、ほかの材料で出す', async () => {
@@ -117,7 +133,9 @@ describe('フェディバースの固定ノート', () => {
             ],
         });
         const notes = await notesOf(featured);
-        expect(notes.map((n) => n.url)).toEqual([`${PROFILE}/world/w1`]);
+        expect(notes).toHaveLength(1);
+        expect(notes[0]?.content).not.toContain('javascript:');
+        expect(notes[0]?.content).toContain(`${PROFILE}/world/w1`);
         expect(notes[0]?.attachment).toBeUndefined();
     });
 

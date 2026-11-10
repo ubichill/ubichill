@@ -21,6 +21,7 @@ import {
     worldRepository,
 } from '@ubichill/db';
 import {
+    FEATURED_ITEMS_PER_NOTE,
     FEDERATION_FEATURES,
     FEDERATION_LIMITS,
     type FediverseSettings,
@@ -365,7 +366,6 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
                         return world && isPublishable(world.identity)
                             ? [
                                   {
-                                      id: world.url,
                                       name: world.displayName,
                                       description: world.description ?? null,
                                       image: world.thumbnail ?? null,
@@ -381,7 +381,6 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
                         entry.world
                             ? [
                                   {
-                                      id: entry.world.url,
                                       name: entry.world.displayName,
                                       description: entry.world.description ?? null,
                                       image: entry.world.thumbnail ?? null,
@@ -399,7 +398,6 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
                         entry.mod
                             ? [
                                   {
-                                      id: `${entry.mod.url}\n${entry.mod.name}`,
                                       name: entry.mod.name,
                                       description: null,
                                       image: null,
@@ -413,22 +411,25 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
                 );
             },
             async favorites(owner) {
-                for (const entry of await favoriteRepository.latest(owner.id, 5)) {
-                    const world = await worldRegistry.publishableListItem(entry.worldRef).catch(() => undefined);
-                    if (world) {
-                        return [
-                            {
-                                id: world.url,
-                                name: world.displayName,
-                                description: world.description ?? null,
-                                image: world.thumbnail ?? null,
-                                path: worldPagePath(world),
-                                published: entry.createdAt,
-                            },
-                        ];
-                    }
-                }
-                return [];
+                // 公開できないもの（消えた・署名の無いワールド）を除いても足りるよう、多めに読む
+                const entries = await favoriteRepository.latest(owner.id, FEATURED_ITEMS_PER_NOTE * 2);
+                const worlds = await Promise.all(
+                    entries.map((entry) => worldRegistry.publishableListItem(entry.worldRef).catch(() => undefined)),
+                );
+                return entries.flatMap((entry, i): FeaturedSource[] => {
+                    const world = worlds[i];
+                    return world
+                        ? [
+                              {
+                                  name: world.displayName,
+                                  description: world.description ?? null,
+                                  image: world.thumbnail ?? null,
+                                  path: worldPagePath(world),
+                                  published: entry.createdAt,
+                              },
+                          ]
+                        : [];
+                });
             },
         },
         favoritesVisibility: (userId) => userSettingsRepository.getFavoritesVisibility(userId),
