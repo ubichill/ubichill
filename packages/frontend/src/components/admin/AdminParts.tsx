@@ -1,17 +1,10 @@
-import { UserAvatar } from '@/components/social';
+import { UserIdentity } from '@/components/social';
 import { EXPIRY_PRESETS, type ExpiryPreset, isExpiryPreset } from '@/lib/admin/roleForm';
-import { adminField, adminHandle, adminIdentity, adminName } from './adminStyles';
+import { adminField } from './adminStyles';
 
-export function UserIdentity({ user }: { user: { name: string; handle: string; image: string | null } }) {
-    return (
-        <>
-            <UserAvatar user={user} size="sm" />
-            <span className={adminIdentity}>
-                <span className={adminName}>{user.name}</span>
-                <span className={adminHandle}>@{user.handle}</span>
-            </span>
-        </>
-    );
+/** 一覧の行の人（名前は省略せずに折り返す）。 */
+export function AdminUser({ user }: { user: { name: string; handle: string; image: string | null } }) {
+    return <UserIdentity user={user} size="sm" wrap sub={`@${user.handle}`} />;
 }
 
 /** アサインの期限の選択。 */

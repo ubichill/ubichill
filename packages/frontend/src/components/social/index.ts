@@ -5,6 +5,7 @@ export { FriendGrid, FriendTile } from './FriendTile';
 export { ProfileLocationCard } from './ProfileLocationCard';
 export { ProfileRelationActions, ProfileRelationBadges } from './ProfileRelation';
 export { UserAvatar } from './UserAvatar';
+export { UserIdentity } from './UserIdentity';
 export { UserRow } from './UserRow';
 export { UserSearch } from './UserSearch';
 export { useFriendLocations } from './useFriendLocations';

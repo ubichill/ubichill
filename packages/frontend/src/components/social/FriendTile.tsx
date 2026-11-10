@@ -1,7 +1,7 @@
 import { EmojiText } from '@/components/ui/EmojiText';
 import { css, cva } from '@/styled-system/css';
 import type { FriendCard } from './friendPresence';
-import { UserAvatar } from './UserAvatar';
+import { UserIdentity } from './UserIdentity';
 import { useOpenUser } from './useOpenUser';
 
 /** フレンド 1 人のカード（顔・名前・2 行目の一言）。押すとプロフィール。オンラインなら顔の右下に点。 */
@@ -9,20 +9,11 @@ export function FriendTile({ user, detail, online }: FriendCard) {
     const openUser = useOpenUser();
     return (
         <button type="button" className={tile({ online })} onClick={() => openUser(user)}>
-            <span className={css({ position: 'relative', display: 'inline-flex', flexShrink: 0 })}>
-                <UserAvatar user={user} />
-                {online && <span className={onlineDot} aria-hidden="true" />}
-            </span>
-            <span className={css({ display: 'flex', flexDirection: 'column', minW: 0 })}>
-                <span className={name}>
-                    <EmojiText text={user.name} emojis={user.emojis} />
-                </span>
-                {detail && (
-                    <span className={detailText}>
-                        <EmojiText text={detail} emojis={user.emojis} />
-                    </span>
-                )}
-            </span>
+            <UserIdentity
+                user={user}
+                online={online}
+                sub={detail ? <EmojiText text={detail} emojis={user.emojis} /> : null}
+            />
         </button>
     );
 }
@@ -67,33 +58,4 @@ const tile = cva({
     variants: {
         online: { true: {}, false: { opacity: 0.6, _hover: { opacity: 1 } } },
     },
-});
-
-const onlineDot = css({
-    position: 'absolute',
-    right: '-1px',
-    bottom: '-1px',
-    w: '12px',
-    h: '12px',
-    borderRadius: 'full',
-    bg: 'hudStatusOn',
-    border: '2px solid',
-    borderColor: 'surface',
-});
-
-const name = css({
-    fontSize: '14px',
-    fontWeight: '700',
-    color: 'text',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-});
-
-const detailText = css({
-    fontSize: '12px',
-    color: 'textMuted',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
 });

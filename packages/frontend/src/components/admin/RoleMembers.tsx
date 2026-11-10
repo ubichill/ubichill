@@ -8,7 +8,7 @@ import { assignRole, fetchRoleMembers, searchAdminUsers, unassignRole } from '@/
 import { useSession } from '@/lib/session';
 import { pushToast } from '@/lib/toast';
 import { css } from '@/styled-system/css';
-import { ExpirySelect, UserIdentity } from './AdminParts';
+import { AdminUser, ExpirySelect } from './AdminParts';
 import { adminButton, adminError, adminField, adminIconButton, adminList, adminRow } from './adminStyles';
 
 /** ロールのメンバー（期限の切れていない人）と、メンバーの追加。 */
@@ -114,7 +114,7 @@ export function RoleMembers({ target: role, onChanged }: { target: Role; onChang
                 <ul className={adminList}>
                     {addable.map((user) => (
                         <li key={user.id} className={adminRow()}>
-                            <UserIdentity user={user} />
+                            <AdminUser user={user} />
                             <button
                                 type="button"
                                 className={adminButton({ tone: 'primary' })}
@@ -134,7 +134,7 @@ export function RoleMembers({ target: role, onChanged }: { target: Role; onChang
                 <ul className={adminList}>
                     {members.map((member) => (
                         <li key={member.user.id} className={adminRow()}>
-                            <UserIdentity user={member.user} />
+                            <AdminUser user={member.user} />
                             <span className={settingsNote}>{expiryLabel(member.expiresAt)}</span>
                             <button
                                 type="button"
