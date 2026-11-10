@@ -1,5 +1,5 @@
 import { useMyAccount } from '@/components/profile';
-import { MyWorldsSection } from '@/components/profile/MyWorldsSection';
+import { MyWorldsSection } from '@/components/worlds/MyWorldsSection';
 import { WorldBrowser, type WorldBrowserTab } from '@/components/worlds/WorldBrowser';
 import { css } from '@/styled-system/css';
 import { SplitTab, type SplitTabItem } from './SplitTab';

@@ -2,6 +2,7 @@ import { isRemoteUserId, type PublishedMod, type UserProfile } from '@ubichill/s
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ProfileLocationCard } from '@/components/social';
+import { OwnedWorldCard } from '@/components/worlds/OwnedWorldCard';
 import { WorldDetailModal } from '@/components/worlds/WorldDetailModal';
 import { fetchMyAccount, type MyAccount } from '@/lib/account/me';
 import { fetchPublishedMods } from '@/lib/externalWorksApi';
@@ -10,7 +11,6 @@ import { useSession } from '@/lib/session';
 import { fetchUserWithFriendship } from '@/lib/socialApi';
 import { css } from '@/styled-system/css';
 import { FavoriteWorldsSection } from './FavoriteWorldsSection';
-import { OwnedWorldCard } from './OwnedWorldCard';
 import { ProfileEditor } from './ProfileEditor';
 import { ProfileHeader } from './ProfileHeader';
 import { ProfileRelationActions, ProfileRelationBadges } from './ProfileRelation';
