@@ -1,13 +1,8 @@
 import { isRemoteUserId, type PublishedMod, type UserProfile } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import {
-    ProfileLocationCard,
-    ProfileRelationActions,
-    ProfileRelationBadges,
-    type UserRelationSource,
-    useUserRelation,
-} from '@/components/social';
+import { ProfileLocationCard } from '@/components/social';
+import { OwnedWorldCard } from '@/components/worlds/OwnedWorldCard';
 import { WorldDetailModal } from '@/components/worlds/WorldDetailModal';
 import { fetchMyAccount, type MyAccount } from '@/lib/account/me';
 import { fetchPublishedMods } from '@/lib/externalWorksApi';
@@ -16,10 +11,12 @@ import { useSession } from '@/lib/session';
 import { fetchUserWithFriendship } from '@/lib/socialApi';
 import { css } from '@/styled-system/css';
 import { FavoriteWorldsSection } from './FavoriteWorldsSection';
-import { OwnedWorldCard } from './OwnedWorldCard';
 import { ProfileEditor } from './ProfileEditor';
 import { ProfileHeader } from './ProfileHeader';
+import { ProfileRelationActions, ProfileRelationBadges } from './ProfileRelation';
 import { PublishedModsSection } from './PublishedModsSection';
+import { useProfileRelation } from './useProfileRelation';
+import type { UserRelationSource } from './userRelation';
 
 interface UserProfileViewProps {
     /** 表示対象のユーザーID。省略時はログイン中の自分 */
@@ -57,7 +54,10 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
     const [nameConflict, setNameConflict] = useState(false);
     // プロフィールと一緒に取った自分との関係（関係のためだけに取り直さない）
     const [relationSource, setRelationSource] = useState<UserRelationSource | null>(null);
-    const people = useUserRelation(!isOwnPage && session ? relationSource : null);
+    const relation = useProfileRelation(
+        !isOwnPage && session ? relationSource : null,
+        profile && { id: profile.id, name: profile.name },
+    );
 
     useEffect(() => {
         if (!isOwnPage) return;
@@ -159,26 +159,15 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                                 isOwner={isOwnPage}
                                 onEdit={startEditing}
                                 editPending={edit.kind === 'loading'}
-                                relation={
-                                    people.friendship && (
-                                        <ProfileRelationBadges
-                                            friendship={people.friendship}
-                                            relation={people.relation}
-                                            blocked={people.blocked}
-                                        />
-                                    )
-                                }
+                                relation={relation && <ProfileRelationBadges badges={relation.badges} />}
                                 actions={
-                                    people.friendship &&
-                                    people.friendship !== 'self' && (
+                                    relation &&
+                                    relation.actions.length > 0 && (
                                         <ProfileRelationActions
-                                            user={{ id: profile.id, name: profile.name }}
-                                            friendship={people.friendship}
-                                            relation={people.relation}
-                                            onFriendshipChange={people.setFriendship}
-                                            blocked={people.blocked}
-                                            onRelationChange={people.setRelation}
-                                            onBlockedChange={people.setBlocked}
+                                            actions={relation.actions}
+                                            busy={relation.busy}
+                                            friendError={relation.friendError}
+                                            onRun={(action) => void relation.run(action)}
                                         />
                                     )
                                 }

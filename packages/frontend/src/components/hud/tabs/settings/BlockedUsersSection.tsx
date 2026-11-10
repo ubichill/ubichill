@@ -1,7 +1,7 @@
 import type { BlockedUser } from '@ubichill/shared';
 import { useState } from 'react';
 import { socialButton } from '@/components/social/buttons';
-import { UserAvatar } from '@/components/social/UserAvatar';
+import { UserIdentity } from '@/components/social/UserIdentity';
 import { useOpenUser } from '@/components/social/useOpenUser';
 import { unblockAndReload, useBlocks } from '@/lib/blocks';
 import { useSession } from '@/lib/session';
@@ -60,15 +60,7 @@ function BlockedRow({ user, busy, onUnblock }: { user: BlockedUser; busy: boolea
     return (
         <li className={css({ display: 'flex', alignItems: 'center', gap: '3', py: '2', opacity: busy ? 0.6 : 1 })}>
             <button type="button" className={who} onClick={() => openUser(user)}>
-                <UserAvatar user={user} size="sm" />
-                <span className={css({ display: 'flex', flexDirection: 'column', minW: 0 })}>
-                    <span className={css({ fontSize: '13px', fontWeight: '700', color: 'text', truncate: true })}>
-                        {user.name}
-                    </span>
-                    <span className={css({ fontSize: '12px', color: 'textMuted', truncate: true })}>
-                        {user.account ? `@${user.account}` : user.id}
-                    </span>
-                </span>
+                <UserIdentity user={user} size="sm" sub={user.account ? `@${user.account}` : user.id} />
             </button>
             <button type="button" className={socialButton({ tone: 'secondary' })} disabled={busy} onClick={onUnblock}>
                 解除

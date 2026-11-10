@@ -1,13 +1,13 @@
 import { isPublishable, LIMITS } from '@ubichill/shared';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
+import type { MyAccountState } from '@/components/profile/useMyAccount';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { WorldDetailModal } from '@/components/worlds/WorldDetailModal';
 import { isResignable } from '@/lib/account/worldProblems';
 import { css } from '@/styled-system/css';
 import { ExternalWorksSection } from './ExternalWorksSection';
 import { OwnedWorldCard } from './OwnedWorldCard';
-import type { MyAccountState } from './useMyAccount';
 
 const grid = css({
     display: 'grid',

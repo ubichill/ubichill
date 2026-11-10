@@ -1,6 +1,10 @@
-import { AdminUsersSection, RolesSection } from '@/components/admin';
-import { ServerPoliciesSection, WorldPeersSection } from '@/components/federation';
-import { AnnouncementSection } from '@/components/profile/AnnouncementSection';
+import {
+    AdminUsersSection,
+    AnnouncementSection,
+    RolesSection,
+    ServerPoliciesSection,
+    WorldPeersSection,
+} from '@/components/admin';
 import { css } from '@/styled-system/css';
 import { SplitTab, type SplitTabItem } from './SplitTab';
 

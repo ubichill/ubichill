@@ -1,13 +1,13 @@
 import { isPublishable } from '@ubichill/shared';
 import { HomeSettingsSection } from '@/components/home/HomeSettingsSection';
 import { useMyAccount } from '@/components/profile';
-import { PasswordSection } from '@/components/profile/PasswordSection';
-import { PublishingSection } from '@/components/profile/PublishingSection';
+import { PublishingSection } from '@/components/publishing/PublishingSection';
 import { css } from '@/styled-system/css';
 import { SplitTab, type SplitTabItem } from './SplitTab';
 import { FediverseSection } from './settings/FediverseSection';
 import { LogoutSection } from './settings/LogoutSection';
 import { ModPermissionsSettings } from './settings/ModPermissionsSettings';
+import { PasswordSection } from './settings/PasswordSection';
 import { PrivacySection } from './settings/PrivacySection';
 
 export type SettingsSection = 'home' | 'privacy' | 'fediverse' | 'publishing' | 'account' | 'mods';

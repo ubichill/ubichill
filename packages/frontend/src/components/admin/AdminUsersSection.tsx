@@ -10,7 +10,7 @@ import { assignRole, fetchRoles, searchAdminUsers, unassignRole } from '@/lib/ad
 import { useSession } from '@/lib/session';
 import { pushToast } from '@/lib/toast';
 import { css } from '@/styled-system/css';
-import { ExpirySelect, UserIdentity } from './AdminParts';
+import { AdminUser, ExpirySelect } from './AdminParts';
 import {
     adminButton,
     adminError,
@@ -144,10 +144,10 @@ function AdminUserRow({
                         aria-label={`${user.name} のプロフィール`}
                         onClick={() => navigation.openUser(user.id)}
                     >
-                        <UserIdentity user={user} />
+                        <AdminUser user={user} />
                     </button>
                 ) : (
-                    <UserIdentity user={user} />
+                    <AdminUser user={user} />
                 )}
                 {user.isRoot && (
                     <span

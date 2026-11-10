@@ -1,7 +1,6 @@
 import type { FediverseFollower, FediverseOverview, FediverseSettingsUpdate } from '@ubichill/shared';
 import { type ReactNode, useEffect, useState } from 'react';
-import { UserAvatar, useOpenUser } from '@/components/social';
-import { EmojiText } from '@/components/ui/EmojiText';
+import { UserIdentity, useOpenUser } from '@/components/social';
 import { Switch } from '@/components/ui/Switch';
 import { withFollowerAnswered } from '@/lib/fediverse';
 import { answerFollower, fetchFediverse, updateFediverseSettings } from '@/lib/fediverseApi';
@@ -51,15 +50,11 @@ function FollowerRow({
                 className={who}
                 onClick={() => openUser({ id: follower.actorId, handle: follower.account })}
             >
-                <UserAvatar user={{ name, image: follower.icon }} size="sm" />
-                <span className={css({ display: 'flex', flexDirection: 'column', minW: 0 })}>
-                    <span className={css({ fontSize: '13px', fontWeight: '700', color: 'text', truncate: true })}>
-                        <EmojiText text={name} emojis={follower.emojis} />
-                    </span>
-                    <span className={css({ fontSize: '12px', color: 'textMuted', truncate: true })}>
-                        @{follower.account}
-                    </span>
-                </span>
+                <UserIdentity
+                    user={{ name, image: follower.icon, emojis: follower.emojis }}
+                    size="sm"
+                    sub={`@${follower.account}`}
+                />
             </button>
             {children && <div className={css({ display: 'flex', gap: '2', flexShrink: 0 })}>{children}</div>}
         </li>

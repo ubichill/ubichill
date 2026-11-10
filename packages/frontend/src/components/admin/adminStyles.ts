@@ -132,8 +132,3 @@ export const adminTag = cva({
     },
     defaultVariants: { tone: 'neutral' },
 });
-
-/** 名前と ID（縦に 2 行。行の残りの幅を使う） */
-export const adminIdentity = css({ flex: 1, minW: 0, display: 'flex', flexDirection: 'column' });
-export const adminName = css({ fontSize: '14px', fontWeight: '700', color: 'text', overflowWrap: 'anywhere' });
-export const adminHandle = css({ fontSize: '12px', color: 'textMuted', overflowWrap: 'anywhere' });
