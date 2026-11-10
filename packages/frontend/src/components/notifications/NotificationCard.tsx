@@ -1,25 +1,19 @@
-import { type AppNotification, isFullFor } from '@ubichill/shared';
-import { type ReactNode, useState } from 'react';
-import { useNavigate } from 'react-router';
+import type { AppNotification } from '@ubichill/shared';
+import type { ReactNode } from 'react';
 import { HudIcon } from '@/components/hud/HudIcon';
-import { useHudNavigation } from '@/components/hud/HudNavigationContext';
-import { UserAvatar, useOpenUser } from '@/components/social';
-import { answerFollower } from '@/lib/fediverseApi';
-import { fetchInstance } from '@/lib/instancesApi';
-import { acceptInviteRequest, declineInviteRequest } from '@/lib/inviteApi';
-import { messagePreview } from '@/lib/messages';
+import { UserAvatar } from '@/components/social';
+import {
+    NOTIFICATION_ACTIONS,
+    type NotificationActionId,
+    type NotificationActionTone,
+    notificationDetailOf,
+} from '@/lib/notificationActions';
 import { isExpired, notificationText, relativeTime } from '@/lib/notifications';
-import { useSession } from '@/lib/session';
-import { acceptFriend, removeFriend } from '@/lib/socialApi';
 import { css, cva } from '@/styled-system/css';
+import { useNotificationActions } from './useNotificationActions';
 
 /**
- * 通知 1 件（種類ごとの文面と操作）。押すと既読にする。
- * - フレンド申請（返事をしていないもの）: 承認・拒否
- * - 招待: 入る（期限内・今いる部屋でないとき）。招待のあとで満員になっていたら、移る前にここで満員と出す
- * - リクエストインバイト: 招待する（いま自分がいる部屋へ）・断る
- * - フェディバースのフォローリクエスト: 承認・拒否（片付いたら通知ごと消える）
- * - メッセージ・リアクション: 会話を開く（ランチパッドの中だけ）
+ * 通知 1 件（文面と操作）。押すと既読にする。種類ごとに何を出すかは lib/notificationActions.ts。
  */
 export function NotificationCard({
     notification,
@@ -35,167 +29,15 @@ export function NotificationCard({
     onFriendshipChange: () => void;
     onNavigate?: () => void;
 }) {
-    const openUser = useOpenUser(onNavigate);
-    const hud = useHudNavigation();
-    const navigate = useNavigate();
-    const viewerId = useSession().data?.user.id ?? null;
-    const [busy, setBusy] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const { actions, run, busy, error } = useNotificationActions(notification, {
+        pendingFollow,
+        onRead,
+        onFriendshipChange,
+        onNavigate,
+    });
     const { actor } = notification;
-    const actorHandle = actor.preferredUsername;
     const expired = isExpired(notification, Date.now());
-
-    const act = async (task: () => Promise<unknown>, after?: () => void) => {
-        setBusy(true);
-        setError(null);
-        try {
-            await task();
-            after?.();
-        } catch (e) {
-            setError(e instanceof Error ? e.message : '操作できませんでした');
-        } finally {
-            setBusy(false);
-        }
-    };
-
-    const enter = (instance: { id: string; name: string; image: string | null }) => {
-        onRead();
-        const worldData = { displayName: instance.name, thumbnail: instance.image ?? undefined };
-        if (hud) {
-            hud.joinInstance(instance.id, '', worldData);
-            return;
-        }
-        onNavigate?.();
-        navigate(`/instance/${encodeURIComponent(instance.id)}`, { state: { worldData } });
-    };
-
-    const actions: ReactNode[] = [];
-    if (pendingFollow) {
-        actions.push(
-            <IconAction
-                key="accept"
-                label="承認する"
-                tone="accept"
-                disabled={busy}
-                onClick={() => void act(() => acceptFriend(actor.id), onFriendshipChange)}
-            >
-                <path d="M5 12.5l4.5 4.5L19 7.5" />
-            </IconAction>,
-            <IconAction
-                key="decline"
-                label="拒否する"
-                tone="decline"
-                disabled={busy}
-                onClick={() => void act(() => removeFriend(actor.id), onFriendshipChange)}
-            >
-                <path d="M6 6l12 12M18 6L6 18" />
-            </IconAction>,
-        );
-    }
-    if (notification.type === 'FediverseFollowRequest') {
-        actions.push(
-            <IconAction
-                key="approve-follow"
-                label="承認する"
-                tone="accept"
-                disabled={busy}
-                onClick={() => void act(() => answerFollower(actor.id, 'approve'))}
-            >
-                <path d="M5 12.5l4.5 4.5L19 7.5" />
-            </IconAction>,
-            <IconAction
-                key="reject-follow"
-                label="拒否する"
-                tone="decline"
-                disabled={busy}
-                onClick={() => void act(() => answerFollower(actor.id, 'reject'))}
-            >
-                <path d="M6 6l12 12M18 6L6 18" />
-            </IconAction>,
-        );
-    }
-    if (notification.type === 'Invite' && !expired && notification.object.id !== hud?.currentInstanceId) {
-        const instance = notification.object;
-        actions.push(
-            <button
-                key="enter"
-                type="button"
-                className={enterButton}
-                disabled={busy}
-                onClick={() =>
-                    void act(async () => {
-                        if (isFullFor(await fetchInstance(instance.id), viewerId)) throw new Error('満員です');
-                        enter(instance);
-                    })
-                }
-            >
-                <HudIcon name="enter" size={16} />
-                入る
-            </button>,
-        );
-    }
-    if (notification.type === 'Join' && !expired) {
-        actions.push(
-            <IconAction
-                key="invite"
-                label="招待する"
-                tone="accept"
-                disabled={busy}
-                onClick={() => void act(() => acceptInviteRequest(actor.id), onRead)}
-            >
-                <path d="M5 12.5l4.5 4.5L19 7.5" />
-            </IconAction>,
-            <IconAction
-                key="refuse"
-                label="断る"
-                tone="decline"
-                disabled={busy}
-                onClick={() => void act(() => declineInviteRequest(actor.id))}
-            >
-                <path d="M6 6l12 12M18 6L6 18" />
-            </IconAction>,
-        );
-    }
-    if ((notification.type === 'Create' || notification.type === 'EmojiReact') && hud) {
-        actions.push(
-            <IconAction
-                key="conversation"
-                label="会話を開く"
-                tone="view"
-                onClick={() => {
-                    onRead();
-                    hud.openConversation(actor.id);
-                }}
-            >
-                <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12Z" />
-            </IconAction>,
-        );
-    }
-    if (actorHandle && notification.type !== 'Announce') {
-        actions.push(
-            <IconAction
-                key="view"
-                label="プロフィールを見る"
-                tone="view"
-                onClick={() => {
-                    onRead();
-                    openUser({ id: actor.id, handle: actorHandle });
-                }}
-            >
-                <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
-                <circle cx="12" cy="12" r="3" />
-            </IconAction>,
-        );
-    }
-
-    const detail =
-        notification.type === 'Announce'
-            ? notification.object.content
-            : notification.type === 'Invite'
-              ? notification.content
-              : notification.type === 'Create' || notification.type === 'EmojiReact'
-                ? messagePreview(notification.object.content, 120)
-                : null;
+    const detail = notificationDetailOf(notification);
 
     return (
         <li className={card({ read: notification.read })}>
@@ -234,36 +76,50 @@ export function NotificationCard({
                 {error && <p className={css({ fontSize: '12px', color: 'errorText', mt: '1' })}>{error}</p>}
             </div>
             {actions.length > 0 && (
-                <div className={css({ display: 'flex', flexShrink: 0, alignItems: 'center', gap: '1' })}>{actions}</div>
+                <div className={css({ display: 'flex', flexShrink: 0, alignItems: 'center', gap: '1' })}>
+                    {actions.map((id) => (
+                        <ActionButton key={id} id={id} busy={busy} onClick={() => run(id)} />
+                    ))}
+                </div>
             )}
         </li>
     );
 }
 
-function IconAction({
-    label,
-    tone,
-    disabled,
-    onClick,
-    children,
-}: {
-    label: string;
-    tone: 'accept' | 'decline' | 'view';
-    disabled?: boolean;
-    onClick: () => void;
-    children: ReactNode;
-}) {
+const check = <path d="M5 12.5l4.5 4.5L19 7.5" />;
+const cross = <path d="M6 6l12 12M18 6L6 18" />;
+const bubble = <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12Z" />;
+const eye = (
+    <>
+        <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+        <circle cx="12" cy="12" r="3" />
+    </>
+);
+const iconOf = (id: NotificationActionId, tone: NotificationActionTone): ReactNode =>
+    tone === 'accept' ? check : tone === 'decline' ? cross : id === 'open-conversation' ? bubble : eye;
+
+/** 見る操作（会話・プロフィール）は API を呼ばないので、ほかの操作の実行中も押せる。 */
+function ActionButton({ id, busy, onClick }: { id: NotificationActionId; busy: boolean; onClick: () => void }) {
+    const { label, tone } = NOTIFICATION_ACTIONS[id];
+    if (tone === 'enter') {
+        return (
+            <button type="button" className={enterButton} disabled={busy} onClick={onClick}>
+                <HudIcon name="enter" size={16} />
+                {label}
+            </button>
+        );
+    }
     return (
         <button
             type="button"
             title={label}
             aria-label={label}
-            disabled={disabled}
+            disabled={tone !== 'view' && busy}
             className={iconButton({ tone })}
             onClick={onClick}
         >
             <svg {...icon} strokeWidth={tone === 'view' ? 2 : 2.4} aria-hidden>
-                {children}
+                {iconOf(id, tone)}
             </svg>
         </button>
     );
