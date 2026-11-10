@@ -1,6 +1,7 @@
 import type { AdminUserView, Role, RoleMember } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { HudIcon } from '@/components/hud/HudIcon';
+import { settingsNote } from '@/components/hud/tabs/settings/settingsStyles';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { type ExpiryPreset, expiresAtOf, expiryLabel } from '@/lib/admin/roleForm';
 import { assignRole, fetchRoleMembers, searchAdminUsers, unassignRole } from '@/lib/adminApi';
@@ -8,7 +9,7 @@ import { useSession } from '@/lib/session';
 import { pushToast } from '@/lib/toast';
 import { css } from '@/styled-system/css';
 import { ExpirySelect, UserIdentity } from './AdminParts';
-import { adminButton, adminError, adminField, adminIconButton, adminList, adminNote, adminRow } from './adminStyles';
+import { adminButton, adminError, adminField, adminIconButton, adminList, adminRow } from './adminStyles';
 
 /** ロールのメンバー（期限の切れていない人）と、メンバーの追加。 */
 export function RoleMembers({ target: role, onChanged }: { target: Role; onChanged: () => void }) {
@@ -128,13 +129,13 @@ export function RoleMembers({ target: role, onChanged }: { target: Role; onChang
                 </ul>
             )}
             {error && <p className={adminError}>{error}</p>}
-            {members && members.length === 0 && <p className={adminNote}>まだ誰にも付いていません。</p>}
+            {members && members.length === 0 && <p className={settingsNote}>まだ誰にも付いていません。</p>}
             {members && members.length > 0 && (
                 <ul className={adminList}>
                     {members.map((member) => (
                         <li key={member.user.id} className={adminRow()}>
                             <UserIdentity user={member.user} />
-                            <span className={adminNote}>{expiryLabel(member.expiresAt)}</span>
+                            <span className={settingsNote}>{expiryLabel(member.expiresAt)}</span>
                             <button
                                 type="button"
                                 className={adminIconButton}

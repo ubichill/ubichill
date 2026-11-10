@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { onAdminRecheck } from './adminStatus';
-import { fetchMyAccount } from './me';
+import { fetchIsAdmin } from './me';
 
 /** 開いている間に取り直す間隔（ロールの期限切れを拾う） */
 const RECHECK_INTERVAL_MS = 60_000;
@@ -15,8 +15,8 @@ export function useIsAdmin(userId: string | undefined): boolean {
         if (!userId) return;
         const ctrl = { cancelled: false };
         const check = () => {
-            fetchMyAccount()
-                .then((account) => !ctrl.cancelled && setChecked({ userId, isAdmin: account.isAdmin }))
+            fetchIsAdmin()
+                .then((isAdmin) => !ctrl.cancelled && setChecked({ userId, isAdmin }))
                 .catch(() => undefined);
         };
         const onVisible = () => {

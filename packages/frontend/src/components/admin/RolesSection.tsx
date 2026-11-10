@@ -1,19 +1,11 @@
 import type { Role } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { HudIcon } from '@/components/hud/HudIcon';
+import { settingsNote } from '@/components/hud/tabs/settings/settingsStyles';
 import { RoleBadge } from '@/components/profile/ProfileRoleBadges';
 import { fetchRoles } from '@/lib/adminApi';
 import { css } from '@/styled-system/css';
-import {
-    adminButton,
-    adminError,
-    adminIconButton,
-    adminList,
-    adminNote,
-    adminRow,
-    adminStack,
-    adminTag,
-} from './adminStyles';
+import { adminButton, adminError, adminIconButton, adminList, adminRow, adminStack, adminTag } from './adminStyles';
 import { RoleEditor } from './RoleEditor';
 import { RoleMembers } from './RoleMembers';
 
@@ -91,7 +83,7 @@ export function RolesSection() {
                 </button>
             </div>
             {error && <p className={adminError}>{error}</p>}
-            {roles && roles.length === 0 && <p className={adminNote}>まだロールがありません。</p>}
+            {roles && roles.length === 0 && <p className={settingsNote}>まだロールがありません。</p>}
             {roles && roles.length > 0 && (
                 <ul className={adminList}>
                     {roles.map((role) => (

@@ -252,6 +252,13 @@ router.get('/me', requirePublisher, async (req, res) => {
     });
 });
 
+// 管理者かどうかだけ（画面が 1 分ごとに確かめる。/me は重いので分ける）
+router.get('/me/admin', requireAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    res.set('Cache-Control', 'no-store');
+    return res.json({ isAdmin: await roleService.isAdmin(req.user.id) });
+});
+
 // パスワードを変更する。現在のパスワードの確認は better-auth に任せ、他の端末のセッションは無効にする。
 router.put('/me/password', requireAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });

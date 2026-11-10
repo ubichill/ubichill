@@ -1,19 +1,11 @@
+import { UserAvatar } from '@/components/social';
 import { EXPIRY_PRESETS, type ExpiryPreset, isExpiryPreset } from '@/lib/admin/roleForm';
-import { adminAvatar, adminField, adminHandle, adminIdentity, adminName } from './adminStyles';
-
-export function UserAvatar({ name, image }: { name: string; image: string | null }) {
-    if (image) return <img src={image} alt="" className={adminAvatar} />;
-    return (
-        <span className={adminAvatar} aria-hidden="true">
-            {Array.from(name)[0] ?? '?'}
-        </span>
-    );
-}
+import { adminField, adminHandle, adminIdentity, adminName } from './adminStyles';
 
 export function UserIdentity({ user }: { user: { name: string; handle: string; image: string | null } }) {
     return (
         <>
-            <UserAvatar name={user.name} image={user.image} />
+            <UserAvatar user={user} size="sm" />
             <span className={adminIdentity}>
                 <span className={adminName}>{user.name}</span>
                 <span className={adminHandle}>@{user.handle}</span>

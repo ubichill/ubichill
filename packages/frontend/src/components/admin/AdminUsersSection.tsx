@@ -2,6 +2,7 @@ import { type AdminUserView, type AssignedRole, OFFICIAL_HANDLE, type Role } fro
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { HudIcon } from '@/components/hud/HudIcon';
 import { useHudNavigation } from '@/components/hud/HudNavigationContext';
+import { settingsNote } from '@/components/hud/tabs/settings/settingsStyles';
 import { RoleBadge } from '@/components/profile/ProfileRoleBadges';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { assignableRoles, type ExpiryPreset, expiresAtOf, expiryLabel } from '@/lib/admin/roleForm';
@@ -16,7 +17,6 @@ import {
     adminField,
     adminIconButton,
     adminList,
-    adminNote,
     adminRow,
     adminStack,
     adminTag,
@@ -66,7 +66,7 @@ export function AdminUsersSection() {
                 onChange={(e) => setQuery(e.target.value)}
             />
             {error && <p className={adminError}>{error}</p>}
-            {users && users.length === 0 && <p className={adminNote}>見つかりません。</p>}
+            {users && users.length === 0 && <p className={settingsNote}>見つかりません。</p>}
             {users && users.length > 0 && (
                 <ul className={adminList}>
                     {users.map((user) => (
@@ -166,7 +166,7 @@ function AdminUserRow({
                         <li key={role.id} className={assigned}>
                             <RoleBadge role={role} />
                             {!role.isPublic && <HudIcon name="lock" size={11} />}
-                            {role.expiresAt && <span className={adminNote}>{expiryLabel(role.expiresAt)}</span>}
+                            {role.expiresAt && <span className={settingsNote}>{expiryLabel(role.expiresAt)}</span>}
                             <button
                                 type="button"
                                 className={adminIconButton}

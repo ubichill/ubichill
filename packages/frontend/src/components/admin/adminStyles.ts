@@ -3,8 +3,6 @@ import { css, cva } from '@/styled-system/css';
 /** コントロールパネルの欄の中身（縦に並べる）。 */
 export const adminStack = css({ display: 'flex', flexDirection: 'column', gap: '4', maxW: '720px' });
 
-export const adminNote = css({ fontSize: '12px', color: 'textMuted', lineHeight: '1.6' });
-
 export const adminError = css({ fontSize: '13px', color: 'errorText' });
 
 export const adminList = css({ display: 'flex', flexDirection: 'column', gap: '1.5' });
@@ -133,21 +131,6 @@ export const adminTag = cva({
         },
     },
     defaultVariants: { tone: 'neutral' },
-});
-
-export const adminAvatar = css({
-    w: '36px',
-    h: '36px',
-    flexShrink: 0,
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 'full',
-    objectFit: 'cover',
-    bg: 'surfaceAccent',
-    color: 'textMuted',
-    fontSize: '14px',
-    fontWeight: '800',
 });
 
 /** 名前と ID（縦に 2 行。行の残りの幅を使う） */
