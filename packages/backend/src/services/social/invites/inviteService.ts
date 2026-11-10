@@ -1,10 +1,10 @@
 /** 招待とリクエストインバイトの実体（DB・Go の在室・通知・連合をつなぐ）。規則は invites.ts と shared の instanceAccess.ts。 */
 import { instanceRepository, inviteRepository, userSettingsRepository } from '@ubichill/db';
-import { type Federation, federation } from '../federation';
-import { instanceRuntime } from '../instances/instanceRuntime';
-import { notificationService } from '../notifications/notificationService';
-import { worldRegistry } from '../worlds/worldRegistry';
-import { friendIdsOf } from './friends';
+import { type Federation, federation } from '../../federation';
+import { instanceRuntime } from '../../instances/instanceRuntime';
+import { notificationService } from '../../notifications/notificationService';
+import { worldRegistry } from '../../worlds/worldRegistry';
+import { friendIdsOf } from '../friends/friends';
 import { createInviteService, type InviteFederation } from './invites';
 
 /** 招待の連合の口（ほかのサーバーの部屋は、来訪の記録から部屋の URL を引く）。 */

@@ -1,6 +1,6 @@
 /**
  * 作者の確認（shared の authorKeyDirectory）に渡す、DB の読み書き。リポジトリと利用者の引き方を注入する
- * （本番は authorKeyStore.ts、移行の結合テストは別の DB のリポジトリで同じものを組み立てる）。
+ * （本番は authorKeyService.ts、移行の結合テストは別の DB のリポジトリで同じものを組み立てる）。
  */
 import type { AuthorKeyRepository } from '@ubichill/db';
 import { type AuthorKeyCheck, type AuthorKeyDirectoryDeps, normalizeEd25519PublicKey } from '@ubichill/shared';

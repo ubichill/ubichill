@@ -5,7 +5,7 @@ import { federationActorKeys } from '../../schema';
 export type ActorKeyRecord = typeof federationActorKeys.$inferSelect;
 export type NewActorKey = Omit<ActorKeyRecord, 'createdAt'>;
 
-/** このサーバーの actor の RSA の鍵。作るのも暗号化も backend の federation/rsaKeys.ts。 */
+/** このサーバーの actor の RSA の鍵。作るのも暗号化も backend の federation/transport/rsaKeys.ts。 */
 export const actorKeyRepository = {
     async get(actorId: string): Promise<ActorKeyRecord | undefined> {
         const [row] = await db.select().from(federationActorKeys).where(eq(federationActorKeys.actorId, actorId));

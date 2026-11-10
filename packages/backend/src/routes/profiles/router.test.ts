@@ -3,12 +3,12 @@ import type { AddressInfo } from 'node:net';
 import { PROFILE_IMAGE_MAX_BYTES, type StoredProfileFields, type UserProfile } from '@ubichill/shared';
 import express, { type RequestHandler } from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ImageCodec } from '../services/profiles/images/imageCodec';
-import type { ImageStore, StoredImage } from '../services/profiles/images/imageStore';
-import { processProfileImage } from '../services/profiles/images/processImage';
-import { createProfileService, type ProfileUserStore } from '../services/profiles/profiles';
-import { createJobGate } from '../utils/jobGate';
-import { createProfilesRouter } from './profiles';
+import type { ImageCodec } from '../../services/profiles/images/imageCodec';
+import type { ImageStore, StoredImage } from '../../services/profiles/images/imageStore';
+import { processProfileImage } from '../../services/profiles/images/processImage';
+import { createProfileService, type ProfileUserStore } from '../../services/profiles/profiles';
+import { createJobGate } from '../../utils/jobGate';
+import { createProfilesRouter } from './router';
 
 const BASE = 'https://ubichill.example';
 

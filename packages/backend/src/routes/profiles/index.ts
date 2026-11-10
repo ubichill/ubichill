@@ -1,15 +1,15 @@
 import { profileImageRepository, userRepository } from '@ubichill/db';
 import { ENV_KEYS, PROFILE_IMAGE_MAX_PIXELS, SERVER_CONFIG } from '@ubichill/shared';
-import { perUserLimiter } from '../lib/rateLimit';
-import { requireAuth } from '../middleware/auth';
-import { selfAccount } from '../services/authors/authorKeys';
-import { federation } from '../services/federation';
-import { processProfileImage } from '../services/profiles/images/processImage';
-import { createSharpCodec } from '../services/profiles/images/sharpCodec';
-import { createProfileService } from '../services/profiles/profiles';
-import { roleService } from '../services/roles/roleService';
-import { createJobGate } from '../utils/jobGate';
-import { createProfilesRouter } from './profiles';
+import { perUserLimiter } from '../../lib/rateLimit';
+import { requireAuth } from '../../middleware/auth';
+import { selfAccount } from '../../services/authors/authorKeys';
+import { federation } from '../../services/federation';
+import { processProfileImage } from '../../services/profiles/images/processImage';
+import { createSharpCodec } from '../../services/profiles/images/sharpCodec';
+import { createProfileService } from '../../services/profiles/profiles';
+import { roleService } from '../../services/roles/roleService';
+import { createJobGate } from '../../utils/jobGate';
+import { createProfilesRouter } from './router';
 
 // 画像の展開はメモリと libuv のスレッド（パスワードのハッシュと共用）を使うので、同時に作り直す数を絞る
 const imageGate = createJobGate({ concurrency: 2, maxWaiting: 8 });

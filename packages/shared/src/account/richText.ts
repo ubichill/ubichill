@@ -1,7 +1,7 @@
 /**
  * ほかのサーバーの人の文字（自己紹介・名前・ひとこと・項目）に含まれるリンク・メンション・カスタム絵文字。
  * HTML はそのまま出さず、文字とリンクの並び（{@link RichSegment}）にして持ち、表示はテキストとして行う。
- * HTML から作るのは federation/richText.ts。ここは型と、保存したものを確かめ直す処理と、絵文字の切り分け。
+ * HTML から作るのは federation/fediverse/richText.ts。ここは型と、保存したものを確かめ直す処理と、絵文字の切り分け。
  */
 import { z } from 'zod';
 import { parseFederationUrl } from '../federation/urls';

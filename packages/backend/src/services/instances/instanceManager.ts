@@ -16,7 +16,7 @@ import {
 } from '@ubichill/shared';
 import { appConfig } from '../../config';
 import { logger } from '../../utils/logger';
-import { friendIdsOf } from '../social/friends';
+import { friendIdsOf } from '../social/friends/friends';
 import { worldRegistry } from '../worlds/worldRegistry';
 import { instanceRuntime, type RoomPresence } from './instanceRuntime';
 
@@ -238,7 +238,7 @@ class InstanceManager {
     }
 
     /**
-     * ほかのサーバーの来訪者のチケット（連合）。入れるかは呼び手（federation/rooms.ts）が確かめてある。
+     * ほかのサーバーの来訪者のチケット（連合）。入れるかは呼び手（federation/ubichill/rooms.ts）が確かめてある。
      * チケットは来訪者のブラウザの origin に結び付ける（その origin の画面からの接続でだけ使える）。
      */
     async visitorTicket(instanceId: string, participant: { id: string; name: string }, origin: string) {

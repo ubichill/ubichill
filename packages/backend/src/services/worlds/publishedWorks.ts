@@ -2,12 +2,12 @@
  * ユーザーが公開した作品（作ったワールド・外部に置いたワールドと mod）。ユーザーページ（`/users/:userId/worlds`・`/mods`）と
  * 連合の固定ノートで同じ条件にする:
  * - 本体に作ったワールド: 署名して公開したもの（isPublishable）だけ
- * - 外部の作品: いま本人の署名付きで配られていると確かめられたものだけ（externalWorkStore）
+ * - 外部の作品: いま本人の署名付きで配られていると確かめられたものだけ（externalWorkService）
  * - リポジトリ（worlds/）のワールド: 作者アカウントが本人のもの（ユーザーページだけ。画面からは編集できない）
  */
 import type { WorldRecord } from '@ubichill/db';
 import { isPublishable, type PublishedMod, type ResolvedWorld, type WorldListItem } from '@ubichill/shared';
-import type { PublishedExternalEntry } from './externalWorkStore';
+import type { PublishedExternalEntry } from './externalWorkService';
 
 export interface PublishedWorksDeps {
     worldsByAuthor(userId: string): Promise<WorldRecord[]>;

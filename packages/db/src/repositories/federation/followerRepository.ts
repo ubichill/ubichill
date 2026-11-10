@@ -38,7 +38,7 @@ async function countPendingOf(q: typeof db | Tx, userId: string): Promise<number
     return row?.n ?? 0;
 }
 
-/** このサーバーのユーザーをフォローしている、ほかのサーバーの actor。規則は backend の federation/follows.ts。 */
+/** このサーバーのユーザーをフォローしている、ほかのサーバーの actor。規則は backend の federation/fediverse/follows.ts。 */
 export const followerRepository = {
     async get(userId: string, actorId: string): Promise<FollowerRecord | undefined> {
         const [row] = await db.select().from(federationFollowers).where(pairOf(userId, actorId));

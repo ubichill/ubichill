@@ -10,7 +10,7 @@ import {
     displayNameChangeCutoff,
     displayNameKey,
 } from '@ubichill/shared';
-import { invalidateAuthorKey } from '../authors/authorKeyStore';
+import { invalidateAuthorKey } from '../authors/authorKeyService';
 import { selfAccount } from '../authors/authorKeys';
 import { federation } from '../federation';
 import { worldRegistry } from '../worlds/worldRegistry';

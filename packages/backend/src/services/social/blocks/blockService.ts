@@ -7,11 +7,11 @@ import {
     userFriendRepository,
 } from '@ubichill/db';
 import { isRemoteUserId } from '@ubichill/shared';
-import { selfAccount } from '../authors/authorKeys';
-import { federation } from '../federation';
-import { notificationService } from '../notifications/notificationService';
+import { selfAccount } from '../../authors/authorKeys';
+import { federation } from '../../federation';
+import { notificationService } from '../../notifications/notificationService';
+import { summariesOf } from '../userSummaries';
 import { createBlockService } from './blocks';
-import { summariesOf } from './userSummaries';
 
 /**
  * ほかのサーバーの人との関係を消す。相手の文書が引ければフレンドの解除・フォロワーから外すことを相手にも知らせ、

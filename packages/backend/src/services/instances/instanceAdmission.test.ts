@@ -17,7 +17,7 @@ vi.mock('@ubichill/db', () => ({
 }));
 vi.mock('../../config', () => ({ appConfig: { runtime: { publicUrl: '/realtime/v1/ws' } } }));
 vi.mock('../worlds/worldRegistry', () => ({ worldRegistry: { getWorldByUrl: mocks.getWorldByUrl } }));
-vi.mock('../social/friends', () => ({ friendIdsOf: mocks.friendIdsOf }));
+vi.mock('../social/friends/friends', () => ({ friendIdsOf: mocks.friendIdsOf }));
 vi.mock('./instanceRuntime', () => ({
     instanceRuntime: { presence: mocks.presence, provision: mocks.provision, ticket: mocks.ticket, close: mocks.close },
 }));

@@ -8,7 +8,7 @@ import { perUserLimiter } from '../../lib/rateLimit';
 import { requireAuth, requirePublisher } from '../../middleware/auth';
 import { selfAccount } from '../../services/authors/authorKeys';
 import { registerExternalWork, removeExternalWork } from '../../services/worlds/externalWorkRegistration';
-import { externalWorkStatuses } from '../../services/worlds/externalWorkStore';
+import { externalWorkStatuses } from '../../services/worlds/externalWorkService';
 import { myWorldsOf } from '../../services/worlds/myWorlds';
 
 export const router = Router();

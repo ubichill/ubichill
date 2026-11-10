@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { asUnsignedRepositoryWorld, repositoryWorldOwner, repositoryWorldPolicy } from './worldRegistry';
 
 vi.mock('@ubichill/db', () => ({ federationPeerRepository: {}, userRepository: {}, worldRepository: {} }));
-vi.mock('../authors/authorKeyStore', () => ({ isAuthorKey: vi.fn(), resolveAuthorDisplayName: vi.fn() }));
+vi.mock('../authors/authorKeyService', () => ({ isAuthorKey: vi.fn(), resolveAuthorDisplayName: vi.fn() }));
 
 const account = (handle: string, domain: string) => ({ handle, domain });
 

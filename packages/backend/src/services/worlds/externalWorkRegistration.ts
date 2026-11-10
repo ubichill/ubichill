@@ -5,7 +5,7 @@
 import { externalWorkRepository } from '@ubichill/db';
 import { ENV_KEYS, type ExternalWorkRegistration, MAX_EXTERNAL_WORKS_PER_USER, SERVER_CONFIG } from '@ubichill/shared';
 import yaml from 'yaml';
-import { isAuthorKey } from '../authors/authorKeyStore';
+import { isAuthorKey } from '../authors/authorKeyService';
 import { selfAccount } from '../authors/authorKeys';
 import { federation } from '../federation';
 import { verifyRegistration } from './externalWorks';

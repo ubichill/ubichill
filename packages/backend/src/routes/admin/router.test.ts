@@ -3,8 +3,8 @@ import type { AddressInfo } from 'node:net';
 import type { RoleFields } from '@ubichill/shared';
 import express, { type RequestHandler } from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { createRoleService, type RoleStore, type StoredRole } from '../services/roles/roles';
-import { createAdminRouter } from './admin';
+import { createRoleService, type RoleStore, type StoredRole } from '../../services/roles/roles';
+import { createAdminRouter } from './router';
 
 /** 偽の roleRepository（このテストで使う分だけ）。 */
 function memoryRoles(): RoleStore & { clear: () => void } {

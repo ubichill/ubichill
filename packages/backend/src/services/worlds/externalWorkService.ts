@@ -7,7 +7,7 @@ import { type ExternalWorkRecord, externalWorkRepository } from '@ubichill/db';
 import type { ExternalWork, ExternalWorkStatus, PublishedMod, WorldListItem } from '@ubichill/shared';
 import { safeFetch } from '../../lib/safeFetch';
 import { setBounded } from '../../utils/boundedMap';
-import { isAuthorKey } from '../authors/authorKeyStore';
+import { isAuthorKey } from '../authors/authorKeyService';
 import { backendEvents } from '../cluster/backendEvents';
 import { authorSharePath, confirmPublishedMod, type FetchedJson, worldConfirmation } from './externalWorks';
 import { nodeWorldCrypto } from './worldCrypto';

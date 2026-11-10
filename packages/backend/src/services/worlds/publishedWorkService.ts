@@ -1,7 +1,7 @@
 /** 公開した作品の実体（DB・ワールドの解決・外部の作品の確認をつなぐ）。条件は publishedWorks.ts。 */
 import { worldRepository } from '@ubichill/db';
 import { selfAccount } from '../authors/authorKeys';
-import { publishedExternalEntries } from './externalWorkStore';
+import { publishedExternalEntries } from './externalWorkService';
 import { createPublishedWorks } from './publishedWorks';
 import { worldRegistry } from './worldRegistry';
 

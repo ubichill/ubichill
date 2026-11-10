@@ -1,6 +1,6 @@
 import { BLOCK_REFUSAL_MESSAGES, BlockRequestSchema, type BlocksResponse } from '@ubichill/shared';
 import { type RequestHandler, Router } from 'express';
-import type { BlockService } from '../../services/social/blocks';
+import type { BlockService } from '../../services/social/blocks/blocks';
 import type { People } from '../../services/social/people';
 import { logger } from '../../utils/logger';
 

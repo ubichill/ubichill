@@ -9,8 +9,8 @@ import {
     type UserSummary,
 } from '@ubichill/shared';
 import { type RequestHandler, Router } from 'express';
-import type { InviteService } from '../services/social/invites';
-import { logger } from '../utils/logger';
+import type { InviteService } from '../../services/social/invites/invites';
+import { logger } from '../../utils/logger';
 
 export interface InvitesRouterDeps {
     requireAuth: RequestHandler;

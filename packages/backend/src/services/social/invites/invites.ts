@@ -66,7 +66,7 @@ export interface InviteServiceDeps {
     now(): Date;
 }
 
-/** 招待の連合の口（federation/invites.ts）。ほかのサーバーの部屋は、画面の住所（`<ID>@<ドメイン>`）で指す。 */
+/** 招待の連合の口（federation/ubichill/invites.ts）。ほかのサーバーの部屋は、画面の住所（`<ID>@<ドメイン>`）で指す。 */
 export interface InviteFederation {
     /** ほかのサーバーの部屋の住所か */
     isRemoteRoom(roomRef: string): boolean;

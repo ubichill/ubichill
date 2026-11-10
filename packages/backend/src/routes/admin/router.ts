@@ -1,5 +1,5 @@
 import { type RequestHandler, type Response, Router } from 'express';
-import type { RoleOutcome, RoleService } from '../services/roles/roles';
+import type { RoleOutcome, RoleService } from '../../services/roles/roles';
 
 export interface AdminRouterDeps {
     requireAuth: RequestHandler;

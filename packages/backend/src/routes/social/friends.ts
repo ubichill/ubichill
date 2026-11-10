@@ -1,5 +1,5 @@
 import { type RequestHandler, type Response, Router } from 'express';
-import type { FriendRequestRefusal, FriendshipService } from '../../services/social/friendships';
+import type { FriendRequestRefusal, FriendshipService } from '../../services/social/friends/friendships';
 
 export interface FriendsRouterDeps {
     requireAuth: RequestHandler;

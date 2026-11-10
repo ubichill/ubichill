@@ -1,6 +1,6 @@
 /**
  * このサーバーの作者アカウント（domain は PUBLIC_BASE_URL のホスト）。作者の確認の規則は
- * @ubichill/shared の authorKeyDirectory（ブラウザの Host と同じ規則）、DB・safeFetch を注入した実体は authorKeyStore.ts。
+ * @ubichill/shared の authorKeyDirectory（ブラウザの Host と同じ規則）、DB・safeFetch を注入した実体は authorKeyService.ts。
  */
 import { ENV_KEYS, formatAuthorAccount, SERVER_CONFIG, type SigningKeyEntry } from '@ubichill/shared';
 

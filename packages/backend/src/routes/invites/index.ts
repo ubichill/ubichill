@@ -1,8 +1,8 @@
-import { perUserLimiter } from '../lib/rateLimit';
-import { requireAuth } from '../middleware/auth';
-import { inviteService } from '../services/social/inviteService';
-import { summariesOf } from '../services/social/userSummaries';
-import { createInvitesRouter } from './invites';
+import { perUserLimiter } from '../../lib/rateLimit';
+import { requireAuth } from '../../middleware/auth';
+import { inviteService } from '../../services/social/invites/inviteService';
+import { summariesOf } from '../../services/social/userSummaries';
+import { createInvitesRouter } from './router';
 
 export const router = createInvitesRouter({
     requireAuth,

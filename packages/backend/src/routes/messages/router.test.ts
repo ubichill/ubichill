@@ -3,8 +3,8 @@ import type { AddressInfo } from 'node:net';
 import { MESSAGE_LIMITS } from '@ubichill/shared';
 import express, { type RequestHandler } from 'express';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { MessageService } from '../services/social/messages';
-import { createMessagesRouter } from './messages';
+import type { MessageService } from '../../services/social/messages/messages';
+import { createMessagesRouter } from './router';
 
 const sent: Array<{ from: string; to: string; content: string }> = [];
 const reacted: Array<{ from: string; peer: string; messageId: string; emoji: string | null }> = [];

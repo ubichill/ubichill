@@ -1,5 +1,5 @@
 /**
- * ユーザー（`/api/v1/users`）。機能ごとのファイルをつなぐ。プロフィールの編集は profilesRouter、ホームは homeRouter。
+ * ユーザー（`/api/v1/users`）。機能ごとのファイルをつなぐ。プロフィールの編集は routes/profiles、ホームは routes/home。
  * 順番に意味がある: `/:userId` は `/me` にも当たるので、ほかの人に見せる分（public）を最後に置く。
  */
 import { Router } from 'express';

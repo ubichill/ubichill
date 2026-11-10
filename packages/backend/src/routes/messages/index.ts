@@ -1,8 +1,8 @@
 import { MESSAGE_LIMITS, REACTION_LIMITS } from '@ubichill/shared';
-import { perUserLimiter } from '../lib/rateLimit';
-import { requireAuth } from '../middleware/auth';
-import { messageService } from '../services/social/messageService';
-import { createMessagesRouter } from './messages';
+import { perUserLimiter } from '../../lib/rateLimit';
+import { requireAuth } from '../../middleware/auth';
+import { messageService } from '../../services/social/messages/messageService';
+import { createMessagesRouter } from './router';
 
 const SEND_TOO_MANY = 'メッセージを送りすぎています。少し待ってから送ってください';
 

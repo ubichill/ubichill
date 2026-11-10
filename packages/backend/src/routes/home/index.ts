@@ -1,10 +1,10 @@
 import { userSettingsRepository } from '@ubichill/db';
-import { perUserLimiter } from '../lib/rateLimit';
-import { requireAuth } from '../middleware/auth';
-import { createHomeService } from '../services/instances/homeInstance';
-import { instanceManager } from '../services/instances/instanceManager';
-import { worldRegistry } from '../services/worlds/worldRegistry';
-import { createHomeRouter } from './home';
+import { perUserLimiter } from '../../lib/rateLimit';
+import { requireAuth } from '../../middleware/auth';
+import { createHomeService } from '../../services/instances/homeInstance';
+import { instanceManager } from '../../services/instances/instanceManager';
+import { worldRegistry } from '../../services/worlds/worldRegistry';
+import { createHomeRouter } from './router';
 
 export const router = createHomeRouter({
     requireAuth,

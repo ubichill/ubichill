@@ -1,6 +1,6 @@
 import { announcementRepository, notificationRepository } from '@ubichill/db';
 import { logger } from '../../utils/logger';
-import { isBlockedBetween } from '../social/blockCheck';
+import { isBlockedBetween } from '../social/blocks/blockCheck';
 import { notificationHub } from './notificationHub';
 import { createNotificationService } from './notifications';
 

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { perUserLimiter } from '../lib/rateLimit';
 import { requireFreshAuth } from '../middleware/auth';
 import { modAuthorForToken, type ServiceTokenIssuer, serviceTokenIssuerFromEnv } from '../services/auth/serviceTokens';
-import { isAuthorKey } from '../services/authors/authorKeyStore';
+import { isAuthorKey } from '../services/authors/authorKeyService';
 import { nodeWorldCrypto } from '../services/worlds/worldCrypto';
 import { logger } from '../utils/logger';
 

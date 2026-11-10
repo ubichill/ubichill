@@ -1,6 +1,6 @@
 /**
  * フレンドの操作（申請・承認・解除）と一覧。関係の規則は shared の social/friends.ts、止めるかは interactionRefusal（relations）。
- * ほかのサーバーの人は連合（federation/friendships.ts）に任せ、ここは同じ形の結果にそろえる。
+ * ほかのサーバーの人は連合（federation/ubichill/friendships.ts）に任せ、ここは同じ形の結果にそろえる。
  */
 import type { FriendRow, RemoteActorRecord, RemoteFriendshipWithActor } from '@ubichill/db';
 import {
@@ -14,9 +14,9 @@ import {
     remoteEmojisOf,
     type UserSummary,
 } from '@ubichill/shared';
-import type { RemoteFriendships } from '../federation/ubichill/friendships';
-import type { People } from './people';
-import type { Relations } from './relations';
+import type { RemoteFriendships } from '../../federation/ubichill/friendships';
+import type { People } from '../people';
+import type { Relations } from '../relations';
 
 export interface FriendshipServiceDeps {
     relations: Pick<Relations, 'interaction'>;

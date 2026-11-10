@@ -9,7 +9,7 @@ import {
     SendMessageRequestSchema,
 } from '@ubichill/shared';
 import { type RequestHandler, Router } from 'express';
-import type { MessageService } from '../services/social/messages';
+import type { MessageService } from '../../services/social/messages/messages';
 
 export interface MessagesRouterDeps {
     requireAuth: RequestHandler;

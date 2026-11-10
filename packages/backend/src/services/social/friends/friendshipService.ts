@@ -1,11 +1,11 @@
 /** フレンドの操作の実体（DB・連合・通知をつなぐ）。流れは friendships.ts。 */
 import { remoteFriendshipRepository, userFriendRepository, userRepository } from '@ubichill/db';
-import { federation } from '../federation';
-import { notificationService, notifyInBackground } from '../notifications/notificationService';
-import { SYSTEM_USER_ID } from '../users/systemUser';
+import { federation } from '../../federation';
+import { notificationService, notifyInBackground } from '../../notifications/notificationService';
+import { SYSTEM_USER_ID } from '../../users/systemUser';
+import { people, relations } from '../relationService';
+import { summariesOf } from '../userSummaries';
 import { createFriendshipService } from './friendships';
-import { people, relations } from './relationService';
-import { summariesOf } from './userSummaries';
 
 export const friendshipService = createFriendshipService({
     relations,
