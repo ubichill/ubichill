@@ -1,5 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+    assertPackageReplacement,
+    createModLock,
+    instantiatePrefab,
+    lockedMods,
+    WorldDefinitionSchema,
+} from '@ubichill/shared';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import yaml from 'yaml';
+import { PackagePicker } from '@/components/mods/PackagePicker';
 import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
 import { EditorAssets } from './components/assets/EditorAssets';
@@ -17,6 +26,7 @@ import { MobileRightHandle } from './components/MobileRightHandle';
 import { Modal } from './components/Modal';
 import { ModalPrimaryButton, ModalSecondaryButton } from './components/ModalButtons';
 import { PanelSection } from './components/PanelSection';
+import { PrefabControls } from './components/PrefabControls';
 import { PublishSetupDialog } from './components/PublishSetupDialog';
 import { useAvailableEntityKinds } from './hooks/useAvailableEntityKinds';
 import { useDefinition } from './hooks/useDefinition';
@@ -55,13 +65,25 @@ export function WorldEditorPage() {
         isEdit,
         worldId,
         definition,
-        onSavedYamlChange: setSavedYaml,
+        onSavedYamlChange: (text, lock) => {
+            setSavedYaml(text);
+            const next = WorldDefinitionSchema.parse(yaml.parse(text));
+            setDefinition({ ...next, spec: { ...next.spec, lock } });
+        },
         onPublishStateChange: setPublishState,
         onError: setError,
     });
 
-    const { kinds, loading: kindsLoading } = useAvailableEntityKinds(definition);
+    const { kinds, packages, error: packagesError, loading: kindsLoading } = useAvailableEntityKinds(definition);
     const modals = useEditorModals({ definition, onCommit: setDefinition });
+
+    const openedPackage = useRef(false);
+    useEffect(() => {
+        if (!loading && !openedPackage.current && new URLSearchParams(window.location.search).has('addMod')) {
+            openedPackage.current = true;
+            modals.openControlPanel('mods');
+        }
+    }, [loading, modals.openControlPanel]);
 
     const selection = useEntitySelection();
     const ops = useEntityOps({ definition, updateEntities, kinds, selection });
@@ -238,35 +260,47 @@ export function WorldEditorPage() {
                 onMobileClose={mobile.closeRight}
             >
                 {selectedEntity && selection.selectedPath ? (
-                    <EntityInspector
-                        entity={selectedEntity}
-                        initiallyExpandedComponentIndex={selection.selectedComponentIndex}
-                        availableKinds={kinds}
-                        allEntities={definition.spec.initialEntities}
-                        referenceProblems={referenceProblems.get(selectedEntity.id) ?? []}
-                        isChild={selection.selectedPath.length > 1}
-                        worldSize={mobile.snapEnabled ? definition.spec.environment?.worldSize : undefined}
-                        onChange={(updater) => {
-                            const path = selection.selectedPath;
-                            if (path) updateEntities((prev) => updateEntityAt(prev, path, updater));
-                        }}
-                        onAddComponent={(type) => {
-                            const path = selection.selectedPath;
-                            if (path) ops.handleAddComponentToEntity(path, type);
-                        }}
-                        onDeleteComponent={(ci) => {
-                            const path = selection.selectedPath;
-                            if (path) ops.handleDeleteComponent(path, ci);
-                        }}
-                        onDeleteEntity={() => {
-                            const path = selection.selectedPath;
-                            if (path) ops.handleDeleteEntity(path);
-                        }}
-                        onRenameEntity={(id) => {
-                            const path = selection.selectedPath;
-                            if (path) ops.handleRenameEntity(path, id);
-                        }}
-                    />
+                    <>
+                        <PrefabControls
+                            key={selectedEntity.id}
+                            entity={selectedEntity}
+                            packages={packages}
+                            entities={definition.spec.initialEntities}
+                            onChange={(next) => {
+                                const path = selection.selectedPath;
+                                if (path) updateEntities((prev) => updateEntityAt(prev, path, () => next));
+                            }}
+                        />
+                        <EntityInspector
+                            entity={selectedEntity}
+                            initiallyExpandedComponentIndex={selection.selectedComponentIndex}
+                            availableKinds={kinds}
+                            allEntities={definition.spec.initialEntities}
+                            referenceProblems={referenceProblems.get(selectedEntity.id) ?? []}
+                            isChild={selection.selectedPath.length > 1}
+                            worldSize={mobile.snapEnabled ? definition.spec.environment?.worldSize : undefined}
+                            onChange={(updater) => {
+                                const path = selection.selectedPath;
+                                if (path) updateEntities((prev) => updateEntityAt(prev, path, updater));
+                            }}
+                            onAddComponent={(type) => {
+                                const path = selection.selectedPath;
+                                if (path) ops.handleAddComponentToEntity(path, type);
+                            }}
+                            onDeleteComponent={(ci) => {
+                                const path = selection.selectedPath;
+                                if (path) ops.handleDeleteComponent(path, ci);
+                            }}
+                            onDeleteEntity={() => {
+                                const path = selection.selectedPath;
+                                if (path) ops.handleDeleteEntity(path);
+                            }}
+                            onRenameEntity={(id) => {
+                                const path = selection.selectedPath;
+                                if (path) ops.handleRenameEntity(path, id);
+                            }}
+                        />
+                    </>
                 ) : (
                     <div
                         className={css({
@@ -282,7 +316,37 @@ export function WorldEditorPage() {
             </DockSlot>
 
             <DockSlot area="bottom" mobileVisible={true}>
-                <EditorAssets kinds={kinds} loading={kindsLoading} dependencies={definition.spec.dependencies ?? []} />
+                <EditorAssets
+                    kinds={kinds}
+                    loading={kindsLoading}
+                    dependencies={definition.spec.dependencies ?? []}
+                    packages={packages}
+                    onAddPrefab={(pkg, name) => {
+                        try {
+                            const prefab = pkg.manifest.prefabs?.[name];
+                            if (!prefab) return;
+                            const next = instantiatePrefab(
+                                pkg.entry,
+                                name,
+                                prefab,
+                                pkg.manifest.components,
+                                definition.spec.initialEntities,
+                                `prefab-${crypto.randomUUID().slice(0, 12)}`,
+                            );
+                            setDefinition(
+                                WorldDefinitionSchema.parse({
+                                    ...definition,
+                                    spec: {
+                                        ...definition.spec,
+                                        initialEntities: [...definition.spec.initialEntities, next],
+                                    },
+                                }),
+                            );
+                        } catch (e) {
+                            setError(e instanceof Error ? e.message : '配置できません');
+                        }
+                    }}
+                />
             </DockSlot>
 
             {!mobile.leftOpen && <MobileLeftHandle onClick={mobile.openLeft} />}
@@ -379,12 +443,47 @@ export function WorldEditorPage() {
                 <ControlPanelTabs active={modals.activeTab} onChange={modals.switchTab} />
                 {modals.activeTab === 'info' && <WorldInfoForm definition={definition} onChange={setDefinition} />}
                 {modals.activeTab === 'mods' && (
-                    <ModSelector
-                        dependencies={definition.spec.dependencies ?? []}
-                        onCommitDependencies={(next) =>
-                            setDefinition((prev) => ({ ...prev, spec: { ...prev.spec, dependencies: next } }))
-                        }
-                    />
+                    <>
+                        <PackagePicker
+                            initialRef={new URLSearchParams(window.location.search).get('addMod') ?? ''}
+                            onInstall={(pkg) => {
+                                const deps = definition.spec.dependencies ?? [];
+                                const old = deps.find((d) => d.name === pkg.entry.id);
+                                if (old && old.source.author !== pkg.entry.author)
+                                    throw new Error('同名の別作者の mod が入っています');
+                                assertPackageReplacement(lockedMods(definition.spec.lock)[pkg.entry.id], pkg.entry);
+                                setDefinition({
+                                    ...definition,
+                                    spec: {
+                                        ...definition.spec,
+                                        dependencies: [
+                                            ...deps.filter((d) => d.name !== pkg.entry.id),
+                                            {
+                                                name: pkg.entry.id,
+                                                source: {
+                                                    author: pkg.entry.author,
+                                                    url: pkg.entry.baseUrl,
+                                                    version: pkg.entry.version,
+                                                },
+                                            },
+                                        ],
+                                        lock: createModLock({
+                                            ...lockedMods(definition.spec.lock),
+                                            [pkg.entry.id]: pkg.entry,
+                                        }),
+                                    },
+                                });
+                            }}
+                        />
+                        {packagesError && <p role="alert">{packagesError}</p>}
+                        <ModSelector
+                            key={JSON.stringify(definition.spec.dependencies)}
+                            dependencies={definition.spec.dependencies ?? []}
+                            onCommitDependencies={(next) =>
+                                setDefinition((prev) => ({ ...prev, spec: { ...prev.spec, dependencies: next } }))
+                            }
+                        />
+                    </>
                 )}
                 {modals.activeTab === 'yaml' && (
                     <YamlEditorForm

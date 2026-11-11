@@ -480,7 +480,7 @@ describe('runBuild（CLI エントリポイント: 単一mod repo vs モノレ�
         for (const d of tmpDirs) rmSync(d, { recursive: true, force: true });
     });
 
-    it('mods/ ディレクトリが無い場合、cwd 自体を単一 mod として <cwd>/dist にビルドする（外部 mod repo の標準フロー）', async () => {
+    it('mods/ ディレクトリが無い場合、cwd 自体を単一 mod として <cwd>/dist/<modId> にビルドする（外部 mod repo の標準フロー）', async () => {
         const repoDir = setupFixture({
             packageJson: { name: '@ubichill/mod-solo', version: '1.0.0' },
             files: {
@@ -495,9 +495,11 @@ describe('runBuild（CLI エントリポイント: 単一mod repo vs モノレ�
         process.chdir(repoDir);
         await runBuild([], silentLogger);
 
-        const manifest = JSON.parse(readFileSync(join(repoDir, 'dist', 'v1.0.0', 'manifest.json'), 'utf-8'));
+        const manifest = JSON.parse(readFileSync(join(repoDir, 'dist', 'solo', 'v1.0.0', 'manifest.json'), 'utf-8'));
         expect(manifest.id).toBe('solo');
         expect(Object.keys(manifest.components)).toContain('solo:main');
+        await runBuild(['--flat', '--dist-dir=flat'], silentLogger);
+        expect(JSON.parse(readFileSync(join(repoDir, 'flat', 'v1.0.0', 'manifest.json'), 'utf8')).id).toBe('solo');
     });
 
     it('mods/ ディレクトリが存在する場合はモノレポの一括ビルドに切り替わる', async () => {

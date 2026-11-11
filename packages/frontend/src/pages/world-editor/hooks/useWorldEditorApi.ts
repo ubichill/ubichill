@@ -1,4 +1,4 @@
-import type { WorldDefinition } from '@ubichill/shared';
+import { type ModLock, type WorldDefinition, withoutWorldLock } from '@ubichill/shared';
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
 import yaml from 'yaml';
@@ -22,7 +22,7 @@ interface UseWorldEditorApiArgs {
     isEdit: boolean;
     worldId?: string;
     definition: WorldDefinition;
-    onSavedYamlChange: (text: string) => void;
+    onSavedYamlChange: (text: string, lock: ModLock) => void;
     /** 公開状態の更新（公開した・下書きを保存した） */
     onPublishStateChange: React.Dispatch<React.SetStateAction<PublishState>>;
     /** エラーメッセージの通知先 (ページ側で集約管理する) */
@@ -40,7 +40,7 @@ interface UseWorldEditorApiArgs {
  */
 async function buildSaveBody(definition: WorldDefinition, worldId: string | undefined) {
     const { lock, unpinned } = await buildWorldLock(definition, MOD_CDN_URL);
-    return { body: { yaml: yaml.stringify(definition), lock, worldId }, unpinned };
+    return { body: { yaml: yaml.stringify(withoutWorldLock(definition)), lock, worldId }, unpinned };
 }
 
 const deps = { apiBase: API_BASE, fetch: browserFetch };
@@ -99,7 +99,7 @@ export function useWorldEditorApi({
                 }
                 const { body } = await buildSaveBody(definition, isEdit ? worldId : undefined);
                 const saved = await saveWorldBundle(body, null, deps);
-                onSavedYamlChange(body.yaml);
+                onSavedYamlChange(body.yaml, body.lock);
                 // 公開中なら公開状態はそのままで下書きが増える。未公開なら本体に保存され下書きは無い。
                 onPublishStateChange((prev) =>
                     saved.saved === 'draft' ? { ...prev, hasDraft: true } : { published: false, hasDraft: false },
@@ -131,7 +131,7 @@ export function useWorldEditorApi({
                 if (decision.kind === 'cancel') return false;
                 const signer = await authorSignerFor(decision.account);
                 const saved = await saveWorldBundle(body, signer, deps);
-                onSavedYamlChange(body.yaml);
+                onSavedYamlChange(body.yaml, body.lock);
                 onPublishStateChange({ published: true, hasDraft: false });
                 followSaved(saved);
                 return true;

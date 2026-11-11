@@ -245,7 +245,9 @@ export * from './mod/componentRefs';
 export * from './mod/errors';
 export * from './mod/modLock';
 export * from './mod/modSignature';
+export * from './mod/packageRef';
 export * from './mod/permission';
+export * from './mod/prefab';
 export * from './mod/protocol';
 export * from './mod/sandboxPolicy';
 export * from './mod/serviceToken';
@@ -258,6 +260,8 @@ export * from './publishing/cliAuth';
 export * from './publishing/externalWorks';
 export * from './publishing/signingKeys';
 export * from './schemas';
+export { createModLock, lockedMods } from './schemas/modLock.schema';
+export { withoutWorldLock } from './schemas/world.schema';
 export {
     confirmEnvelopeAuthor,
     type EnvelopeInvalidReason,

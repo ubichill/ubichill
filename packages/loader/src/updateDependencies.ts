@@ -6,13 +6,23 @@
  * `source.version: 'latest'`（既定・常に最新を追う）の mod は YAML を書き換えず、
  * ロック再生成だけ行う（＝lock 断片が現行最新のもので上書きされる）。
  */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { WorldDefinitionSchema } from '@ubichill/shared';
+import {
+    assertPackageReplacement,
+    createModLock,
+    lockedMods,
+    type ModLockEntry,
+    ModLockEntrySchema,
+    ModLockSchema,
+    requiredLockModIds,
+    WorldDefinitionSchema,
+} from '@ubichill/shared';
 import type { Logger } from '@ubichill/terminal';
 import yaml from 'yaml';
-import { resolveLatestVersion } from './buildWorldLock.ts';
-import { runInstall } from './installDependencies.ts';
+import { buildWorldLock, createDependencyAwareLockEntryGetter, resolveLatestVersion } from './buildWorldLock.ts';
+import { resolvePackage } from './packages.ts';
+import { writeWorldFiles } from './worldFiles.ts';
 
 function argValue(argv: string[], name: string): string | undefined {
     const hit = argv.find((a) => a.startsWith(`--${name}=`));
@@ -46,12 +56,27 @@ export async function runUpdate(argv: string[], log: Logger): Promise<void> {
         : join(process.cwd(), 'mods');
 
     const dependencies = def.spec.dependencies ?? [];
+    if (targetModId && !dependencies.some((d) => d.name === targetModId))
+        throw new Error(`依存にありません: ${targetModId}`);
+    const lockPath = argValue(argv, 'out') ?? worldPath.replace(/\.ya?ml$/i, '.lock.json');
+    const oldLockText = existsSync(lockPath) ? readFileSync(lockPath, 'utf8') : null;
+    const oldLock = oldLockText ? ModLockSchema.parse(JSON.parse(oldLockText)) : undefined;
     const targets = targetModId ? dependencies.filter((d) => d.name === targetModId) : dependencies;
 
     const doc = yaml.parseDocument(raw);
     const bumps: string[] = [];
 
+    const authored = new Map<string, ModLockEntry>();
     for (const dep of targets) {
+        if (dep.source.author) {
+            const resolved = await resolvePackage({ author: dep.source.author, id: dep.name });
+            assertPackageReplacement(lockedMods(oldLock)[dep.name], resolved.entry);
+            authored.set(dep.name, resolved.entry);
+            dep.source.version = resolved.entry.version;
+            dep.source.url = resolved.entry.baseUrl;
+            doc.setIn(['spec', 'dependencies', dependencies.indexOf(dep), 'source'], dep.source);
+            continue;
+        }
         if (dep.source.version === 'latest') continue; // 常に最新を追う設定は書き換え不要
         const latest = dep.source.url
             ? await resolveLatestVersion(dep.source.url, dep.name)
@@ -63,16 +88,54 @@ export async function runUpdate(argv: string[], log: Logger): Promise<void> {
         bumps.push(`${dep.name}: ${dep.source.version} → ${latest}`);
     }
 
-    if (bumps.length > 0) {
-        writeFileSync(worldPath, String(doc), 'utf-8');
-        log.success(`${bumps.length} 個の mod の版を上げました\n${bumps.map((bump) => `  ${bump}`).join('\n')}`);
-    } else {
-        log.info('版を上げる mod はありません（版を固定した mod はどれも最新）');
+    const next = WorldDefinitionSchema.parse(doc.toJS());
+    const preserved = oldLock
+        ? createModLock(
+              Object.fromEntries(
+                  Object.entries(lockedMods(oldLock)).filter(([id]) => !targets.some((d) => d.name === id)),
+              ),
+          )
+        : undefined;
+    const get = createDependencyAwareLockEntryGetter(
+        next.spec.dependencies,
+        async (id, version) => {
+            const v = version ?? resolveLocalLatestVersion(modsDir, id);
+            if (!v) return null;
+            const path = join(modsDir, id, `v${v}`, 'lock.json');
+            return existsSync(path) ? ModLockEntrySchema.parse(JSON.parse(readFileSync(path, 'utf8'))) : null;
+        },
+        undefined,
+        preserved,
+    );
+    const ids = requiredLockModIds(next.spec);
+    const lock = await buildWorldLock(ids, (id) =>
+        authored.get(id) ? Promise.resolve(authored.get(id) ?? null) : get(id),
+    );
+    if (ids.some((id) => !lockedMods(lock)[id])) throw new Error('依存を取得できないため更新しませんでした');
+    if (oldLock && !argv.includes('--accept-capabilities')) {
+        const added = Object.entries(lockedMods(lock)).flatMap(([id, entry]) => {
+            const before = new Set(
+                Object.values(lockedMods(oldLock)[id]?.components ?? {}).flatMap((c) => c.capabilities),
+            );
+            return Object.values(entry.components)
+                .flatMap((c) => c.capabilities)
+                .filter((cap) => !before.has(cap))
+                .map((cap) => `${id}: ${cap}`);
+        });
+        if (added.length)
+            throw new Error(
+                `追加される権限: ${[...new Set(added)].join(', ')}。確認後 --accept-capabilities を指定してください`,
+            );
     }
-
-    // world.yaml の内容に関わらず lock は常に再生成する
-    // （version 未 pin の mod の lock 断片も最新へ更新するため）。
-    // argv は既にサブコマンド名を除いた引数列なので slice せず、フラグをそのまま引き継ぐ
-    // （--mods-dir 等が world.yaml より前に置かれても取りこぼさない）。
-    await runInstall([worldPath, ...argv.filter((a) => a.startsWith('--'))], log);
+    writeWorldFiles([
+        {
+            path: worldPath,
+            text: JSON.stringify(yaml.parse(raw)) === JSON.stringify(doc.toJS()) ? raw : String(doc),
+            expected: raw,
+        },
+        { path: lockPath, text: `${JSON.stringify(lock, null, 2)}\n`, expected: oldLockText },
+    ]);
+    if (bumps.length)
+        log.success(`${bumps.length} 個の mod の版を上げました\n${bumps.map((bump) => `  ${bump}`).join('\n')}`);
+    else log.success('指定した依存の lock を更新しました。公開時に署名し直してください');
 }

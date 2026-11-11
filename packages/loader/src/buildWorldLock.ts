@@ -4,7 +4,14 @@
  * 各 mod がビルド時に出力した `v<ver>/lock.json`（ModLockEntry）を集めて {@link ModLock} を作る。
  * 取得の transport（HTTP / fs）は `getLockEntry` 注入で分離する。frontend は HTTP、CLI は fs。
  */
-import { type Dependency, type ModLock, type ModLockEntry, ModLockEntrySchema } from '@ubichill/shared';
+import {
+    createModLock,
+    type Dependency,
+    lockedMods,
+    type ModLock,
+    type ModLockEntry,
+    ModLockEntrySchema,
+} from '@ubichill/shared';
 import type { FetchLike } from './types.ts';
 
 // modId 収集ロジックは shared に一本化（backend collectMods と共有）。利便のため再エクスポート。
@@ -23,7 +30,7 @@ export type LockEntryGetter = (modId: string, pinnedVersion?: string) => Promise
 export async function buildWorldLock(modIds: string[], getLockEntry: LockEntryGetter): Promise<ModLock> {
     const entries = await Promise.all(modIds.map(async (id) => [id, await getLockEntry(id)] as const));
     const mods = Object.fromEntries(entries.filter((e): e is [string, ModLockEntry] => e[1] !== null));
-    return { lockVersion: 1, mods };
+    return createModLock(mods);
 }
 
 /**
@@ -40,7 +47,7 @@ export function createHttpLockEntryGetter(baseUrl: string, fetchImpl?: FetchLike
             const res = await f(`${baseUrl}/${modId}/v${version}/lock.json`, { cache: 'no-store' });
             if (!res.ok) return null;
             const parsed = ModLockEntrySchema.safeParse(await res.json());
-            return parsed.success ? parsed.data : null;
+            return parsed.success && parsed.data.id === modId && parsed.data.version === version ? parsed.data : null;
         } catch {
             return null;
         }
@@ -78,16 +85,29 @@ export function createDependencyAwareLockEntryGetter(
     dependencies: Dependency[] | undefined,
     fallbackGetter: LockEntryGetter,
     fetchImpl?: FetchLike,
+    existing?: ModLock,
 ): LockEntryGetter {
     const byModId = new Map((dependencies ?? []).map((d) => [d.name, d.source]));
     return async (modId, pinnedVersionOverride) => {
         const source = byModId.get(modId);
         const pinnedVersion =
             pinnedVersionOverride ?? (source && source.version !== 'latest' ? source.version : undefined);
+        const previous = lockedMods(existing)[modId];
+        if (
+            previous &&
+            previous.id === modId &&
+            (!pinnedVersion || previous.version === pinnedVersion) &&
+            (previous.baseUrl ?? '').replace(/\/$/, '') === (source?.url ?? '').replace(/\/$/, '') &&
+            previous.author === source?.author
+        )
+            return previous;
         if (source?.url) {
             const entry = await createHttpLockEntryGetter(source.url, fetchImpl)(modId, pinnedVersion);
-            return entry ? { ...entry, baseUrl: source.url } : null;
+            return entry
+                ? { ...entry, baseUrl: source.url, ...(source.author ? { author: source.author } : {}) }
+                : null;
         }
-        return fallbackGetter(modId, pinnedVersion);
+        const fallback = await fallbackGetter(modId, pinnedVersion);
+        return fallback && source?.author ? { ...fallback, author: source.author } : fallback;
     };
 }

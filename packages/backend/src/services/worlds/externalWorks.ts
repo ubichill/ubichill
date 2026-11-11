@@ -14,6 +14,7 @@ import {
     MOD_SIGNATURE_FILE,
     ModLockEntrySchema,
     type PublishedMod,
+    parseAuthorAccount,
     verifyModSignature,
     verifyWorldSignature,
     type WorldCrypto,
@@ -158,7 +159,18 @@ export async function confirmPublishedMod(
     const verdict = await verifyModSignature(entry.data, signature.value, deps.crypto, deps.isAuthorKey);
     if (verdict.status === 'rejected' && verdict.reason === 'author-pending') return { status: 'unreachable' };
     if (verdict.status !== 'verified' || verdict.author !== deps.account) return { status: 'invalid' };
-    return { status: 'published', mod: { id: work.name, name: work.name, version: work.version, url: work.url } };
+    const account = parseAuthorAccount(deps.account);
+    return {
+        status: 'published',
+        mod: {
+            id: work.name,
+            name: work.name,
+            version: work.version,
+            url: work.url,
+            author: deps.account,
+            ...(account ? { pageUrl: `https://${account.domain}/@${account.handle}/mods/${work.name}` } : {}),
+        },
+    };
 }
 
 /**

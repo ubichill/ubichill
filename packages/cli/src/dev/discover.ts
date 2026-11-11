@@ -39,7 +39,7 @@ export function discoverModDirs(cwd: string, modsDirArg: string | undefined, fs:
         );
         return { modsRoot, modDirs };
     }
-    if (!fs.exists(join(cwd, 'src'))) return { modDirs: new Map() };
+    if (!fs.exists(join(cwd, 'src')) && !fs.exists(join(cwd, 'prefabs'))) return { modDirs: new Map() };
     if (!fs.exists(join(cwd, 'package.json'))) {
         throw new Error('package.json が見つかりません。mod のルートで実行するか、--mods-dir=<dir> を指定してください');
     }

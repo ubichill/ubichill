@@ -136,7 +136,10 @@ describe('createDependencyAwareLockEntryGetter', () => {
     it('url のある依存は source.url から個別取得し baseUrl を焼き込む', async () => {
         const f = fakeFetch({
             'https://cdn.example.test/video-player/mod.json': { id: 'video-player', version: '2.0.0' },
-            'https://cdn.example.test/video-player/v2.0.0/lock.json': lockEntry('video-player'),
+            'https://cdn.example.test/video-player/v2.0.0/lock.json': {
+                ...lockEntry('video-player'),
+                version: '2.0.0',
+            },
         });
         const dependencies = [dep('video-player', { url: 'https://cdn.example.test', version: 'latest' })];
         const fallback = async () => null;

@@ -75,4 +75,6 @@ export interface PublishedMod {
     version: string;
     /** 配布の基点（ワールドの依存 `source.url` に書く値）。 */
     url: string;
+    author?: string;
+    pageUrl?: string;
 }

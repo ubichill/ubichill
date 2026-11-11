@@ -3,6 +3,7 @@ import {
     DISPLAY_NAME_WEBFINGER_PROPERTY,
     ENV_KEYS,
     formatAuthorAccount,
+    MOD_CATALOG_REL,
     parseAuthorAccount,
     SERVER_CONFIG,
     SIGNING_KEYS_WEBFINGER_REL,
@@ -42,6 +43,14 @@ router.get('/', async (req, res) => {
             subject: `acct:${formatAuthorAccount(account)}`,
             properties: { [DISPLAY_NAME_WEBFINGER_PROPERTY]: user.name },
             links: [
+                {
+                    rel: MOD_CATALOG_REL,
+                    type: 'application/json',
+                    href: new URL(
+                        `/api/v1/authors/${account.handle}/mods`,
+                        process.env[ENV_KEYS.PUBLIC_BASE_URL] || SERVER_CONFIG.DEV_URL,
+                    ).href,
+                },
                 // 連合の actor（FEP-fe34: actor の id はオリジンで信頼する）とプロフィールの画面
                 ...(federation
                     ? [

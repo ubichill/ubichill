@@ -37,6 +37,8 @@ import { formatHelp } from './help.ts';
 import { runInstall } from './install.ts';
 import { runLock } from './lock.ts';
 import { cliVersion, createCliTerminal, DEBUG_TIP, isLikelyBug, splitGlobalFlags, stderrPaint } from './output.ts';
+import { initProject, installPackage, searchPackages } from './packages.ts';
+import { runPrefab } from './prefab.ts';
 import { runUpdate } from './update.ts';
 import { runVerify } from './verify.ts';
 import { runVerifyWorld } from './verifyWorld.ts';
@@ -55,7 +57,17 @@ async function main(): Promise<void> {
             await runDev(rest, term);
             return;
         case 'install':
-            await runInstall(rest, term);
+            if (rest[0]?.startsWith('@') || rest[0]?.startsWith('https://')) await installPackage(rest, term);
+            else await runInstall(rest, term);
+            return;
+        case 'init':
+            initProject(rest, term);
+            return;
+        case 'prefab':
+            await runPrefab(rest, term);
+            return;
+        case 'search':
+            await searchPackages(rest, term);
             return;
         case 'update':
             await runUpdate(rest, term);

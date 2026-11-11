@@ -60,7 +60,7 @@ function fetchManifest(base: string, name: string, version: string): Promise<Ver
 }
 
 /** flat path 一覧 (例: "templates/foo/bar.png") を tree に変換する純関数。 */
-function buildAssetTree(paths: string[], base: string): AssetNode[] {
+export function buildAssetTree(paths: string[], base: string): AssetNode[] {
     type Dir = { kind: 'dir'; name: string; children: Map<string, Dir | FileLeaf> };
     type FileLeaf = { kind: 'file'; name: string; path: string };
     const root: Dir = { kind: 'dir', name: '', children: new Map() };

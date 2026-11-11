@@ -45,6 +45,7 @@ interface NewEntity {
     components: NewComponent[];
     tags: string[];
     children: NewEntity[];
+    prefab?: unknown;
 }
 
 /** 新形式は `id` + `components`、旧形式は `kind` を持つ。 */
@@ -84,11 +85,13 @@ function migrateInitialEntities(entities: unknown[], used: Set<string>): NewEnti
             components?: unknown;
             tags?: unknown;
             children?: unknown;
+            prefab?: unknown;
         };
         const id = typeof obj.id === 'string' ? obj.id : buildId('entity', used);
         used.add(id);
         return {
             id,
+            ...(obj.prefab ? { prefab: obj.prefab } : {}),
             transform: (obj.transform ?? { x: 0, y: 0 }) as LegacyTransform,
             components: Array.isArray(obj.components) ? (obj.components as NewComponent[]) : [],
             tags: Array.isArray(obj.tags) ? obj.tags.filter((t): t is string => typeof t === 'string') : [],

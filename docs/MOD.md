@@ -1,206 +1,131 @@
-# mod パッケージ
+# mod package を作る・使う
 
-mod は ubichill の**配布・信頼の単位**。1 つの mod が複数の Component（それぞれ 1 Worker）を束ねる。
-ユーザーは mod 単位で信頼を判断し、権限も mod 単位で記憶される。ワールドは複数の mod を
-URL から読み込んで構成する（→ [WORLD_AS_CODE.md](./worlds/WORLD_AS_CODE.md)）。
+mod は作者が配布する package。Component、Worker、アセット、プレハブをまとめる。
+Component と mod は同じ単位ではない。Worker を持たず、標準 Component のプレハブだけを配る package も作れる。
 
-関連: [ARCHITECTURE.md](./ARCHITECTURE.md)（実行モデル）/ [CAPABILITIES.md](./CAPABILITIES.md)（権限）/
-[API.md](./API.md)（`Ubi.*` SDK）
+## ワールドを作る
 
----
+ブラウザではワールド編集の「mod管理」から名前・完全な作者参照・作品URLで探し、作者・版・権限を確認して追加する。
+アセット欄には本体の標準部品と、追加した package の Component・プレハブが並ぶ。
 
-## mod.json（マニフェスト）
+```sh
+ubichill init world my-world
+cd my-world
+npm install
+ubichill install @youkan@ubichill.com/pen --world=world.yaml
+ubichill dev world.yaml
+ubichill login
+ubichill publish world.yaml
+```
 
-mod のソースは `mods/<name>/mod.json` で定義する。形式は Zod で検証される（唯一の真実源は
-[`packages/shared/src/schemas/mod.schema.ts`](../packages/shared/src/schemas/mod.schema.ts) の
-`ModManifestSchema`）。`ubi mod build`（`build-workers.mjs`）がこれを読み、Worker を esbuild で
-バンドルして runtime 用の versioned manifest（`manifest.json`）を出力する。
+共有ページは `https://ubichill.com/@youkan/mods/pen`、完全な参照は `@youkan@ubichill.com/pen`。
+正確な版は `@youkan@ubichill.com/pen@1.2.3`。作者参照は作者のホームの WebFinger・カタログを経由して解決し、
+配布先の署名と内容 hash を確認する。名前検索は指定サーバーの公開作品だけを調べ、他サーバーへの検索をばらまかない。
 
-```jsonc
+```sh
+ubichill search pen --server=https://ubichill.com
+```
+
+既存の `dependencies[].source.url` による依存も使える。
+通常の `install world.yaml` とブラウザの保存では、取得元・作者・指定した版が同じなら既存 lock を保つ。
+更新するときは `ubichill update world.yaml pen`。対象外の依存は更新せず、権限が増える場合は内容を確認して
+`--accept-capabilities` を指定する。取得失敗では YAML と lock を書き換えない。
+手元のビルドを明示的に固定し直す場合は `install world.yaml --refresh --mods-dir=dist`。
+
+## mod を作る
+
+```sh
+ubichill init mod my-tools
+cd my-tools
+npm install
+npm run dev
+npm run build
+ubichill login
+ubichill publish dist --public-url=https://example.com/mods
+# dist 全体を https://example.com/mods に配置する
+ubichill publish dist --public-url=https://example.com/mods --check-public
+```
+
+`package.json` の `name`（または `ubichill.id`）が mod ID、`version` が版。
+`src/**/*.worker.ts(x)` の `export const config` が Component のメタデータ。
+SDK は `ubichill` を import する。雛形には JSX と TypeScript の設定があり、型チェック後にビルドする。
+権限は使用する SDK API から検出され、`config.capabilities` で補完できる。
+
+```tsx
+import type { ComponentConfig } from 'ubichill';
+export const config: ComponentConfig = {
+    defaultTransform: { x: 40, y: 40, w: 320, h: 100 },
+};
+export default function Hello() { return <div>Hello</div>; }
+```
+
+単体・複数 package とも、配布構造は `<基点>/<modId>/v<version>/…`。
+単体ビルドの `dist/` をそのまま基点へ配置すればよい。以前の平坦な単体出力が必要な場合は `build --flat` を使う。
+`publish` は署名と作品の登録を行い、外部ホストへのアップロードは作者のデプロイ処理が行う。
+`--check-public` は配置後の lock・manifest・Worker・アセット・作者署名を取得して確認する。
+同じ版に違う内容が既に公開されていれば、署名前に失敗する。版を上げて公開すること。
+CI でも以前の版のディレクトリを消さず、新しい版を追加して配置する。既存ワールドは以前の版を使い続ける。
+
+`ubichill dev` は DB・Docker・Go のツールチェーンなしで、本番と同じインスタンスサーバーを起動する。
+複数タブ・ブラウザで同期を試せる。`--host` で LAN の端末からも試せる。
+開発用 Host が同じオリジンから読む手元の mod だけは未署名で動かせる。作者を固定した依存はこの例外を使わない。
+
+## 本体の標準 Component
+
+`core:` は本体の予約名前空間。`core:collider`・`core:media`・`core:ui` はインストールも mod の署名も不要。
+Collider の検証・メディア描画・静的UIは本体が担当し、mod は必要な振る舞いを追加する。
+package ID `core` と、未知の `core:*` Component は受け付けない。
+
+## プレハブ
+
+`prefabs/<名前>.json` に配置済み Entity の構成を書く。ビルド時に検証され、署名対象の versioned manifest に含まれる。
+各プレハブは 200 Entity、package あたり50プレハブまで。ネスト参照と別 package の暗黙依存は扱わない。
+自身の Component と本体の `core:*` を使える。
+
+```json
 {
-  "id": "video-player",       // mod ID（配布単位・権限記憶のキー）
-  "name": "VideoPlayer",      // 表示名（任意）
-  "version": "2.1.0",         // SemVer
-  "components": {
-    "screen": {
-      "src": "./src/screen.worker.tsx",   // Worker エントリ（ビルド時。runtime では workerUrl に変換）
-      "watchEntityTypes": [],              // 同期監視する Component 型
-      "watchScope": "entity",              // entity | subtree | parent | world
-      "mediaTargets": ["main"],            // メディア描画ターゲット（任意）
-      "defaultTransform": { "x": 0, "y": 0, "z": 2, "w": 640, "h": 360 }
-    }
-  }
+  "name": "案内板",
+  "entities": [{
+    "id": "sign",
+    "transform": { "x": 0, "y": 0, "w": 320, "h": 100 },
+    "components": [{
+      "id": "label",
+      "type": "core:ui",
+      "data": { "markup": "<div>ようこそ</div>" }
+    }]
+  }]
 }
 ```
 
-### フィールド
+ブラウザのアセット欄でプレハブを押すと、一式が元との関連を持ったまま配置される。
+`dataFields` に宣言した `entityRef`・`entityRefArray` は配置ごとに付け替え、複数配置で参照が混ざらない。
+同じ Entity に同型の Component が複数ある場合は、一意な `id` を明示する。
 
-| フィールド | 必須 | 説明 |
-| --- | --- | --- |
-| `id` | ✓ | mod ID。Component は `id:componentKey`（例 `video-player:screen`）で参照される |
-| `name` | | 表示名 |
-| `version` | ✓ | SemVer |
-| `components` | | Component 名 → 定義のマップ |
-
-Component 定義（`ComponentManifestEntry`）の主なフィールド:
-
-| フィールド | 説明 |
-| --- | --- |
-| `src` | Worker エントリ（ビルド入力）。runtime manifest では `workerUrl` に変換される。無ければデータ専用 Component |
-| `watchScope` | 同期の可視範囲。`entity`（自身のみ）/ `subtree`（既定・自身＋子孫）/ `parent`（自身＋祖先）/ `world`（全体） |
-| `watchEntityTypes` | 起動時に同期反映する Component 型 |
-| `mediaTargets` / `canvasTargets` | メディア/キャンバス描画ターゲット |
-| `defaultTransform` | 配置の既定値（x/y/z/w/h/rotation） |
-| `dataFields` | エディタ Inspector 用の編集可能フィールド定義 |
-| `displayName` / `thumbnail` | エディタでの表示名・プレビュー画像 |
-| `capabilities` | 通常は不要（自動生成）。手書きすると自動生成結果への補完になる |
-
-> **形式は JSON で確定。** URL で動的ロードされ、ゼロトラストの信頼境界で `JSON.parse` される。
-> 依存ゼロ・YAML 特有の地雷（アンカー爆弾・暗黙の型強制）を境界に持ち込まないため。
-
-### 同梱アセット
-
-`mods/<id>/assets/` に置いたファイル（WASM・データ・zip など）は、ビルドで versioned ディレクトリへコピーされ、
-各ファイルの sha256 が manifest の `assetIntegrity` に載る。manifest は lock で固定されるので、アセットの中身も
-lock に連なって固定される。Worker からは `Ubi.asset.bytes(path)` / `Ubi.asset.wasm(path)` で読み、Host が
-integrity と照合してから渡す（→ [MOD_RUNTIME.md](./MOD_RUNTIME.md)）。サンプルは `mods/wasm-demo`。
-
----
-
-## 権限（capability）
-
-mod 開発者は権限を宣言しない。使用している `Ubi.*` API からビルド時に自動生成され、実際の許可は
-ユーザーが mod 読み込み時に一括承認する。全一覧・危険度・同意モデルは
-**[CAPABILITIES.md](./CAPABILITIES.md)** を参照。
-
----
-
-## バージョンと lock
-
-mod は URL で動的に読み込まれるため、**バージョン番号を固定するだけでは不十分**。
-同じ `version` でも、URL のドメインが乗っ取られたり CDN 上の内容が差し替えられれば
-「同じバージョンの別物（悪意あるコード）」が配信され得る。
-
-そこで **`package-lock` / SRI 相当の内容ハッシュで固定する**（構想）:
-
-- ワールドが依存する各 mod を **`{ id, version, url, integrity: "sha384-…" }`** としてロックファイルに記録する。
-- 読み込み時、Host は取得した mod の内容ハッシュを計算し、ロック値と照合する。
-  **不一致なら実行しない**（改竄・乗っ取りを検出）。
-- `version` は **SemVer**。runtime アセットはバージョン付きパス（`/mods/<id>/v<version>/…`）で
-  固定配信されるが、その内容もハッシュで縛ることで「バージョンは同じだが中身が変わった」を弾く。
-- lock の更新は**明示的な再ロック時のみ**。それ以外は承認済みの内容と bit 単位で同一であることが保証される。
-
-**lock が守るもの / 守らないもの**（役割の分離）:
-
-| | 担当 |
-| --- | --- |
-| **内容整合性（integrity）**: 承認したものと同一のコードか | ← lock（本節） |
-| **信頼性（trust）**: そもそも承認してよい mod か | ← capability 同意（[CAPABILITIES.md](./CAPABILITIES.md)） |
-
-lock は「最初から悪意ある mod」は防げない（それは capability 同意とレビューの領分）。
-lock が防ぐのは「一度承認した mod が、後から URL 乗っ取り・CDN 改竄ですり替わる」こと。
-ロックファイルはワールドが依存する mod 群を固定するもので、world owner が所有する
-（→ [WORLD_AS_CODE.md](./worlds/WORLD_AS_CODE.md)）。
-
-### 依存関係
-
-現状 mod は自己完結で、mod → mod の依存は持たない。Component 間の連携は `Ubi.event` の**疎結合**で行い、
-相手が居なければ優雅に劣化する（ハードな依存解決はしない）。相手は**参照フィールド**（`dataFields` の
-`entityRef` に `component: '<型>'`）で宣言し、ワールド作者が Inspector で配線する（→ [API.md](./API.md) の
-「Component の参照」）。階層の形（同じ親の下に並べる、など）を作者に暗黙に求めない。
-将来 mod → mod 依存を入れる場合も、ゼロトラストのため **capability は依存間で継承しない**
-（各 mod は独立ロード＋各自の承認＋各自の integrity 照合）。
-
-### プロトコル互換
-
-mod は SDK 経由で Host と通信する。SDK と Host は独立更新されるため、初期化時に
-`PROTOCOL_VERSION` を突き合わせて非互換を検出する
-（→ [CAPABILITIES.md](./CAPABILITIES.md#プロトコルバージョン)）。
-
----
-
-## 作者署名（必須）
-
-mod の配布物には**作者アカウントの署名が必須**。Host は、署名で作者を確認できた mod だけを実行する。
-鍵・作者アカウント・公開環境・取り消しはワールドの署名と同じ仕組みを使う（→ [author-publishing.md](./design/author-publishing.md)）。
-
-| | 担当 |
-| --- | --- |
-| 承認したものと同一のコードか | lock（ワールドが固定） |
-| そのコードをだれが出したか | 作者署名（本節） |
-| 何をしてよいか | capability の同意 |
-
-- **署名するもの**: `v<version>/lock.json` のうち実行内容を決める部分（id・version・manifest の hash・各 worker の hash と
-  権限の上限）。置き場所（URL）は含めないので、同じ配布物をどこに置いても同じ署名で確かめられる。
-- **置き場所**: `lock.json` の兄弟の `v<version>/lock.sig.json`。
-- **署名の方法**: `ubichill build` のあとに `ubichill publish <ビルド出力>`（`ubichill login` したアカウント。CI は
-  Secret `UBICHILL_CREDENTIALS`）。mod はサーバーへ送らない。署名済みの出力をそのまま GitHub Pages などへ置く。
-- **Host の確認（ブラウザで行う）**: ワールドの lock と一致した mod について `lock.sig.json` を取得し、ブラウザで署名を照合して、
-  作者のサーバーの WebFinger から鍵の一覧を直接取って作者を確かめる。Host のオリジンのサーバーには頼らないので、
-  SNS backend の無い単体モードでも同じ規則で動く。規則（鍵一覧の期限・取り消し・取得の上限・作者のサーバーが止まったときの猶予）は
-  サーバーがサービストークンを発行するときと同じコード（`@ubichill/shared` の `authorKeyDirectory`）で、ブラウザは結果を localStorage に持つ。
-  署名が無い・lock と合わない・作者の鍵ではない・鍵が取り消されている・作者をいま確認できない mod は実行しない。
-- **表示**: 権限の確認画面と World Editor の mod 一覧（選んでいる版）に、確認できた作者（`@ID@ドメイン`）を出す。名乗っているだけの作者は出さない。
-  実行しなかった mod は、理由つきで画面に出す（いまは確認できない場合は再試行できる）。
-- **権限の許可は「作者＋mod の ID」に付く**: 利用者が許可・拒否した記録（capability・外部通信のドメイン）は、確認できた作者と mod の ID の組に
-  結び付ける。同じ作者の新しい版は許可を引き継ぎ、同じ ID を名乗る別の作者の mod は引き継がない。
-  作者署名が必須になる前の記録（ID だけ）は、どの mod にも使われない（もう一度確認する）。
-- **取り消しが届くまで**: 作者が公開環境を取り消すと、作者のサーバーが動いていれば 1 時間以内（鍵一覧を取り直す間隔）に各ブラウザへ届き、
-  さらに確認できた結果を 5 分だけ使い回すので、それを過ぎた読み込み（ワールドの移動・入り直し）から実行されなくなる。実行中の mod は止めない。
-- **作者のサーバーへの問い合わせ**: 利用者のブラウザが作者のサーバー（WebFinger・鍵一覧）に直接問い合わせる。mod の配布物を作者の置き場所から
-  取るのと同じく、作者のサーバーには利用者の IP が見える。作者のサーバーは `Access-Control-Allow-Origin: *` で返す必要がある
-  （Ubichill のサーバーは返している）。
-
-```bash
-npm i ubichill && npm i -D @ubichill/cli   # SDK と、ubichill コマンド（Go のインスタンスサーバー込み）
-npx ubichill dev                   # 手元の mod を本番と同じ Go で動かす（http://localhost:3333/）
-npx ubichill login                 # 1 回だけ（CI は ubichill ci create で作った UBICHILL_CREDENTIALS）
-npx ubichill build
-npx ubichill publish dist          # 単体 mod の出力。複数 mod なら dist/mods
-npx ubichill verify --dist-dir=dist --require-signatures
+```sh
+ubichill prefab add my-tools/sign --world=world.yaml
+ubichill update world.yaml my-tools
+ubichill prefab update prefab-xxxxxxxxxxxx --world=world.yaml
+ubichill prefab update prefab-xxxxxxxxxxxx --world=world.yaml --apply
+ubichill prefab unpack prefab-xxxxxxxxxxxx --world=world.yaml
 ```
 
-内容が変わるビルドをすると、以前の内容に付けた `lock.sig.json` は消える（署名し直す）。同じ内容の再ビルドでは残る。
+更新では、配置元の版・ワールド側の変更・更新先の版を比較する。元の版は保存した manifest hash と照合して取得し、
+DB に元データのスナップショットを重複保存しない。配置側の編集を保ち、競合した項目は配置側を優先して一覧に出す。
+ブラウザでは変更差分を確認してから適用する。Unpack は関連を外し、通常の編集可能な Entity 一式にする。
+元の版が配布先から消えた場合は差分更新できないが、配置済みの内容は残り、Unpackできる。
 
-### ユーザーページに出す
+## 配布と信頼
 
-`publish` に公開先の URL（Host がこの mod を取りに来る基点。ワールドの依存の `source.url` と同じ値）を渡すと、署名したときに
-作者アカウントのサーバーへ登録され、ユーザーページの「公開している mod」に出る。`--public-url` を省くと package.json の
-`homepage` を使う。サーバーは公開先から `lock.json` と `lock.sig.json` を取り、本人の署名付きで配られていると確かめたものだけを出す
-（公開前・別の物に置き換えた・鍵を取り消した場合は出ない）。設定の「ワールド」→「外部に置いた作品」で、作品ごとの状態
-（公開済み・公開待ち・取得失敗・署名を確認できない）を見て再確認でき、登録を外せる。API トークン（CLI・CI）で登録するときは、
-そのトークンの公開環境の鍵で署名した作品に限る（ワールドの公開と同じ）。
+Worker・アセット・プレハブ・版履歴は作者の配布先に置く。作者のホームのDBは作者＋mod IDごとの登録ポインタだけを持ち、
+既存の利用者ごとの登録上限を適用する。検索・表示の検証キャッシュにも件数と期限の上限がある。
+カタログは取得先の案内で、署名・作者・hash を確かめずに実行する根拠にはしない。
 
-```bash
-npx ubichill publish dist --public-url=https://yourname.github.io/your-mod
-```
+作者固定は lock v2 の `packages` に保存する。旧 Host が参照する `mods` は空にし、作者固定を読み飛ばした実行を防ぐ。
+新 Host は従来の URL 依存・lock v1 も読む。作者の確認、公開環境の取り消し、利用者の権限承認は共通の仕組みを使う。
+署名は作者を示し、内容の安全性を保証するものではない。
 
-### 開発中の mod
+アセットは `assets/` に置き、Worker から `Ubi.asset.bytes` / `Ubi.asset.wasm` を使う。
+manifest に各アセットの hash が入り、その manifest をワールドの lock が固定する。
 
-開発用の Host（`pnpm dev`、または `VITE_ENVIRONMENT=development` でビルドしたプレビュー）は、**自分のオリジンから配る mod に
-限って**、署名ファイルの無い mod を「署名なし（開発）」として動かす。署名ファイルがあれば開発用の Host でも必ず確かめる。
-本番としてビルドした Host（`VITE_ENVIRONMENT` を指定しないビルドを含む）に例外は無い。
-
-自分でビルドしたイメージに自分の mod を同梱して本番運用するときは、自分のサーバーのアカウントで署名する
-（`ubichill login --server=<自分のサーバー>` → `ubichill publish packages/frontend/public/mods` → イメージをビルド。
-`--build-arg REQUIRE_MOD_SIGNATURES=true` で、署名の無い mod があればビルドを止められる）。
-公式イメージに同梱の mod は公式アカウント（`ubichill@ubichill.com`）の署名なので、サーバーが `ubichill.com` に
-問い合わせられる必要がある（確認できた結果はサーバーに保存される）。
-
----
-
-## 配布
-
-mod は URL ベースで配布する（GitHub Pages / 任意 CDN）。ワールドは `spec.dependencies[].source` にその URL を書く。
-
-```yaml
-mods:
-  - name: pen
-    src: https://yourname.github.io/pen-mod   # GitHub Pages
-  - name: custom
-    src: https://cdn.example.com/my-mod       # 任意ホスティング
-```
-
-`src` から versioned manifest と Worker JS を取得する。取得時に Content-Type 検証と、
-ロックファイルの `integrity` ハッシュ照合を行う（→ [バージョンと lock](#バージョンと-lock)。実装予定）。
-これにより、同一 URL・同一バージョンでも内容がすり替わっていれば検出できる。
+関連: [CLI](../packages/cli/README.md)、[実行モデル](MOD_RUNTIME.md)、[権限](CAPABILITIES.md)、
+[作者参照と発見の設計](design/mod-discovery.md)。

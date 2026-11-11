@@ -142,6 +142,19 @@ export function remapEntityRefs(
             const data = remapRefs(fieldsOf(c.type), c.data, renames);
             return data === c.data ? c : { ...c, data: { ...data } };
         }),
+        ...(e.prefab
+            ? {
+                  prefab: {
+                      ...e.prefab,
+                      entityIds: Object.fromEntries(
+                          Object.entries(e.prefab.entityIds).map(([local, global]) => [
+                              local,
+                              renames.get(global) ?? global,
+                          ]),
+                      ),
+                  },
+              }
+            : {}),
         children: remapEntityRefs(e.children ?? [], renames, fieldsOf),
     }));
 }

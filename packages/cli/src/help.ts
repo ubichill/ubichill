@@ -5,6 +5,10 @@ import { displayWidth, type Paint, padDisplay } from '@ubichill/terminal';
 import { DEBUG_FLAG } from './output.ts';
 
 export const COMMANDS: readonly (readonly [usage: string, summary: string])[] = [
+    ['init mod|world <名前>', '動くプロジェクトの雛形を作る'],
+    ['install @作者@サーバー/mod [--world=world.yaml]', '作者を確認して package を追加する'],
+    ['search <名前> [--server=<URL>]', '指定サーバーの公開 mod を探す'],
+    ['prefab add|update|unpack <対象>', 'package のプレハブを配置・差分更新・Unpackする'],
     ['dev [world.yaml]', '手元の mod を本番と同じ Go で動かす開発サーバー'],
     ['build', 'mod をビルドする'],
     ['install <world.yaml>', 'ワールドが使う mod を固定する（<world>.lock.json）'],

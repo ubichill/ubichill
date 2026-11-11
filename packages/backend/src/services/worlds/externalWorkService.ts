@@ -75,6 +75,14 @@ interface Checked {
     checkedAt: number;
 }
 
+export async function confirmedExternalMod(
+    record: ExternalWorkRecord,
+    account: string,
+): Promise<PublishedMod | undefined> {
+    const { confirmation } = await cachedConfirm(record, account, false);
+    return confirmation.status === 'published' ? confirmation.mod : undefined;
+}
+
 function cachedConfirm(record: ExternalWorkRecord, account: string, fresh: boolean): Promise<Checked> {
     const key = `${account} ${record.kind} ${record.url} ${record.name} ${record.version ?? ''}`;
     const now = Date.now();

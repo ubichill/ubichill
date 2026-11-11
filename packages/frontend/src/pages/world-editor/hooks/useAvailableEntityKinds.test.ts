@@ -1,6 +1,6 @@
 import { CORE_COMPONENT_TYPES, ColliderDataSchema } from '@ubichill/core-components';
 import { describe, expect, it } from 'vitest';
-import { CORE_ENTITY_KINDS, entityKindsFromManifest, usableDataFields } from './useAvailableEntityKinds';
+import { CORE_ENTITY_KINDS, entityKindsFromManifest, usableDataFields } from '../lib/entityKinds';
 
 describe('CORE_ENTITY_KINDS', () => {
     it('mod依存なしでも追加できる有効なColliderを公開する', () => {

@@ -8,10 +8,12 @@ import { join, resolve, sep } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import type { Duplex } from 'node:stream';
 import {
+    createModLock,
     type DevEvent,
     type DevFailure,
     formatDevEvent,
     isSandboxWorkerScriptPath,
+    lockedMods,
     MOD_SIGNATURE_FILE,
     type ModLock,
     SANDBOX_WORKER_CSP,
@@ -53,15 +55,14 @@ const generationEvent = (generation: Generation | undefined): DevEvent | null =>
  * lock の baseUrl は絶対 URL と決まっており（ModLockEntrySchema）、localhost でも 127.0.0.1 でも同じオリジンから取れるようにする。
  */
 export function absolutizeLock(lock: ModLock, origin: string): ModLock {
-    return {
-        ...lock,
-        mods: Object.fromEntries(
-            Object.entries(lock.mods).map(([id, entry]) => [
+    return createModLock(
+        Object.fromEntries(
+            Object.entries(lockedMods(lock)).map(([id, entry]) => [
                 id,
                 entry.baseUrl?.startsWith('/') ? { ...entry, baseUrl: `${origin}${entry.baseUrl}` } : entry,
             ]),
         ),
-    };
+    );
 }
 
 /** ブラウザが使ったオリジン（Host ヘッダから。TLS は dev サーバーに無い）。 */

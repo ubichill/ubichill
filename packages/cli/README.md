@@ -110,7 +110,7 @@ ubichill world build <world.yaml> [--id=<instanceId>] [--max-users=<n>] [--out=<
   `export const config` から取得する。出力ごとに `manifest.json`（ランタイム用）と
   `lock.json`（バイト列の Subresource Integrity + capability 天井）を生成する。
   - **単一 mod（既定・外部リポジトリでの標準フロー）**: `mods/` ディレクトリが存在しない場合、
-    cwd 自体を 1 つの mod のルートとみなし、`<cwd>/dist` にビルドする。
+    cwd 自体を 1 つの mod のルートとみなし、`<cwd>/dist/<modId>` にビルドし、`dist/index.json` に一覧を置く（`--flat` では従来の `dist` 直下）。
   - **モノレポの一括ビルド**: cwd に `mods/` ディレクトリがある場合、または `--mods-dir=<dir>` を
     明示した場合は、その配下の各サブディレクトリを個別の mod として一括ビルドする。既定の出力先は
     `--dist-dir`/`--public-mods-dir` ともに `<cwd>/dist/mods`。
@@ -171,3 +171,20 @@ bundle エラーとしてしか出てこず、原因が分かりにくい。`typ
 ## ライセンス
 
 MIT。ubichill 本体（Host/backend/frontend、AGPL-3.0-only）とは別ライセンス。
+
+## 作者参照とプレハブ
+
+`ubichill init mod <名前>` / `ubichill init world <名前>` で雛形を作れる。
+`install @作者@サーバー/mod@1.2.3 --world=world.yaml` は作者署名・manifest hash を確かめて依存を追加する。
+`search <名前> --server=https://ubichill.com` は指定サーバーの公開作品を検索する。
+
+単体の `build` も配布基点に置ける `dist/<modId>/v<version>/…` を出力する。従来の平坦な出力は `--flat`。
+通常の `install world.yaml` は既存 lock を保つ。手元の再ビルドを固定し直す場合は `--refresh`。
+`update world.yaml <mod>` は対象以外を保ち、権限追加には `--accept-capabilities` が必要。
+
+`prefabs/*.json` に package の構成を同梱できる。
+`prefab add <mod/名前> --world=world.yaml` で配置し、`prefab update <Entity ID>` で差分を確認、`--apply` で適用する。
+`prefab unpack <Entity ID>` で関連を外す。ファイル構造・公開手順は [MOD.md](../../docs/MOD.md) を参照。
+
+配布後に `publish dist --public-url=<基点> --check-public` で実際の配布先を検証する。
+過去の版は配布先に残す。同じ版の内容差し替えは公開前の検査で拒否する。

@@ -7,6 +7,7 @@ export interface SelectableMod {
     version: string;
     /** リモートレジストリ由来の場合に設定される取得元 URL。 */
     baseUrl?: string;
+    author?: string;
 }
 
 /** ユーザーが選択した mod（チェック状態 + バージョン）。まだ dependencies には反映されない。 */
@@ -14,6 +15,7 @@ export interface ModSelectionEntry {
     id: string;
     version: string;
     baseUrl?: string;
+    author?: string;
 }
 
 /**
@@ -23,7 +25,14 @@ export interface ModSelectionEntry {
 export function selectionToDependencies(entries: readonly ModSelectionEntry[]): Dependency[] {
     return entries.map((entry) =>
         entry.baseUrl
-            ? { name: entry.id, source: { url: entry.baseUrl, version: entry.version } }
+            ? {
+                  name: entry.id,
+                  source: {
+                      url: entry.baseUrl,
+                      version: entry.version,
+                      ...(entry.author ? { author: entry.author } : {}),
+                  },
+              }
             : { name: entry.id, source: { version: entry.version } },
     );
 }
@@ -46,7 +55,9 @@ export interface ModDiff {
 }
 
 const dependencyEquals = (a: Dependency, b: Dependency): boolean =>
-    (a.source.url ?? undefined) === (b.source.url ?? undefined) && a.source.version === b.source.version;
+    (a.source.url ?? undefined) === (b.source.url ?? undefined) &&
+    a.source.version === b.source.version &&
+    a.source.author === b.source.author;
 
 /** 現在の依存と次の依存の差分（追加/削除/更新）を計算する。 */
 export function computeModDiff(current: readonly Dependency[], next: readonly Dependency[]): ModDiff {

@@ -192,7 +192,14 @@ describe('confirmPublishedMod', () => {
         });
         expect(published).toEqual({
             status: 'published',
-            mod: { id: 'video-player', name: 'video-player', version: '3.1.0', url: MOD_URL },
+            mod: {
+                id: 'video-player',
+                name: 'video-player',
+                version: '3.1.0',
+                url: MOD_URL,
+                author: ALICE,
+                pageUrl: 'https://ubichill.com/@alice/mods/video-player',
+            },
         });
     });
 

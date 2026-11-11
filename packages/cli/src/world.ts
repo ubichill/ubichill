@@ -11,6 +11,7 @@ import { pathToFileURL } from 'node:url';
 import {
     definitionToResolved,
     type InstanceDefinition,
+    lockedMods,
     ModLockSchema,
     requiredLockModIds,
     toInstanceDefinition,
@@ -50,7 +51,7 @@ export function buildInstanceDefinition(input: WorldBuildInput): InstanceDefinit
             lock: parsedLock,
         },
     );
-    const unlocked = requiredLockModIds(world).filter((modId) => !world.lock?.mods[modId]);
+    const unlocked = requiredLockModIds(world).filter((modId) => !lockedMods(world.lock)[modId]);
     if (unlocked.length > 0) {
         throw new Error(
             `lock に固定されていない mod があります: ${unlocked.join(', ')}。` +

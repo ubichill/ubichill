@@ -9,6 +9,7 @@ import {
     type LockEntryGetter,
 } from '@ubichill/loader';
 import type { Dependency, ModLock, ModLockEntry } from '@ubichill/shared';
+import { lockedMods } from '@ubichill/shared';
 import type { ModArtifacts } from '../build.ts';
 
 export interface Generation {
@@ -88,18 +89,20 @@ export function externalLockEntries(
     const remote = createDependencyAwareLockEntryGetter([...(dependencies ?? [])], async () => null, fetchImpl);
     const sources = new Map((dependencies ?? []).map((d) => [d.name, d.source]));
     return async (modId, version) => {
-        const entry = pinned?.mods[modId];
+        const entry = lockedMods(pinned)[modId];
         const source = sources.get(modId);
         const sameVersion = !source || source.version === 'latest' || source.version === entry?.version;
         const samePlace = !source?.url || source.url === entry?.baseUrl;
-        return hostedElsewhere(entry) && sameVersion && samePlace ? entry : remote(modId, version);
+        return hostedElsewhere(entry) && sameVersion && samePlace && (!source?.author || source.author === entry.author)
+            ? entry
+            : remote(modId, version);
     };
 }
 
 /** 前の世代が外から取った mod をそのまま使う（ワールドを作り直すまで、保存のたびに外へ取りに行かない）。 */
 export function reuseExternalEntries(previous: Generation, fallback: LockEntryGetter): LockEntryGetter {
     return async (modId, version) => {
-        const entry = previous.lock.mods[modId];
+        const entry = lockedMods(previous.lock)[modId];
         return hostedElsewhere(entry) ? entry : fallback(modId, version);
     };
 }

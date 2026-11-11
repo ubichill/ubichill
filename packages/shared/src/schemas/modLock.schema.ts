@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PackageAuthorSchema } from '../mod/packageRef';
 
 // ============================================
 // Mod Lock スキーマ（ワールドに埋め込む mod 完全性ロック）
@@ -55,14 +56,39 @@ export const ModLockEntrySchema = z.object({
      * 配布されている場合のみ設定する。未設定ならホスト側の既定 baseUrl を使う。
      */
     baseUrl: z.string().url().optional(),
+    /** ワールド作者が指定した作者。lock v2 では実行時にも署名の作者と照合する。 */
+    author: PackageAuthorSchema.optional(),
 });
 
 export type ModLockEntry = z.infer<typeof ModLockEntrySchema>;
 
 /** ワールドが固定する mod ロック全体（`modId` → entry）。 */
-export const ModLockSchema = z.object({
-    lockVersion: z.literal(1),
-    mods: z.record(z.string(), ModLockEntrySchema).default({}),
-});
+export const ModLockSchema = z
+    .object({
+        lockVersion: z.union([z.literal(1), z.literal(2)]),
+        mods: z.record(z.string(), ModLockEntrySchema).default({}),
+        packages: z.record(z.string(), ModLockEntrySchema).optional(),
+    })
+    .superRefine((lock, ctx) => {
+        if (lock.lockVersion === 2 && (!lock.packages || Object.keys(lock.mods).length))
+            ctx.addIssue({ code: 'custom', message: 'lock v2 は packages に保存し、旧 Host が使う mods は空にします' });
+        if (lock.lockVersion === 1 && (lock.packages || Object.values(lock.mods).some((m) => m.author)))
+            ctx.addIssue({ code: 'custom', message: '作者を固定する lock は lockVersion: 2 が必要です' });
+    });
 
 export type ModLock = z.infer<typeof ModLockSchema>;
+
+/** v2 は旧 Host の mods を空にし、作者固定を知らないコードを実行させない。 */
+export function lockedMods(
+    lock:
+        | { lockVersion?: number; mods: Record<string, ModLockEntry>; packages?: Record<string, ModLockEntry> }
+        | null
+        | undefined,
+): Record<string, ModLockEntry> {
+    return lock?.lockVersion === 2 ? (lock.packages ?? {}) : (lock?.mods ?? {});
+}
+export function createModLock(entries: Record<string, ModLockEntry>): ModLock {
+    return Object.values(entries).some((e) => e.author)
+        ? { lockVersion: 2, mods: {}, packages: entries }
+        : { lockVersion: 1, mods: entries };
+}

@@ -9,6 +9,7 @@ import { AuthPage } from './pages/AuthPage';
 import { CliAuthorizePage } from './pages/CliAuthorizePage';
 import { HomePage } from './pages/HomePage';
 import { InstancePage } from './pages/InstancePage';
+import { ModPage } from './pages/ModPage';
 import { UserPage } from './pages/UserPage';
 import { WorldPage } from './pages/WorldPage';
 import { WorldEditorPage } from './pages/world-editor';
@@ -40,6 +41,8 @@ export function AppRouter() {
                             />
                             {/* 公開ワールド URL — 誰でもアクセス可能、認証後に自動参加 */}
                             <Route path="/world" element={<WorldPage />} />
+                            <Route path="/:at/mods/:name" element={<ModPage />} />
+                            <Route path="/:at/mods/:name/versions/:version" element={<ModPage />} />
                             <Route path="/world/:worldId" element={<WorldPage />} />
                             {/* 共有 URL（/@handle/name）。作者の ID と名前で決まる */}
                             <Route path="/:at/:name" element={<WorldPage />} />

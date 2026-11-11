@@ -106,6 +106,7 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
             id: d.name,
             version: d.source.version,
             baseUrl: d.source.url,
+            author: d.source.author,
         })),
     );
 
@@ -141,12 +142,25 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
         if (attemptRef.current !== attempt) return;
         const failures = checks.filter((check) => !check.allowed);
         setInstallation({ checking: false, failures });
-        if (failures.length === 0) onCommitDependencies(nextDependencies);
+        if (failures.length === 0)
+            onCommitDependencies(
+                nextDependencies.map((dep) => {
+                    const checked = checks.find((c) => c.modId === dep.name);
+                    return {
+                        ...dep,
+                        source: {
+                            ...dep.source,
+                            version: checked?.version ?? dep.source.version,
+                            ...(checked?.result.status === 'verified' ? { author: checked.result.author } : {}),
+                        },
+                    };
+                }),
+            );
     };
 
-    const knownIds = new Set(mods.map((m) => m.id));
+    const knownIds = new Set(mods.map((m) => `${m.id} ${m.baseUrl ?? ''}`));
     // 読み込み中は mod 一覧が空のため、既存の依存を「未知」と誤判定しない。
-    const unknownSelected = loading ? [] : selected.filter((e) => !knownIds.has(e.id));
+    const unknownSelected = loading ? [] : selected.filter((e) => !knownIds.has(`${e.id} ${e.baseUrl ?? ''}`));
 
     const upsertSelected = (entry: ModSelectionEntry) =>
         setSelected((prev) => {
@@ -158,13 +172,16 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
     const handleToggle = (p: AvailableMod) => {
         resetInstallation();
         const existing = selected.find((e) => e.id === p.id);
+        if (existing && existing.baseUrl !== p.baseUrl) return;
         if (existing) removeSelected(p.id);
         else upsertSelected({ id: p.id, version: 'latest', baseUrl: p.baseUrl });
     };
 
     const handleVersionChange = (p: AvailableMod, version: string) => {
         resetInstallation();
-        upsertSelected({ id: p.id, version, baseUrl: p.baseUrl });
+        const existing = selected.find((e) => e.id === p.id);
+        if (existing && existing.baseUrl !== p.baseUrl) return;
+        upsertSelected({ id: p.id, version, baseUrl: p.baseUrl, author: existing?.author });
     };
 
     return (
@@ -178,7 +195,7 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
                     })}
                 >
                     {mods.map((p) => {
-                        const selectedEntry = selected.find((e) => e.id === p.id);
+                        const selectedEntry = selected.find((e) => e.id === p.id && e.baseUrl === p.baseUrl);
                         const checked = !!selectedEntry;
                         const pinnedVersion = selectedEntry?.version ?? 'latest';
                         const isOutdated = pinnedVersion !== 'latest' && pinnedVersion !== p.version;
@@ -341,7 +358,7 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
                         })}
                     >
                         <span className={css({ fontSize: '11px', color: 'textSubtle', fontWeight: '600' })}>
-                            その他の依存（未知のmod）
+                            作者参照・追加の取得先のmod
                         </span>
                         {unknownSelected.map((e) => (
                             <div
@@ -354,7 +371,9 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
                                     color: 'text',
                                 })}
                             >
-                                <span>{e.id}</span>
+                                <span>
+                                    {e.author ? `@${e.author}/${e.id}` : e.id} — {e.version}
+                                </span>
                                 <button
                                     type="button"
                                     onClick={() => {

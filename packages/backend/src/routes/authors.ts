@@ -3,6 +3,7 @@ import { HANDLE_PATTERN } from '@ubichill/shared';
 import { Router } from 'express';
 import { selfAccount } from '../services/authors/authorKeys';
 import { signingKeyListOf } from '../services/authors/publishingEnvironments';
+import { modCatalog, modDescriptor } from '../services/mods/catalog';
 import { worldRegistry } from '../services/worlds/worldRegistry';
 import { logger } from '../utils/logger';
 
@@ -13,6 +14,21 @@ import { logger } from '../utils/logger';
  * 署名鍵がその作者の有効な鍵かを確かめる。取り消した鍵も revokedAt 付きで返す。公開情報のみ。
  */
 const router = Router();
+
+router.get('/:handle/mods/:name', async (req, res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    const descriptor = await modDescriptor(req.params.handle, req.params.name);
+    if (!descriptor) return res.status(404).json({ error: '公開先で作者を確認できる mod が見つかりません' });
+    res.set('Cache-Control', 'public, max-age=60');
+    return res.json(descriptor);
+});
+router.get('/:handle/mods', async (req, res) => {
+    const offset = Number(req.query.offset ?? 0);
+    if (!HANDLE_PATTERN.test(req.params.handle) || !Number.isSafeInteger(offset) || offset < 0 || offset > 10000)
+        return res.status(400).json({ error: '指定が不正です' });
+    res.set('Access-Control-Allow-Origin', '*');
+    return res.json(await modCatalog('', offset, req.params.handle));
+});
 
 router.get('/:handle/signing-keys', async (req, res) => {
     const { handle } = req.params;

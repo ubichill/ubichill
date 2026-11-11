@@ -5,7 +5,7 @@
  * - savedYaml は「最後にサーバーへ保存した状態の YAML」を保持し dirty 判定のベースにする
  * - updateEntities(mutate) は entity array を更新する便利関数
  */
-import type { InitialEntity, WorldDefinition } from '@ubichill/shared';
+import { type InitialEntity, type WorldDefinition, withoutWorldLock } from '@ubichill/shared';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import yaml from 'yaml';
 import { API_BASE } from '@/lib/api';
@@ -83,7 +83,7 @@ export function useDefinition({ isEdit, worldId, onError }: UseDefinitionOptions
                     published: boolean;
                 };
                 setDefinition(data.definition);
-                setSavedYaml(yaml.stringify(data.definition));
+                setSavedYaml(yaml.stringify(withoutWorldLock(data.definition)));
                 setPublishState({ published: data.published, hasDraft: data.hasDraft });
             })
             .catch((e: unknown) => {
@@ -99,7 +99,7 @@ export function useDefinition({ isEdit, worldId, onError }: UseDefinitionOptions
 
     const dirty = useMemo(() => {
         if (savedYaml === null) return true;
-        return yaml.stringify(definition) !== savedYaml;
+        return yaml.stringify(withoutWorldLock(definition)) !== savedYaml;
     }, [definition, savedYaml]);
 
     const updateEntities = useCallback((mutate: (prev: InitialEntity[]) => InitialEntity[]) => {
