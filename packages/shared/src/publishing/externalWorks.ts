@@ -6,6 +6,7 @@
  */
 import { z } from 'zod';
 import { ModLockEntrySchema } from '../schemas/modLock.schema';
+import { PublicPackageUrlSchema } from '../schemas/url.schema';
 import { LIMITS } from '../schemas/world.schema';
 
 export const EXTERNAL_WORK_KINDS = ['world', 'mod'] as const;
@@ -37,7 +38,7 @@ export const ExternalWorkRegistrationSchema = z.discriminatedUnion('kind', [
     }),
     z.object({
         kind: z.literal('mod'),
-        url: ExternalWorkUrlSchema.refine((v) => !v.endsWith('/'), '末尾の / は付けないでください'),
+        url: PublicPackageUrlSchema.refine((v) => !v.endsWith('/'), '末尾の / は付けないでください'),
         entry: ModLockEntrySchema,
         signature: z.unknown(),
     }),

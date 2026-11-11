@@ -27,10 +27,11 @@ ubichill search pen --server=https://ubichill.com
 ```
 
 既存の `dependencies[].source.url` による依存も使える。
-通常の `install world.yaml` とブラウザの保存では、取得元・作者・指定した版が同じなら既存 lock を保つ。
+`install world.yaml` は明示的に lock を再生成する。手元の再ビルドや latest の版の変更を取り込む。
+ブラウザの保存と CLI のワールド公開は、取得元・作者・指定した版が同じなら既存 lock を保つ。
 更新するときは `ubichill update world.yaml pen`。対象外の依存は更新せず、権限が増える場合は内容を確認して
 `--accept-capabilities` を指定する。取得失敗では YAML と lock を書き換えない。
-手元のビルドを明示的に固定し直す場合は `install world.yaml --refresh --mods-dir=dist`。
+手元のビルドを固定し直す場合は `install world.yaml --mods-dir=dist`。既存依存の権限が増える場合は install でも `--accept-capabilities` を必要とする。
 
 ## mod を作る
 
@@ -59,11 +60,14 @@ export const config: ComponentConfig = {
 export default function Hello() { return <div>Hello</div>; }
 ```
 
-単体・複数 package とも、配布構造は `<基点>/<modId>/v<version>/…`。
-単体ビルドの `dist/` をそのまま基点へ配置すればよい。以前の平坦な単体出力が必要な場合は `build --flat` を使う。
-`publish` は署名と作品の登録を行い、外部ホストへのアップロードは作者のデプロイ処理が行う。
+単体の `build` は従来どおり `dist/v<version>/…` を出力し、既存の配布手順を維持する。
+`build --layout=registry` は単体でも `dist/<modId>/v<version>/…` と一覧を出力し、dist 全体を配布基点に置ける。
+新しい mod の雛形の `npm run build` はこの形式を明示する。`--flat` は従来形式の別名として維持する。
+`publish` はまず署名だけを行い、外部ホストへのアップロードは作者のデプロイ処理が行う。
+作品のカタログ登録は配置後の `--check-public` が成功したときに行う。登録APIも依頼された内容が公開先にあることを検証し、未配置・取得失敗では既存の登録を維持する。
 `--check-public` は配置後の lock・manifest・Worker・アセット・作者署名を取得して確認する。
 同じ版に違う内容が既に公開されていれば、署名前に失敗する。版を上げて公開すること。
+カタログ登録と update は版を比較し、古い修正版の公開で利用中の版へ自動的に差し戻さない。
 CI でも以前の版のディレクトリを消さず、新しい版を追加して配置する。既存ワールドは以前の版を使い続ける。
 
 `ubichill dev` は DB・Docker・Go のツールチェーンなしで、本番と同じインスタンスサーバーを起動する。
@@ -120,7 +124,7 @@ Worker・アセット・プレハブ・版履歴は作者の配布先に置く�
 既存の利用者ごとの登録上限を適用する。検索・表示の検証キャッシュにも件数と期限の上限がある。
 カタログは取得先の案内で、署名・作者・hash を確かめずに実行する根拠にはしない。
 
-作者固定は lock v2 の `packages` に保存する。旧 Host が参照する `mods` は空にし、作者固定を読み飛ばした実行を防ぐ。
+署名の検証で分かった作者は表示に使い、依存に自動付与しない。作者参照または作品ページから明示的に追加した依存の作者固定は lock v2 の `packages` に保存する。旧 Host が参照する `mods` は空にし、作者固定を読み飛ばした実行を防ぐ。
 新 Host は従来の URL 依存・lock v1 も読む。作者の確認、公開環境の取り消し、利用者の権限承認は共通の仕組みを使う。
 署名は作者を示し、内容の安全性を保証するものではない。
 

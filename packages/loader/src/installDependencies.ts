@@ -21,6 +21,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
+    assertCapabilityUpdate,
     lockedMods,
     type ModLockEntry,
     ModLockEntrySchema,
@@ -75,7 +76,11 @@ function createFsLockEntryGetter(modsDir: string): LockEntryGetter {
  * 比較するだけ（CI 用の drift 検出）。不一致 or ファイル不在なら `process.exitCode = 1` にして返す
  * （意図した「検証失敗」は例外にせず、理由と直し方を出して exitCode だけ立てて終える）。
  */
-export async function runInstall(argv: string[], log: Logger): Promise<void> {
+export async function runInstall(
+    argv: string[],
+    log: Logger,
+    options: { reuseExisting?: boolean } = {},
+): Promise<void> {
     const worldPath = argv.find((a) => !a.startsWith('--'));
     if (!worldPath) {
         throw new Error(
@@ -99,7 +104,7 @@ export async function runInstall(argv: string[], log: Logger): Promise<void> {
         def.spec.dependencies,
         fallbackGetter,
         undefined,
-        argv.includes('--refresh') || argv.includes('--check') ? undefined : previous,
+        options.reuseExisting && !argv.includes('--check') ? previous : undefined,
     );
 
     const lock = await buildWorldLock(modIds, getLockEntry);
@@ -138,6 +143,7 @@ export async function runInstall(argv: string[], log: Logger): Promise<void> {
         return;
     }
 
+    assertCapabilityUpdate(previous, lock, argv.includes('--accept-capabilities'));
     writeWorldFiles([{ path: outPath, text: nextJson, expected: previousText }]);
     log.success(`${outPath} に mod を固定しました`, `mod ${lockedIds.length}/${modIds.length}`);
 }

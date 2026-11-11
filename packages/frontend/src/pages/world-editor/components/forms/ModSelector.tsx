@@ -1,7 +1,15 @@
-import { resolveLatestVersion } from '@ubichill/loader';
-import { type Dependency, displayAuthorAccount } from '@ubichill/shared';
+import {
+    buildWorldLock,
+    createDependencyAwareLockEntryGetter,
+    createHttpLockEntryGetter,
+    resolveLatestVersion,
+} from '@ubichill/loader';
+import { createModLock, type Dependency, displayAuthorAccount, lockedMods, type ModLock } from '@ubichill/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useConfirm } from '@/components/ui/ConfirmProvider';
+import { confirmModUpdate } from '@/lib/mods/confirmUpdate';
 import { HOST_MOD_SOURCE, MOD_CDN_URL } from '@/lib/mods/modCdn';
+import { editorPackage } from '@/lib/mods/packages';
 import { type AvailableMod, useAvailableMods } from '@/lib/mods/useAvailableMods';
 import { useModAuthor } from '@/lib/mods/useModAuthor';
 import { SETTINGS_KEYS, useSetting } from '@/lib/settings';
@@ -13,7 +21,12 @@ import {
     type ModInstallationCheck,
     modAuthorFetcher,
 } from '@/world';
-import { computeModDiff, type ModSelectionEntry, selectionToDependencies } from '../../lib/modSelection';
+import {
+    computeModDiff,
+    type ModSelectionEntry,
+    selectionToDependencies,
+    selectionWithCheckedVersions,
+} from '../../lib/modSelection';
 import { editorButton } from '../../recipes/button';
 import { PanelSection } from '../PanelSection';
 import { RegistryUrlManager } from './RegistryUrlManager';
@@ -88,7 +101,8 @@ interface ModSelectorProps {
     /** 現在 definition に登録済みの依存（インストール済み mod）。 */
     dependencies: Dependency[];
     /** インストール確定時に dependencies を置き換える。 */
-    onCommitDependencies: (next: Dependency[]) => void;
+    lock?: ModLock;
+    onCommitDependencies: (next: Dependency[], lock: ModLock) => void;
 }
 
 /**
@@ -96,7 +110,9 @@ interface ModSelectorProps {
  * 「インストール」ボタンで初めて definition へ反映する。
  * 反映前に追加/削除/更新の差分と、外部 URL 由来 mod のセキュリティ注記を表示する。
  */
-export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorProps) {
+export function ModSelector({ dependencies, lock, onCommitDependencies }: ModSelectorProps) {
+    const confirm = useConfirm();
+    const [installationError, setInstallationError] = useState('');
     const [registryUrls, setRegistryUrls] = useSetting<string[]>(SETTINGS_KEYS.editorRegistryUrls, [], isStringArray);
     const { mods, loading } = useAvailableMods(registryUrls);
 
@@ -132,30 +148,54 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
     const install = async () => {
         const attempt = ++attemptRef.current;
         setInstallation({ checking: true, failures: [] });
-        const checks = await checkModInstallation(nextDependencies, {
-            baseUrl: MOD_CDN_URL,
-            resolveLatest: resolveLatestVersion,
-            checkAuthor: modAuthorFetcher(HOST_MOD_SOURCE),
-            allowUnsigned: (baseUrl) =>
-                isUnsignedModAllowed({ devHost: HOST_MOD_SOURCE.devHost, baseUrl, origin: window.location.origin }),
-        });
+        setInstallationError('');
+        const changed = new Set([
+            ...diff.added.map((dep) => dep.name),
+            ...diff.updated.map((change) => change.to.name),
+        ]);
+        const checks = await checkModInstallation(
+            nextDependencies.filter((dep) => changed.has(dep.name) || !lockedMods(lock)[dep.name]),
+            {
+                baseUrl: MOD_CDN_URL,
+                resolveLatest: resolveLatestVersion,
+                checkAuthor: modAuthorFetcher(HOST_MOD_SOURCE),
+                allowUnsigned: (baseUrl) =>
+                    isUnsignedModAllowed({ devHost: HOST_MOD_SOURCE.devHost, baseUrl, origin: window.location.origin }),
+            },
+        );
         if (attemptRef.current !== attempt) return;
         const failures = checks.filter((check) => !check.allowed);
-        setInstallation({ checking: false, failures });
-        if (failures.length === 0)
-            onCommitDependencies(
-                nextDependencies.map((dep) => {
-                    const checked = checks.find((c) => c.modId === dep.name);
-                    return {
-                        ...dep,
-                        source: {
-                            ...dep.source,
-                            version: checked?.version ?? dep.source.version,
-                            ...(checked?.result.status === 'verified' ? { author: checked.result.author } : {}),
-                        },
-                    };
-                }),
+        if (failures.length) {
+            setInstallation({ checking: false, failures });
+            return;
+        }
+        try {
+            const next = selectionWithCheckedVersions(nextDependencies, checks);
+            const get = createDependencyAwareLockEntryGetter(
+                next,
+                createHttpLockEntryGetter(MOD_CDN_URL),
+                undefined,
+                lock,
             );
+            const resolved = await buildWorldLock(
+                next.map((d) => d.name),
+                get,
+            );
+            const proposed = createModLock({ ...lockedMods(lock), ...lockedMods(resolved) });
+            if (next.some((d) => !lockedMods(proposed)[d.name])) throw new Error('mod を取得できません');
+            await Promise.all(
+                Object.values(lockedMods(proposed))
+                    .filter((entry) => JSON.stringify(entry) !== JSON.stringify(lockedMods(lock)[entry.id]))
+                    .map(editorPackage),
+            );
+            if (attemptRef.current !== attempt) return;
+            if (!(await confirmModUpdate(lock, proposed, confirm))) return;
+            if (attemptRef.current === attempt) onCommitDependencies(next, proposed);
+        } catch (e) {
+            if (attemptRef.current === attempt) setInstallationError(e instanceof Error ? e.message : '追加できません');
+        } finally {
+            if (attemptRef.current === attempt) setInstallation({ checking: false, failures: [] });
+        }
     };
 
     const knownIds = new Set(mods.map((m) => `${m.id} ${m.baseUrl ?? ''}`));
@@ -186,6 +226,7 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
 
     return (
         <div className={css({ display: 'flex', flexDirection: 'column', gap: '3' })}>
+            {installationError && <p role="alert">{installationError}</p>}
             <PanelSection title={loading ? '使用するmod (読み込み中...)' : '使用するmod'}>
                 <div
                     className={css({

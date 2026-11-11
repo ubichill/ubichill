@@ -23,18 +23,14 @@ export interface ModSelectionEntry {
  * `baseUrl` があれば外部 URL 由来、無ければローカル mod として扱う。
  */
 export function selectionToDependencies(entries: readonly ModSelectionEntry[]): Dependency[] {
-    return entries.map((entry) =>
-        entry.baseUrl
-            ? {
-                  name: entry.id,
-                  source: {
-                      url: entry.baseUrl,
-                      version: entry.version,
-                      ...(entry.author ? { author: entry.author } : {}),
-                  },
-              }
-            : { name: entry.id, source: { version: entry.version } },
-    );
+    return entries.map((entry) => ({
+        name: entry.id,
+        source: {
+            version: entry.version,
+            ...(entry.baseUrl ? { url: entry.baseUrl } : {}),
+            ...(entry.author ? { author: entry.author } : {}),
+        },
+    }));
 }
 
 /** 単一の mod を dependencies エントリへ変換する（ローカル/URL を判別）。 */
@@ -81,4 +77,15 @@ export function computeModDiff(current: readonly Dependency[], next: readonly De
     }
 
     return { added, removed, updated };
+}
+
+/** 署名から確認した作者を、利用者が指定した作者参照と取り違えない。 */
+export function selectionWithCheckedVersions(
+    dependencies: Dependency[],
+    checks: ReadonlyArray<{ modId: string; version: string | null }>,
+): Dependency[] {
+    return dependencies.map((dep) => ({
+        ...dep,
+        source: { ...dep.source, version: checks.find((c) => c.modId === dep.name)?.version ?? dep.source.version },
+    }));
 }

@@ -39,7 +39,7 @@ describe('package development workflow', () => {
                 ],
             }),
         );
-        await runBuild([], silentLogger);
+        await runBuild(['--layout=registry'], silentLogger);
         const entry = JSON.parse(readFileSync('dist/my-world/v1.0.0/lock.json', 'utf8'));
         expect(entry.components).toEqual({});
         const artifact = await compileMod(process.cwd());

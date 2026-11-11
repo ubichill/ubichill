@@ -9,6 +9,7 @@ import {
 } from '@ubichill/loader';
 import { writeWorldFiles } from '@ubichill/loader/world-files';
 import {
+    assertCapabilityUpdate,
     assertPackageReplacement,
     lockedMods,
     ModLockSchema,
@@ -61,6 +62,7 @@ export async function installPackage(args: string[], log: Logger): Promise<void>
     const ids = requiredLockModIds({ ...world.spec, dependencies: next });
     const lock = await buildWorldLock(ids, (id) => (id === ref.id ? Promise.resolve(found.entry) : get(id)));
     if (ids.some((id) => !lockedMods(lock)[id])) throw new Error('ほかの依存を取得できません。変更せず終了しました');
+    assertCapabilityUpdate(old, lock, args.includes('--accept-capabilities'));
     doc.setIn(['spec', 'dependencies'], next);
     writeWorldFiles([
         { path, text: String(doc), expected: raw },
@@ -150,7 +152,7 @@ export function initProject(args: string[], log: Logger): void {
                 type: 'module',
                 scripts: {
                     dev: 'ubichill dev',
-                    ...(kind === 'mod' ? { build: 'tsc --noEmit && ubichill build' } : {}),
+                    ...(kind === 'mod' ? { build: 'tsc --noEmit && ubichill build --layout=registry' } : {}),
                 },
                 ...(kind === 'mod' ? { dependencies: { ubichill: '^4' } } : {}),
                 devDependencies: { '@ubichill/cli': '^1', ...(kind === 'mod' ? { typescript: '^5' } : {}) },

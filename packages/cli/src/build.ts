@@ -882,13 +882,13 @@ export async function runBuild(args: string[], log: Logger): Promise<void> {
     const entry = await explainBuildFailure(
         basename(modDir),
         buildMod(modDir, {
-            distDir: args.includes('--flat') ? distDir : join(distDir, readPackageJson(modDir).id),
-            publicDir: args.includes('--flat') ? publicDir : join(publicDir, readPackageJson(modDir).id),
+            distDir: !args.includes('--layout=registry') ? distDir : join(distDir, readPackageJson(modDir).id),
+            publicDir: !args.includes('--layout=registry') ? publicDir : join(publicDir, readPackageJson(modDir).id),
             registryUrl,
             log,
         }),
     );
-    if (!args.includes('--flat'))
+    if (args.includes('--layout=registry'))
         for (const dir of new Set([distDir, publicDir]))
             writeFileSync(join(dir, 'index.json'), JSON.stringify([entry], null, 2));
     log.success(

@@ -1,8 +1,8 @@
 import { createModLock, lockedMods, MOD_CATALOG_REL, signMod } from '@ubichill/shared';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildWorldLock, createDependencyAwareLockEntryGetter } from './buildWorldLock';
 import { sriOf } from './integrity';
-import { resolvePackage } from './packages';
+import { fetchPackageBytes, resolvePackage } from './packages';
 import { generateSigningKeyPkcs8, importSigningKey, webWorldCrypto } from './worldCrypto';
 
 const encoder = new TextEncoder();
@@ -111,4 +111,17 @@ describe('distributed package resolution', () => {
             '同じサーバー',
         );
     });
+});
+
+describe('public package transport', () => {
+    afterEach(() => vi.unstubAllGlobals());
+    it.each(['http://localhost/mods', 'http://127.0.0.1:3000/mods', 'http://cdn.example/mods'])(
+        '開発用HTTP例外を公開package取得に使わない: %s',
+        async (url) => {
+            const fetch = vi.fn();
+            vi.stubGlobal('fetch', fetch);
+            await expect(fetchPackageBytes(url)).rejects.toThrow('https');
+            expect(fetch).not.toHaveBeenCalled();
+        },
+    );
 });

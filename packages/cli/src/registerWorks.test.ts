@@ -1,11 +1,12 @@
 import type { ModLockEntry } from '@ubichill/shared';
 import { recordingLogger } from '@ubichill/terminal';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
     compareVersions,
     latestPerMod,
     normalizePublicUrl,
     type RegisterRequest,
+    registerDeployedMods,
     registerExternalWorks,
 } from './registerWorks.ts';
 
@@ -88,5 +89,47 @@ describe('registerExternalWorks', () => {
             expect.stringContaining('署名の作者がログイン中のアカウントではありません'),
             expect.stringContaining('通信できません'),
         ]);
+    });
+});
+
+describe('registerDeployedMods', () => {
+    it('配置前の署名だけでは既存カタログのポインタを変えない', async () => {
+        const verifyPublic = vi.fn();
+        const register = vi.fn(async () => 1);
+        const { logger } = recordingLogger();
+        expect(
+            await registerDeployedMods({
+                checked: false,
+                signed: [entry('demo', '2.0.0')],
+                verifyPublic,
+                register,
+                log: logger,
+            }),
+        ).toBe(0);
+        expect(verifyPublic).not.toHaveBeenCalled();
+        expect(register).not.toHaveBeenCalled();
+    });
+    it('配布物の取得失敗では一部も登録しない', async () => {
+        const register = vi.fn(async () => 1);
+        const { logger } = recordingLogger();
+        await expect(
+            registerDeployedMods({
+                checked: true,
+                signed: [entry('demo', '2.0.0')],
+                verifyPublic: async () => {
+                    throw new Error('not deployed');
+                },
+                register,
+                log: logger,
+            }),
+        ).rejects.toThrow('not deployed');
+        expect(register).not.toHaveBeenCalled();
+    });
+    it('配置確認後に各packageの最大の版を登録する', async () => {
+        const signed = [entry('demo', '2.0.0'), entry('demo', '1.9.1')];
+        const register = vi.fn(async () => 1);
+        const { logger } = recordingLogger();
+        await registerDeployedMods({ checked: true, signed, verifyPublic: async () => {}, register, log: logger });
+        expect(register).toHaveBeenCalledWith([signed[0]]);
     });
 });

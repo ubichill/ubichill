@@ -97,8 +97,8 @@ export function createDependencyAwareLockEntryGetter(
             previous &&
             previous.id === modId &&
             (!pinnedVersion || previous.version === pinnedVersion) &&
-            (previous.baseUrl ?? '').replace(/\/$/, '') === (source?.url ?? '').replace(/\/$/, '') &&
-            previous.author === source?.author
+            (!source || (previous.baseUrl ?? '').replace(/\/$/, '') === (source.url ?? '').replace(/\/$/, '')) &&
+            (!source || previous.author === source.author)
         )
             return previous;
         if (source?.url) {

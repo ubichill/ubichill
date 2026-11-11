@@ -11,7 +11,8 @@ import {
 } from './notificationFeed';
 
 const actor = { type: 'Person', id: 'alice', name: 'Alice', preferredUsername: 'alice', icon: null } as const;
-const at = (day: number) => `2026-10-${String(day).padStart(2, '0')}T00:00:00.000Z`;
+// day=0 も含むので Date.UTC で前月末へ正規化し、NaN の日付を並び順の検査へ渡さない。
+const at = (day: number) => new Date(Date.UTC(2026, 9, day)).toISOString();
 const follow = (id: string, day: number, read = false): AppNotification => ({
     id,
     type: 'Follow',

@@ -82,7 +82,7 @@ SDK（mod）と Host（本体）は独立して更新されるため、初期化
 名乗り合い、非互換を検出して警告する（詳細は
 [`packages/shared/src/mod/protocol.ts`](../packages/shared/src/mod/protocol.ts)）。
 
-- 現在の `PROTOCOL_VERSION`: **6**
+- 現在の `PROTOCOL_VERSION`: **7**
 - 互換可能な最小バージョン `MIN_COMPATIBLE_PROTOCOL_VERSION`: **0**
 
 進化ルール（後方互換の生命線）:
@@ -93,3 +93,9 @@ SDK（mod）と Host（本体）は独立して更新されるため、初期化
 
 加算的進化である限り「古い mod × 新しい Host」は常に動作する。危険なのは「mod が Host より新しい」場合のみで、
 このとき Host は未対応コマンドを持たない恐れがあるため `degraded` として開発者に警告する。
+
+
+作者参照による mod の固定には別の形式番号 `lockVersion: 2` を使う。
+Worker と Host の RPC の名前・ペイロードは変わらないため、この追加で `PROTOCOL_VERSION` は変更しない。
+通常の本体・URL依存は作者を自動付与せず lock v1 のまま使える。作者参照を明示して追加した依存は lock v2 となり、
+旧 Host が読む `mods` は空にして、その形式を理解しない Host での実行を拒否する。

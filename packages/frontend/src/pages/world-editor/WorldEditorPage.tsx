@@ -7,8 +7,9 @@ import {
 } from '@ubichill/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import yaml from 'yaml';
 import { PackagePicker } from '@/components/mods/PackagePicker';
+import { useConfirm } from '@/components/ui/ConfirmProvider';
+import { confirmModUpdate } from '@/lib/mods/confirmUpdate';
 import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
 import { EditorAssets } from './components/assets/EditorAssets';
@@ -44,6 +45,7 @@ import { editorButton } from './recipes/button';
 export function WorldEditorPage() {
     const { worldId } = useParams<{ worldId?: string }>();
     const navigate = useNavigate();
+    const confirm = useConfirm();
     const { data: session, isPending } = useSession();
     const isEdit = !!worldId;
 
@@ -59,6 +61,8 @@ export function WorldEditorPage() {
             onError: setError,
         });
 
+    const currentDefinition = useRef(definition);
+    currentDefinition.current = definition;
     const publishSetup = usePublishSetup();
     const editorApi = useWorldEditorApi({
         requestPublishSetup: publishSetup.request,
@@ -67,8 +71,7 @@ export function WorldEditorPage() {
         definition,
         onSavedYamlChange: (text, lock) => {
             setSavedYaml(text);
-            const next = WorldDefinitionSchema.parse(yaml.parse(text));
-            setDefinition({ ...next, spec: { ...next.spec, lock } });
+            setDefinition((prev) => ({ ...prev, spec: { ...prev.spec, lock } }));
         },
         onPublishStateChange: setPublishState,
         onError: setError,
@@ -446,18 +449,30 @@ export function WorldEditorPage() {
                     <>
                         <PackagePicker
                             initialRef={new URLSearchParams(window.location.search).get('addMod') ?? ''}
-                            onInstall={(pkg) => {
-                                const deps = definition.spec.dependencies ?? [];
+                            onInstall={async (pkg) => {
+                                const current = currentDefinition.current;
+                                const deps = current.spec.dependencies ?? [];
                                 const old = deps.find((d) => d.name === pkg.entry.id);
                                 if (old && old.source.author !== pkg.entry.author)
                                     throw new Error('同名の別作者の mod が入っています');
-                                assertPackageReplacement(lockedMods(definition.spec.lock)[pkg.entry.id], pkg.entry);
-                                setDefinition({
-                                    ...definition,
+                                const previous = lockedMods(current.spec.lock)[pkg.entry.id];
+                                assertPackageReplacement(previous, pkg.entry);
+                                const proposed = createModLock({
+                                    ...lockedMods(current.spec.lock),
+                                    [pkg.entry.id]: pkg.entry,
+                                });
+                                if (!(await confirmModUpdate(current.spec.lock, proposed, confirm))) return false;
+                                if (
+                                    JSON.stringify(lockedMods(currentDefinition.current.spec.lock)[pkg.entry.id]) !==
+                                    JSON.stringify(previous)
+                                )
+                                    throw new Error('確認中に mod が変わりました。読み直して追加してください');
+                                setDefinition((prev) => ({
+                                    ...prev,
                                     spec: {
-                                        ...definition.spec,
+                                        ...prev.spec,
                                         dependencies: [
-                                            ...deps.filter((d) => d.name !== pkg.entry.id),
+                                            ...(prev.spec.dependencies ?? []).filter((d) => d.name !== pkg.entry.id),
                                             {
                                                 name: pkg.entry.id,
                                                 source: {
@@ -468,19 +483,21 @@ export function WorldEditorPage() {
                                             },
                                         ],
                                         lock: createModLock({
-                                            ...lockedMods(definition.spec.lock),
+                                            ...lockedMods(prev.spec.lock),
                                             [pkg.entry.id]: pkg.entry,
                                         }),
                                     },
-                                });
+                                }));
+                                return true;
                             }}
                         />
                         {packagesError && <p role="alert">{packagesError}</p>}
                         <ModSelector
-                            key={JSON.stringify(definition.spec.dependencies)}
+                            key={JSON.stringify([definition.spec.dependencies, definition.spec.lock])}
                             dependencies={definition.spec.dependencies ?? []}
-                            onCommitDependencies={(next) =>
-                                setDefinition((prev) => ({ ...prev, spec: { ...prev.spec, dependencies: next } }))
+                            lock={definition.spec.lock}
+                            onCommitDependencies={(next, lock) =>
+                                setDefinition((prev) => ({ ...prev, spec: { ...prev.spec, dependencies: next, lock } }))
                             }
                         />
                     </>

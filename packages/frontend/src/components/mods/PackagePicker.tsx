@@ -36,7 +36,7 @@ export function PackagePicker({
     onInstall,
     initialRef = '',
 }: {
-    onInstall: (pkg: EditorPackage) => void;
+    onInstall: (pkg: EditorPackage) => boolean | Promise<boolean>;
     initialRef?: string;
 }) {
     const [query, setQuery] = useState(initialRef);
@@ -126,7 +126,7 @@ export function PackagePicker({
                         disabled={busy}
                         onClick={() =>
                             void run(async () => {
-                                onInstall(selected);
+                                if ((await onInstall(selected)) === false) return;
                                 setSelected(null);
                             })
                         }

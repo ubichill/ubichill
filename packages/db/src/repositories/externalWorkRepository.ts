@@ -1,3 +1,4 @@
+import { canAdvanceModVersion } from '@ubichill/shared';
 import { and, count, desc, eq, ilike, sql } from 'drizzle-orm';
 import { db } from '../index';
 import { externalWorks, users } from '../schema';
@@ -59,7 +60,7 @@ export const externalWorkRepository = {
                       )
                     : keyOf(record);
             const [existing] = await tx
-                .select({ url: externalWorks.url })
+                .select({ url: externalWorks.url, version: externalWorks.version })
                 .from(externalWorks)
                 .where(registrationKey)
                 .limit(1);
@@ -70,6 +71,12 @@ export const externalWorkRepository = {
                     .where(eq(externalWorks.userId, record.userId));
                 if ((row?.n ?? 0) >= max) return 'limit';
             }
+            if (
+                record.kind === 'mod' &&
+                record.version &&
+                !canAdvanceModVersion(existing?.version ?? undefined, record.version)
+            )
+                return 'saved';
             // mod は作者＋ID ごとの配布先ポインタ 1 件。版の履歴・移設履歴を DB に蓄積しない。
             if (record.kind === 'mod') await tx.delete(externalWorks).where(registrationKey);
             const registeredAt = new Date();

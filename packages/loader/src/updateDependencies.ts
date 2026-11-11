@@ -9,7 +9,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
+    assertCapabilityUpdate,
     assertPackageReplacement,
+    canAdvanceModVersion,
     createModLock,
     lockedMods,
     type ModLockEntry,
@@ -68,20 +70,29 @@ export async function runUpdate(argv: string[], log: Logger): Promise<void> {
 
     const authored = new Map<string, ModLockEntry>();
     for (const dep of targets) {
-        if (dep.source.author) {
+        const previous = lockedMods(oldLock)[dep.name];
+        const currentVersion = previous?.version ?? dep.source.version;
+        if (dep.source.author && dep.source.url) {
             const resolved = await resolvePackage({ author: dep.source.author, id: dep.name });
-            assertPackageReplacement(lockedMods(oldLock)[dep.name], resolved.entry);
+            if (!canAdvanceModVersion(currentVersion, resolved.entry.version)) {
+                if (previous) authored.set(dep.name, previous);
+                continue;
+            }
+            assertPackageReplacement(previous, resolved.entry);
             authored.set(dep.name, resolved.entry);
             dep.source.version = resolved.entry.version;
             dep.source.url = resolved.entry.baseUrl;
             doc.setIn(['spec', 'dependencies', dependencies.indexOf(dep), 'source'], dep.source);
             continue;
         }
-        if (dep.source.version === 'latest') continue; // 常に最新を追う設定は書き換え不要
         const latest = dep.source.url
             ? await resolveLatestVersion(dep.source.url, dep.name)
             : resolveLocalLatestVersion(modsDir, dep.name);
-        if (!latest || latest === dep.source.version) continue;
+        if (latest && !canAdvanceModVersion(currentVersion, latest)) {
+            if (previous) authored.set(dep.name, previous);
+            continue;
+        }
+        if (!latest || latest === dep.source.version || dep.source.version === 'latest') continue;
 
         const depIndex = (def.spec.dependencies ?? []).indexOf(dep);
         doc.setIn(['spec', 'dependencies', depIndex, 'source', 'version'], latest);
@@ -112,21 +123,7 @@ export async function runUpdate(argv: string[], log: Logger): Promise<void> {
         authored.get(id) ? Promise.resolve(authored.get(id) ?? null) : get(id),
     );
     if (ids.some((id) => !lockedMods(lock)[id])) throw new Error('依存を取得できないため更新しませんでした');
-    if (oldLock && !argv.includes('--accept-capabilities')) {
-        const added = Object.entries(lockedMods(lock)).flatMap(([id, entry]) => {
-            const before = new Set(
-                Object.values(lockedMods(oldLock)[id]?.components ?? {}).flatMap((c) => c.capabilities),
-            );
-            return Object.values(entry.components)
-                .flatMap((c) => c.capabilities)
-                .filter((cap) => !before.has(cap))
-                .map((cap) => `${id}: ${cap}`);
-        });
-        if (added.length)
-            throw new Error(
-                `追加される権限: ${[...new Set(added)].join(', ')}。確認後 --accept-capabilities を指定してください`,
-            );
-    }
+    assertCapabilityUpdate(oldLock, lock, argv.includes('--accept-capabilities'));
     writeWorldFiles([
         {
             path: worldPath,

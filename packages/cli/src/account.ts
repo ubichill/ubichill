@@ -15,7 +15,7 @@ import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { generateSigningKeyPkcs8, importSigningKey, loadPackageRelease, webWorldCrypto } from '@ubichill/loader';
 import { runInstall } from '@ubichill/loader/install-dependencies';
-import { ExternalWorkUrlSchema, ModLockEntrySchema } from '@ubichill/shared';
+import { ExternalWorkUrlSchema, ModLockEntrySchema, PublicPackageUrlSchema } from '@ubichill/shared';
 import type { Terminal } from '@ubichill/terminal';
 import yaml from 'yaml';
 import { type AuthorizeDeps, authorize, type HttpResponse, type LoopbackServer } from './authorize.ts';
@@ -31,7 +31,7 @@ import {
 import { listDirsOnDisk, modVersionDirs } from './modLayout.ts';
 import { confirmEnvironment, publish } from './publish.ts';
 import { publishMods, type SignedMod } from './publishMods.ts';
-import { latestPerMod, normalizePublicUrl, registerExternalWorks } from './registerWorks.ts';
+import { normalizePublicUrl, registerDeployedMods, registerExternalWorks } from './registerWorks.ts';
 import { assertReleaseUnchanged, checkPublicRelease } from './release.ts';
 import { verifyAllModLocks } from './verify.ts';
 
@@ -245,7 +245,7 @@ export async function runPublish(argv: string[], term: Terminal): Promise<void> 
         );
     }
     const publicUrl = argValue(argv, 'public-url') ?? homepageOf(process.cwd());
-    if (publicUrl) ExternalWorkUrlSchema.parse(publicUrl);
+    if (publicUrl) (modsDirs.length ? PublicPackageUrlSchema : ExternalWorkUrlSchema).parse(publicUrl);
     if (publicUrl && modsDirs.length) {
         for (const modsDir of modsDirs)
             for (const target of modVersionDirs(modsDir, listDirsOnDisk)) {
@@ -288,8 +288,11 @@ export async function runPublish(argv: string[], term: Terminal): Promise<void> 
         // 公開先（Host がこの mod を取りに来る基点）。指定が無ければ package.json の homepage（ubichill build の registry と同じ）
         // 公開先は上で検証済み。--check-public は配置後に実行する。
         if (publicUrl) {
-            if (argv.includes('--check-public'))
-                for (const signed of signedMods) {
+            await registerDeployedMods({
+                checked: argv.includes('--check-public'),
+                signed: signedMods,
+                log: term,
+                verifyPublic: async (signed) => {
                     await checkPublicRelease(signed.entry, normalizePublicUrl(publicUrl));
                     await loadPackageRelease({
                         author: credential.account,
@@ -297,17 +300,19 @@ export async function runPublish(argv: string[], term: Terminal): Promise<void> 
                         version: signed.entry.version,
                         baseUrl: normalizePublicUrl(publicUrl),
                     });
-                }
-            await registerExternalWorks(
-                deps.request,
-                latestPerMod(signedMods).map(({ entry, signature }) => ({
-                    kind: 'mod' as const,
-                    url: normalizePublicUrl(publicUrl),
-                    entry,
-                    signature,
-                })),
-                deps.log,
-            );
+                },
+                register: (latest) =>
+                    registerExternalWorks(
+                        deps.request,
+                        latest.map(({ entry, signature }) => ({
+                            kind: 'mod' as const,
+                            url: normalizePublicUrl(publicUrl),
+                            entry,
+                            signature,
+                        })),
+                        deps.log,
+                    ),
+            });
         } else {
             term.next(
                 '--public-url=<公開先の URL>（または package.json の homepage）を指定すると、ユーザーページに mod が出ます',
@@ -317,8 +322,10 @@ export async function runPublish(argv: string[], term: Terminal): Promise<void> 
     for (const worldPath of worldPaths) {
         if (!argv.includes('--no-install')) {
             // mod を固定する（install と同じ）。署名は下でログインしたアカウントで行う
-            const passthrough = argv.filter((a) => a.startsWith('--mods-dir=') || a.startsWith('--base-url='));
-            await runInstall([worldPath, ...passthrough], term);
+            const passthrough = argv.filter(
+                (a) => a.startsWith('--mods-dir=') || a.startsWith('--base-url=') || a === '--accept-capabilities',
+            );
+            await runInstall([worldPath, ...passthrough], term, { reuseExisting: true });
             if (process.exitCode) throw new Error(`${worldPath}: mod を固定できなかったので公開しません`);
         }
         await publish(deps, {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { formatAuthorAccount, parseAuthorAccount } from '../account/handle';
+import { PublicPackageUrlSchema } from '../schemas/url.schema';
 
 export const MOD_CATALOG_REL = 'https://ubichill.com/ns/mods';
 export const PackageIdSchema = z
@@ -51,6 +52,6 @@ export const PackageDescriptorSchema = z.object({
     author: PackageAuthorSchema,
     id: PackageIdSchema,
     version: PackageVersionSchema,
-    baseUrl: z.string().url(),
+    baseUrl: PublicPackageUrlSchema,
 });
 export type PackageDescriptor = z.infer<typeof PackageDescriptorSchema>;

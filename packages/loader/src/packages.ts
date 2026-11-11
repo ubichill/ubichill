@@ -1,7 +1,6 @@
 /** 作者のホームは取得先の案内だけ。配布物の検証は CLI とブラウザで同じ処理を使う。 */
 import {
     createAuthorKeyDirectory,
-    ExternalWorkUrlSchema,
     formatAuthorAccount,
     MOD_CATALOG_REL,
     MOD_SIGNATURE_FILE,
@@ -11,6 +10,7 @@ import {
     type PackageDescriptor,
     PackageDescriptorSchema,
     type PackageRef,
+    PublicPackageUrlSchema,
     parseAuthorAccount,
     type StoredAuthorBinding,
     validatePackagePrefabs,
@@ -22,7 +22,7 @@ import { webWorldCrypto } from './worldCrypto.ts';
 export type PackageFetch = (url: string) => Promise<Uint8Array>;
 /** 上限はメモリへ読み込む前に適用。リダイレクトでも https と認証情報なしを守る。 */
 export async function fetchPackageBytes(url: string, maxBytes = 1024 * 1024): Promise<Uint8Array> {
-    if (!ExternalWorkUrlSchema.safeParse(url).success) throw new Error('公開 package は https の URL が必要です');
+    if (!PublicPackageUrlSchema.safeParse(url).success) throw new Error('公開 package は https の URL が必要です');
     const response = await fetch(url, { credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(8000) });
     if (!response.ok || !response.body) throw new Error(`取得できません: ${url} (${response.status})`);
     const reader = response.body.getReader();
@@ -122,7 +122,7 @@ export async function loadPackageRelease(
     descriptor = PackageDescriptorSchema.parse(descriptor);
     const ref = { author: descriptor.author, id: descriptor.id };
     const version = descriptor.version;
-    const baseUrl = ExternalWorkUrlSchema.parse(descriptor.baseUrl).replace(/\/$/, '');
+    const baseUrl = PublicPackageUrlSchema.parse(descriptor.baseUrl).replace(/\/$/, '');
     const base = `${baseUrl}/${ref.id}/v${version}`;
     const entry = ModLockEntrySchema.parse(await packageJson(`${base}/lock.json`, fetchBytes));
     if (entry.id !== ref.id || entry.version !== version) throw new Error('配布物の ID・版が一致しません');
