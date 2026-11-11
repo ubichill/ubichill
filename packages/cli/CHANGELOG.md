@@ -1,5 +1,28 @@
 # @ubichill/cli
 
+## 1.3.0
+
+### Minor Changes
+
+- 21923d9: 作者参照から分散配布の mod package を取得・追加できるようにし、作者固定の lock v2、package 内プレハブの配置・差分更新・Unpack、標準 Component の表示、作成用 CLI と作品ページ・検索を追加する。既存 lock を保存時に維持し、依存更新の失敗で YAML と lock が食い違わないようにする。DB は配布物や版履歴を保存せず、作者と mod ID ごとの登録ポインタを使う。
+
+  エディタで更新先を取得できなかった場合は、古い lock で補わず変更を取りやめ、以前の依存と lock を維持する。
+
+### Patch Changes
+
+- Updated dependencies [21923d9]
+- Updated dependencies [50a82bd]
+- Updated dependencies [fc8a52b]
+- Updated dependencies [72b1f61]
+- Updated dependencies [b3c43ad]
+- Updated dependencies [6e3ee64]
+- Updated dependencies [5365069]
+- Updated dependencies [8f0912b]
+- Updated dependencies [88cd7db]
+- Updated dependencies [6317b11]
+  - @ubichill/shared@1.16.0
+  - @ubichill/loader@1.4.0
+
 ## 1.2.1
 
 ### Patch Changes
