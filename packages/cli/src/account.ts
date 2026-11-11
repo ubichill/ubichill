@@ -13,8 +13,9 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'no
 import { createServer } from 'node:http';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
-import { generateSigningKeyPkcs8, importSigningKey, webWorldCrypto } from '@ubichill/loader';
+import { generateSigningKeyPkcs8, importSigningKey, loadPackageRelease, webWorldCrypto } from '@ubichill/loader';
 import { runInstall } from '@ubichill/loader/install-dependencies';
+import { ExternalWorkUrlSchema, ModLockEntrySchema, PublicPackageUrlSchema } from '@ubichill/shared';
 import type { Terminal } from '@ubichill/terminal';
 import yaml from 'yaml';
 import { type AuthorizeDeps, authorize, type HttpResponse, type LoopbackServer } from './authorize.ts';
@@ -27,10 +28,11 @@ import {
     resolveCredential,
     saveCredential,
 } from './credentials.ts';
-import { listDirsOnDisk } from './modLayout.ts';
+import { listDirsOnDisk, modVersionDirs } from './modLayout.ts';
 import { confirmEnvironment, publish } from './publish.ts';
 import { publishMods, type SignedMod } from './publishMods.ts';
-import { latestPerMod, normalizePublicUrl, registerExternalWorks } from './registerWorks.ts';
+import { normalizePublicUrl, registerDeployedMods, registerExternalWorks } from './registerWorks.ts';
+import { assertReleaseUnchanged, checkPublicRelease } from './release.ts';
 import { verifyAllModLocks } from './verify.ts';
 
 export const DEFAULT_SERVER = 'https://ubichill.com';
@@ -242,6 +244,22 @@ export async function runPublish(argv: string[], term: Terminal): Promise<void> 
             `${credential.server} に確認できませんでした（署名は続けます。公開環境が取り消されていないか後で確かめてください）`,
         );
     }
+    const publicUrl = argValue(argv, 'public-url') ?? homepageOf(process.cwd());
+    if (publicUrl) (modsDirs.length ? PublicPackageUrlSchema : ExternalWorkUrlSchema).parse(publicUrl);
+    if (publicUrl && modsDirs.length) {
+        for (const modsDir of modsDirs)
+            for (const target of modVersionDirs(modsDir, listDirsOnDisk)) {
+                const entry = ModLockEntrySchema.parse(JSON.parse(readFileSync(join(target.dir, 'lock.json'), 'utf8')));
+                await assertReleaseUnchanged(entry, normalizePublicUrl(publicUrl), async (url) => {
+                    const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(8000) });
+                    if (response.status === 404) return undefined;
+                    if (!response.ok) throw new Error(`公開済みの版を確認できません (${response.status})`);
+                    const text = await response.text();
+                    if (text.length > 1024 * 1024) throw new Error('lock が大きすぎます');
+                    return JSON.parse(text);
+                });
+            }
+    }
     const signedMods: SignedMod[] = [];
     for (const modsDir of modsDirs) {
         // 配布するバイト列と一致しない lock には署名しない
@@ -268,18 +286,33 @@ export async function runPublish(argv: string[], term: Terminal): Promise<void> 
     }
     if (signedMods.length > 0) {
         // 公開先（Host がこの mod を取りに来る基点）。指定が無ければ package.json の homepage（ubichill build の registry と同じ）
-        const publicUrl = argValue(argv, 'public-url') ?? homepageOf(process.cwd());
+        // 公開先は上で検証済み。--check-public は配置後に実行する。
         if (publicUrl) {
-            await registerExternalWorks(
-                deps.request,
-                latestPerMod(signedMods).map(({ entry, signature }) => ({
-                    kind: 'mod' as const,
-                    url: normalizePublicUrl(publicUrl),
-                    entry,
-                    signature,
-                })),
-                deps.log,
-            );
+            await registerDeployedMods({
+                checked: argv.includes('--check-public'),
+                signed: signedMods,
+                log: term,
+                verifyPublic: async (signed) => {
+                    await checkPublicRelease(signed.entry, normalizePublicUrl(publicUrl));
+                    await loadPackageRelease({
+                        author: credential.account,
+                        id: signed.entry.id,
+                        version: signed.entry.version,
+                        baseUrl: normalizePublicUrl(publicUrl),
+                    });
+                },
+                register: (latest) =>
+                    registerExternalWorks(
+                        deps.request,
+                        latest.map(({ entry, signature }) => ({
+                            kind: 'mod' as const,
+                            url: normalizePublicUrl(publicUrl),
+                            entry,
+                            signature,
+                        })),
+                        deps.log,
+                    ),
+            });
         } else {
             term.next(
                 '--public-url=<公開先の URL>（または package.json の homepage）を指定すると、ユーザーページに mod が出ます',
@@ -289,8 +322,10 @@ export async function runPublish(argv: string[], term: Terminal): Promise<void> 
     for (const worldPath of worldPaths) {
         if (!argv.includes('--no-install')) {
             // mod を固定する（install と同じ）。署名は下でログインしたアカウントで行う
-            const passthrough = argv.filter((a) => a.startsWith('--mods-dir=') || a.startsWith('--base-url='));
-            await runInstall([worldPath, ...passthrough], term);
+            const passthrough = argv.filter(
+                (a) => a.startsWith('--mods-dir=') || a.startsWith('--base-url=') || a === '--accept-capabilities',
+            );
+            await runInstall([worldPath, ...passthrough], term, { reuseExisting: true });
             if (process.exitCode) throw new Error(`${worldPath}: mod を固定できなかったので公開しません`);
         }
         await publish(deps, {

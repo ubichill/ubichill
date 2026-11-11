@@ -12,8 +12,11 @@ import {
     type ExternalWorkRegistration,
     type ExternalWorkStatus,
     MOD_SIGNATURE_FILE,
+    type ModLockEntry,
     ModLockEntrySchema,
+    modContentHash,
     type PublishedMod,
+    parseAuthorAccount,
     verifyModSignature,
     verifyWorldSignature,
     type WorldCrypto,
@@ -142,6 +145,7 @@ export async function confirmPublishedMod(
         crypto: WorldCrypto;
         isAuthorKey: AuthorKeyCheck;
         fetchJson: (url: string) => Promise<FetchedJson>;
+        expectedEntry?: ModLockEntry;
     },
 ): Promise<ModConfirmation> {
     const base = `${work.url}/${encodeURIComponent(work.name)}/v${encodeURIComponent(work.version)}`;
@@ -155,10 +159,26 @@ export async function confirmPublishedMod(
     const entry = ModLockEntrySchema.safeParse(lock.value);
     if (!entry.success || entry.data.id !== work.name || entry.data.version !== work.version)
         return { status: 'invalid' };
+    if (
+        deps.expectedEntry &&
+        (await modContentHash(entry.data, deps.crypto)) !== (await modContentHash(deps.expectedEntry, deps.crypto))
+    )
+        return { status: 'invalid' };
     const verdict = await verifyModSignature(entry.data, signature.value, deps.crypto, deps.isAuthorKey);
     if (verdict.status === 'rejected' && verdict.reason === 'author-pending') return { status: 'unreachable' };
     if (verdict.status !== 'verified' || verdict.author !== deps.account) return { status: 'invalid' };
-    return { status: 'published', mod: { id: work.name, name: work.name, version: work.version, url: work.url } };
+    const account = parseAuthorAccount(deps.account);
+    return {
+        status: 'published',
+        mod: {
+            id: work.name,
+            name: work.name,
+            version: work.version,
+            url: work.url,
+            author: deps.account,
+            ...(account ? { pageUrl: `https://${account.domain}/@${account.handle}/mods/${work.name}` } : {}),
+        },
+    };
 }
 
 /**

@@ -498,6 +498,8 @@ describe('runBuild（CLI エントリポイント: 単一mod repo vs モノレ�
         const manifest = JSON.parse(readFileSync(join(repoDir, 'dist', 'v1.0.0', 'manifest.json'), 'utf-8'));
         expect(manifest.id).toBe('solo');
         expect(Object.keys(manifest.components)).toContain('solo:main');
+        await runBuild(['--layout=registry', '--dist-dir=registry'], silentLogger);
+        expect(JSON.parse(readFileSync(join(repoDir, 'registry', 'solo', 'v1.0.0', 'manifest.json'), 'utf8')).id).toBe('solo');
     });
 
     it('mods/ ディレクトリが存在する場合はモノレポの一括ビルドに切り替わる', async () => {

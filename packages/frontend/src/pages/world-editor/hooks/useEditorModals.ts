@@ -1,4 +1,4 @@
-import { type WorldDefinition, WorldDefinitionSchema } from '@ubichill/shared';
+import { type WorldDefinition, WorldDefinitionSchema, withoutWorldLock } from '@ubichill/shared';
 import { useCallback, useState } from 'react';
 import yaml from 'yaml';
 
@@ -29,7 +29,7 @@ export function useEditorModals({ definition, onCommit }: UseEditorModalsArgs) {
 
     const openControlPanel = useCallback(
         (tab: ControlPanelTab = 'info') => {
-            setYamlText(yaml.stringify(definition));
+            setYamlText(yaml.stringify(withoutWorldLock(definition)));
             setYamlError('');
             setActiveTab(tab);
             setOpen(true);
@@ -45,7 +45,7 @@ export function useEditorModals({ definition, onCommit }: UseEditorModalsArgs) {
     const switchTab = useCallback(
         (tab: ControlPanelTab) => {
             if (tab === 'yaml') {
-                setYamlText(yaml.stringify(definition));
+                setYamlText(yaml.stringify(withoutWorldLock(definition)));
                 setYamlError('');
             }
             setActiveTab(tab);
@@ -60,7 +60,7 @@ export function useEditorModals({ definition, onCommit }: UseEditorModalsArgs) {
                 const parsed = yaml.parse(text) as unknown;
                 const result = WorldDefinitionSchema.safeParse(parsed);
                 if (result.success) {
-                    onCommit(result.data);
+                    onCommit({ ...result.data, spec: { ...result.data.spec, lock: definition.spec.lock } });
                     setYamlError('');
                 } else {
                     setYamlError(result.error.issues[0]?.message ?? 'スキーマ違反');
@@ -69,7 +69,7 @@ export function useEditorModals({ definition, onCommit }: UseEditorModalsArgs) {
                 setYamlError(e instanceof Error ? e.message : 'YAML parse error');
             }
         },
-        [onCommit],
+        [onCommit, definition.spec.lock],
     );
 
     const uploadYamlFile = useCallback(

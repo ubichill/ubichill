@@ -11,6 +11,7 @@
 import type { ComponentDataFieldSpec, OverlayMode } from '@ubichill/shared';
 import {
     integrityEquals,
+    lockedMods,
     MOD_SIGNATURE_FILE,
     type ModAuthorProof,
     type ModLock,
@@ -192,7 +193,7 @@ async function checkAuthor(
 ): Promise<AuthorResult> {
     const signature = await fetchSignature(versionedBase, f);
     if (signature === undefined) {
-        return opts.allowUnsigned?.(baseUrl) ? {} : { rejected: 'signature-missing' };
+        return !lockEntry.author && opts.allowUnsigned?.(baseUrl) ? {} : { rejected: 'signature-missing' };
     }
     const verdict = await opts
         .verifySignature(lockEntry, signature)
@@ -246,7 +247,7 @@ export async function acquireMod(entityType: string, opts: AcquireModOptions): P
     if (colonIdx === -1) return 'not-found';
 
     const modName = entityType.slice(0, colonIdx);
-    const lockEntry = lock?.mods[modName];
+    const lockEntry = lockedMods(lock)[modName];
 
     // lock 記載が無いなら、fetch する前に拒否する。
     if (!lockEntry) return { rejected: 'lock-missing' };

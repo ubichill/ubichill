@@ -49,7 +49,7 @@ export function PublishedModsSection({ mods }: { mods: PublishedMod[] }) {
             >
                 {mods.map((mod) => (
                     <div
-                        key={`${mod.url} ${mod.id}`}
+                        key={`${mod.author ? `@${mod.author}/${mod.id}` : mod.url} ${mod.id}`}
                         className={css({
                             p: '3',
                             bg: 'surface',
@@ -58,7 +58,15 @@ export function PublishedModsSection({ mods }: { mods: PublishedMod[] }) {
                             borderRadius: '12px',
                         })}
                     >
-                        <div className={css({ fontSize: '14px', fontWeight: '700', color: 'text' })}>{mod.name}</div>
+                        <div className={css({ fontSize: '14px', fontWeight: '700', color: 'text' })}>
+                            {mod.pageUrl ? (
+                                <a href={mod.pageUrl} target="_blank" rel="noreferrer">
+                                    {mod.name}
+                                </a>
+                            ) : (
+                                mod.name
+                            )}
+                        </div>
                         <div className={css({ fontSize: '12px', color: 'textMuted', mt: '0.5' })}>v{mod.version}</div>
                         <div
                             className={css({
@@ -69,9 +77,9 @@ export function PublishedModsSection({ mods }: { mods: PublishedMod[] }) {
                                 userSelect: 'all',
                             })}
                         >
-                            {mod.url}
+                            {mod.author ? `@${mod.author}/${mod.id}` : mod.url}
                         </div>
-                        <CopyUrlButton url={mod.url} />
+                        <CopyUrlButton url={mod.author ? `@${mod.author}/${mod.id}` : mod.url} />
                     </div>
                 ))}
             </div>

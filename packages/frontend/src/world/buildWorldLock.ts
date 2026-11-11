@@ -22,7 +22,12 @@ export async function buildWorldLock(
     baseUrl: string,
 ): Promise<{ lock: ModLock; unpinned: string[] }> {
     const defaultGetLockEntry = createHttpLockEntryGetter(baseUrl);
-    const getLockEntry = createDependencyAwareLockEntryGetter(definition.spec.dependencies, defaultGetLockEntry);
+    const getLockEntry = createDependencyAwareLockEntryGetter(
+        definition.spec.dependencies,
+        defaultGetLockEntry,
+        undefined,
+        definition.spec.lock,
+    );
     const lock = await build(requiredLockModIds(definition.spec), getLockEntry);
     return { lock, unpinned: unlockedModIds(definition.spec, lock) };
 }

@@ -162,7 +162,7 @@ export function EditorHierarchy({
                 <span
                     className={css({
                         fontSize: '11px',
-                        fontWeight: '700',
+                        fontWeight: '600',
                         color: 'textMuted',
                         textTransform: 'uppercase',
                         letterSpacing: '0.06em',
@@ -203,7 +203,7 @@ export function EditorHierarchy({
                     outline: '2px dashed transparent',
                     outlineOffset: '-4px',
                     '&::-webkit-scrollbar': { width: '6px' },
-                    '&::-webkit-scrollbar-thumb': { backgroundColor: 'primarySubtle', borderRadius: '3px' },
+                    '&::-webkit-scrollbar-thumb': { backgroundColor: 'primarySubtle', borderRadius: '4px' },
                 })}
                 style={{
                     outlineColor: dragOverKey === ROOT_DROP_KEY ? 'var(--colors-primary, #007aff)' : 'transparent',

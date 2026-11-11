@@ -1,6 +1,13 @@
 import type { InitialEntity } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
-import { cloneEntitySubtree, getEntityAt, type RefFieldsOf, remapEntityRefs, renameEntity } from './entityTree';
+import {
+    cloneEntitySubtree,
+    findEntityPath,
+    getEntityAt,
+    type RefFieldsOf,
+    remapEntityRefs,
+    renameEntity,
+} from './entityTree';
 
 const entity = (
     id: string,
@@ -96,5 +103,25 @@ describe('remapEntityRefs', () => {
         const world = [entity('a', [{ type: 'vp:controls', data: { screen: 'tv' } }])];
         const next = remapEntityRefs(world, new Map([['ghost', 'x']]), fieldsOf);
         expect(next[0]?.components[0]).toBe(world[0]?.components[0]);
+    });
+});
+
+describe('findEntityPath', () => {
+    const tree = [entity('a', []), entity('b', [], [entity('c', []), entity('d', [], [entity('e', [])])])];
+
+    it('子孫までたどって場所を返す', () => {
+        expect(findEntityPath(tree, 'e')).toEqual([1, 1, 0]);
+        expect(getEntityAt(tree, [1, 1, 0])?.id).toBe('e');
+    });
+
+    it('ルートはそのまま、無ければ null', () => {
+        expect(findEntityPath(tree, 'a')).toEqual([0]);
+        expect(findEntityPath(tree, 'zzz')).toBeNull();
+        expect(findEntityPath([], 'a')).toBeNull();
+    });
+
+    it('同じ id が複数あれば先に見つかった方（前の兄弟の子孫を優先）', () => {
+        const dup = [entity('p', [], [entity('x', [])]), entity('x', [])];
+        expect(findEntityPath(dup, 'x')).toEqual([0, 0]);
     });
 });

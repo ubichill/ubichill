@@ -34,9 +34,10 @@ export async function checkModInstallation(
                     version,
                     result,
                     allowed:
-                        result.status === 'verified' ||
-                        result.status === 'data-only' ||
-                        (result.status === 'unsigned' && deps.allowUnsigned(baseUrl)),
+                        (result.status === 'verified' &&
+                            (!dependency.source.author || dependency.source.author === result.author)) ||
+                        (!dependency.source.author && result.status === 'data-only') ||
+                        (!dependency.source.author && result.status === 'unsigned' && deps.allowUnsigned(baseUrl)),
                 };
             } catch {
                 return {

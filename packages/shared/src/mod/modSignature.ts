@@ -78,6 +78,16 @@ export async function modContentHash(entry: ModLockEntry, crypto: WorldCrypto): 
     return formatIntegrity(await crypto.sha256Base64(canonicalJson(modLockContent(entry))));
 }
 
+/** 利用中の版を、同じ版番号の別内容で更新させない。配布先・署名鍵の移設は許す。 */
+export function assertPackageReplacement(previous: ModLockEntry | undefined, next: ModLockEntry): void {
+    if (
+        previous?.id === next.id &&
+        previous.version === next.version &&
+        canonicalJson(modLockContent(previous)) !== canonicalJson(modLockContent(next))
+    )
+        throw new Error(`${next.id}@${next.version} の内容が変わっています。別の版で公開してください`);
+}
+
 /** mod の署名の対象（共通の形式の `kind: 'mod'`）。版は lock の内容にも入るが、取り違えを防ぐため対象の版として明示する。 */
 async function modTarget(entry: ModLockEntry, crypto: WorldCrypto): Promise<SignatureTarget> {
     return {
@@ -122,6 +132,7 @@ export async function verifyModSignature(
     if (verdict.status === 'missing') return rejected('signature-missing');
     if (verdict.status === 'invalid') return rejected(INVALID_REASON[verdict.reason]);
     const { envelope } = verdict;
+    if (entry.author && entry.author !== envelope.author) return rejected('author-unconfirmed');
     const check = await confirmEnvelopeAuthor(envelope, isAuthorKey);
     if (check.status === 'pending') return rejected('author-pending');
     if (check.status !== 'confirmed') return rejected('author-unconfirmed');

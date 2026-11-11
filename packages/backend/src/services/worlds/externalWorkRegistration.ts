@@ -8,6 +8,7 @@ import yaml from 'yaml';
 import { isAuthorKey } from '../authors/authorKeyService';
 import { selfAccount } from '../authors/authorKeys';
 import { federation } from '../federation';
+import { confirmModRegistration } from './externalWorkService';
 import { verifyRegistration } from './externalWorks';
 import { nodeWorldCrypto } from './worldCrypto';
 
@@ -31,6 +32,16 @@ export async function registerExternalWork(
         ...(tokenPublicKey ? { tokenPublicKey } : {}),
     });
     if (!verdict.ok) return { ok: false, status: verdict.status, error: verdict.error, code: verdict.code };
+    if (
+        registration.kind === 'mod' &&
+        (await confirmModRegistration(registration, selfAccount(owner.handle))).status !== 'published'
+    )
+        return {
+            ok: false,
+            status: 409,
+            code: 'mod-not-published',
+            error: '登録する mod の内容と署名を公開先で確認できません。配置後に登録してください',
+        };
     const saved = await externalWorkRepository.registerWithinLimit(
         {
             userId: owner.id,

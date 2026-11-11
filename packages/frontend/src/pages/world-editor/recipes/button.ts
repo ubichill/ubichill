@@ -84,8 +84,10 @@ export const editorButton = cva({
         },
         size: {
             sm: { padding: '4px 10px', fontSize: '11px' },
-            md: { padding: '7px 12px', fontSize: '13px' },
+            md: { padding: '8px 12px', fontSize: '13px' },
             lg: { padding: '8px 16px', fontSize: '13px' },
+            /** 幅いっぱいの主操作（コントロールパネルの公開） */
+            block: { width: '100%', padding: '12px 16px', fontSize: '15px', fontWeight: '600' },
             iconSm: { width: '32px', height: '32px', padding: '0' },
             menu: { padding: '8px 10px', fontSize: '13px' },
         },

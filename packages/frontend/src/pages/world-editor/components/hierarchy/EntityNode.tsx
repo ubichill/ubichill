@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { css } from '@/styled-system/css';
 import { COMPONENT_DRAG_MIME, ENTITY_DRAG_MIME } from '../../lib/dnd';
 import { type EntityPath, pathKey } from '../../lib/entityTree';
-import { Chevron, EyeIcon, EyeOffIcon, PlusIcon, WarningIcon } from './hierarchyIcons';
+import { Chevron, CloseIcon, EyeIcon, EyeOffIcon, PlusIcon, WarningIcon } from './hierarchyIcons';
 
 const INDENT_PX = 16;
 
@@ -237,7 +237,7 @@ export function EntityNode({
                     >
                         {entity.id}
                     </span>
-                    <span className={css({ fontSize: '10px', opacity: 0.7 })}>
+                    <span className={css({ fontSize: '11px', opacity: 0.7 })}>
                         ({Math.round(entity.transform.x)}, {Math.round(entity.transform.y)}) · {sizeBadge} ·{' '}
                         {entity.components.length}c
                     </span>
@@ -278,7 +278,7 @@ export function EntityNode({
                     title="エンティティを削除"
                     className={iconBtn(selectedEntityOnly)}
                 >
-                    ×
+                    <CloseIcon />
                 </button>
             </div>
             {open && hasChildren && (

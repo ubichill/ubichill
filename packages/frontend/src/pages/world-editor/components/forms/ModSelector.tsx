@@ -1,7 +1,15 @@
-import { resolveLatestVersion } from '@ubichill/loader';
-import { type Dependency, displayAuthorAccount } from '@ubichill/shared';
+import {
+    buildWorldLock,
+    createDependencyAwareLockEntryGetter,
+    createHttpLockEntryGetter,
+    resolveLatestVersion,
+} from '@ubichill/loader';
+import { type Dependency, displayAuthorAccount, lockedMods, type ModLock } from '@ubichill/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useConfirm } from '@/components/ui/ConfirmProvider';
+import { confirmModUpdate } from '@/lib/mods/confirmUpdate';
 import { HOST_MOD_SOURCE, MOD_CDN_URL } from '@/lib/mods/modCdn';
+import { editorPackage } from '@/lib/mods/packages';
 import { type AvailableMod, useAvailableMods } from '@/lib/mods/useAvailableMods';
 import { useModAuthor } from '@/lib/mods/useModAuthor';
 import { SETTINGS_KEYS, useSetting } from '@/lib/settings';
@@ -13,7 +21,13 @@ import {
     type ModInstallationCheck,
     modAuthorFetcher,
 } from '@/world';
-import { computeModDiff, type ModSelectionEntry, selectionToDependencies } from '../../lib/modSelection';
+import {
+    computeModDiff,
+    lockForSelection,
+    type ModSelectionEntry,
+    selectionToDependencies,
+    selectionWithCheckedVersions,
+} from '../../lib/modSelection';
 import { editorButton } from '../../recipes/button';
 import { PanelSection } from '../PanelSection';
 import { RegistryUrlManager } from './RegistryUrlManager';
@@ -88,7 +102,8 @@ interface ModSelectorProps {
     /** 現在 definition に登録済みの依存（インストール済み mod）。 */
     dependencies: Dependency[];
     /** インストール確定時に dependencies を置き換える。 */
-    onCommitDependencies: (next: Dependency[]) => void;
+    lock?: ModLock;
+    onCommitDependencies: (next: Dependency[], lock: ModLock) => void;
 }
 
 /**
@@ -96,7 +111,9 @@ interface ModSelectorProps {
  * 「インストール」ボタンで初めて definition へ反映する。
  * 反映前に追加/削除/更新の差分と、外部 URL 由来 mod のセキュリティ注記を表示する。
  */
-export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorProps) {
+export function ModSelector({ dependencies, lock, onCommitDependencies }: ModSelectorProps) {
+    const confirm = useConfirm();
+    const [installationError, setInstallationError] = useState('');
     const [registryUrls, setRegistryUrls] = useSetting<string[]>(SETTINGS_KEYS.editorRegistryUrls, [], isStringArray);
     const { mods, loading } = useAvailableMods(registryUrls);
 
@@ -106,6 +123,7 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
             id: d.name,
             version: d.source.version,
             baseUrl: d.source.url,
+            author: d.source.author,
         })),
     );
 
@@ -131,22 +149,58 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
     const install = async () => {
         const attempt = ++attemptRef.current;
         setInstallation({ checking: true, failures: [] });
-        const checks = await checkModInstallation(nextDependencies, {
-            baseUrl: MOD_CDN_URL,
-            resolveLatest: resolveLatestVersion,
-            checkAuthor: modAuthorFetcher(HOST_MOD_SOURCE),
-            allowUnsigned: (baseUrl) =>
-                isUnsignedModAllowed({ devHost: HOST_MOD_SOURCE.devHost, baseUrl, origin: window.location.origin }),
-        });
+        setInstallationError('');
+        const changed = new Set([
+            ...diff.added.map((dep) => dep.name),
+            ...diff.updated.map((change) => change.to.name),
+        ]);
+        const checks = await checkModInstallation(
+            nextDependencies.filter((dep) => changed.has(dep.name) || !lockedMods(lock)[dep.name]),
+            {
+                baseUrl: MOD_CDN_URL,
+                resolveLatest: resolveLatestVersion,
+                checkAuthor: modAuthorFetcher(HOST_MOD_SOURCE),
+                allowUnsigned: (baseUrl) =>
+                    isUnsignedModAllowed({ devHost: HOST_MOD_SOURCE.devHost, baseUrl, origin: window.location.origin }),
+            },
+        );
         if (attemptRef.current !== attempt) return;
         const failures = checks.filter((check) => !check.allowed);
-        setInstallation({ checking: false, failures });
-        if (failures.length === 0) onCommitDependencies(nextDependencies);
+        if (failures.length) {
+            setInstallation({ checking: false, failures });
+            return;
+        }
+        try {
+            const next = selectionWithCheckedVersions(nextDependencies, checks);
+            const get = createDependencyAwareLockEntryGetter(
+                next,
+                createHttpLockEntryGetter(MOD_CDN_URL),
+                undefined,
+                lock,
+            );
+            const resolved = await buildWorldLock(
+                next.map((d) => d.name),
+                get,
+            );
+            const proposed = lockForSelection(next, lock, resolved);
+            await Promise.all(
+                Object.values(lockedMods(proposed))
+                    .filter((entry) => JSON.stringify(entry) !== JSON.stringify(lockedMods(lock)[entry.id]))
+                    .map(editorPackage),
+            );
+            if (attemptRef.current !== attempt) return;
+            if (!(await confirmModUpdate(lock, proposed, confirm))) return;
+            if (attemptRef.current === attempt) onCommitDependencies(next, proposed);
+        } catch (e) {
+            if (attemptRef.current === attempt) setInstallationError(e instanceof Error ? e.message : '追加できません');
+        } finally {
+            if (attemptRef.current === attempt) setInstallation({ checking: false, failures: [] });
+        }
     };
 
-    const knownIds = new Set(mods.map((m) => m.id));
+    const knownIds = new Set(mods.map((m) => `${m.id} ${m.baseUrl ?? ''}`));
     // 読み込み中は mod 一覧が空のため、既存の依存を「未知」と誤判定しない。
-    const unknownSelected = loading ? [] : selected.filter((e) => !knownIds.has(e.id));
+    const unknownSelected = loading ? [] : selected.filter((e) => !knownIds.has(`${e.id} ${e.baseUrl ?? ''}`));
 
     const upsertSelected = (entry: ModSelectionEntry) =>
         setSelected((prev) => {
@@ -158,17 +212,21 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
     const handleToggle = (p: AvailableMod) => {
         resetInstallation();
         const existing = selected.find((e) => e.id === p.id);
+        if (existing && existing.baseUrl !== p.baseUrl) return;
         if (existing) removeSelected(p.id);
         else upsertSelected({ id: p.id, version: 'latest', baseUrl: p.baseUrl });
     };
 
     const handleVersionChange = (p: AvailableMod, version: string) => {
         resetInstallation();
-        upsertSelected({ id: p.id, version, baseUrl: p.baseUrl });
+        const existing = selected.find((e) => e.id === p.id);
+        if (existing && existing.baseUrl !== p.baseUrl) return;
+        upsertSelected({ id: p.id, version, baseUrl: p.baseUrl, author: existing?.author });
     };
 
     return (
         <div className={css({ display: 'flex', flexDirection: 'column', gap: '3' })}>
+            {installationError && <p role="alert">{installationError}</p>}
             <PanelSection title={loading ? '使用するmod (読み込み中...)' : '使用するmod'}>
                 <div
                     className={css({
@@ -178,7 +236,7 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
                     })}
                 >
                     {mods.map((p) => {
-                        const selectedEntry = selected.find((e) => e.id === p.id);
+                        const selectedEntry = selected.find((e) => e.id === p.id && e.baseUrl === p.baseUrl);
                         const checked = !!selectedEntry;
                         const pinnedVersion = selectedEntry?.version ?? 'latest';
                         const isOutdated = pinnedVersion !== 'latest' && pinnedVersion !== p.version;
@@ -196,9 +254,9 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
                                     gap: '6px',
                                     p: '10px 12px',
                                     bg: checked ? 'primarySubtle' : 'background',
-                                    border: '1.5px solid',
+                                    border: '1px solid',
                                     borderColor: checked ? 'primary' : 'border',
-                                    borderRadius: '10px',
+                                    borderRadius: '8px',
                                     _hover: { borderColor: 'borderStrong' },
                                 })}
                             >
@@ -332,7 +390,7 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
                             bg: 'background',
                             border: '1px dashed',
                             borderColor: 'border',
-                            borderRadius: '10px',
+                            borderRadius: '8px',
                             p: '10px 12px',
                             display: 'flex',
                             flexDirection: 'column',
@@ -341,7 +399,7 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
                         })}
                     >
                         <span className={css({ fontSize: '11px', color: 'textSubtle', fontWeight: '600' })}>
-                            その他の依存（未知のmod）
+                            作者参照・追加の取得先のmod
                         </span>
                         {unknownSelected.map((e) => (
                             <div
@@ -354,7 +412,9 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
                                     color: 'text',
                                 })}
                             >
-                                <span>{e.id}</span>
+                                <span>
+                                    {e.author ? `@${e.author}/${e.id}` : e.id} — {e.version}
+                                </span>
                                 <button
                                     type="button"
                                     onClick={() => {

@@ -51,6 +51,21 @@ describe.skipIf(!RUN)('externalWorkRepository (DB統合)', () => {
         }
     });
 
+    it('2.0.0公開後に1.xを別の配布先で登録しても最新版とURLを戻さない', async () => {
+        const key = { ...mod, name: `branch-${stamp}` };
+        const lower = { ...key, url: `https://lower-${stamp}.example/mods` };
+        try {
+            await externalWorkRepository.registerWithinLimit({ ...key, version: '2.0.0' }, 1000);
+            await externalWorkRepository.registerWithinLimit({ ...lower, version: '1.9.1' }, 1000);
+            const found = (await externalWorkRepository.listByUser(SYS)).filter((row) => row.name === key.name);
+            expect(found).toHaveLength(1);
+            expect(found[0]).toMatchObject({ version: '2.0.0', url: key.url });
+        } finally {
+            await externalWorkRepository.remove(key);
+            await externalWorkRepository.remove(lower);
+        }
+    });
+
     it('消すと一覧から無くなり、もう一度消すと false', async () => {
         expect(await externalWorkRepository.remove(mod)).toBe(true);
         expect(await externalWorkRepository.remove(mod)).toBe(false);

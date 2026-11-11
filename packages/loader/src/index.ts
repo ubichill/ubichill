@@ -14,6 +14,7 @@ export {
     resolveLatestVersion,
 } from './buildWorldLock.ts';
 export { sriOf } from './integrity.ts';
+export * from './packages.ts';
 export type { AcquireResult, FetchLike, FetchLikeResponse, LoadedMod } from './types.ts';
 export {
     generateSigningKeyPkcs8,

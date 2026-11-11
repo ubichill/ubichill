@@ -1,8 +1,10 @@
 import type { WorldDefinition } from '@ubichill/shared';
 import { Fragment, type ReactNode, useMemo, useState } from 'react';
+import { MOD_CDN_URL } from '@/lib/mods/modCdn';
+import type { EditorPackage } from '@/lib/mods/packages';
 import { css } from '@/styled-system/css';
 import type { AvailableEntityKind } from '../../hooks/useAvailableEntityKinds';
-import { type AssetNode, useModAssets } from '../../hooks/useModAssets';
+import { type AssetNode, buildAssetTree } from '../../hooks/useModAssets';
 import { COMPONENT_DRAG_MIME } from '../../lib/dnd';
 
 type Dependency = NonNullable<WorldDefinition['spec']['dependencies']>[number];
@@ -12,6 +14,8 @@ interface EditorAssetsProps {
     loading: boolean;
     /** YAML の dependencies（アセット取得先の per-mod base URL 解決に使う） */
     dependencies: Dependency[];
+    packages: EditorPackage[];
+    onAddPrefab: (pkg: EditorPackage, name: string) => void;
 }
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|avif)$/i;
@@ -21,9 +25,21 @@ const VIDEO_EXT = /\.(mp4|webm|mov)$/i;
 /** ナビゲーション位置: [] = ルート（mod一覧）、[mod, ...folder] = 中。 */
 type Path = string[];
 
-export function EditorAssets({ kinds, loading, dependencies }: EditorAssetsProps) {
-    const { treesByMod } = useModAssets(dependencies);
-    const modNames = useMemo(() => dependencies.map((d) => d.name), [dependencies]);
+export function EditorAssets({ kinds, loading, dependencies, packages, onAddPrefab }: EditorAssetsProps) {
+    const treesByMod = useMemo(
+        () =>
+            new Map(
+                packages.map(({ entry, manifest }) => [
+                    entry.id,
+                    buildAssetTree(
+                        manifest.assets ?? [],
+                        `${entry.baseUrl ?? MOD_CDN_URL}/${entry.id}/v${entry.version}`,
+                    ),
+                ]),
+            ),
+        [packages],
+    );
+    const modNames = useMemo(() => ['core', ...dependencies.map((d) => d.name)], [dependencies]);
     const [path, setPath] = useState<Path>([]);
 
     const componentsByMod = useMemo(() => {
@@ -38,16 +54,14 @@ export function EditorAssets({ kinds, loading, dependencies }: EditorAssetsProps
 
     // 現在表示するエントリ
     const entries = useMemo(
-        () => buildEntries(path, modNames, componentsByMod, treesByMod),
-        [path, modNames, componentsByMod, treesByMod],
+        () => buildEntries(path, modNames, componentsByMod, treesByMod, packages),
+        [path, modNames, componentsByMod, treesByMod, packages],
     );
 
     return (
         <section
             className={css({
                 bg: 'surface',
-                borderTop: '1px solid',
-                borderColor: 'border',
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
@@ -56,7 +70,8 @@ export function EditorAssets({ kinds, loading, dependencies }: EditorAssetsProps
                 height: 'full',
             })}
         >
-            <Toolbar path={path} onNavigate={setPath} loading={loading} />
+            {/* 一番上は下のドックのタブが「アセット」を示すので、階層に入ったときだけパンくずを出す */}
+            {(path.length > 0 || loading) && <Toolbar path={path} onNavigate={setPath} loading={loading} />}
             <div
                 className={css({
                     flex: 1,
@@ -91,6 +106,7 @@ export function EditorAssets({ kinds, loading, dependencies }: EditorAssetsProps
                             onOpen={() => {
                                 if (e.kind === 'mod') setPath([e.name]);
                                 else if (e.kind === 'folder') setPath([...path, e.name]);
+                                else if (e.kind === 'prefab') onAddPrefab(e.pkg, e.prefabName);
                             }}
                         />
                     ))
@@ -183,6 +199,7 @@ function Crumb({ label, active, onClick }: { label: string; active: boolean; onC
 // ============================================
 
 type Entry =
+    | { kind: 'prefab'; key: string; name: string; prefabName: string; pkg: EditorPackage }
     | { kind: 'mod'; key: string; name: string }
     | { kind: 'folder'; key: string; name: string }
     | {
@@ -200,6 +217,7 @@ function buildEntries(
     modNames: string[],
     componentsByMod: Map<string, AvailableEntityKind[]>,
     treesByMod: Map<string, AssetNode[]>,
+    packages: EditorPackage[],
 ): Entry[] {
     if (path.length === 0) {
         return modNames.map((p) => ({ kind: 'mod', key: `mod:${p}`, name: p }));
@@ -210,6 +228,10 @@ function buildEntries(
         const comps = componentsByMod.get(modName) ?? [];
         const tree = treesByMod.get(modName) ?? [];
         const out: Entry[] = [];
+        const pkg = packages.find((p) => p.entry.id === modName);
+        if (pkg)
+            for (const [name, prefab] of Object.entries(pkg.manifest.prefabs ?? {}))
+                out.push({ kind: 'prefab', key: `prefab:${name}`, name: prefab.name, prefabName: name, pkg });
         if (comps.length > 0) out.push({ kind: 'folder', key: 'folder:Components', name: 'Components' });
         if (tree.length > 0) out.push({ kind: 'folder', key: 'folder:Files', name: 'Files' });
         return out;
@@ -255,6 +277,14 @@ function walkTree(nodes: AssetNode[], folders: string[]): AssetNode[] | null {
 // ============================================
 
 function EntryTile({ entry, onOpen }: { entry: Entry; onOpen: () => void }) {
+    if (entry.kind === 'prefab')
+        return (
+            <button type="button" className={tileButtonStyle} onClick={onOpen}>
+                <ComponentIcon />
+                <span className={tileLabelStyle}>{entry.name === 'core' ? '本体の標準部品' : entry.name}</span>
+                <span className={css({ fontSize: '12px', whiteSpace: 'nowrap' })}>配置する</span>
+            </button>
+        );
     if (entry.kind === 'mod' || entry.kind === 'folder') {
         return (
             <button
@@ -265,7 +295,7 @@ function EntryTile({ entry, onOpen }: { entry: Entry; onOpen: () => void }) {
                 className={tileButtonStyle}
             >
                 {entry.kind === 'mod' ? <ModFolderIcon /> : <FolderIcon />}
-                <span className={tileLabelStyle}>{entry.name}</span>
+                <span className={tileLabelStyle}>{entry.name === 'core' ? '本体の標準部品' : entry.name}</span>
             </button>
         );
     }
@@ -301,7 +331,7 @@ function EntryTile({ entry, onOpen }: { entry: Entry; onOpen: () => void }) {
                         <ComponentIcon />
                     )}
                 </ThumbBox>
-                <span className={tileLabelStyle}>{entry.name}</span>
+                <span className={tileLabelStyle}>{entry.name === 'core' ? '本体の標準部品' : entry.name}</span>
             </div>
         );
     }
@@ -328,7 +358,7 @@ function EntryTile({ entry, onOpen }: { entry: Entry; onOpen: () => void }) {
             })}
         >
             <FileThumb name={entry.name} url={entry.url} />
-            <span className={tileLabelStyle}>{entry.name}</span>
+            <span className={tileLabelStyle}>{entry.name === 'core' ? '本体の標準部品' : entry.name}</span>
         </a>
     );
 }
@@ -411,7 +441,7 @@ const tileButtonStyle = css({
 });
 
 const tileLabelStyle = css({
-    fontSize: '10px',
+    fontSize: '11px',
     color: 'text',
     fontWeight: '500',
     textAlign: 'center',

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PackagePrefabsSchema } from '../mod/prefab';
 import { ComponentTypeSchema, TransformSchema } from './world.schema';
 
 // ============================================
@@ -124,6 +125,10 @@ const ComponentManifestMetaSchema = z.object({
     displayName: z.string().optional(),
     /** Worker を持たないデータ専用 Component（mod が spawn して持ち回る。例: pen:stroke）。workerUrl を持たない。 */
     dataOnly: z.boolean().optional(),
+    singleton: z.boolean().optional(),
+    overlay: z
+        .union([z.boolean(), z.enum(['top-left', 'top-right', 'bottom-left', 'bottom-right', 'fill'])])
+        .optional(),
 });
 
 /**
@@ -168,6 +173,7 @@ export const ModVersionedManifestSchema = z.object({
     name: z.string().optional(),
     version: z.string(),
     components: z.record(z.string(), VersionedComponentManifestEntrySchema).default({}),
+    prefabs: PackagePrefabsSchema.optional(),
     /** 同梱アセットの相対パス一覧（versioned ディレクトリ直下からの相対）。 */
     assets: z.array(z.string()).optional(),
     /**

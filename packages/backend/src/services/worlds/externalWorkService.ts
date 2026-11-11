@@ -4,7 +4,13 @@
  * それ以外（公開前・障害・不正）は短く持つ。公開した直後に開いても、少し待てば出るように。
  */
 import { type ExternalWorkRecord, externalWorkRepository } from '@ubichill/db';
-import type { ExternalWork, ExternalWorkStatus, PublishedMod, WorldListItem } from '@ubichill/shared';
+import type {
+    ExternalWork,
+    ExternalWorkRegistration,
+    ExternalWorkStatus,
+    PublishedMod,
+    WorldListItem,
+} from '@ubichill/shared';
 import { safeFetch } from '../../lib/safeFetch';
 import { setBounded } from '../../utils/boundedMap';
 import { isAuthorKey } from '../authors/authorKeyService';
@@ -75,6 +81,14 @@ interface Checked {
     checkedAt: number;
 }
 
+export async function confirmedExternalMod(
+    record: ExternalWorkRecord,
+    account: string,
+): Promise<PublishedMod | undefined> {
+    const { confirmation } = await cachedConfirm(record, account, false);
+    return confirmation.status === 'published' ? confirmation.mod : undefined;
+}
+
 function cachedConfirm(record: ExternalWorkRecord, account: string, fresh: boolean): Promise<Checked> {
     const key = `${account} ${record.kind} ${record.url} ${record.name} ${record.version ?? ''}`;
     const now = Date.now();
@@ -134,5 +148,16 @@ export async function externalWorkStatuses(userId: string, account: string, fres
                 checkedAt: new Date(checkedAt).toISOString(),
             };
         }),
+    );
+}
+
+/** カタログのポインタを切り替える前に、依頼された内容が実際に配られているか確認する。 */
+export function confirmModRegistration(
+    registration: Extract<ExternalWorkRegistration, { kind: 'mod' }>,
+    account: string,
+) {
+    return confirmPublishedMod(
+        { url: registration.url, name: registration.entry.id, version: registration.entry.version },
+        { account, crypto: nodeWorldCrypto, isAuthorKey, fetchJson, expectedEntry: registration.entry },
     );
 }

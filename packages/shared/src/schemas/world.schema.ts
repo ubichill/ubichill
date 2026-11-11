@@ -1,6 +1,7 @@
 import { isCoreComponentNamespace, isCoreComponentType, validateCoreComponentData } from '@ubichill/core-components';
 import { z } from 'zod';
 import { OVERLAY_MODES } from '../mod/entities';
+import { PackageAuthorSchema } from '../mod/packageRef';
 import { ModLockSchema } from './modLock.schema';
 import { WorldIdentitySchema } from './worldIdentity.schema';
 
@@ -275,7 +276,20 @@ export interface InitialEntity {
     components: Array<z.infer<typeof EntityComponentSchema>>;
     tags: string[];
     children: InitialEntity[];
+    prefab?: PrefabLink;
 }
+
+/** 展開したプレハブの出典。元データは配布先にあり、DB にスナップショットを複製しない。 */
+export const PrefabLinkSchema = z.object({
+    modId: KebabCaseId,
+    name: KebabCaseId,
+    version: SemVer,
+    manifestIntegrity: z.string().regex(/^sha256-[A-Za-z0-9+/]{43}=$/),
+    baseUrl: z.string().url().optional(),
+    author: PackageAuthorSchema.optional(),
+    entityIds: z.record(KebabCaseId, KebabCaseId),
+});
+export type PrefabLink = z.infer<typeof PrefabLinkSchema>;
 
 export const InitialEntitySchema: z.ZodType<InitialEntity> = z.lazy(() =>
     z.object({
@@ -284,6 +298,7 @@ export const InitialEntitySchema: z.ZodType<InitialEntity> = z.lazy(() =>
         components: z.array(EntityComponentSchema).max(LIMITS.MAX_COMPONENTS_PER_ENTITY).default([]),
         tags: z.array(EntityTagSchema).max(LIMITS.MAX_TAGS).default([]),
         children: z.array(InitialEntitySchema).max(LIMITS.MAX_INITIAL_ENTITIES).default([]),
+        prefab: PrefabLinkSchema.optional(),
     }),
 );
 
@@ -361,9 +376,12 @@ export function requiredLockModIds(spec: {
 /** lock に固定されていない mod（空なら全部固定済み）。 */
 export function unlockedModIds(
     spec: { initialEntities: InitialEntity[]; dependencies?: Array<{ name: string }> },
-    lock: { mods: Record<string, unknown> } | null | undefined,
+    lock:
+        | { lockVersion?: number; mods: Record<string, unknown>; packages?: Record<string, unknown> }
+        | null
+        | undefined,
 ): string[] {
-    return requiredLockModIds(spec).filter((id) => !lock?.mods[id]);
+    return requiredLockModIds(spec).filter((id) => !(lock?.lockVersion === 2 ? lock.packages : lock?.mods)?.[id]);
 }
 
 // ============================================
@@ -385,6 +403,7 @@ export const WorldPermissionsSchema = z.object({
 // は余剰プロパティとして無視され、`url` の有無で同じ結果になるため後方互換は保たれる。
 export const DependencySourceSchema = z.object({
     url: z.string().url().optional(),
+    author: PackageAuthorSchema.optional(),
     // 完全一致 (x.y.z) の pin か、明示的な 'latest'（常に最新版を追う）のどちらか。
     // 省略時も 'latest' として扱う（既存ワールドとの後方互換）が、解決後は必ずどちらかの値になるため
     // 「省略＝最新追従」という暗黙の意味を読み手が推測する必要がない。
@@ -393,7 +412,7 @@ export const DependencySourceSchema = z.object({
 export type DependencySource = z.infer<typeof DependencySourceSchema>;
 
 export const DependencySchema = z.object({
-    name: z.string(),
+    name: z.string().refine((name) => name !== 'core', 'core はインストール不要の標準 Component です'),
     source: DependencySourceSchema,
 });
 export type Dependency = z.infer<typeof DependencySchema>;
@@ -493,3 +512,9 @@ export const ResolvedWorldSchema = z.object({
 });
 
 export type ResolvedWorld = z.infer<typeof ResolvedWorldSchema>;
+
+/** エディタ内部の lock を YAML に重複保存しない（公開 bundle の lock は別フィールド）。 */
+export function withoutWorldLock(definition: WorldDefinition): WorldDefinition {
+    const { lock: _lock, ...spec } = definition.spec;
+    return { ...definition, spec };
+}

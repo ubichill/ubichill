@@ -1,4 +1,5 @@
 import { css } from '@/styled-system/css';
+import { CloseIcon } from './hierarchy/hierarchyIcons';
 
 interface DockSlotProps {
     /** デスクトップ時に grid 内で配置する gridArea 名 */
@@ -52,7 +53,7 @@ export function DockSlot({ area, mobileVisible, mobileTitle, onMobileClose, chil
                 gridArea: { md: area },
                 position: { base: 'fixed', md: 'relative' },
                 top: { base: '52px', md: 'auto' }, // header (52px) を避ける
-                bottom: { base: '140px', md: 'auto' }, // assets トレイ (140px) を避ける
+                bottom: { base: '168px', md: 'auto' }, // 下のドック (168px) を避ける
                 left: { base: isLeft ? 0 : 'auto', md: 'auto' },
                 right: { base: isLeft ? 'auto' : 0, md: 'auto' },
                 width: { base: '85vw', md: 'auto' },
@@ -77,14 +78,14 @@ export function DockSlot({ area, mobileVisible, mobileTitle, onMobileClose, chil
                         display: { base: 'flex', md: 'none' },
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        padding: '10px 14px',
+                        padding: '8px 12px',
                         borderBottom: '1px solid',
                         borderColor: 'border',
                         flexShrink: 0,
                         bg: 'surfaceAccent',
                     })}
                 >
-                    <span className={css({ fontSize: '13px', fontWeight: '700', color: 'text' })}>{mobileTitle}</span>
+                    <span className={css({ fontSize: '13px', fontWeight: '600', color: 'text' })}>{mobileTitle}</span>
                     {onMobileClose && (
                         <button
                             type="button"
@@ -103,7 +104,7 @@ export function DockSlot({ area, mobileVisible, mobileTitle, onMobileClose, chil
                                 _hover: { bg: 'surfaceHover' },
                             })}
                         >
-                            ×
+                            <CloseIcon />
                         </button>
                     )}
                 </div>

@@ -14,6 +14,10 @@ import {
     MOD_EXPORTS_GLOBAL_NAME,
     type ModLockComponent,
     type ModLockEntry,
+    PackageIdSchema,
+    PackagePrefabsSchema,
+    type PrefabFields,
+    validatePackagePrefabs,
 } from '@ubichill/shared';
 import { colorEnabled, formatBytes, formatDuration, type Logger, silentLogger } from '@ubichill/terminal';
 import * as esbuild from 'esbuild';
@@ -45,7 +49,7 @@ function findWorkerFiles(srcDir: string): string[] {
             }
         }
     }
-    walk(srcDir);
+    if (existsSync(srcDir)) walk(srcDir);
     return results;
 }
 
@@ -407,6 +411,7 @@ function readPackageJson(modDir: string): { id: string; name: string; version: s
     }
     const pkg = JSON.parse(readFileSync(path, 'utf-8'));
     const id = pkg.ubichill?.id ?? pkg.name?.replace(/^@ubichill\/(?:mod-)?/, '') ?? basename(modDir);
+    PackageIdSchema.parse(id);
     const name = pkg.ubichill?.name ?? pkg.description ?? id;
     const version = pkg.version;
     if (!version) {
@@ -642,12 +647,30 @@ export async function compileMod(modDir: string, log: Logger = silentLogger): Pr
     }
     if (assets.files.length > 0) log.info(`  ${id} の asset`, `${assets.files.length} files → v${version}/`);
 
+    const prefabDir = join(modDir, 'prefabs');
+    const prefabs = PackagePrefabsSchema.parse(
+        Object.fromEntries(
+            existsSync(prefabDir)
+                ? readdirSync(prefabDir)
+                      .filter((f) => f.endsWith('.json'))
+                      .map((file) => {
+                          const path = join(prefabDir, file);
+                          inputs.add(path);
+                          if (readFileSync(path).length > 100 * 1024)
+                              throw new Error(`プレハブが大きすぎます: ${file}`);
+                          return [file.slice(0, -5), JSON.parse(readFileSync(path, 'utf8'))];
+                      })
+                : [],
+        ),
+    );
+    validatePackagePrefabs(id, prefabs, versionedComponents as PrefabFields);
     const versionedManifest = JSON.stringify(
         {
             id,
             name,
             version,
             components: versionedComponents,
+            ...(Object.keys(prefabs).length ? { prefabs } : {}),
             assets: assets.files,
             // アセットの無い mod の manifest は従来とバイト単位で同じにする（既存の lock を壊さない）。
             ...(assets.files.length > 0 ? { assetIntegrity: assets.integrity } : {}),
@@ -655,6 +678,8 @@ export async function compileMod(modDir: string, log: Logger = silentLogger): Pr
         null,
         2,
     );
+    if (encoder.encode(versionedManifest).length > 1024 * 1024)
+        throw new Error('manifest はプレハブを含めて 1 MiB までです。package を分けてください');
     files.set('manifest.json', encoder.encode(versionedManifest));
 
     // ── lock.json（ModLockEntry 形状）─────────────────────────────
@@ -856,8 +881,16 @@ export async function runBuild(args: string[], log: Logger): Promise<void> {
     const started = performance.now();
     const entry = await explainBuildFailure(
         basename(modDir),
-        buildMod(modDir, { distDir, publicDir, registryUrl, log }),
+        buildMod(modDir, {
+            distDir: !args.includes('--layout=registry') ? distDir : join(distDir, readPackageJson(modDir).id),
+            publicDir: !args.includes('--layout=registry') ? publicDir : join(publicDir, readPackageJson(modDir).id),
+            registryUrl,
+            log,
+        }),
     );
+    if (args.includes('--layout=registry'))
+        for (const dir of new Set([distDir, publicDir]))
+            writeFileSync(join(dir, 'index.json'), JSON.stringify([entry], null, 2));
     log.success(
         `${entry.id} v${entry.version} をビルドしました`,
         `${formatDuration(performance.now() - started)}  → ${displayPath(distDir)}`,

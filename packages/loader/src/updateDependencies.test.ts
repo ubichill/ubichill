@@ -119,7 +119,9 @@ describe('runUpdate', () => {
 
     it('modName を指定すると、そのmod以外は更新対象にしない', async () => {
         // pen 以外の未 pin 依存を追加しても pen だけが対象になることを、対象外指定で確認する
-        await runUpdate([worldPath, 'other-mod', `--mods-dir=${modsDir}`], silentLogger);
+        await expect(runUpdate([worldPath, 'other-mod', `--mods-dir=${modsDir}`], silentLogger)).rejects.toThrow(
+            '依存にありません',
+        );
 
         const rewritten = readFileSync(worldPath, 'utf-8');
         expect(rewritten).toMatch(/version: 1\.0\.0/); // pen は対象外なので書き換わらない

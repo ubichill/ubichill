@@ -1,3 +1,4 @@
+import { type InitialEntity, instantiatePrefab, lockedMods, ModVersionedManifestSchema } from '@ubichill/shared';
 /**
  * dev サーバーの判断: いつ何をビルドし、世代をどう確定するか。
  *
@@ -159,13 +160,30 @@ interface Unpublished {
 
 /** world.yaml が無いときのワールド（手元の mod の manifest から作る。型を宣言した参照は配線しておく）。 */
 export function synthesizeFromArtifacts(mods: ReadonlyMap<string, ModArtifacts>): Record<string, unknown> {
-    return synthesizeWorld(
+    const world = synthesizeWorld(
         [...mods.values()].map((m) => ({
             id: m.id,
             components: componentsFromManifest(m.components, m.files.get('manifest.json')),
         })),
         manifestFieldsOf(mods.values()),
     );
+    const spec = world.spec as { initialEntities: InitialEntity[] };
+    for (const mod of mods.values()) {
+        const bytes = mod.files.get('manifest.json');
+        if (!bytes) continue;
+        const raw = JSON.parse(new TextDecoder().decode(bytes));
+        if (!raw.prefabs) continue;
+        const manifest = ModVersionedManifestSchema.parse(raw);
+        const name = Object.keys(manifest.prefabs ?? {}).sort()[0];
+        const prefab = manifest.prefabs?.[name];
+        if (!prefab) continue;
+        const rest = spec.initialEntities.filter((e) => e.id !== mod.id);
+        spec.initialEntities = [
+            ...rest,
+            instantiatePrefab(mod.lockEntry, name, prefab, manifest.components, rest, mod.id),
+        ];
+    }
+    return world;
 }
 
 const SYNTHESIZED_URL = 'file:///dev/world.yaml';
@@ -196,7 +214,7 @@ export async function buildRoomDefinition(
     options: { instanceId: string; maxUsers: number },
 ): Promise<InstanceDefinition> {
     const { url, definition } = roomWorld(world, mods);
-    const unlocked = requiredLockModIds(definition.spec).filter((id) => !lock.mods[id]);
+    const unlocked = requiredLockModIds(definition.spec).filter((id) => !lockedMods(lock)[id]);
     if (unlocked.length > 0) {
         const sourceOf = (id: string) => definition.spec.dependencies?.find((d) => d.name === id)?.source.url;
         const reasons = unlocked.map((id) => {
@@ -223,10 +241,10 @@ export function describeExternal(
     mods: ReadonlyMap<string, ModArtifacts>,
     pinned: ModLock | undefined,
 ): string {
-    return Object.entries(lock.mods)
+    return Object.entries(lockedMods(lock))
         .filter(([id]) => !mods.has(id))
         .map(([id, entry]) => {
-            const fromLock = pinned?.mods[id]?.manifestIntegrity === entry.manifestIntegrity;
+            const fromLock = lockedMods(pinned)[id]?.manifestIntegrity === entry.manifestIntegrity;
             return `${id}@${entry.version}（${fromLock ? 'lock' : 'source.url'}）`;
         })
         .join('、');

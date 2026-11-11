@@ -276,7 +276,7 @@ function SizelessChip({
                 justifyContent: 'center',
                 color: 'white',
                 fontSize: '11px',
-                fontWeight: '700',
+                fontWeight: '600',
                 boxShadow: selected ? 'selectionRing' : 'chipDrop',
             })}
             style={{

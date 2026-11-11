@@ -18,9 +18,17 @@
  * `ubichill install world.yaml` だけで、別レジストリの mod を混在させた portable な lock を作れる。
  * `--base-url` / `--mods-dir` は URL 未指定 dependency の fallback（単一レジストリやHostモノレポ用）。
  */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { type ModLockEntry, ModLockEntrySchema, requiredLockModIds, WorldDefinitionSchema } from '@ubichill/shared';
+import {
+    assertCapabilityUpdate,
+    lockedMods,
+    type ModLockEntry,
+    ModLockEntrySchema,
+    ModLockSchema,
+    requiredLockModIds,
+    WorldDefinitionSchema,
+} from '@ubichill/shared';
 import type { Logger } from '@ubichill/terminal';
 import yaml from 'yaml';
 import {
@@ -29,6 +37,7 @@ import {
     createHttpLockEntryGetter,
     type LockEntryGetter,
 } from './buildWorldLock.ts';
+import { writeWorldFiles } from './worldFiles.ts';
 
 function argValue(argv: string[], name: string): string | undefined {
     const hit = argv.find((a) => a.startsWith(`--${name}=`));
@@ -67,7 +76,11 @@ function createFsLockEntryGetter(modsDir: string): LockEntryGetter {
  * 比較するだけ（CI 用の drift 検出）。不一致 or ファイル不在なら `process.exitCode = 1` にして返す
  * （意図した「検証失敗」は例外にせず、理由と直し方を出して exitCode だけ立てて終える）。
  */
-export async function runInstall(argv: string[], log: Logger): Promise<void> {
+export async function runInstall(
+    argv: string[],
+    log: Logger,
+    options: { reuseExisting?: boolean } = {},
+): Promise<void> {
     const worldPath = argv.find((a) => !a.startsWith('--'));
     if (!worldPath) {
         throw new Error(
@@ -76,6 +89,9 @@ export async function runInstall(argv: string[], log: Logger): Promise<void> {
     }
 
     const def = WorldDefinitionSchema.parse(yaml.parse(readFileSync(worldPath, 'utf-8')));
+    const outPath = argValue(argv, 'out') ?? worldPath.replace(/\.ya?ml$/i, '.lock.json');
+    const previousText = existsSync(outPath) ? readFileSync(outPath, 'utf8') : null;
+    const previous = previousText ? ModLockSchema.parse(JSON.parse(previousText)) : undefined;
     // dependencies だけに書いた mod も実行中に生成され得るので固定する（署名の有効条件と同じ集合）。
     const modIds = requiredLockModIds(def.spec);
 
@@ -84,13 +100,17 @@ export async function runInstall(argv: string[], log: Logger): Promise<void> {
         ? resolve(argValue(argv, 'mods-dir') as string)
         : join(process.cwd(), 'mods');
     const fallbackGetter = baseUrl ? createHttpLockEntryGetter(baseUrl) : createFsLockEntryGetter(modsDir);
-    const getLockEntry = createDependencyAwareLockEntryGetter(def.spec.dependencies, fallbackGetter);
+    const getLockEntry = createDependencyAwareLockEntryGetter(
+        def.spec.dependencies,
+        fallbackGetter,
+        undefined,
+        options.reuseExisting && !argv.includes('--check') ? previous : undefined,
+    );
 
     const lock = await buildWorldLock(modIds, getLockEntry);
     const nextJson = `${JSON.stringify(lock, null, 2)}\n`;
-    const outPath = argValue(argv, 'out') ?? worldPath.replace(/\.ya?ml$/i, '.lock.json');
 
-    const lockedIds = Object.keys(lock.mods);
+    const lockedIds = Object.keys(lockedMods(lock));
     const missing = modIds.filter((id) => !lockedIds.includes(id));
 
     // 不完全な lock は外部 provenance で実行時拒否されるうえ、コミットされると原因が分かりにくい。
@@ -123,6 +143,7 @@ export async function runInstall(argv: string[], log: Logger): Promise<void> {
         return;
     }
 
-    writeFileSync(outPath, nextJson, 'utf-8');
+    assertCapabilityUpdate(previous, lock, argv.includes('--accept-capabilities'));
+    writeWorldFiles([{ path: outPath, text: nextJson, expected: previousText }]);
     log.success(`${outPath} に mod を固定しました`, `mod ${lockedIds.length}/${modIds.length}`);
 }

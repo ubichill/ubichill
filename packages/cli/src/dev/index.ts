@@ -13,7 +13,7 @@ import { networkInterfaces } from 'node:os';
 import { basename, join, relative, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
-import { ModLockSchema } from '@ubichill/shared';
+import { lockedMods, ModLockSchema } from '@ubichill/shared';
 import { colorEnabled, HintedError, onceLogger, remapLevels, type Terminal } from '@ubichill/terminal';
 import yaml from 'yaml';
 import { compileMod } from '../build.ts';
@@ -229,7 +229,7 @@ export async function runDev(argv: string[], term: Terminal): Promise<void> {
             urls,
             host,
             world: worldPath ? relative(cwd, worldPath) || basename(worldPath) : 'mod から合成したワールド',
-            modCount: generation ? Object.keys(generation.lock.mods).length : undefined,
+            modCount: generation ? Object.keys(lockedMods(generation.lock)).length : undefined,
             localCount: pipeline.modDirs.size,
             failing: pipeline.diagnostics.length > 0,
             debug: term.debugEnabled,

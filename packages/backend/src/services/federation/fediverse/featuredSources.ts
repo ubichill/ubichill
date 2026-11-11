@@ -44,8 +44,7 @@ export function createFeaturedSources(deps: FeaturedSourcesDeps): FeaturedDeps['
                               name: entry.mod.name,
                               description: null,
                               image: null,
-                              // mod のページは無いので、mod の並ぶユーザーページへ
-                              path: `/@${owner.handle}`,
+                              path: `/@${owner.handle}/mods/${entry.mod.id}`,
                               version: entry.mod.version,
                               published: entry.registeredAt,
                           },

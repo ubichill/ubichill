@@ -192,8 +192,27 @@ describe('confirmPublishedMod', () => {
         });
         expect(published).toEqual({
             status: 'published',
-            mod: { id: 'video-player', name: 'video-player', version: '3.1.0', url: MOD_URL },
+            mod: {
+                id: 'video-player',
+                name: 'video-player',
+                version: '3.1.0',
+                url: MOD_URL,
+                author: ALICE,
+                pageUrl: 'https://ubichill.com/@alice/mods/video-player',
+            },
         });
+    });
+
+    it('同じ作者・ID・版でも公開先の内容が登録依頼と違えばポインタを切り替えない', async () => {
+        const { signature } = await signedMod();
+        const confirmation = await confirmPublishedMod(work, {
+            account: ALICE,
+            crypto: nodeWorldCrypto,
+            isAuthorKey,
+            fetchJson: serve({ [at('lock.json')]: entry, [at('lock.sig.json')]: signature }),
+            expectedEntry: { ...entry, manifestIntegrity: `sha256-${'B'.repeat(43)}=` },
+        });
+        expect(confirmation.status).toBe('invalid');
     });
 
     it('公開前は not-found、別の物・他人の署名は invalid（どちらも表示しない）', async () => {

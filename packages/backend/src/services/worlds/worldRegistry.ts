@@ -869,7 +869,19 @@ class WorldRegistry {
         if (!definition) return undefined;
         const world = await this.getWorld(worldId);
         return {
-            definition,
+            definition: {
+                ...definition,
+                spec: {
+                    ...definition.spec,
+                    ...((state?.draft ?? state?.current)?.lock
+                        ? {
+                              lock: (state?.draft ?? state?.current)?.lock as NonNullable<
+                                  WorldDefinition['spec']['lock']
+                              >,
+                          }
+                        : {}),
+                },
+            },
             hasDraft: editor.hasDraft,
             published: isPublishable(world?.identity),
         };
