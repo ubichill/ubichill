@@ -1,5 +1,5 @@
 import { type AccessType, type Instance, type WorldListItem, worldSourceLabel } from '@ubichill/shared';
-import { useEffect, useState } from 'react';
+import { useEffect, useEffectEvent, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { SetHomeControl } from '@/components/home/SetHomeControl';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
@@ -47,14 +47,17 @@ export function WorldDetailModal({
     const [detailInstance, setDetailInstance] = useState<Instance | null>(null);
     useDialogLayer(onClose);
 
+    // 一覧の初期データは、取得を始める時点のものを使う。親が在室・カーソルなどで再描画して
+    // 同じ内容のオブジェクトを作り直しても、開いている詳細を読み込み直さない。
+    const loadWorld = useEffectEvent(() => initialWorld ?? fetchWorld(worldId));
+    const worldRef = initialWorld?.url ?? worldId;
+
     useEffect(() => {
         let cancelled = false;
         setLoading(true);
         setError(null);
 
-        const worldPromise = initialWorld ? Promise.resolve(initialWorld) : fetchWorld(worldId);
-        const worldRef = initialWorld?.url ?? worldId;
-        Promise.all([worldPromise, fetchInstances(worldRef)])
+        Promise.all([loadWorld(), fetchInstances(worldRef)])
             .then(([worldData, instancesData]) => {
                 if (cancelled) return;
                 setWorld(worldData);
@@ -72,7 +75,7 @@ export function WorldDetailModal({
         return () => {
             cancelled = true;
         };
-    }, [worldId, initialWorld]);
+    }, [worldRef]);
 
     const [accessType, setAccessType] = useState<AccessType>('public');
 
@@ -96,7 +99,7 @@ export function WorldDetailModal({
     };
 
     const handleCopyUrl = () => {
-        // ユーザーに配る共有 URL（.../world/:id）。canonical(機械URL) からも共有形へ変換。
+        // ユーザーに配る共有 URL（/@handle/name）。canonical(機械URL) からも共有形へ変換。
         // ローカルワールドは window.location.origin を使い、リモートは origin サーバーの共有 URL を使う。
         // ローカルの world.url はバックエンドの PUBLIC_BASE_URL（dev では :3001）で構築されるため、
         // フロントの origin（:3000）を使うことで正しい共有 URL を生成する。
@@ -175,7 +178,7 @@ export function WorldDetailModal({
                                             mb: '1',
                                         })}
                                     >
-                                        {/* ワールド名クリックで詳細ページ(/world/:id)へ遷移 */}
+                                        {/* ワールド名クリックで作者と作品名の詳細ページへ遷移 */}
                                         <button
                                             type="button"
                                             onClick={() => {

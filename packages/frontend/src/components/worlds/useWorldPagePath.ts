@@ -24,7 +24,8 @@ const lookupSharePath = (url: string): Promise<string | undefined> => {
 export function useWorldPagePath(world: Partial<WorldListItem> & { id: string }): string {
     const fallback = worldPagePath(world);
     const [found, setFound] = useState<{ url: string; path: string } | null>(null);
-    const lookup = needsSharePathLookup(world) ? world.url : undefined;
+    const url = world.url ?? world.source?.url;
+    const lookup = needsSharePathLookup({ ...world, url }) ? url : undefined;
 
     useEffect(() => {
         if (!lookup) return;
