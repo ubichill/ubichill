@@ -1,5 +1,5 @@
 import { useSocket } from '@ubichill/react';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useParams } from 'react-router';
 import { useNotifications } from '@/components/notifications';
 import { css } from '@/styled-system/css';
@@ -12,6 +12,7 @@ export function InstanceHUD() {
     const { id: instanceId } = useParams<{ id: string }>();
     const { isConnected } = useSocket();
     const [open, setOpen] = useState(false);
+    const close = useCallback(() => setOpen(false), []);
     const unread = useNotifications().feed.unreadCount > 0;
     useLaunchpadHotkey(open, setOpen);
 
@@ -29,7 +30,7 @@ export function InstanceHUD() {
                 {unread && <span aria-hidden="true" className={unreadDot} />}
             </button>
 
-            {open && instanceId && <HudOverlay currentInstanceId={instanceId} onClose={() => setOpen(false)} />}
+            {open && instanceId && <HudOverlay currentInstanceId={instanceId} onClose={close} />}
         </>
     );
 }

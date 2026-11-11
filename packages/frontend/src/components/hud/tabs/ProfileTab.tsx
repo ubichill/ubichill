@@ -1,8 +1,9 @@
+import { memo } from 'react';
 import { UserProfileView } from '@/components/profile';
 import { type JoinInstanceHandler, wideTabPanel } from './shared';
 
 /** プロフィール（ほかの人に見えるとおり）。userId が無ければ自分のもの（「編集」でその場で編集できる）。 */
-export function ProfileTab({
+export const ProfileTab = memo(function ProfileTab({
     userId,
     onNavigate,
     onJoinInstance,
@@ -21,4 +22,4 @@ export function ProfileTab({
             />
         </div>
     );
-}
+});
