@@ -29,8 +29,10 @@ export interface OwnedWorld {
      * external: 外部（GitHub Pages など）に置いたワールド。`url` で入る。
      */
     managedBy?: 'repository' | 'external';
-    /** 外部のワールドの URL（開くとき・入るときに使う）。 */
+    /** ワールドの正規 URL（開くとき・入るときに使う）。 */
     url?: string;
+    /** 作者と作品名による共有ページ。 */
+    sharePath?: string;
     /** 本人の一覧のみ。配信できない理由（署名が内容と一致しないなど）。編集して公開し直すと直る。 */
     problem?: string;
     /**

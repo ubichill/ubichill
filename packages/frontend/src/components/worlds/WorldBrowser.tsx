@@ -1,5 +1,5 @@
 import type { WorldListItem } from '@ubichill/shared';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { HudIcon } from '@/components/hud/HudIcon';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
@@ -70,7 +70,7 @@ interface WorldBrowserProps {
 }
 
 /** ワールドを探す一覧（ランチパッドの「ワールド」）。自サーバー・連合・お気に入りのどれか 1 つを並べる。 */
-export function WorldBrowser({ tab, onJoinInstance, currentInstanceId }: WorldBrowserProps) {
+export const WorldBrowser = memo(function WorldBrowser({ tab, onJoinInstance, currentInstanceId }: WorldBrowserProps) {
     const navigate = useNavigate();
     const confirm = useConfirm();
 
@@ -231,7 +231,7 @@ export function WorldBrowser({ tab, onJoinInstance, currentInstanceId }: WorldBr
             </div>
         </div>
     );
-}
+});
 
 const root = css({ display: 'flex', flexDirection: 'column', gap: '3', h: 'full', minH: 0 });
 

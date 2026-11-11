@@ -9,6 +9,7 @@ const at = (day: number) => new Date(Date.UTC(2026, 10, day));
 const world = (id: string, identity: ResolvedWorld['identity']): ResolvedWorld =>
     ({
         id,
+        url: `https://a.example/api/v1/authors/alice/worlds/${id}.yaml`,
         displayName: `World ${id}`,
         version: '1.0.0',
         capacity: { default: 8, max: 16 },
@@ -24,6 +25,7 @@ const listItem = (id: string) =>
     ({
         id,
         url: `https://pages.example/${id}`,
+        sharePath: `/@alice/${id}`,
         displayName: id,
         version: '1',
         capacity: { default: 1, max: 1 },
@@ -70,8 +72,17 @@ describe('publishedWorks', () => {
         const worlds = await works.worldsOf('alice', { id: 'alice', handle: 'alice' });
         expect(worlds.map((w) => w.id)).toEqual(['w1', 'w3', 'repo', 'ext']);
         expect(worlds[0]).not.toHaveProperty('identity');
+        expect(worlds[0]).toMatchObject({
+            url: 'https://a.example/api/v1/authors/alice/worlds/w1.yaml',
+            sharePath: '/@alice/w1',
+        });
+        expect(worlds[2]).toMatchObject({ sharePath: '/@alice/repo' });
         expect(worlds[2]).toMatchObject({ managedBy: 'repository' });
-        expect(worlds[3]).toMatchObject({ managedBy: 'external', url: 'https://pages.example/ext' });
+        expect(worlds[3]).toMatchObject({
+            managedBy: 'external',
+            url: 'https://pages.example/ext',
+            sharePath: '/@alice/ext',
+        });
         expect(asked).toEqual(['alice@a.example']);
     });
 
