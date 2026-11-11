@@ -1,7 +1,9 @@
 import { useCallback, useState } from 'react';
 import { css } from '@/styled-system/css';
 import type { PublishState } from '../hooks/useDefinition';
+import type { ControlPanelAlert } from '../lib/editorChecks';
 import { editorButton } from '../recipes/button';
+import { StatusIcon } from './statusIcons';
 
 interface EditorHeaderProps {
     title: string;
@@ -12,15 +14,11 @@ interface EditorHeaderProps {
     onToggleSnap: () => void;
     /** 戻るボタン押下時（未保存時は呼び出し側で確認モーダルを出す） */
     onBack: () => void;
-    /** コントロールパネル（ワールド情報・mod管理・YAML）を開く。削除はコントロールパネル最下部のDanger Zoneへ移した */
+    /** コントロールパネル（保存・公開・ワールド情報・mod管理・YAML・削除）を開く */
     onOpenControlPanel: () => void;
     /** 公開状態（新規作成中は null） */
     publishState: PublishState | null;
-    saving: boolean;
-    /** 下書き保存（準備不要。公開中の版は変わらない） */
-    onSaveDraft: () => void;
-    /** 作者アカウントで署名して公開 */
-    onPublish: () => void;
+    alert: ControlPanelAlert | null;
 }
 
 function publishStateLabel(state: PublishState): { text: string; tone: 'published' | 'draft' } {
@@ -38,9 +36,7 @@ export function EditorHeader({
     onBack,
     onOpenControlPanel,
     publishState,
-    saving,
-    onSaveDraft,
-    onPublish,
+    alert,
 }: EditorHeaderProps) {
     const [menuOpen, setMenuOpen] = useState(false);
 
@@ -76,7 +72,7 @@ export function EditorHeader({
             <div
                 className={css({
                     fontSize: '15px',
-                    fontWeight: '700',
+                    fontWeight: '600',
                     color: 'text',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
@@ -96,37 +92,14 @@ export function EditorHeader({
                 <span
                     className={css({
                         flexShrink: 0,
-                        px: '8px',
-                        py: '3px',
-                        borderRadius: '6px',
                         fontSize: '12px',
-                        fontWeight: '600',
                         whiteSpace: 'nowrap',
-                        bg: publishStateLabel(publishState).tone === 'published' ? 'successBg' : 'surface',
                         color: publishStateLabel(publishState).tone === 'published' ? 'successText' : 'textMuted',
                     })}
                 >
                     {publishStateLabel(publishState).text}
                 </span>
             )}
-            <button
-                type="button"
-                onClick={onSaveDraft}
-                disabled={saving}
-                title="下書きとして保存します（公開中の版は変わりません）。Cmd/Ctrl+S"
-                className={editorButton({ intent: 'secondary' })}
-            >
-                下書き保存
-            </button>
-            <button
-                type="button"
-                onClick={onPublish}
-                disabled={saving}
-                title="あなたの作者アカウントで署名して公開します"
-                className={editorButton({ intent: 'primary' })}
-            >
-                公開する
-            </button>
             <div
                 className={css({
                     display: { base: 'none', md: 'inline-flex' },
@@ -147,10 +120,12 @@ export function EditorHeader({
                 <button
                     type="button"
                     onClick={onOpenControlPanel}
+                    title={alert?.summary ?? '保存・公開・ワールド情報・mod'}
                     className={editorButton({ intent: 'primary', size: 'lg' })}
                 >
                     <InfoIcon />
                     コントロールパネル
+                    {alert && <AlertBadge alert={alert} />}
                 </button>
             </div>
             <div className={css({ display: { base: 'inline-flex', md: 'none' }, position: 'relative' })}>
@@ -163,6 +138,23 @@ export function EditorHeader({
                 >
                     <HamburgerIcon />
                 </button>
+                {alert && (
+                    <span
+                        aria-hidden="true"
+                        className={css({
+                            position: 'absolute',
+                            top: '-3px',
+                            right: '-3px',
+                            width: '10px',
+                            height: '10px',
+                            borderRadius: '999px',
+                            border: '2px solid',
+                            borderColor: 'surfaceAccent',
+                            bg: alert.level === 'error' ? 'error' : 'warning',
+                            pointerEvents: 'none',
+                        })}
+                    />
+                )}
                 {menuOpen && (
                     <div
                         className={css({
@@ -195,6 +187,7 @@ export function EditorHeader({
                             className={editorButton({ intent: 'menuPrimary', size: 'menu' })}
                         >
                             コントロールパネル
+                            {alert && <AlertBadge alert={alert} />}
                         </button>
                         <div className={css({ height: '1px', bg: 'border', margin: '6px 2px' })} />
                         <button
@@ -208,6 +201,27 @@ export function EditorHeader({
                 )}
             </div>
         </header>
+    );
+}
+
+function AlertBadge({ alert }: { alert: ControlPanelAlert }) {
+    return (
+        <span
+            className={css({
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                px: '4px',
+                borderRadius: '4px',
+                bg: 'background',
+                color: 'text',
+                fontSize: '11px',
+                fontWeight: '600',
+            })}
+        >
+            <StatusIcon level={alert.level} />
+            {alert.count}
+        </span>
     );
 }
 

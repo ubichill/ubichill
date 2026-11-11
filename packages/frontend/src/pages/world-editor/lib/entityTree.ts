@@ -15,6 +15,16 @@ export function getEntityAt(entities: InitialEntity[], path: EntityPath): Initia
     return getEntityAt(node.children ?? [], rest);
 }
 
+/** id の Entity の場所。子孫まで探し、無ければ null。 */
+export function findEntityPath(entities: readonly InitialEntity[], id: string): EntityPath | null {
+    return entities.reduce<EntityPath | null>((found, entity, index) => {
+        if (found) return found;
+        if (entity.id === id) return [index];
+        const child = findEntityPath(entity.children, id);
+        return child ? [index, ...child] : null;
+    }, null);
+}
+
 export function updateEntityAt(
     entities: InitialEntity[],
     path: EntityPath,

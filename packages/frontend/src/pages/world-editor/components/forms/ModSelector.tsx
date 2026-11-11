@@ -254,9 +254,9 @@ export function ModSelector({ dependencies, lock, onCommitDependencies }: ModSel
                                     gap: '6px',
                                     p: '10px 12px',
                                     bg: checked ? 'primarySubtle' : 'background',
-                                    border: '1.5px solid',
+                                    border: '1px solid',
                                     borderColor: checked ? 'primary' : 'border',
-                                    borderRadius: '10px',
+                                    borderRadius: '8px',
                                     _hover: { borderColor: 'borderStrong' },
                                 })}
                             >
@@ -390,7 +390,7 @@ export function ModSelector({ dependencies, lock, onCommitDependencies }: ModSel
                             bg: 'background',
                             border: '1px dashed',
                             borderColor: 'border',
-                            borderRadius: '10px',
+                            borderRadius: '8px',
                             p: '10px 12px',
                             display: 'flex',
                             flexDirection: 'column',

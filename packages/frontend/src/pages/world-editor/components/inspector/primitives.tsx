@@ -155,7 +155,7 @@ export function MiniTab({ active, onClick, label }: { active: boolean; onClick: 
             type="button"
             onClick={onClick}
             className={css({
-                padding: '3px 8px',
+                padding: '2px 8px',
                 bg: active ? 'primary' : 'background',
                 color: active ? 'textOnPrimary' : 'textMuted',
                 border: '1px solid',

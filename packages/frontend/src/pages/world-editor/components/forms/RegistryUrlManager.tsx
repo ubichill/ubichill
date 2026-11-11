@@ -92,7 +92,7 @@ export function RegistryUrlManager({ registryUrls, onChange }: RegistryUrlManage
                 flexDirection: 'column',
                 gap: '6px',
                 bg: 'background',
-                borderRadius: '10px',
+                borderRadius: '8px',
                 p: '10px 12px',
                 border: '1px solid',
                 borderColor: 'border',
@@ -120,7 +120,7 @@ export function RegistryUrlManager({ registryUrls, onChange }: RegistryUrlManage
                         flex: 1,
                         padding: '6px 10px',
                         borderRadius: '8px',
-                        border: '1.5px solid',
+                        border: '1px solid',
                         borderColor: error ? 'errorText' : 'border',
                         bg: 'surface',
                         color: 'text',
@@ -134,7 +134,7 @@ export function RegistryUrlManager({ registryUrls, onChange }: RegistryUrlManage
                     onClick={handleAdd}
                     disabled={!input.trim()}
                     className={css({
-                        padding: '6px 14px',
+                        padding: '8px 12px',
                         bg: 'primary',
                         color: 'textOnPrimary',
                         border: 'none',

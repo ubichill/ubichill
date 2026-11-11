@@ -33,7 +33,7 @@ export function ControlPanelTabs({ active, onChange }: ControlPanelTabsProps) {
                         type="button"
                         onClick={() => onChange(tab.id)}
                         className={css({
-                            padding: '8px 14px',
+                            padding: '8px 12px',
                             fontSize: '13px',
                             fontWeight: '600',
                             color: isActive ? 'primary' : 'textMuted',

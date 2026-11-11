@@ -58,7 +58,7 @@ export function EntityHeader({ entity, onDelete, onRename }: EntityHeaderProps) 
                         title="クリックして ID を編集"
                         className={css({
                             fontSize: '14px',
-                            fontWeight: '700',
+                            fontWeight: '600',
                             color: 'text',
                             bg: 'transparent',
                             border: 'none',

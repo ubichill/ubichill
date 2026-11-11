@@ -15,8 +15,12 @@ import {
 } from '@/lib/signing';
 import { createInstance as createInstanceApi } from '@/lib/worlds/instancesApi';
 import { buildWorldLock } from '@/world';
+import { type ActionFailure, type FailureStage, inStage, toActionFailure } from '../lib/actionFailure';
 import type { PublishState } from './useDefinition';
 import type { PublishDecision } from './usePublishSetup';
+
+/** 保存・公開の結果。利用者が取りやめたときは通知しない。 */
+export type SaveResult = { ok: true; stage: FailureStage } | ({ ok: false } & ActionFailure);
 
 interface UseWorldEditorApiArgs {
     isEdit: boolean;
@@ -25,7 +29,9 @@ interface UseWorldEditorApiArgs {
     onSavedYamlChange: (text: string, lock: ModLock) => void;
     /** 公開状態の更新（公開した・下書きを保存した） */
     onPublishStateChange: React.Dispatch<React.SetStateAction<PublishState>>;
-    /** エラーメッセージの通知先 (ページ側で集約管理する) */
+    /** 保存・公開の結果の通知先（ページ側でコンソールと通知に出す） */
+    onResult: (result: SaveResult) => void;
+    /** 削除・インスタンス作成の失敗の通知先 */
     onError: (msg: string) => void;
     /** 公開の準備が足りないとき、公開の準備ダイアログで利用者の操作を待つ */
     requestPublishSetup: (
@@ -39,7 +45,7 @@ interface UseWorldEditorApiArgs {
  * サーバ側の別カラムに保存する（YAML はクリーンに保つ）。読む側はこの lock と hash 照合して差し替え mod を拒否する。
  */
 async function buildSaveBody(definition: WorldDefinition, worldId: string | undefined) {
-    const { lock, unpinned } = await buildWorldLock(definition, MOD_CDN_URL);
+    const { lock, unpinned } = await inStage('build', () => buildWorldLock(definition, MOD_CDN_URL));
     return { body: { yaml: yaml.stringify(withoutWorldLock(definition)), lock, worldId }, unpinned };
 }
 
@@ -58,26 +64,36 @@ export function useWorldEditorApi({
     definition,
     onSavedYamlChange,
     onPublishStateChange,
+    onResult,
     onError,
     requestPublishSetup,
 }: UseWorldEditorApiArgs) {
     const navigate = useNavigate();
     const [saving, setSaving] = useState(false);
+    /** 最後の保存・公開の失敗。次に成功するまで残す。 */
+    const [failure, setFailure] = useState<ActionFailure | null>(null);
 
+    /** task が false を返したのは利用者が取りやめたとき（失敗ではない） */
     const withSaving = useCallback(
-        async (task: () => Promise<boolean>, failure: string): Promise<boolean> => {
+        async (task: () => Promise<boolean>, stage: FailureStage): Promise<boolean> => {
             setSaving(true);
-            onError('');
             try {
-                return await task();
+                const done = await task();
+                if (done) {
+                    setFailure(null);
+                    onResult({ ok: true, stage });
+                }
+                return done;
             } catch (e) {
-                onError(e instanceof Error ? e.message : failure);
+                const next = toActionFailure(e, stage);
+                setFailure(next);
+                onResult({ ok: false, ...next });
                 return false;
             } finally {
                 setSaving(false);
             }
         },
-        [onError],
+        [onResult],
     );
 
     /** 新規作成か、metadata.name を変えて別のワールドとして保存したときは、保存先のワールドの編集に移る。 */
@@ -106,7 +122,7 @@ export function useWorldEditorApi({
                 );
                 followSaved(saved);
                 return true;
-            }, '下書きを保存できませんでした'),
+            }, 'save'),
         [
             definition,
             isEdit,
@@ -135,7 +151,7 @@ export function useWorldEditorApi({
                 onPublishStateChange({ published: true, hasDraft: false });
                 followSaved(saved);
                 return true;
-            }, '公開できませんでした'),
+            }, 'publish'),
         [
             definition,
             isEdit,
@@ -182,5 +198,5 @@ export function useWorldEditorApi({
         }
     }, [worldId, navigate, onError]);
 
-    return { saving, saveDraft, publish, remove, createInstance };
+    return { saving, failure, saveDraft, publish, remove, createInstance };
 }

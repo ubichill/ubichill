@@ -13,7 +13,9 @@ import { confirmModUpdate } from '@/lib/mods/confirmUpdate';
 import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
 import { EditorAssets } from './components/assets/EditorAssets';
+import { type BottomDockTab, BottomDockTabs } from './components/BottomDockTabs';
 import { ControlPanelTabs } from './components/ControlPanelTabs';
+import { ConsoleActions, EditorConsole } from './components/console/EditorConsole';
 import { DockSlot } from './components/DockSlot';
 import { EditorHeader } from './components/EditorHeader';
 import { EditorStage } from './components/EditorStage';
@@ -25,20 +27,24 @@ import { EntityInspector } from './components/inspector/EntityInspector';
 import { MobileLeftHandle } from './components/MobileLeftHandle';
 import { MobileRightHandle } from './components/MobileRightHandle';
 import { Modal } from './components/Modal';
-import { ModalPrimaryButton, ModalSecondaryButton } from './components/ModalButtons';
 import { PanelSection } from './components/PanelSection';
 import { PrefabControls } from './components/PrefabControls';
+import { PublishPanel } from './components/PublishPanel';
 import { PublishSetupDialog } from './components/PublishSetupDialog';
 import { useAvailableEntityKinds } from './hooks/useAvailableEntityKinds';
 import { useDefinition } from './hooks/useDefinition';
+import { useEditorConsole, useLogNewWarnings } from './hooks/useEditorConsole';
 import { useEditorModals } from './hooks/useEditorModals';
 import { useEntityOps } from './hooks/useEntityOps';
 import { useEntitySelection } from './hooks/useEntitySelection';
 import { useMobilePanels } from './hooks/useMobilePanels';
 import { usePublishSetup } from './hooks/usePublishSetup';
-import { useWorldEditorApi } from './hooks/useWorldEditorApi';
+import { type SaveResult, useWorldEditorApi } from './hooks/useWorldEditorApi';
+import { failureTitle, stageLabel } from './lib/actionFailure';
 import { SNAP_STEP } from './lib/dragHelpers';
-import { flattenForStage, getEntityAt, updateEntityAt } from './lib/entityTree';
+import { blockingChecks, type CheckTarget, controlPanelAlert, editorChecks } from './lib/editorChecks';
+import { consoleCounts } from './lib/editorConsole';
+import { findEntityPath, flattenForStage, getEntityAt, updateEntityAt } from './lib/entityTree';
 import { editorReferenceProblems, problemsByEntity } from './lib/referenceProblems';
 import { editorButton } from './recipes/button';
 
@@ -49,32 +55,60 @@ export function WorldEditorPage() {
     const { data: session, isPending } = useSession();
     const isEdit = !!worldId;
 
-    // ── ページ全体で共有する error trough ──────────────────────────
-    // useDefinition / useWorldEditorApi 両方から書き込まれ、画面下のトーストで表示する
+    // エラーはコンソールに溜め、直近の 1 件だけ画面下のトーストでも知らせる
+    const editorConsole = useEditorConsole();
     const [error, setError] = useState('');
+    const [bottomTab, setBottomTab] = useState<BottomDockTab>('assets');
     const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+    const { log } = editorConsole;
+    const reportError = useCallback(
+        (source: string, message: string) => {
+            setError(message);
+            if (message) log({ level: 'error', source, message });
+        },
+        [log],
+    );
+    const reportLoadError = useCallback((message: string) => reportError('読み込み', message), [reportError]);
+    const reportEditorError = useCallback((message: string) => reportError('エディタ', message), [reportError]);
 
     const { definition, setDefinition, setSavedYaml, loading, dirty, updateEntities, publishState, setPublishState } =
         useDefinition({
             isEdit,
             worldId,
-            onError: setError,
+            onError: reportLoadError,
         });
 
     const currentDefinition = useRef(definition);
     currentDefinition.current = definition;
+
+    const handleSaveResult = useCallback(
+        (result: SaveResult) => {
+            if (!result.ok) {
+                // コンソールは出どころの欄に段階が出るので、文は理由だけにする
+                setError(`${failureTitle(result.stage)}: ${result.message}`);
+                log({ level: 'error', source: stageLabel(result.stage), message: result.message });
+                return;
+            }
+            const message = result.stage === 'publish' ? '公開しました' : '下書きを保存しました';
+            log({ level: 'info', source: stageLabel(result.stage), message });
+        },
+        [log],
+    );
+
     const publishSetup = usePublishSetup();
     const editorApi = useWorldEditorApi({
         requestPublishSetup: publishSetup.request,
         isEdit,
         worldId,
         definition,
+        // 保存を待つ間の編集を残すため、定義は lock だけ差し替える（違いは未保存として残る）
         onSavedYamlChange: (text, lock) => {
             setSavedYaml(text);
             setDefinition((prev) => ({ ...prev, spec: { ...prev.spec, lock } }));
         },
         onPublishStateChange: setPublishState,
-        onError: setError,
+        onResult: handleSaveResult,
+        onError: reportEditorError,
     });
 
     const { kinds, packages, error: packagesError, loading: kindsLoading } = useAvailableEntityKinds(definition);
@@ -90,10 +124,40 @@ export function WorldEditorPage() {
 
     const selection = useEntitySelection();
     const ops = useEntityOps({ definition, updateEntities, kinds, selection });
-    const referenceProblems = useMemo(
-        () => problemsByEntity(editorReferenceProblems(definition.spec.initialEntities, kinds)),
+    const referenceProblemList = useMemo(
+        () => editorReferenceProblems(definition.spec.initialEntities, kinds),
         [definition.spec.initialEntities, kinds],
     );
+    const referenceProblems = useMemo(() => problemsByEntity(referenceProblemList), [referenceProblemList]);
+    const checks = useMemo(
+        () =>
+            editorChecks({
+                displayName: definition.spec.displayName,
+                worldName: definition.metadata.name,
+                yamlError: modals.activeTab === 'yaml' ? modals.yamlError : '',
+                referenceProblems: referenceProblemList,
+                packagesError,
+            }),
+        [
+            definition.spec.displayName,
+            definition.metadata.name,
+            modals.activeTab,
+            modals.yamlError,
+            referenceProblemList,
+            packagesError,
+        ],
+    );
+    const consoleWarnings = useMemo(
+        () =>
+            checks
+                .filter((check) => check.severity === 'warning')
+                .map((check) => ({
+                    source: check.target?.kind === 'entity' ? '参照' : 'mod',
+                    message: check.message,
+                })),
+        [checks],
+    );
+    useLogNewWarnings(consoleWarnings, log);
     const mobile = useMobilePanels();
 
     // 認証ガード
@@ -106,18 +170,16 @@ export function WorldEditorPage() {
         [definition.spec.initialEntities],
     );
 
-    // 保存前の入力チェック（下書き保存・公開で共通）
+    // 止める項目があれば保存しない（ボタンは押せないが Cmd/Ctrl+S・閉じる時の保存はここを通る）
     const validate = useCallback((): boolean => {
-        if (modals.activeTab === 'yaml' && modals.yamlError) {
-            setError(modals.yamlError);
+        const blocker = blockingChecks(checks)[0];
+        if (blocker) {
+            reportError('エディタ', blocker.message);
             return false;
         }
-        if (!definition.spec.displayName.trim()) {
-            setError('表示名は必須です');
-            return false;
-        }
+        setError('');
         return true;
-    }, [definition, modals.activeTab, modals.yamlError]);
+    }, [checks, reportError]);
 
     // 下書き保存（準備不要）。公開中のワールドでも公開中の版は変わらない。
     const saveDraft = useCallback(async () => validate() && editorApi.saveDraft(), [validate, editorApi]);
@@ -133,13 +195,44 @@ export function WorldEditorPage() {
     const handleCloseControlPanel = useCallback(() => {
         if (isEdit) {
             if (modals.activeTab === 'yaml' && modals.yamlError) {
-                setError(modals.yamlError);
+                reportError('YAML', modals.yamlError);
                 return;
             }
-            if (dirty) void editorApi.saveDraft();
+            if (dirty) void saveDraft();
         }
         modals.closeControlPanel();
-    }, [isEdit, dirty, editorApi, modals.activeTab, modals.yamlError, modals.closeControlPanel]);
+    }, [isEdit, dirty, saveDraft, reportError, modals.activeTab, modals.yamlError, modals.closeControlPanel]);
+
+    // 確認項目の「開く / 選択」。Entity はコントロールパネルを閉じてヒエラルキーで選ぶ。
+    const goToCheck = useCallback(
+        (target: CheckTarget) => {
+            if (target.kind === 'tab') {
+                modals.switchTab(target.tab);
+                return;
+            }
+            const path = findEntityPath(definition.spec.initialEntities, target.entityId);
+            if (!path) return;
+            selection.selectEntity(path);
+            modals.closeControlPanel();
+        },
+        [modals.switchTab, modals.closeControlPanel, definition.spec.initialEntities, selection.selectEntity],
+    );
+
+    const showConsole = useCallback(() => {
+        setError('');
+        setBottomTab('console');
+        modals.closeControlPanel();
+    }, [modals.closeControlPanel]);
+
+    const consoleCount = useMemo(() => consoleCounts(editorConsole.entries), [editorConsole.entries]);
+    const headerAlert = useMemo(
+        () =>
+            controlPanelAlert(
+                editorApi.failure ? `${failureTitle(editorApi.failure.stage)}: ${editorApi.failure.message}` : null,
+                checks,
+            ),
+        [editorApi.failure, checks],
+    );
 
     // 戻るボタン。未保存なら確認モーダルを出す。
     const handleBack = useCallback(() => {
@@ -185,7 +278,7 @@ export function WorldEditorPage() {
                 position: 'fixed',
                 inset: 0,
                 display: 'grid',
-                gridTemplateRows: { base: 'auto 1fr 140px', md: 'auto 1fr 220px' },
+                gridTemplateRows: { base: 'auto 1fr 168px', md: 'auto 1fr 220px' },
                 gridTemplateColumns: { base: 'minmax(0, 1fr)', md: '240px minmax(0, 1fr) 320px' },
                 gridTemplateAreas: {
                     base: `"header" "center" "bottom"`,
@@ -205,9 +298,7 @@ export function WorldEditorPage() {
                     onBack={handleBack}
                     onOpenControlPanel={() => modals.openControlPanel()}
                     publishState={isEdit ? publishState : null}
-                    saving={editorApi.saving}
-                    onSaveDraft={() => void saveDraft()}
-                    onPublish={() => void publish()}
+                    alert={headerAlert}
                 />
             </div>
 
@@ -319,51 +410,66 @@ export function WorldEditorPage() {
             </DockSlot>
 
             <DockSlot area="bottom" mobileVisible={true}>
-                <EditorAssets
-                    kinds={kinds}
-                    loading={kindsLoading}
-                    dependencies={definition.spec.dependencies ?? []}
-                    packages={packages}
-                    onAddPrefab={(pkg, name) => {
-                        try {
-                            const prefab = pkg.manifest.prefabs?.[name];
-                            if (!prefab) return;
-                            const next = instantiatePrefab(
-                                pkg.entry,
-                                name,
-                                prefab,
-                                pkg.manifest.components,
-                                definition.spec.initialEntities,
-                                `prefab-${crypto.randomUUID().slice(0, 12)}`,
-                            );
-                            setDefinition(
-                                WorldDefinitionSchema.parse({
-                                    ...definition,
-                                    spec: {
-                                        ...definition.spec,
-                                        initialEntities: [...definition.spec.initialEntities, next],
-                                    },
-                                }),
-                            );
-                        } catch (e) {
-                            setError(e instanceof Error ? e.message : '配置できません');
-                        }
-                    }}
+                <BottomDockTabs
+                    active={bottomTab}
+                    onChange={setBottomTab}
+                    counts={consoleCount}
+                    actions={
+                        bottomTab === 'console' && (
+                            <ConsoleActions entries={editorConsole.entries} onClear={editorConsole.clear} />
+                        )
+                    }
                 />
+                {bottomTab === 'console' ? (
+                    <EditorConsole entries={editorConsole.entries} />
+                ) : (
+                    <EditorAssets
+                        kinds={kinds}
+                        loading={kindsLoading}
+                        dependencies={definition.spec.dependencies ?? []}
+                        packages={packages}
+                        onAddPrefab={(pkg, name) => {
+                            try {
+                                const prefab = pkg.manifest.prefabs?.[name];
+                                if (!prefab) return;
+                                const next = instantiatePrefab(
+                                    pkg.entry,
+                                    name,
+                                    prefab,
+                                    pkg.manifest.components,
+                                    definition.spec.initialEntities,
+                                    `prefab-${crypto.randomUUID().slice(0, 12)}`,
+                                );
+                                setDefinition(
+                                    WorldDefinitionSchema.parse({
+                                        ...definition,
+                                        spec: {
+                                            ...definition.spec,
+                                            initialEntities: [...definition.spec.initialEntities, next],
+                                        },
+                                    }),
+                                );
+                            } catch (e) {
+                                reportError('配置', e instanceof Error ? e.message : '配置できません');
+                            }
+                        }}
+                    />
+                )}
             </DockSlot>
 
             {!mobile.leftOpen && <MobileLeftHandle onClick={mobile.openLeft} />}
             {selectedEntity && !mobile.rightOpen && <MobileRightHandle onClick={mobile.openRight} />}
 
             {error && (
-                <div
-                    onClick={() => setError('')}
+                <button
+                    type="button"
+                    onClick={showConsole}
                     className={css({
                         position: 'fixed',
-                        bottom: { base: '152px', md: '232px' },
+                        bottom: { base: '180px', md: '232px' },
                         left: { base: '12px', md: '252px' },
                         right: { base: '12px', md: '332px' },
-                        padding: '10px 14px',
+                        padding: '8px 12px',
                         bg: 'errorBg',
                         color: 'errorText',
                         border: '1px solid',
@@ -373,11 +479,12 @@ export function WorldEditorPage() {
                         zIndex: 99999,
                         cursor: 'pointer',
                         boxShadow: 'toast',
+                        textAlign: 'left',
                     })}
                 >
                     {error}
-                    <span className={css({ ml: '2', opacity: 0.6, fontSize: '11px' })}>(クリックで閉じる)</span>
-                </div>
+                    <span className={css({ ml: '2', opacity: 0.7, fontSize: '12px' })}>コンソールで見る</span>
+                </button>
             )}
 
             <Modal
@@ -387,60 +494,18 @@ export function WorldEditorPage() {
                 width="960px"
                 height="680px"
                 footer={
-                    <div
-                        className={css({
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: '2',
-                            width: '100%',
-                            justifyContent: 'space-between',
-                        })}
-                    >
-                        <div>
-                            {isEdit && !dirty && (
-                                <button
-                                    type="button"
-                                    onClick={editorApi.createInstance}
-                                    disabled={editorApi.saving}
-                                    title="このワールドで新しいインスタンスを作って参加する"
-                                    className={editorButton({ intent: 'success' })}
-                                >
-                                    ▶ インスタンス作成
-                                </button>
-                            )}
-                        </div>
-                        <div
-                            className={css({
-                                display: 'flex',
-                                flexWrap: 'wrap',
-                                gap: '8px',
-                                justifyContent: 'flex-end',
-                            })}
-                        >
-                            {isEdit ? (
-                                <>
-                                    <ModalSecondaryButton onClick={handleCloseControlPanel}>
-                                        {dirty ? '下書き保存して閉じる' : '閉じる'}
-                                    </ModalSecondaryButton>
-                                    <ModalPrimaryButton onClick={() => void publish()} disabled={editorApi.saving}>
-                                        公開する
-                                    </ModalPrimaryButton>
-                                </>
-                            ) : (
-                                <>
-                                    <ModalSecondaryButton onClick={modals.closeControlPanel}>
-                                        キャンセル
-                                    </ModalSecondaryButton>
-                                    <ModalSecondaryButton onClick={handleSave} disabled={editorApi.saving}>
-                                        下書きとして作成
-                                    </ModalSecondaryButton>
-                                    <ModalPrimaryButton onClick={() => void publish()} disabled={editorApi.saving}>
-                                        {editorApi.saving ? '処理中...' : '作成して公開'}
-                                    </ModalPrimaryButton>
-                                </>
-                            )}
-                        </div>
-                    </div>
+                    <PublishPanel
+                        isEdit={isEdit}
+                        dirty={dirty}
+                        saving={editorApi.saving}
+                        checks={checks}
+                        failure={editorApi.failure}
+                        onGoTo={goToCheck}
+                        onShowConsole={showConsole}
+                        onCreateInstance={editorApi.createInstance}
+                        onSaveDraft={handleSave}
+                        onPublish={() => void publish()}
+                    />
                 }
             >
                 <ControlPanelTabs active={modals.activeTab} onChange={modals.switchTab} />

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { css } from '@/styled-system/css';
+import { CloseIcon } from '../hierarchy/hierarchyIcons';
 import { inputStyle } from './shared';
 
 const TAG_PATTERN = /^[a-z0-9_-]+$/;
@@ -45,10 +46,10 @@ export function TagsEditor({ tags, onChange }: TagsEditorProps) {
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: '4px',
-                                padding: '3px 6px 3px 8px',
+                                padding: '2px 4px 2px 8px',
                                 bg: 'primarySubtle',
                                 color: 'primary',
-                                borderRadius: '999px',
+                                borderRadius: '4px',
                                 fontSize: '11px',
                                 fontWeight: '600',
                             })}
@@ -70,7 +71,7 @@ export function TagsEditor({ tags, onChange }: TagsEditorProps) {
                                     _hover: { opacity: 0.7 },
                                 })}
                             >
-                                ×
+                                <CloseIcon />
                             </button>
                         </span>
                     ))}

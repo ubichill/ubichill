@@ -5,6 +5,7 @@ import type { DataFieldSpec, DataFields } from '../../hooks/useAvailableEntityKi
 import { ENTITY_DRAG_MIME } from '../../lib/dnd';
 import { resolveEntityIdByPathKey } from '../../lib/entityTree';
 import { refTargetError } from '../../lib/referenceProblems';
+import { CloseIcon } from '../hierarchy/hierarchyIcons';
 import { defaultForType, displayedFieldValue } from './fieldValues';
 import { ColorInput, NumberInput } from './primitives';
 import { detectType, inputStyle, textareaStyle } from './shared';
@@ -143,7 +144,7 @@ function DeclaredFieldRow({
             <div className={css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between' })}>
                 <span className={css({ fontSize: '12px', fontWeight: '600', color: 'text' })}>
                     {label}
-                    <span className={css({ ml: '6px', fontSize: '10px', color: 'textSubtle', fontWeight: '500' })}>
+                    <span className={css({ ml: '6px', fontSize: '11px', color: 'textSubtle', fontWeight: '500' })}>
                         ({fieldKey} · {spec.type})
                     </span>
                 </span>
@@ -152,7 +153,7 @@ function DeclaredFieldRow({
                     onClick={onReset}
                     title="既定値に戻す"
                     className={css({
-                        fontSize: '10px',
+                        fontSize: '11px',
                         color: 'textSubtle',
                         bg: 'transparent',
                         border: 'none',
@@ -164,7 +165,7 @@ function DeclaredFieldRow({
                 </button>
             </div>
             <DeclaredInput spec={spec} value={value} allEntities={allEntities} onChange={onChange} name={fieldKey} />
-            {spec.help && <span className={css({ fontSize: '10px', color: 'textSubtle' })}>{spec.help}</span>}
+            {spec.help && <span className={css({ fontSize: '11px', color: 'textSubtle' })}>{spec.help}</span>}
         </div>
     );
 }
@@ -346,7 +347,7 @@ function EntityDropZone({
             >
                 {children}
             </div>
-            {rejected && <span className={css({ fontSize: '10px', color: 'errorText' })}>{rejected}</span>}
+            {rejected && <span className={css({ fontSize: '11px', color: 'errorText' })}>{rejected}</span>}
         </div>
     );
 }
@@ -378,7 +379,7 @@ function EntityRefChip({
                 alignItems: 'center',
                 gap: '6px',
                 padding: '2px 8px',
-                borderRadius: '999px',
+                borderRadius: '4px',
                 bg: 'surface',
                 border: '1px solid',
                 borderColor: 'border',
@@ -392,7 +393,7 @@ function EntityRefChip({
                 title="参照を解除"
                 className={css({ bg: 'transparent', border: 'none', color: 'errorText', cursor: 'pointer', p: 0 })}
             >
-                ×
+                <CloseIcon />
             </button>
         </span>
     );
@@ -404,7 +405,7 @@ function RefErrors({ errors }: { errors: readonly string[] }) {
     return (
         <div className={css({ display: 'flex', flexDirection: 'column', gap: '2px' })}>
             {errors.map((e) => (
-                <span key={e} className={css({ fontSize: '10px', color: 'errorText' })}>
+                <span key={e} className={css({ fontSize: '11px', color: 'errorText' })}>
                     {e}
                 </span>
             ))}
@@ -602,12 +603,12 @@ function ArrayRowBtn({
             onClick={onClick}
             disabled={disabled}
             className={css({
-                padding: '2px 7px',
+                padding: '2px 8px',
                 bg: 'transparent',
                 color: danger ? 'errorText' : 'textMuted',
                 border: '1px solid',
                 borderColor: 'border',
-                borderRadius: '5px',
+                borderRadius: '4px',
                 fontSize: '11px',
                 cursor: 'pointer',
                 opacity: disabled ? 0.4 : 1,
@@ -700,7 +701,7 @@ function CustomFieldRow({
                     _hover: { borderColor: 'errorLight' },
                 })}
             >
-                ×
+                <CloseIcon />
             </button>
         </div>
     );
@@ -736,7 +737,7 @@ function MiniJsonEditor({ value, onChange, name }: { value: unknown; onChange: (
                 spellCheck={false}
                 className={textareaStyle}
             />
-            {err && <span className={css({ fontSize: '10px', color: 'errorText' })}>{err}</span>}
+            {err && <span className={css({ fontSize: '11px', color: 'errorText' })}>{err}</span>}
         </div>
     );
 }

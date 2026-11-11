@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { css } from '@/styled-system/css';
+import { CloseIcon } from './hierarchy/hierarchyIcons';
 
 interface ModalProps {
     open: boolean;
@@ -72,7 +73,7 @@ export function Modal({ open, onClose, title, children, width = '640px', height,
                         flexShrink: 0,
                     })}
                 >
-                    <span className={css({ fontSize: '14px', fontWeight: '700', color: 'text' })}>{title}</span>
+                    <span className={css({ fontSize: '14px', fontWeight: '600', color: 'text' })}>{title}</span>
                     <button
                         type="button"
                         onClick={onClose}
@@ -90,7 +91,7 @@ export function Modal({ open, onClose, title, children, width = '640px', height,
                             _hover: { bg: 'surfaceHover' },
                         })}
                     >
-                        ×
+                        <CloseIcon />
                     </button>
                 </div>
                 <div

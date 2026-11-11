@@ -12,6 +12,7 @@ import { css } from '@/styled-system/css';
 import type { AvailableEntityKind, DataFields } from '../../hooks/useAvailableEntityKinds';
 import { COMPONENT_DRAG_MIME } from '../../lib/dnd';
 import { uiMarkupNotices } from '../../lib/uiMarkupNotices';
+import { CloseIcon } from '../hierarchy/hierarchyIcons';
 import { ColliderDataFields } from './ColliderDataFields';
 import { DataFormFields } from './DataFormFields';
 import { EditorNotices } from './EditorNotices';
@@ -123,7 +124,7 @@ export function ComponentCard({
                         _hover: { borderColor: 'errorLight' },
                     })}
                 >
-                    ×
+                    <CloseIcon />
                 </button>
             </div>
             {expanded && (

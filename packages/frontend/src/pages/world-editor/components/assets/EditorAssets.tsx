@@ -62,8 +62,6 @@ export function EditorAssets({ kinds, loading, dependencies, packages, onAddPref
         <section
             className={css({
                 bg: 'surface',
-                borderTop: '1px solid',
-                borderColor: 'border',
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
@@ -72,7 +70,8 @@ export function EditorAssets({ kinds, loading, dependencies, packages, onAddPref
                 height: 'full',
             })}
         >
-            <Toolbar path={path} onNavigate={setPath} loading={loading} />
+            {/* 一番上は下のドックのタブが「アセット」を示すので、階層に入ったときだけパンくずを出す */}
+            {(path.length > 0 || loading) && <Toolbar path={path} onNavigate={setPath} loading={loading} />}
             <div
                 className={css({
                     flex: 1,
@@ -442,7 +441,7 @@ const tileButtonStyle = css({
 });
 
 const tileLabelStyle = css({
-    fontSize: '10px',
+    fontSize: '11px',
     color: 'text',
     fontWeight: '500',
     textAlign: 'center',
