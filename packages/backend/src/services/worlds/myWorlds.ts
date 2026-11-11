@@ -3,7 +3,7 @@
  * 本人には未署名（非公開）も返し、署名状態を見せて署名し直せるようにする。配信できない（署名が内容と一致しない）ものは理由も返す。
  */
 import { servedWorldOf, userRepository, type WorldState, worldRepository } from '@ubichill/db';
-import { limitsFor, parseStoredDefinition } from '@ubichill/shared';
+import { limitsFor, localWorldPagePath, parseStoredDefinition } from '@ubichill/shared';
 import { selfAccount } from '../authors/authorKeys';
 import { repositoryWorldView } from './publishedWorks';
 import { worldRegistry } from './worldRegistry';
@@ -28,7 +28,15 @@ export async function myWorldsOf(user: Parameters<typeof limitsFor>[0] & { id: s
                 capacity: def?.capacity ?? { default: 0, max: 0 },
                 updatedAt: r.updatedAt,
                 // 配信の道筋（署名し直すときに、配信している生の値をここから取る）
-                ...(me ? { url: worldRegistry.hostedWorldUrl(me.handle, r.worldName) } : {}),
+                ...(me
+                    ? {
+                          url: worldRegistry.hostedWorldUrl(me.handle, r.worldName),
+                          sharePath: localWorldPagePath({
+                              id: r.id,
+                              url: worldRegistry.hostedWorldUrl(me.handle, r.worldName),
+                          }),
+                      }
+                    : {}),
                 identity: resolution.ok ? resolution.world.identity : undefined,
                 ...(resolution.ok
                     ? {}

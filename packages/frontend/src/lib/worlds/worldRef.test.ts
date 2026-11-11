@@ -28,6 +28,22 @@ describe('localWorldPagePath', () => {
 describe('worldPagePath', () => {
     const pages = 'https://ieyoukan.github.io/ubichill-worlds/worlds/chillwa.yaml';
 
+    it('部屋のワールドは source.url から作者と作品名の共有 URL を作る', () => {
+        expect(
+            worldPagePath({
+                id: 'wrqy3ibj9ukwlvag7gg0y',
+                source: { kind: 'local', url: 'https://ubichill.com/api/v1/authors/youkan/worlds/test.yaml' },
+            }),
+        ).toBe('/@youkan/test');
+    });
+
+    it('別サーバーの正規 URL を、このサーバーの作者のページに置き換えない', () => {
+        const url = 'https://remote.example/api/v1/authors/youkan/worlds/test.yaml';
+        expect(worldPagePath({ id: 'test', source: { kind: 'remote-instance', url } })).toBe(
+            `/world?url=${encodeURIComponent(url)}`,
+        );
+    });
+
     it('作者が確かめられ登録された外部のワールドは短い共有ページ（/@handle/name）', () => {
         expect(
             worldPagePath({ id: 'chillwa', url: pages, source: { kind: 'github' }, sharePath: '/@youkan/chillwa' }),

@@ -6,7 +6,13 @@
  * - リポジトリ（worlds/）のワールド: 作者アカウントが本人のもの（ユーザーページだけ。画面からは編集できない）
  */
 import type { WorldRecord } from '@ubichill/db';
-import { isPublishable, type PublishedMod, type ResolvedWorld, type WorldListItem } from '@ubichill/shared';
+import {
+    isPublishable,
+    localWorldPagePath,
+    type PublishedMod,
+    type ResolvedWorld,
+    type WorldListItem,
+} from '@ubichill/shared';
 import type { PublishedExternalEntry } from './externalWorkService';
 
 export interface PublishedWorksDeps {
@@ -26,6 +32,8 @@ export interface WorksOwner {
 /** リポジトリで管理しているワールドの一覧の 1 件（画面からは編集・削除できない）。 */
 export const repositoryWorldView = (w: ResolvedWorld) => ({
     id: w.id,
+    url: w.url,
+    sharePath: localWorldPagePath(w),
     displayName: w.displayName,
     description: w.description ?? null,
     thumbnail: w.thumbnail ?? null,
@@ -39,6 +47,7 @@ export const repositoryWorldView = (w: ResolvedWorld) => ({
 export const externalWorldView = (w: WorldListItem) => ({
     id: w.id,
     url: w.url,
+    sharePath: w.sharePath,
     displayName: w.displayName,
     description: w.description ?? null,
     thumbnail: w.thumbnail ?? null,
@@ -51,6 +60,8 @@ export const externalWorldView = (w: WorldListItem) => ({
 /** 本体に作ったワールドの公開する項目（公開メタデータだけ）。 */
 const hostedWorldView = (w: ResolvedWorld) => ({
     id: w.id,
+    url: w.url,
+    sharePath: localWorldPagePath(w),
     displayName: w.displayName,
     description: w.description ?? null,
     thumbnail: w.thumbnail ?? null,
