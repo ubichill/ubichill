@@ -4,7 +4,7 @@ import {
     createHttpLockEntryGetter,
     resolveLatestVersion,
 } from '@ubichill/loader';
-import { createModLock, type Dependency, displayAuthorAccount, lockedMods, type ModLock } from '@ubichill/shared';
+import { type Dependency, displayAuthorAccount, lockedMods, type ModLock } from '@ubichill/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { confirmModUpdate } from '@/lib/mods/confirmUpdate';
@@ -23,6 +23,7 @@ import {
 } from '@/world';
 import {
     computeModDiff,
+    lockForSelection,
     type ModSelectionEntry,
     selectionToDependencies,
     selectionWithCheckedVersions,
@@ -181,8 +182,7 @@ export function ModSelector({ dependencies, lock, onCommitDependencies }: ModSel
                 next.map((d) => d.name),
                 get,
             );
-            const proposed = createModLock({ ...lockedMods(lock), ...lockedMods(resolved) });
-            if (next.some((d) => !lockedMods(proposed)[d.name])) throw new Error('mod を取得できません');
+            const proposed = lockForSelection(next, lock, resolved);
             await Promise.all(
                 Object.values(lockedMods(proposed))
                     .filter((entry) => JSON.stringify(entry) !== JSON.stringify(lockedMods(lock)[entry.id]))

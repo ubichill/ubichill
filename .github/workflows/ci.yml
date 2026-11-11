@@ -72,7 +72,16 @@ jobs:
       # 依存だけの更新はイメージ（main のビルド）で配られる。必要なら次の sdk・cli の変更と一緒に出る
       - name: Validate changesets
         if: github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]'
-        run: pnpm exec changeset status --since=origin/main
+        env:
+          # 版更新PRは changeset を消費するため、差分に新しいchangesetが無くてもよい。
+          # 同じリポジトリで bot が作った専用ブランチだけを対象にする。
+          IS_RELEASE_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'github-actions[bot]' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'changeset-release/main' }}
+        run: |
+          if [ "$IS_RELEASE_PR" = "true" ]; then
+            pnpm exec changeset status
+          else
+            pnpm exec changeset status --since=origin/main
+          fi
 
   test:
     name: Test
@@ -452,6 +461,14 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('packages/e2e/package.json') }}
 
       # chromium の headless shell だけを入れる（フルの chromium・ほかのブラウザは入れない）
+      - name: Use Ubuntu archive mirrors
+        if: steps.wait.outputs.deployed == 'true'
+        # Azure のミラーが DNS 障害になるとブラウザの OS 依存を入れられない。Ubuntu 公式の配布先を使う。
+        run: |
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' 'https://security.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
+          fi
+
       - name: Install Playwright chromium
         if: steps.wait.outputs.deployed == 'true'
         run: pnpm --filter @ubichill/e2e exec playwright install --with-deps --only-shell chromium

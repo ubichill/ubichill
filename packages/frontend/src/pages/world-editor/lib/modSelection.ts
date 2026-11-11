@@ -1,4 +1,4 @@
-import type { Dependency } from '@ubichill/shared';
+import { createModLock, type Dependency, lockedMods, type ModLock } from '@ubichill/shared';
 
 /** mod セレクタが扱う最小限の mod 表現（`AvailableMod` の構造部分集合）。 */
 export interface SelectableMod {
@@ -88,4 +88,27 @@ export function selectionWithCheckedVersions(
         ...dep,
         source: { ...dep.source, version: checks.find((c) => c.modId === dep.name)?.version ?? dep.source.version },
     }));
+}
+
+/** 選んだ依存をすべて解決してから確定する。取得失敗を以前の版の lock で補わない。 */
+export function lockForSelection(
+    dependencies: readonly Dependency[],
+    previous: ModLock | undefined,
+    resolved: ModLock,
+): ModLock {
+    const entries = lockedMods(resolved);
+    const missing = dependencies.filter(({ name, source }) => {
+        const entry = entries[name];
+        return (
+            !entry ||
+            entry.id !== name ||
+            (source.version !== 'latest' && entry.version !== source.version) ||
+            (source.author && entry.author !== source.author) ||
+            (source.url && entry.baseUrl?.replace(/\/$/, '') !== source.url.replace(/\/$/, ''))
+        );
+    });
+    if (missing.length)
+        throw new Error(`mod を取得できないため変更しませんでした: ${missing.map((dep) => dep.name).join('、')}`);
+    // dependencies に無くても、配置済み Component が使う mod の lock は残す。
+    return createModLock({ ...lockedMods(previous), ...entries });
 }
