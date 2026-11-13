@@ -1,7 +1,8 @@
 import type { InitialEntity } from '@ubichill/shared';
 import { css } from '@/styled-system/css';
 import type { AvailableEntityKind } from '../../hooks/useAvailableEntityKinds';
-import { ComponentCard, ComponentPicker } from './ComponentCard';
+import { ComponentCard } from './ComponentCard';
+import { ComponentPicker } from './ComponentPicker';
 import { EditorNotices } from './EditorNotices';
 import { EntityHeader } from './EntityHeader';
 import { NumField, Section } from './primitives';

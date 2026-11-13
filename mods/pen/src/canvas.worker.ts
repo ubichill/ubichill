@@ -26,6 +26,7 @@ import {
 } from './strokeOrder';
 
 export const config: ComponentConfig = {
+    thumbnail: 'previews/canvas.svg',
     canvasTargets: ['drawing'],
     watchEntityTypes: ['pen:stroke', 'pen:pen'],
     watchScope: 'world',

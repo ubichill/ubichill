@@ -118,6 +118,22 @@ DB に元データのスナップショットを重複保存しない。配置�
 ブラウザでは変更差分を確認してから適用する。Unpack は関連を外し、通常の編集可能な Entity 一式にする。
 元の版が配布先から消えた場合は差分更新できないが、配置済みの内容は残り、Unpackできる。
 
+## 見た目の画像
+
+エディタのアセット欄・Component の追加・mod 管理の一覧・作品ページに出す画像を、mod に同梱できる。どれも任意で、無ければ印を出す。
+
+| 何の画像か | 書く場所 |
+| --- | --- |
+| mod のサムネイル | `package.json` の `"ubichill": { "thumbnail": "previews/thumbnail.svg" }` |
+| Component の見た目 | Worker の `config.thumbnail` |
+| プレハブの見た目 | `prefabs/<名前>.json` の `"thumbnail"` |
+
+- 画像は `assets/` に置き、値は `assets/` からの相対パスで書く（例: `assets/previews/pen.svg` なら `previews/pen.svg`）。
+- 形式は png・jpg・webp・avif・svg、1 枚 256 KB まで。`assets/` に無い・形式が違う・大きすぎる画像は build で止める。
+- 画像は他のアセットと同じく manifest の `assetIntegrity` で hash を固定し、署名の対象になる。エディタは hash を確かめてから出すので、
+  公開後に配布先の画像だけを差し替えても出ない。画像を変えたら版を上げる。
+- 例は `mods/pen`（サムネイル・pen・tray・canvas・ペンセット・ペン置き場）。
+
 ## 配布と信頼
 
 Worker・アセット・プレハブ・版履歴は作者の配布先に置く。作者のホームのDBは作者＋mod IDごとの登録ポインタだけを持ち、

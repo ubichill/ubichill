@@ -122,6 +122,25 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
         expect(fields.strokeWidth.default).toBe(4);
     });
 
+    it('mod・Component・プレハブの見た目の画像を manifest に載せ、配布した画像の hash で固定する', () => {
+        const integrity = manifest.assetIntegrity as Record<string, string>;
+        const components = manifest.components as Record<string, { thumbnail?: string }>;
+        const prefabs = manifest.prefabs as Record<string, { thumbnail?: string }>;
+        const paths = [
+            manifest.thumbnail as string,
+            components['pen:pen'].thumbnail,
+            components['pen:tray'].thumbnail,
+            components['pen:canvas'].thumbnail,
+            prefabs['pen-set'].thumbnail,
+            prefabs['pen-tray'].thumbnail,
+        ];
+        for (const path of paths) {
+            expect(path, '見た目の画像の参照が無い').toMatch(/^previews\/.+\.svg$/);
+            const bytes = readFileSync(join(publicDir, modId, `v${version}`, path as string));
+            expect(integrity[path as string]).toBe(`sha256-${createHash('sha256').update(bytes).digest('base64')}`);
+        }
+    });
+
     it('manifest に pen:canvas の canvasTargets が出力される', () => {
         const comp = (manifest.components as Record<string, Record<string, unknown>>)['pen:canvas'];
         expect(comp.canvasTargets).toEqual(['drawing']);

@@ -38,9 +38,18 @@ describe('entityKindsFromManifest', () => {
         ]);
     });
 
-    it('thumbnail は版のディレクトリで絶対化する', () => {
-        const [kind] = entityKindsFromManifest('pen', { 'pen:pen': { thumbnail: 'icon.svg' } }, base);
-        expect(kind?.thumbnailUrl).toBe('/mods/pen/v2.0.0/icon.svg');
+    it('thumbnail は版のディレクトリで絶対化し、hash を固定したものだけ出す', () => {
+        const [kind] = entityKindsFromManifest('pen', { 'pen:pen': { thumbnail: 'icon.svg' } }, base, {
+            'icon.svg': 'sha256-icon',
+        });
+        expect(kind?.thumbnail).toEqual({
+            url: '/mods/pen/v2.0.0/icon.svg',
+            integrity: 'sha256-icon',
+            type: 'image/svg+xml',
+        });
+        // hash を固定していない画像は出さない（配布先で差し替えられても気付けないため）
+        const [unpinned] = entityKindsFromManifest('pen', { 'pen:pen': { thumbnail: 'icon.svg' } }, base);
+        expect(unpinned?.thumbnail).toBeUndefined();
     });
 });
 

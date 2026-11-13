@@ -16,6 +16,7 @@ export function useAvailableEntityKinds(definition: WorldDefinition | null) {
                     entry.id,
                     manifest.components,
                     `${entry.baseUrl ?? MOD_CDN_URL}/${entry.id}/v${entry.version}`,
+                    manifest.assetIntegrity,
                 ),
             ),
         ],

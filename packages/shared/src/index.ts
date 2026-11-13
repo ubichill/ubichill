@@ -248,6 +248,7 @@ export * from './mod/modSignature';
 export * from './mod/packageRef';
 export * from './mod/permission';
 export * from './mod/prefab';
+export * from './mod/previewImages';
 export * from './mod/protocol';
 export * from './mod/sandboxPolicy';
 export * from './mod/serviceToken';

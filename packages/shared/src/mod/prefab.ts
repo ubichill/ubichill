@@ -8,6 +8,8 @@ export const PrefabSchema = z
     .object({
         name: z.string().min(1).max(100),
         description: z.string().max(1000).optional(),
+        /** このプレハブの見た目の画像（assets 内の相対パス） */
+        thumbnail: z.string().max(200).optional(),
         entities: InitialEntitiesSchema,
     })
     .superRefine((prefab, ctx) => {
