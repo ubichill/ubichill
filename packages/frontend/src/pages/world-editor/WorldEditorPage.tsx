@@ -101,10 +101,16 @@ export function WorldEditorPage() {
         isEdit,
         worldId,
         definition,
-        // 保存を待つ間の編集を残すため、定義は lock だけ差し替える（違いは未保存として残る）
-        onSavedYamlChange: (text, lock) => {
+        publishState,
+        dirty,
+        // 保存を待つ間の編集を残すため、定義は lock と版だけ差し替える（違いは未保存として残る）
+        onSavedYamlChange: (text, lock, version) => {
             setSavedYaml(text);
-            setDefinition((prev) => ({ ...prev, spec: { ...prev.spec, lock } }));
+            setDefinition((prev) => ({
+                ...prev,
+                metadata: { ...prev.metadata, version },
+                spec: { ...prev.spec, lock },
+            }));
         },
         onPublishStateChange: setPublishState,
         onResult: handleSaveResult,
@@ -492,7 +498,7 @@ export function WorldEditorPage() {
                 onClose={handleCloseControlPanel}
                 title="コントロールパネル"
                 width="960px"
-                height="680px"
+                height="calc(100vh - 32px)"
                 footer={
                     <PublishPanel
                         isEdit={isEdit}

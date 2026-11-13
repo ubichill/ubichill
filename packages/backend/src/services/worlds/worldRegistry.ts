@@ -860,7 +860,10 @@ class WorldRegistry {
     /** エディタ用: 下書きがあれば下書き、無ければ本体の定義と、公開状態。 */
     async getEditorDefinition(
         worldId: string,
-    ): Promise<{ definition: WorldDefinition; hasDraft: boolean; published: boolean } | undefined> {
+    ): Promise<
+        | { definition: WorldDefinition; hasDraft: boolean; published: boolean; publishedVersion: string | null }
+        | undefined
+    > {
         const state = await worldRepository.findState(worldId);
         const editor = state ? editorWorldOf(state) : undefined;
         if (!editor) return undefined;
@@ -884,6 +887,8 @@ class WorldRegistry {
             },
             hasDraft: editor.hasDraft,
             published: isPublishable(world?.identity),
+            // エディタが公開のたびに版を自動で上げるため（作者に版を意識させない）
+            publishedVersion: state?.current?.version ?? null,
         };
     }
 

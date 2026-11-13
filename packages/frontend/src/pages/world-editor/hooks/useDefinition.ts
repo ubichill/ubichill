@@ -42,6 +42,8 @@ interface UseDefinitionOptions {
 export interface PublishState {
     published: boolean;
     hasDraft: boolean;
+    /** 公開中の版（metadata.version）。公開のたびに版を自動で上げるのに使う */
+    publishedVersion: string | null;
 }
 
 interface UseDefinitionResult {
@@ -63,7 +65,11 @@ export function useDefinition({ isEdit, worldId, onError }: UseDefinitionOptions
     const [definition, setDefinition] = useState<WorldDefinition>(createInitialDefinition);
     const [savedYaml, setSavedYaml] = useState<string | null>(null);
     const [loading, setLoading] = useState(isEdit);
-    const [publishState, setPublishState] = useState<PublishState>({ published: false, hasDraft: false });
+    const [publishState, setPublishState] = useState<PublishState>({
+        published: false,
+        hasDraft: false,
+        publishedVersion: null,
+    });
 
     useEffect(() => {
         if (!isEdit || !worldId) return;
@@ -81,10 +87,15 @@ export function useDefinition({ isEdit, worldId, onError }: UseDefinitionOptions
                     definition: WorldDefinition;
                     hasDraft: boolean;
                     published: boolean;
+                    publishedVersion?: string | null;
                 };
                 setDefinition(data.definition);
                 setSavedYaml(yaml.stringify(withoutWorldLock(data.definition)));
-                setPublishState({ published: data.published, hasDraft: data.hasDraft });
+                setPublishState({
+                    published: data.published,
+                    hasDraft: data.hasDraft,
+                    publishedVersion: data.publishedVersion ?? null,
+                });
             })
             .catch((e: unknown) => {
                 if (e instanceof DOMException && e.name === 'AbortError') return;

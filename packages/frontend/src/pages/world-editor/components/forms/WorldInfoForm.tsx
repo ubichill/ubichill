@@ -11,7 +11,7 @@ interface WorldInfoFormProps {
 
 /**
  * コントロールパネルの「ワールド情報」タブの中身。
- * displayName / 名前（URL）/ description / version / thumbnail / capacity / worldSize / 背景色。
+ * displayName / 名前（URL）/ description / thumbnail / capacity / worldSize / 背景色。版は公開のたびに自動で上がるので出さない。
  *
  * 編集は親の definition を直接更新する（即時反映・ローカル）。サーバーへの保存は
  * 「閉じる」「Cmd/Ctrl+S」で行う。公開設定・mod 管理はそれぞれ別タブの責務。
@@ -192,16 +192,6 @@ export function WorldInfoForm({ definition, onChange }: WorldInfoFormProps) {
                             className={inputStyle}
                         />
                     </div>
-                </Field>
-                <Field label="バージョン">
-                    <input
-                        type="text"
-                        name="world-version"
-                        value={definition.metadata.version}
-                        onChange={(e) => onUpdateMetadata({ version: e.target.value })}
-                        placeholder="1.0.0"
-                        className={inputStyle}
-                    />
                 </Field>
             </div>
         </div>

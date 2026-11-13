@@ -5,8 +5,9 @@
  * 返すもの: handleCreateEmptyEntity / Add / Delete / Rename / Move / Copy / Paste / Duplicate /
  *           EnterChild / patchTransform + hasClipboard。
  */
-import type { EntityComponentDef, InitialEntity, WorldDefinition } from '@ubichill/shared';
+import type { InitialEntity, WorldDefinition } from '@ubichill/shared';
 import { useCallback, useMemo } from 'react';
+import { withComponentAdded } from '../lib/addComponent';
 import { DEFAULT_H, DEFAULT_W } from '../lib/dragHelpers';
 import {
     adjustPathAfterDelete,
@@ -114,31 +115,8 @@ export function useEntityOps({
     const handleAddComponentToEntity = useCallback(
         (path: EntityPath, componentType: string) => {
             const kind = kinds.find((k) => k.kind === componentType);
-            const initialData: Record<string, unknown> = kind?.defaultData ? structuredClone(kind.defaultData) : {};
-            if (kind?.dataFields) {
-                for (const [name, spec] of Object.entries(kind.dataFields)) {
-                    if (spec.default !== undefined) initialData[name] = spec.default;
-                }
-            }
-            // Entity には既に他 Component が乗っている可能性があるため、この Component 固有の
-            // transform として defaultTransform を持たせる。Entity 全体の transform は書き換えない
-            // (他 Component の占有領域を壊さないため)。
             const target = getEntityAt(definition.spec.initialEntities, path);
-            // Component の並べ替え・挿入・削除で他 Component の flat id が変わらないよう、
-            // 追加時点で永続 id を採番しておく（componentType の名前部分から kebab-case で一意に）。
-            const idSeed = componentType.split(':').pop() || componentType;
-            const takenIds = (target?.components ?? []).map((c) => c.id).filter((id): id is string => !!id);
-            const newComponent: EntityComponentDef = {
-                id: buildUniqueEntityId(idSeed, takenIds),
-                type: componentType,
-                data: initialData,
-                ...(kind?.defaultTransform ? { transform: kind.defaultTransform } : {}),
-                // mod の manifest (config.overlay) は追加時点の既定値。以降は Inspector で Entity ごとに上書きできる。
-                ...(kind?.overlay ? { overlay: kind.overlay } : {}),
-            };
-            updateEntities((prev) =>
-                updateEntityAt(prev, path, (e) => ({ ...e, components: [...e.components, newComponent] })),
-            );
+            updateEntities((prev) => updateEntityAt(prev, path, (e) => withComponentAdded(e, componentType, kind)));
             selection.selectEntity(path);
             selection.selectComponent(target?.components.length ?? 0);
         },

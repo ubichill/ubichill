@@ -308,7 +308,7 @@ router.put('/', requireSaver, async (req, res) => {
 /**
  * GET /api/v1/worlds/:worldId/definition
  * エディタ用の定義（作成者のみ）。下書きがあれば下書きを返す。
- * 返り値: `{ definition, hasDraft, published }`（definition は YAML と同等の構造）
+ * 返り値: `{ definition, hasDraft, published, publishedVersion }`（definition は YAML と同等の構造）
  */
 router.get('/:worldId/definition', requireAuth, async (req, res) => {
     try {

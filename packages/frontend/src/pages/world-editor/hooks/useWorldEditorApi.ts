@@ -16,6 +16,7 @@ import {
 import { createInstance as createInstanceApi } from '@/lib/worlds/instancesApi';
 import { buildWorldLock } from '@/world';
 import { type ActionFailure, type FailureStage, inStage, toActionFailure } from '../lib/actionFailure';
+import { nextPublishVersion } from '../lib/publishVersion';
 import type { PublishState } from './useDefinition';
 import type { PublishDecision } from './usePublishSetup';
 
@@ -26,7 +27,12 @@ interface UseWorldEditorApiArgs {
     isEdit: boolean;
     worldId?: string;
     definition: WorldDefinition;
-    onSavedYamlChange: (text: string, lock: ModLock) => void;
+    /** 公開状態（公開中の版から、公開に使う版を決める） */
+    publishState: PublishState;
+    /** 最後に保存してから変えたか */
+    dirty: boolean;
+    /** 保存した YAML・lock・版（公開で版を上げたときはエディタの定義にも反映する） */
+    onSavedYamlChange: (text: string, lock: ModLock, version: string) => void;
     /** 公開状態の更新（公開した・下書きを保存した） */
     onPublishStateChange: React.Dispatch<React.SetStateAction<PublishState>>;
     /** 保存・公開の結果の通知先（ページ側でコンソールと通知に出す） */
@@ -62,6 +68,8 @@ export function useWorldEditorApi({
     isEdit,
     worldId,
     definition,
+    publishState,
+    dirty,
     onSavedYamlChange,
     onPublishStateChange,
     onResult,
@@ -115,10 +123,12 @@ export function useWorldEditorApi({
                 }
                 const { body } = await buildSaveBody(definition, isEdit ? worldId : undefined);
                 const saved = await saveWorldBundle(body, null, deps);
-                onSavedYamlChange(body.yaml, body.lock);
+                onSavedYamlChange(body.yaml, body.lock, definition.metadata.version);
                 // 公開中なら公開状態はそのままで下書きが増える。未公開なら本体に保存され下書きは無い。
                 onPublishStateChange((prev) =>
-                    saved.saved === 'draft' ? { ...prev, hasDraft: true } : { published: false, hasDraft: false },
+                    saved.saved === 'draft'
+                        ? { ...prev, hasDraft: true }
+                        : { published: false, hasDraft: false, publishedVersion: null },
                 );
                 followSaved(saved);
                 return true;
@@ -138,7 +148,13 @@ export function useWorldEditorApi({
     const publish = useCallback(
         () =>
             withSaving(async () => {
-                const { body, unpinned } = await buildSaveBody(definition, isEdit ? worldId : undefined);
+                const version = nextPublishVersion({
+                    version: definition.metadata.version,
+                    publishedVersion: publishState.publishedVersion,
+                    changed: dirty || publishState.hasDraft,
+                });
+                const target = { ...definition, metadata: { ...definition.metadata, version } };
+                const { body, unpinned } = await buildSaveBody(target, isEdit ? worldId : undefined);
                 const readiness = publishReadiness(await fetchMyAccount().catch(() => null), unpinned);
                 const decision: PublishDecision =
                     readiness.kind === 'ready'
@@ -147,13 +163,15 @@ export function useWorldEditorApi({
                 if (decision.kind === 'cancel') return false;
                 const signer = await authorSignerFor(decision.account);
                 const saved = await saveWorldBundle(body, signer, deps);
-                onSavedYamlChange(body.yaml, body.lock);
-                onPublishStateChange({ published: true, hasDraft: false });
+                onSavedYamlChange(body.yaml, body.lock, version);
+                onPublishStateChange({ published: true, hasDraft: false, publishedVersion: version });
                 followSaved(saved);
                 return true;
             }, 'publish'),
         [
             definition,
+            publishState,
+            dirty,
             isEdit,
             worldId,
             onSavedYamlChange,
