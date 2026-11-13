@@ -13,7 +13,9 @@ spec:
   dependencies:
     - name: pen
       source:
-        version: latest
+        version: 2.1.0
+  requires:
+    protocol: 7
   initialEntities:
     # 画面固定のペン置き場。overlay を付けると transform が画面座標(左上からの距離)になり、
     # ワールドをどこまでスクロールしても・スマホの狭い画面でも必ず手元に残る。

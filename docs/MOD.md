@@ -27,7 +27,7 @@ ubichill search pen --server=https://ubichill.com
 ```
 
 既存の `dependencies[].source.url` による依存も使える。
-`install world.yaml` は明示的に lock を再生成する。手元の再ビルドや latest の版の変更を取り込む。
+`install world.yaml` は明示的に lock を再生成する（手元の再ビルドを取り込む）。版を書いていない依存（`latest`・省略）は最新版を取り、その版を world.yaml に書いて固定する。ubichill の版（`spec.requires`）が無ければ今の版で固定する。
 ブラウザの保存と CLI のワールド公開は、取得元・作者・指定した版が同じなら既存 lock を保つ。
 更新するときは `ubichill update world.yaml pen`。対象外の依存は更新せず、権限が増える場合は内容を確認して
 `--accept-capabilities` を指定する。取得失敗では YAML と lock を書き換えない。

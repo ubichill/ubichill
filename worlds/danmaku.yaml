@@ -14,10 +14,12 @@ spec:
   dependencies:
     - name: danmaku
       source:
-        version: latest
+        version: 1.0.2
     - name: mobile-controller
       source:
-        version: latest
+        version: 1.1.0
+  requires:
+    protocol: 7
   initialEntities:
     - id: ship
       tags: []

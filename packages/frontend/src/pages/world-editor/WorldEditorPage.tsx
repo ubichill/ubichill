@@ -569,11 +569,24 @@ export function WorldEditorPage() {
                         />
                         {packagesError && <p role="alert">{packagesError}</p>}
                         <ModSelector
-                            key={JSON.stringify([definition.spec.dependencies, definition.spec.lock])}
+                            key={JSON.stringify([
+                                definition.spec.dependencies,
+                                definition.spec.lock,
+                                definition.spec.requires,
+                            ])}
                             dependencies={definition.spec.dependencies ?? []}
                             lock={definition.spec.lock}
-                            onCommitDependencies={(next, lock) =>
-                                setDefinition((prev) => ({ ...prev, spec: { ...prev.spec, dependencies: next, lock } }))
+                            requires={definition.spec.requires}
+                            onCommit={({ dependencies, lock, requires }) =>
+                                setDefinition((prev) => ({
+                                    ...prev,
+                                    spec: {
+                                        ...prev.spec,
+                                        dependencies,
+                                        ...(lock ? { lock } : {}),
+                                        ...(requires ? { requires } : {}),
+                                    },
+                                }))
                             }
                         />
                     </>

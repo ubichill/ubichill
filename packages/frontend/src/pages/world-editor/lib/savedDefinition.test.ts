@@ -35,12 +35,10 @@ describe('withSavedFields', () => {
         expect('dependencies' in withSavedFields(world(), { lock, version: '1.0.0' }, 7).spec).toBe(false);
     });
 
-    it('新しい ubichill で保存したワールドの印を下げない', () => {
+    it('固定した ubichill の版は、Host が新しくても上げない', () => {
         expect(
-            withSavedFields(world({ requires: { protocol: 9 } }), { lock, version: '1.0.0' }, 7).spec.requires,
-        ).toEqual({
-            protocol: 9,
-        });
+            withSavedFields(world({ requires: { protocol: 5 } }), { lock, version: '1.0.0' }, 7).spec.requires,
+        ).toEqual({ protocol: 5 });
     });
 
     it('同じ項目で差し替え直しても変わらない（保存後に未保存の差分が出ない）', () => {
@@ -70,25 +68,22 @@ describe('withSavedFields', () => {
 });
 
 describe('savingChangesDefinition', () => {
-    it('今の ubichill で保存済みで、版を固定していれば変わらない', () => {
+    it('ubichill の版と mod の版を固定済みなら変わらない（Host が新しくても）', () => {
         expect(
             savingChangesDefinition(
-                world({ requires: { protocol: 7 }, dependencies: [{ name: 'pen', source: { version: '2.1.0' } }] }),
-                7,
+                world({ requires: { protocol: 5 }, dependencies: [{ name: 'pen', source: { version: '2.1.0' } }] }),
             ),
         ).toBe(false);
     });
 
-    it('ubichill が更新されたら変わる（公開済みと同じ版のまま違う中身にしない）', () => {
-        expect(savingChangesDefinition(world({ requires: { protocol: 6 } }), 7)).toBe(true);
-        expect(savingChangesDefinition(world(), 7)).toBe(true);
+    it('ubichill の版をまだ固定していなければ変わる', () => {
+        expect(savingChangesDefinition(world())).toBe(true);
     });
 
     it('latest の依存が残っていれば変わる', () => {
         expect(
             savingChangesDefinition(
                 world({ requires: { protocol: 7 }, dependencies: [{ name: 'pen', source: { version: 'latest' } }] }),
-                7,
             ),
         ).toBe(true);
     });

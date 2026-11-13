@@ -1,42 +1,47 @@
 import { describe, expect, it } from 'vitest';
 import { WorldDefinitionSchema } from '../schemas/world.schema';
-import { checkWorldCompatibility, worldRequirementsFor } from './requirements';
+import { checkWorldCompatibility, selectableProtocolVersions, worldRequirementsFor } from './requirements';
 import { mapToResolved } from './resolve';
 
 describe('worldRequirementsFor', () => {
-    it('要件の無いワールドには今の Host の版を書く', () => {
+    it('要件の無いワールドは今の Host の版で固定する', () => {
         expect(worldRequirementsFor(undefined, 7)).toEqual({ protocol: 7 });
     });
 
-    it('古い版で保存したワールドは今の版に上げる', () => {
-        expect(worldRequirementsFor({ protocol: 3 }, 7)).toEqual({ protocol: 7 });
+    it('固定した版は、Host が新しくなっても上げない（mod の版と同じく作者が選ぶ）', () => {
+        expect(worldRequirementsFor({ protocol: 3 }, 7)).toEqual({ protocol: 3 });
     });
 
-    it('新しい Host で保存した印を、古い Host で保存し直しても下げない', () => {
+    it('新しい Host で固定した版も、古い Host で保存し直して下げない', () => {
         expect(worldRequirementsFor({ protocol: 9 }, 7)).toEqual({ protocol: 9 });
     });
 });
 
-describe('checkWorldCompatibility', () => {
-    it('同じ版と古い版は開ける', () => {
-        expect(checkWorldCompatibility({ protocol: 7 }, 7, 0)).toEqual({ level: 'ok' });
-        expect(checkWorldCompatibility({ protocol: 1 }, 7, 0)).toEqual({ level: 'ok' });
+describe('selectableProtocolVersions', () => {
+    it('今の版から Host の版までを新しい順に出す（下げる選択肢は出さない）', () => {
+        expect(selectableProtocolVersions(5, 7)).toEqual([7, 6, 5]);
     });
 
-    it('要件の無いワールドは、互換を切っていなければ開ける', () => {
-        expect(checkWorldCompatibility(undefined, 7, 0)).toEqual({ level: 'ok' });
+    it('Host と同じ版なら、その版だけ', () => {
+        expect(selectableProtocolVersions(7, 7)).toEqual([7]);
+    });
+
+    it('Host より新しい版に固定したワールドは、その版だけ（この Host の版へ下げない）', () => {
+        expect(selectableProtocolVersions(9, 7)).toEqual([9]);
+    });
+});
+
+describe('checkWorldCompatibility', () => {
+    it('同じ版・古い版に固定したワールドは知らせずに開く（古い版として動かす）', () => {
+        expect(checkWorldCompatibility({ protocol: 7 }, 7)).toEqual({ level: 'ok' });
+        expect(checkWorldCompatibility({ protocol: 1 }, 7)).toEqual({ level: 'ok' });
+        expect(checkWorldCompatibility(undefined, 7)).toEqual({ level: 'ok' });
     });
 
     it('Host より新しいワールドは、一部が動かない可能性を知らせる', () => {
-        const result = checkWorldCompatibility({ protocol: 8 }, 7, 0);
+        const result = checkWorldCompatibility({ protocol: 8 }, 7);
         expect(result).toMatchObject({ level: 'newer', required: 8, host: 7 });
         expect(result.level !== 'ok' && result.message).toContain('v8');
-    });
-
-    it('互換を切った版より前のワールドは、要件が無くても古いと分かる', () => {
-        expect(checkWorldCompatibility(undefined, 12, 10)).toMatchObject({ level: 'outdated', required: 0 });
-        expect(checkWorldCompatibility({ protocol: 9 }, 12, 10)).toMatchObject({ level: 'outdated', required: 9 });
-        expect(checkWorldCompatibility({ protocol: 10 }, 12, 10)).toEqual({ level: 'ok' });
     });
 });
 

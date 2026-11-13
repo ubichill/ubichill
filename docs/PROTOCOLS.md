@@ -58,9 +58,9 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 - 名前が増えなくても、**古い Host が黙って捨てる意味をペイロードに足したとき**（例: v6 の `EVENT_EMIT` の `ref`）は足す変更として扱い、
   `PROTOCOL_VERSION` を +1 して契約に同じ名前の版を足す。あわせて `Ubi.runtime` の機能（`RuntimeFeature` と `HOST_FEATURE_PROTOCOL`）を足し、
   mod が古い Host を見分けて切り替えられるようにする。
-- **版を持つのは作った物の側だけ**: SDK は mod の配布物に組み込まれるので、ワールドが mod を lock で固定すれば SDK も固定される。Host は常に最新で、古い mod・古いワールドを動かし続ける。
-  ワールドは保存した ubichill の版を `spec.requires.protocol` に持ち（エディタが書く）、それより古い Host は入る前に知らせる（`shared/world/requirements.ts`）。
-  `MIN_COMPATIBLE_PROTOCOL_VERSION` を上げるときは、それより前の版のワールド（`requires` の無いワールドは 0）を移し替える処理も一緒に入れる。
+- **版を持つのは作った物の側だけ**: SDK は mod の配布物に組み込まれるので、ワールドが mod を lock で固定すれば SDK も固定される。Host は常に最新で、古い mod・古いワールドを古い版のまま動かし続ける（足すだけなので、古い版向けの動きはそのまま残る）。
+  ワールドは ubichill の版を `spec.requires.protocol` に固定し（mod の版と同じく、上げるのは作者）、Host より新しい版のワールドだけ入る前に知らせる（`shared/world/requirements.ts`）。
+  互換を切る変更（`MIN_COMPATIBLE_PROTOCOL_VERSION` を上げる）をするときは、それより前の版に固定したワールドを古い版として動かす処理も一緒に入れる。
 - **公開した mod の版は配り続ける**: Host のイメージは、公開済み（gh-pages）の版を `scripts/restore-published-mods.mjs` で戻してからビルドする。リポジトリから外した mod の版も残る。
 - SDK のビルド結果が変わったのに changeset が無ければ落ちる（`scripts/check-npm-drift.mjs`）。
 

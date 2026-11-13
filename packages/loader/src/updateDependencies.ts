@@ -3,8 +3,7 @@
  * mod について現行最新 version を調べ、異なれば YAML を書き換えてから
  * ロックを再生成する（`ubichill update`）。
  *
- * `source.version: 'latest'`（既定・常に最新を追う）の mod は YAML を書き換えず、
- * ロック再生成だけ行う（＝lock 断片が現行最新のもので上書きされる）。
+ * `source.version: 'latest'`（と省略）の mod は現行最新で lock を作り直し、その版を YAML に書いて固定する。
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -17,6 +16,7 @@ import {
     type ModLockEntry,
     ModLockEntrySchema,
     ModLockSchema,
+    PROTOCOL_VERSION,
     requiredLockModIds,
     WorldDefinitionSchema,
 } from '@ubichill/shared';
@@ -25,6 +25,7 @@ import yaml from 'yaml';
 import { buildWorldLock, createDependencyAwareLockEntryGetter, resolveLatestVersion } from './buildWorldLock.ts';
 import { resolvePackage } from './packages.ts';
 import { writeWorldFiles } from './worldFiles.ts';
+import { pinWorldYaml } from './worldPins.ts';
 
 function argValue(argv: string[], name: string): string | undefined {
     const hit = argv.find((a) => a.startsWith(`--${name}=`));
@@ -67,6 +68,7 @@ export async function runUpdate(argv: string[], log: Logger): Promise<void> {
 
     const doc = yaml.parseDocument(raw);
     const bumps: string[] = [];
+    const localBumps = new Map<string, string>();
 
     const authored = new Map<string, ModLockEntry>();
     for (const dep of targets) {
@@ -94,12 +96,22 @@ export async function runUpdate(argv: string[], log: Logger): Promise<void> {
         }
         if (!latest || latest === dep.source.version || dep.source.version === 'latest') continue;
 
-        const depIndex = (def.spec.dependencies ?? []).indexOf(dep);
-        doc.setIn(['spec', 'dependencies', depIndex, 'source', 'version'], latest);
+        // 版だけの変更は YAML の文字列に差し込む（ほかの整形を変えない。pinWorldYaml）
+        localBumps.set(dep.name, latest);
         bumps.push(`${dep.name}: ${dep.source.version} → ${latest}`);
     }
 
-    const next = WorldDefinitionSchema.parse(doc.toJS());
+    const parsed = WorldDefinitionSchema.parse(doc.toJS());
+    const next = {
+        ...parsed,
+        spec: {
+            ...parsed.spec,
+            dependencies: parsed.spec.dependencies?.map((d) => {
+                const bumped = localBumps.get(d.name);
+                return bumped ? { ...d, source: { ...d.source, version: bumped } } : d;
+            }),
+        },
+    };
     const preserved = oldLock
         ? createModLock(
               Object.fromEntries(
@@ -127,7 +139,12 @@ export async function runUpdate(argv: string[], log: Logger): Promise<void> {
     writeWorldFiles([
         {
             path: worldPath,
-            text: JSON.stringify(yaml.parse(raw)) === JSON.stringify(doc.toJS()) ? raw : String(doc),
+            text: pinWorldYaml(
+                JSON.stringify(yaml.parse(raw)) === JSON.stringify(doc.toJS()) ? raw : String(doc),
+                lock,
+                PROTOCOL_VERSION,
+                Object.fromEntries(localBumps),
+            ),
             expected: raw,
         },
         { path: lockPath, text: `${JSON.stringify(lock, null, 2)}\n`, expected: oldLockText },
