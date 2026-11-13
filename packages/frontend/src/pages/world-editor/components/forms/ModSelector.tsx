@@ -9,11 +9,13 @@ import {
     displayAuthorAccount,
     lockedMods,
     type ModLock,
+    type ModLockEntry,
     PROTOCOL_VERSION,
     selectableProtocolVersions,
     type WorldRequirements,
 } from '@ubichill/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ModThumbnail } from '@/components/mods/ModThumbnail';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { confirmModUpdate } from '@/lib/mods/confirmUpdate';
 import { HOST_MOD_SOURCE, MOD_CDN_URL } from '@/lib/mods/modCdn';
@@ -335,12 +337,17 @@ export function ModSelector({ dependencies, lock, requires, onCommit }: ModSelec
                                     {row.kind === 'available' ? (
                                         <AvailableModRow
                                             row={row}
+                                            locked={lockedMods(lock)[row.mod.id]}
                                             onAdd={() => add(row.mod)}
                                             onRemove={() => remove(row.mod.id)}
                                             onVersion={(version) => changeVersion(row.mod, version)}
                                         />
                                     ) : (
-                                        <ExtraModRow entry={row.entry} onRemove={() => remove(row.entry.id)} />
+                                        <ExtraModRow
+                                            entry={row.entry}
+                                            locked={lockedMods(lock)[row.entry.id]}
+                                            onRemove={() => remove(row.entry.id)}
+                                        />
                                     )}
                                 </li>
                             ))}
@@ -437,6 +444,8 @@ export function ModSelector({ dependencies, lock, requires, onCommit }: ModSelec
 }
 
 /** ubichill の版。mod と同じく固定し、上げるのは作者が選んだときだけ（下げる選択肢は出さない）。 */
+const nameCell = css({ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 });
+
 function UbichillRow({
     current,
     pinned,
@@ -449,9 +458,12 @@ function UbichillRow({
     const outdated = current < PROTOCOL_VERSION;
     return (
         <div className={rowGrid}>
-            <div>
-                <div className={nameText}>ubichill</div>
-                <div className={metaText}>本体の機能の版</div>
+            <div className={nameCell}>
+                <img src="/icon.png" alt="" width={32} height={32} className={css({ borderRadius: '4px' })} />
+                <div>
+                    <div className={nameText}>ubichill</div>
+                    <div className={metaText}>本体の機能の版</div>
+                </div>
             </div>
             <select
                 aria-label="ubichill の版"
@@ -483,11 +495,13 @@ function UbichillRow({
 
 function AvailableModRow({
     row,
+    locked,
     onAdd,
     onRemove,
     onVersion,
 }: {
     row: Extract<ModListRow<AvailableMod>, { kind: 'available' }>;
+    locked?: ModLockEntry;
     onAdd: () => void;
     onRemove: () => void;
     onVersion: (version: string) => void;
@@ -495,13 +509,16 @@ function AvailableModRow({
     const { mod } = row;
     return (
         <div className={cx(rowGrid, row.selected && css({ bg: 'surfaceAccent' }))}>
-            <div>
-                <div className={nameText}>{mod.name}</div>
-                <div className={metaText}>
-                    {mod.id === mod.name ? '' : `${mod.id} · `}
-                    {sourceHost(mod)}
+            <div className={nameCell}>
+                <ModThumbnail target={{ id: mod.id, version: row.version, baseUrl: mod.baseUrl }} locked={locked} />
+                <div className={css({ minWidth: 0 })}>
+                    <div className={nameText}>{mod.name}</div>
+                    <div className={metaText}>
+                        {mod.id === mod.name ? '' : `${mod.id} · `}
+                        {sourceHost(mod)}
+                    </div>
+                    {row.selected && <ModAuthor mod={mod} version={row.version} />}
                 </div>
-                {row.selected && <ModAuthor mod={mod} version={row.version} />}
             </div>
             {row.selected ? (
                 <select
@@ -560,14 +577,29 @@ function AvailableModRow({
 }
 
 /** 取得元の一覧に無い依存（作者参照で入れた mod など）。版を変えるときは作品ページから入れ直す。 */
-function ExtraModRow({ entry, onRemove }: { entry: ModSelectionEntry; onRemove: () => void }) {
+function ExtraModRow({
+    entry,
+    locked,
+    onRemove,
+}: {
+    entry: ModSelectionEntry;
+    locked?: ModLockEntry;
+    onRemove: () => void;
+}) {
     const label = entry.author ? `@${entry.author}/${entry.id}` : entry.id;
+    const version = entry.version === 'latest' ? locked?.version : entry.version;
     return (
         <div className={rowGrid}>
-            <div>
-                <div className={nameText}>{label}</div>
-                <div className={metaText}>
-                    {entry.baseUrl ? (URL.parse(entry.baseUrl)?.host ?? entry.baseUrl) : '一覧に無い mod'}
+            <div className={nameCell}>
+                <ModThumbnail
+                    target={version ? { id: entry.id, version, baseUrl: entry.baseUrl } : undefined}
+                    locked={locked}
+                />
+                <div className={css({ minWidth: 0 })}>
+                    <div className={nameText}>{label}</div>
+                    <div className={metaText}>
+                        {entry.baseUrl ? (URL.parse(entry.baseUrl)?.host ?? entry.baseUrl) : '一覧に無い mod'}
+                    </div>
                 </div>
             </div>
             <span className={mutedCell}>{entry.version === 'latest' ? '—' : `v${entry.version}`}</span>

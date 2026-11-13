@@ -111,7 +111,7 @@ export type ComponentDataFieldSpec = z.infer<typeof ComponentDataFieldSpecSchema
  *   - 'subtree'  : 自 GameObject + その子孫 (default、Unity の GetComponentsInChildren 相当)
  *   - 'parent'   : 自 GameObject + その祖先 (子から親の Component を読む場合に使用)
  *   - 'world'    : ワールド全体
- * - `thumbnail`: アセット相対パス。エディタで Component カードに表示するプレビュー画像。
+ * - `thumbnail`: アセット相対パス。エディタでこの Component の見た目として出す画像（hash は assetIntegrity で固定される）。
  */
 const ComponentManifestMetaSchema = z.object({
     capabilities: z.array(z.string()).optional(),
@@ -174,6 +174,8 @@ export const ModVersionedManifestSchema = z.object({
     version: z.string(),
     components: z.record(z.string(), VersionedComponentManifestEntrySchema).default({}),
     prefabs: PackagePrefabsSchema.optional(),
+    /** mod のサムネイル（assets 内の画像の相対パス。hash は assetIntegrity で固定される）。 */
+    thumbnail: z.string().optional(),
     /** 同梱アセットの相対パス一覧（versioned ディレクトリ直下からの相対）。 */
     assets: z.array(z.string()).optional(),
     /**

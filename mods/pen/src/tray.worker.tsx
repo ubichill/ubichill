@@ -13,6 +13,7 @@ import { PenEvents } from './events';
 import { dropPointInTray } from './trayDrop';
 
 export const config: ComponentConfig = {
+    thumbnail: 'previews/tray.svg',
     defaultTransform: { x: 20, y: 20, z: 1000, w: 60, h: 240 },
     capabilities: ['event:emit', 'scene:read', 'ui:render'],
 };

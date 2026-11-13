@@ -1,7 +1,9 @@
 import type { WorldDefinition } from '@ubichill/shared';
 import { Fragment, type ReactNode, useMemo, useState } from 'react';
+import { PreviewImage } from '@/components/mods/PreviewImage';
 import { MOD_CDN_URL } from '@/lib/mods/modCdn';
 import type { EditorPackage } from '@/lib/mods/packages';
+import { type PreviewImageSource, packagePreviewImage } from '@/lib/mods/previewImage';
 import { css } from '@/styled-system/css';
 import type { AvailableEntityKind } from '../../hooks/useAvailableEntityKinds';
 import { type AssetNode, buildAssetTree } from '../../hooks/useModAssets';
@@ -199,8 +201,15 @@ function Crumb({ label, active, onClick }: { label: string; active: boolean; onC
 // ============================================
 
 type Entry =
-    | { kind: 'prefab'; key: string; name: string; prefabName: string; pkg: EditorPackage }
-    | { kind: 'mod'; key: string; name: string }
+    | {
+          kind: 'prefab';
+          key: string;
+          name: string;
+          prefabName: string;
+          pkg: EditorPackage;
+          thumbnail?: PreviewImageSource;
+      }
+    | { kind: 'mod'; key: string; name: string; thumbnail?: PreviewImageSource }
     | { kind: 'folder'; key: string; name: string }
     | {
           kind: 'component';
@@ -208,7 +217,7 @@ type Entry =
           name: string;
           componentType: string;
           modName: string;
-          thumbnailUrl?: string;
+          thumbnail?: PreviewImageSource;
       }
     | { kind: 'file'; key: string; name: string; url: string };
 
@@ -220,7 +229,15 @@ function buildEntries(
     packages: EditorPackage[],
 ): Entry[] {
     if (path.length === 0) {
-        return modNames.map((p) => ({ kind: 'mod', key: `mod:${p}`, name: p }));
+        return modNames.map((name) => {
+            const pkg = packages.find((p) => p.entry.id === name);
+            return {
+                kind: 'mod',
+                key: `mod:${name}`,
+                name,
+                thumbnail: pkg ? packagePreviewImage(pkg, pkg.manifest.thumbnail, MOD_CDN_URL) : undefined,
+            };
+        });
     }
     const [modName, ...rest] = path;
     // mod直下: Components フォルダ + Files フォルダ (実体があるときのみ)
@@ -231,7 +248,14 @@ function buildEntries(
         const pkg = packages.find((p) => p.entry.id === modName);
         if (pkg)
             for (const [name, prefab] of Object.entries(pkg.manifest.prefabs ?? {}))
-                out.push({ kind: 'prefab', key: `prefab:${name}`, name: prefab.name, prefabName: name, pkg });
+                out.push({
+                    kind: 'prefab',
+                    key: `prefab:${name}`,
+                    name: prefab.name,
+                    prefabName: name,
+                    pkg,
+                    thumbnail: packagePreviewImage(pkg, prefab.thumbnail, MOD_CDN_URL),
+                });
         if (comps.length > 0) out.push({ kind: 'folder', key: 'folder:Components', name: 'Components' });
         if (tree.length > 0) out.push({ kind: 'folder', key: 'folder:Files', name: 'Files' });
         return out;
@@ -244,7 +268,7 @@ function buildEntries(
             name: c.kind.split(':').slice(1).join(':') || c.kind,
             componentType: c.kind,
             modName,
-            thumbnailUrl: c.thumbnailUrl,
+            thumbnail: c.thumbnail,
         }));
     }
     if (rest[0] === 'Files') {
@@ -279,10 +303,17 @@ function walkTree(nodes: AssetNode[], folders: string[]): AssetNode[] | null {
 function EntryTile({ entry, onOpen }: { entry: Entry; onOpen: () => void }) {
     if (entry.kind === 'prefab')
         return (
-            <button type="button" className={tileButtonStyle} onClick={onOpen}>
-                <ComponentIcon />
-                <span className={tileLabelStyle}>{entry.name === 'core' ? '本体の標準部品' : entry.name}</span>
-                <span className={css({ fontSize: '12px', whiteSpace: 'nowrap' })}>配置する</span>
+            <button
+                type="button"
+                className={tileButtonStyle}
+                onClick={onOpen}
+                title={`${entry.name} — 押すと一式を配置します`}
+            >
+                <ThumbBox>
+                    <PreviewImage source={entry.thumbnail} alt="" fallback={<PrefabIcon />} />
+                </ThumbBox>
+                <span className={tileLabelStyle}>{entry.name}</span>
+                <span className={css({ fontSize: '11px', color: 'textSubtle', whiteSpace: 'nowrap' })}>プレハブ</span>
             </button>
         );
     if (entry.kind === 'mod' || entry.kind === 'folder') {
@@ -294,7 +325,13 @@ function EntryTile({ entry, onOpen }: { entry: Entry; onOpen: () => void }) {
                 title={entry.name}
                 className={tileButtonStyle}
             >
-                {entry.kind === 'mod' ? <ModFolderIcon /> : <FolderIcon />}
+                {entry.kind === 'mod' ? (
+                    <ThumbBox>
+                        <PreviewImage source={entry.thumbnail} alt="" fallback={<ModFolderIcon />} />
+                    </ThumbBox>
+                ) : (
+                    <FolderIcon />
+                )}
                 <span className={tileLabelStyle}>{entry.name === 'core' ? '本体の標準部品' : entry.name}</span>
             </button>
         );
@@ -325,11 +362,7 @@ function EntryTile({ entry, onOpen }: { entry: Entry; onOpen: () => void }) {
                 })}
             >
                 <ThumbBox>
-                    {entry.thumbnailUrl ? (
-                        <ImgWithFallback src={entry.thumbnailUrl} alt={entry.name} fallback={<ComponentIcon />} />
-                    ) : (
-                        <ComponentIcon />
-                    )}
+                    <PreviewImage source={entry.thumbnail} alt="" fallback={<ComponentIcon />} />
                 </ThumbBox>
                 <span className={tileLabelStyle}>{entry.name === 'core' ? '本体の標準部品' : entry.name}</span>
             </div>
@@ -498,6 +531,15 @@ function ComponentIcon() {
             <circle cx="15" cy="9" r="1.5" fill="#1b2a44" />
             <circle cx="9" cy="15" r="1.5" fill="#1b2a44" />
             <circle cx="15" cy="15" r="1.5" fill="#1b2a44" />
+        </svg>
+    );
+}
+
+function PrefabIcon() {
+    return (
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="3" y="9" width="10" height="10" rx="2" fill="#f5ecdf" stroke="#1b2a44" strokeWidth="1.5" />
+            <rect x="11" y="4" width="10" height="10" rx="2" fill="#f5ecdf" stroke="#1b2a44" strokeWidth="1.5" />
         </svg>
     );
 }

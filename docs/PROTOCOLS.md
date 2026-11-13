@@ -61,6 +61,7 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 - **版を持つのは作った物の側だけ**: SDK は mod の配布物に組み込まれるので、ワールドが mod を lock で固定すれば SDK も固定される。Host は常に最新で、古い mod・古いワールドを古い版のまま動かし続ける（足すだけなので、古い版向けの動きはそのまま残る）。
   ワールドは ubichill の版を `spec.requires.protocol` に固定し（mod の版と同じく、上げるのは作者）、Host より新しい版のワールドだけ入る前に知らせる（`shared/world/requirements.ts`）。
   互換を切る変更（`MIN_COMPATIBLE_PROTOCOL_VERSION` を上げる）をするときは、それより前の版に固定したワールドを古い版として動かす処理も一緒に入れる。
+- **mod の見た目の画像**: manifest の `thumbnail`（mod）・Component の `thumbnail`・プレハブの `thumbnail` は、どれも `assetIntegrity` に載ったアセットを指す（足した項目。古い Host は読み飛ばす）。読む側は hash を確かめてから出す（`frontend/src/lib/mods/previewImage.ts`）。
 - **公開した mod の版は配り続ける**: Host のイメージは、公開済み（gh-pages）の版を `scripts/restore-published-mods.mjs` で戻してからビルドする。リポジトリから外した mod の版も残る。
 - SDK のビルド結果が変わったのに changeset が無ければ落ちる（`scripts/check-npm-drift.mjs`）。
 

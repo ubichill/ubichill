@@ -92,15 +92,16 @@ describe('同梱アセット: build → manifest → Host の照合', () => {
     });
 
     it('アセットの無い mod の manifest には assetIntegrity を出さない（既存 lock を変えない）', async () => {
-        const out = mkdtempSync(join(tmpdir(), 'ubichill-assets-pen-'));
+        const out = mkdtempSync(join(tmpdir(), 'ubichill-assets-mobile-'));
         try {
-            const pen = await buildMod(join(repoRoot, 'mods', 'pen'), {
+            const built = await buildMod(join(repoRoot, 'mods', 'mobile-controller'), {
                 distDir: join(out, 'd'),
                 publicDir: join(out, 'p'),
             });
-            const penManifest = JSON.parse(readFileSync(join(out, 'd', `v${pen.version}`, 'manifest.json'), 'utf-8'));
-            expect(penManifest.assets).toEqual([]);
-            expect(penManifest).not.toHaveProperty('assetIntegrity');
+            const manifest = JSON.parse(readFileSync(join(out, 'd', `v${built.version}`, 'manifest.json'), 'utf-8'));
+            expect(manifest.assets).toEqual([]);
+            expect(manifest).not.toHaveProperty('assetIntegrity');
+            expect(manifest).not.toHaveProperty('thumbnail');
         } finally {
             rmSync(out, { recursive: true, force: true });
         }
