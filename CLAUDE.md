@@ -10,7 +10,7 @@ Viteベースの完全CSR。URLで起動しWebSocketで同期する、ゼロト�
 - 機能をもとに理想のテストを書くこと
 - UIでの絵文字の使用を禁止します。svgを使うことでモダンなUIにして
 - 返答・解説・コミットメッセージは日本語で行うこと。褒めるなどは無駄なので批判的に考えること。
-- **named exportのみ**。default export、`any`型は禁止。
+- **named exportのみ**。default export、`any`型は禁止。例外: mod の Worker（`*.worker.tsx`）の UI は `export default` で渡す（sandbox が自動で `Ubi.ui.render` する SDK の規約）。
 - 責務分離を徹底し、神クラス/関数を防ぐ。mod開発者には内部構造を隠蔽する。分離するのではなく、層を分けつつまとめること。ハードコードは完全な悪ではない複雑な方が悪
 - テストを書くこと。UIコンポーネントのテストは不要でロジックのテストを書くことで少し意地悪なテストをして。それと副作用やdb依存などを分離することでテストしやすくして
 - **スタイリング境界**:
@@ -29,6 +29,14 @@ modは `@ubichill/sdk` のみに依存する。Host/本体との直接結合は�
 - `@ubichill/react`: Host向けReact Hooks群。
 - `@ubichill/ui-renderer`: VNode→DOM 描画・入力収集（host/guest 両側で共用）。
 - `@ubichill/frontend`: Host クライアントアプリ本体（UI + Socket/セッション/ルーティング/mod レジストリ）。
+- `@ubichill/core-components`: 本体の標準 Component（`core:*`）のデータ形式・検証（振る舞いは runtime）。
+- `@ubichill/runtime`: 標準 Component の振る舞い（Collider の判定など）の純粋計算。
+- `@ubichill/loader`: mod の取得・完全性検証・作者参照の解決・lock 構築（browser/Node 両対応、frontend と CLI が共有）。
+- `@ubichill/cli`: 作者向けコマンド `ubichill`（init・dev・build・install・update・publish など）。npm で公開。
+- `@ubichill/terminal`: 端末出力の書式（CLI・scripts・backend・db が共有）。
+- `@ubichill/backend` / `@ubichill/bff` / `@ubichill/db`: ドメイン API サーバー / SPA 配信と OGP 注入 / Postgres のスキーマとマイグレーション（drizzle）。
+- `@ubichill/instance`: Go のインスタンスサーバー（`services/instance`）を npm のプラットフォーム別パッケージにする。
+- `@ubichill/e2e`: プレビュー環境・ローカルに対するスモークテスト。
 - `@ubichill/sdk`: mod開発者向けAPI。`@ubichill/shared` や `@ubichill/ecs` の必要な定数・型・計算ロジックを内部にインラインバンドルし、外部依存ゼロ（zero-dependency）で提供する。
 
 ## ubisdkについては`@ubichill/sdk`を確認すること

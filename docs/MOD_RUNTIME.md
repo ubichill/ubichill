@@ -115,7 +115,7 @@ world の lock（manifestIntegrity）──▶ loader が manifest を照合 ─
 
 - manifest は lock で固定されているので、manifest に載ったアセットの hash も固定される。lock の形式は変えていない。
 - アセットの無い mod の manifest は従来とバイト単位で同じ（既存の lock を壊さない）。
-- `manifest.json`・`lock.json`・`mod.json`・`index.json` と、Component 名と同じディレクトリは `assets/` に置けない（ビルドが失敗する）。
+- `manifest.json`・`lock.json`・`lock.sig.json`・`mod.json`・`index.json` と、Component 名と同じディレクトリは `assets/` に置けない（ビルドが失敗する）。
 - `ubichill verify` はアセットも再ハッシュして manifest と突き合わせる。
 - 古い CLI でビルドした mod（`assetIntegrity` が無い）は `Ubi.asset` で読めない。`Ubi.modBase` 配下を
   `Ubi.fetch` で読むことはできるが、その場合は integrity の照合が無い。
@@ -206,4 +206,3 @@ Host が許可しても、**ブラウザの制限は解除されない**。
 - 同じ mod の Worker 間で、コンパイル済みの `WebAssembly.Module` を共有する。
 - 拡張機能・ネイティブの補助を、特定サービス専用ではない「通信手段」として Host に差し込む。
 - 承認をサフィックス単位（`*.example.com`）で記憶する。
-- アセット・lock の署名（今は hash の固定のみ）。

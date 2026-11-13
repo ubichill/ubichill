@@ -26,6 +26,6 @@ Host は、作者アカウントの署名を確認できた mod だけを実行�
 | --- | --- |
 | `signature-missing` | 配布物に `lock.sig.json` が無い。`ubichill publish <ビルド出力>` で署名して置き直す |
 | `signature-content-mismatch` / `signature-mod-mismatch` | 署名のあとにビルドし直した、または別の版の署名。署名し直す。ワールドの lock を手で書き換えた場合も起きる（`ubichill install` で作り直す） |
-| `author-unconfirmed` | 署名鍵が作者の有効な公開環境の鍵ではない（公開環境を取り消した・別のサーバーのアカウント）。`ubichill whoami` で確かめ、署名し直す |
+| `author-unconfirmed` | 署名鍵が作者の有効な公開環境の鍵ではない（公開環境を取り消した・別のサーバーのアカウント）。`ubichill whoami` で確かめ、署名し直す。作者参照で追加した依存（lock v2）では、署名の作者が lock の `author` と違う場合も出る（別のアカウントで署名した・同じ ID の別作者の mod）。正しい作者で署名し直すか、依存を入れ直す |
 | `author-pending` | 作者のサーバーにいま問い合わせられない。時間をおいて読み込み直す |
 

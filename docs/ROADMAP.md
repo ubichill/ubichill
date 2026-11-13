@@ -2,44 +2,39 @@
 
 ---
 
-## `ubi mod` CLI
+## `ubichill` CLI
 
-Helm のようにmodをパッケージ化し、GitHub Pages 等で公開できるエコシステム基盤。
+mod をパッケージ化し、GitHub Pages 等で公開できるエコシステム基盤。使い方は [packages/cli/README.md](../packages/cli/README.md)、配布は [MOD.md](MOD.md)。
 
 ```
-ubi mod create my-mod   # プロジェクト雛形生成
-ubi mod build           # Worker + Frontend をバンドル
-ubi mod deploy          # GitHub Pages / 任意ホストへ公開
+ubichill init mod my-mod   # プロジェクト雛形生成
+ubichill dev               # 本番と同じ Go のインスタンスサーバーで動かす
+ubichill build             # Worker をバンドルし manifest・lock を作る
+ubichill publish dist      # 作者署名。配布先への配置は作者のデプロイ処理
 ```
 
 ### Phase 1 — 規約・型定義（✅ 完了）
 
-- `mod.json` スキーマ定義
-- `frontend/` + `worker/` ディレクトリ構造の標準化
+- `package.json` と Worker の `export const config` から manifest を作る（手書きの `mod.json` は廃止）
 - `ModWorkerMessage` 型システム
 
 ### Phase 2 — ビルド（✅ 完了）
 
-- `build-workers.mjs`（esbuild）で Worker JS をバンドル
-- TypeScript → IIFE 文字列として Sandbox に渡せる形式に変換
+- `ubichill build`（esbuild）で Worker JS をバンドル。本体の `mods/` は `pnpm build:workers` が同じコマンドでビルドする
 
-### Phase 3 — `ubi mod create`（次のブランチで実装）
+### Phase 3 — `ubichill init`（完了）
 
-動的mod読み込み対応と同時に実装する。
+- プロジェクト雛形生成（`ubichill init mod|world`）
+- 作者署名と GitHub Pages への公開フロー（`ubichill publish`・`--check-public`）
 
-- プロジェクト雛形生成コマンド
-- `mod.json` スキーマ実装
-- GitHub Pages への公開フロー
+### Phase 4 — ホットリロード（完了）
 
-### Phase 4 — ホットリロード
+- `ubichill dev` が保存のたびにビルドし直し、開いているページを読み直す
 
-- Worker コード変更で自動再起動
-- Frontend HMR
+### Phase 5 — マーケットプレイス（一部）
 
-### Phase 5 — マーケットプレイス
-
-- URL ベースのmod検索・インストール
-- バージョン管理・依存解決
+- 作者参照（`@作者@サーバー/mod`）の検索・追加・更新は実装済み（[design/mod-discovery.md](design/mod-discovery.md)）
+- 未実装の部分は design/mod-discovery.md の冒頭の状態を参照
 
 ---
 
@@ -69,7 +64,6 @@ ubi mod deploy          # GitHub Pages / 任意ホストへ公開
 - **隔離単位を信頼境界（mod）に揃える**: 現状の「1 Component = 1 Worker」を見直し、
   「1 mod = 1 Worker」への統合 / Worker プーリングを検討。権限 grant は既に modId 単位
   であり、`PERF_WORKER_LIMIT_REACHED` のスケール問題も動機。
-- modの署名・ハッシュ検証（ロード時の改竄検知）
 - WASM / QuickJS によるハード隔離（`new Function` ベースの限界を解消）
 - メソッド → 必要権限を SDK の JSDoc / docs として開発者に公開
 - ワールド / インスタンス単位の推奨シールドレベル配布（管理者プリセット）
@@ -85,7 +79,7 @@ ubi mod deploy          # GitHub Pages / 任意ホストへ公開
 | mod権限（危険度ティア + on-demand 承認） | ✅ 完了 | 上記 権限・セキュリティ Phase 1–3 |
 | capability 自動生成（静的解析） | ✅ 完了 | 開発者は権限宣言不要 |
 | テスト基盤（vitest + testing-library） | ✅ 導入 | まず権限まわりから拡充中 |
-| mod署名・改竄検知 | 将来 | 権限・セキュリティ Phase 4 |
+| mod署名・改竄検知 | 完了 | lock の hash 固定と作者署名（[MOD.md](MOD.md#作者署名必須)） |
 | WebGL レンダリング | 将来 | wallpaper engine 相当の表現 |
 | WASM サンドボックス（QuickJS） | 将来 | ハード隔離。権限・セキュリティ Phase 4 |
-| modマーケットプレイス | 将来 | `ubi mod` Phase 5 |
+| modマーケットプレイス | 一部 | `ubichill` CLI Phase 5 |
