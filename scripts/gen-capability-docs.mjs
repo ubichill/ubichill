@@ -104,7 +104,7 @@ const md = `<!-- このファイルは scripts/gen-capability-docs.mjs による
 
 # mod 権限（capability）リファレンス
 
-mod は必要な権限を \`mod.json\` の \`capabilities\` で宣言する（ビルド時に静的解析で自動補完もされる）。
+mod の権限は、使う SDK API から \`ubichill build\` が静的解析で検出し、Worker ファイルの \`export const config\` の \`capabilities\` で補える。
 宣言していない権限のコマンドは **default-deny** で拒否される。ここは唯一の定義元
 [\`packages/shared/src/mod/capability.ts\`](../packages/shared/src/mod/capability.ts) から生成している。
 
@@ -161,6 +161,11 @@ SDK（mod）と Host（本体）は独立して更新されるため、初期化
 
 加算的進化である限り「古い mod × 新しい Host」は常に動作する。危険なのは「mod が Host より新しい」場合のみで、
 このとき Host は未対応コマンドを持たない恐れがあるため \`degraded\` として開発者に警告する。
+
+作者参照による mod の固定には別の形式番号 \`lockVersion: 2\` を使う。
+Worker と Host の RPC の名前・ペイロードは変わらないため、この追加で \`PROTOCOL_VERSION\` は変更しない。
+通常の本体・URL依存は作者を自動付与せず lock v1 のまま使える。作者参照を明示して追加した依存は lock v2 となり、
+旧 Host が読む \`mods\` は空にして、その形式を理解しない Host での実行を拒否する。
 `;
 
 const term = createTerminal(processIO(), { debug: debugFromEnv(process.env) });

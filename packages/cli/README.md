@@ -90,17 +90,21 @@ CI で `build` しか使わないなら `npm install --omit=optional` で外せ�
 ## コマンド
 
 ```bash
-ubichill build   [--mods-dir=<dir>] [--public-mods-dir=<dir>] [--dist-dir=<dir>] [--registry-url=<url>]
-ubichill install <world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>] [--check]
-ubichill update  <world.yaml> [<modName>] [--mods-dir=<dir>] [--out=<path>]
+ubichill init    mod|world <名前>
+ubichill build   [--mods-dir=<dir>] [--public-mods-dir=<dir>] [--dist-dir=<dir>] [--registry-url=<url>] [--layout=registry]
+ubichill install @<作者>@<サーバー>/<mod>[@<版>] | <作品ページの URL> [--world=<world.yaml>] [--accept-capabilities]
+ubichill install <world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>] [--check] [--accept-capabilities]
+ubichill update  <world.yaml> [<modName>] [--mods-dir=<dir>] [--out=<path>] [--accept-capabilities]
+ubichill search  <名前> [--server=<url>]
+ubichill prefab  add <mod>/<プレハブ> | update <Entity ID> [--apply] | unpack <Entity ID> [--world=<world.yaml>] [--mods-dir=<dir>]
 ubichill verify  [--dist-dir=<dir>] [--require-signatures]
 ubichill verify  <world.yaml>
 ubichill login   [--server=<url>] [--device] [--name=<表示名>] [--no-browser]
 ubichill logout  [--server=<url>]
 ubichill whoami  [--server=<url>]
 ubichill ci create --name=<表示名> [--server=<url>] [--device]
-ubichill publish <world.yaml>... [--server=<url>] [--out=<dir>] [--public-url=<url>] [--no-install]
-ubichill publish <mods のビルド出力>... [--server=<url>] [--public-url=<url>]
+ubichill publish <world.yaml>... [--server=<url>] [--out=<dir>] [--public-url=<url>] [--no-install] [--accept-capabilities]
+ubichill publish <mods のビルド出力>... [--server=<url>] [--public-url=<url>] [--check-public]
 ubichill world build <world.yaml> [--id=<instanceId>] [--max-users=<n>] [--out=<path>]
 ```
 
@@ -145,19 +149,45 @@ ubichill world build <world.yaml> [--id=<instanceId>] [--max-users=<n>] [--out=<
   渡す定義 JSON を作る。本体がインスタンスを作るときと同じ変換なので、`ubichill-instance --guests --world=<出力>` で
   起動した部屋は本体と同じ初期状態を持つ。`--id` は省略時 `metadata.name`、`--max-users` は省略時ワールドの定員の上限。
   lock に無い mod を参照していれば失敗する（先に `ubichill install`）。
-- **CI から公開する**: 手元で `ubichill ci create --name="GitHub Actions: owner/repo"` を実行してブラウザで承認すると、
-  CI 用の公開環境の認証情報（1 本の文字列）が表示される。CI の Secret `UBICHILL_CREDENTIALS` に入れて `publish` する。
+
+## CI から公開する
+
+手元で `ubichill ci create --name="GitHub Actions: owner/repo"` を実行してブラウザで承認すると、
+CI 用の公開環境の認証情報（1 本の文字列）が表示される。CI の Secret `UBICHILL_CREDENTIALS` に入れて `publish` する。
+
+CI の新しいチェックアウトで `build` すると、dist には今の版しか入らない。その dist で配布先を丸ごと置き換えると
+以前の `v<version>/` が消え、その版に固定したワールドが読めなくなる。配布先には足すだけにする。
+GitHub Pages なら、`gh-pages` ブランチへ既存のファイルを残して足す方法（下の例）が簡単。
+`actions/deploy-pages` はサイト全体を置き換えるので、使うなら以前に置いたファイルを先に dist へ戻す。
 
 ```yaml
-# mod のリポジトリの公開ワークフロー（抜粋）
+# mod のリポジトリの公開ワークフロー（抜粋）。雛形の npm run build（--layout=registry）の出力を
+# https://<user>.github.io/<repo>/ に置く例。単体の既定の build の出力を置くなら、置いた場所が
+# <public-url>/<modId>/ になるように --public-url を決める（リポジトリ名が mod ID なら https://<user>.github.io）。
+    permissions:
+      contents: write
+    env:
+      PUBLIC_URL: https://<user>.github.io/<repo>
+      UBICHILL_CREDENTIALS: ${{ secrets.UBICHILL_CREDENTIALS }}
+    steps:
+      - uses: actions/checkout@v4
       - run: npm ci
-      - run: npx ubichill build
-      - run: npx ubichill publish dist          # 複数 mod の出力なら dist/mods
-        env:
-          UBICHILL_CREDENTIALS: ${{ secrets.UBICHILL_CREDENTIALS }}
+      - run: npm run build
+      # 署名する。配布先に同じ版の別の内容があればここで失敗する
+      - run: npx ubichill publish dist --public-url=$PUBLIC_URL
       - run: npx ubichill verify --dist-dir=dist --require-signatures
-      # このあと dist を GitHub Pages などへ置く
+      # 既存のファイルを消さずに足す（以前の版を残す）
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          keep_files: true
+      # 配置した内容と署名を確かめてから、作者のサーバーのカタログに登録する
+      - run: npx ubichill publish dist --public-url=$PUBLIC_URL --check-public
 ```
+
+Pages への反映より先に `--check-public` が走ると、取得に失敗して終了コード 1 で終わる（登録はしない）。反映を待って再実行する。
+カタログへの登録が失敗しても `publish` は警告だけで成功（終了コード 0）で終わる。
 
 ## 型チェックを `build` の前段に入れる
 
