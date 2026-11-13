@@ -33,9 +33,31 @@ export function selectionToDependencies(entries: readonly ModSelectionEntry[]): 
     }));
 }
 
-/** 単一の mod を dependencies エントリへ変換する（ローカル/URL を判別）。 */
-export function modToDependency(mod: SelectableMod, version: string = 'latest'): Dependency {
+/** 単一の mod を dependencies エントリへ変換する（ローカル/URL を判別）。版は常に固定する（既定はいまの最新版）。 */
+export function modToDependency(mod: SelectableMod, version: string = mod.version): Dependency {
     return selectionToDependencies([{ id: mod.id, version, baseUrl: mod.baseUrl }])[0];
+}
+
+/**
+ * 'latest' のままの依存を、lock が固定している版に書き換える。'latest' は「いつ最新になるか」が分かりにくいので、
+ * エディタは保存のたびに実際に使っている版を書く（版を変えるのは利用者が選んだときだけ）。lock に無い依存はそのまま。
+ */
+export function pinDependencies(dependencies: readonly Dependency[], lock: ModLock | undefined): Dependency[] {
+    const entries = lockedMods(lock);
+    return dependencies.map((dep) => {
+        const pinned = dep.source.version === 'latest' ? entries[dep.name]?.version : undefined;
+        return pinned ? { ...dep, source: { ...dep.source, version: pinned } } : dep;
+    });
+}
+
+/** セレクタに出す版。'latest' の依存は lock が固定している版（無ければいまの最新版）を出す。 */
+export function displayedModVersion(
+    selectedVersion: string | undefined,
+    lockedVersion: string | undefined,
+    latestVersion: string,
+): string {
+    if (selectedVersion && selectedVersion !== 'latest') return selectedVersion;
+    return lockedVersion ?? latestVersion;
 }
 
 export interface ModDiffUpdated {

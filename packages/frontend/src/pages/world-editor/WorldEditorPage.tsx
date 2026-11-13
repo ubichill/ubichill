@@ -42,10 +42,17 @@ import { usePublishSetup } from './hooks/usePublishSetup';
 import { type SaveResult, useWorldEditorApi } from './hooks/useWorldEditorApi';
 import { failureTitle, stageLabel } from './lib/actionFailure';
 import { SNAP_STEP } from './lib/dragHelpers';
-import { blockingChecks, type CheckTarget, controlPanelAlert, editorChecks } from './lib/editorChecks';
+import {
+    blockingChecks,
+    type CheckTarget,
+    compatibilityMessage,
+    controlPanelAlert,
+    editorChecks,
+} from './lib/editorChecks';
 import { consoleCounts } from './lib/editorConsole';
 import { findEntityPath, flattenForStage, getEntityAt, updateEntityAt } from './lib/entityTree';
 import { editorReferenceProblems, problemsByEntity } from './lib/referenceProblems';
+import { withSavedFields } from './lib/savedDefinition';
 import { editorButton } from './recipes/button';
 
 export function WorldEditorPage() {
@@ -103,14 +110,10 @@ export function WorldEditorPage() {
         definition,
         publishState,
         dirty,
-        // 保存を待つ間の編集を残すため、定義は lock と版だけ差し替える（違いは未保存として残る）
-        onSavedYamlChange: (text, lock, version) => {
+        // 保存を待つ間の編集を残すため、エディタが決めた項目だけ差し替える（違いは未保存として残る）
+        onSaved: (text, fields) => {
             setSavedYaml(text);
-            setDefinition((prev) => ({
-                ...prev,
-                metadata: { ...prev.metadata, version },
-                spec: { ...prev.spec, lock },
-            }));
+            setDefinition((prev) => withSavedFields(prev, fields));
         },
         onPublishStateChange: setPublishState,
         onResult: handleSaveResult,
@@ -143,10 +146,12 @@ export function WorldEditorPage() {
                 yamlError: modals.activeTab === 'yaml' ? modals.yamlError : '',
                 referenceProblems: referenceProblemList,
                 packagesError,
+                compatibility: compatibilityMessage(definition.spec.requires),
             }),
         [
             definition.spec.displayName,
             definition.metadata.name,
+            definition.spec.requires,
             modals.activeTab,
             modals.yamlError,
             referenceProblemList,

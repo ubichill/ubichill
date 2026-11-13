@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { WorldModSchema, WorldSourceSchema } from './world.schema';
+import { WorldModSchema, WorldRequirementsSchema, WorldSourceSchema } from './world.schema';
 import { WorldIdentitySchema } from './worldIdentity.schema';
 
 // ============================================
@@ -76,6 +76,8 @@ export const InstanceSchema = z.object({
         mods: z.array(WorldModSchema).default([]),
         /** 作者署名の検証結果。未署名なら入室前に確認する。 */
         identity: WorldIdentitySchema.optional(),
+        /** ワールドを保存した ubichill の版。入る前に、この Host で一部が動かない可能性を知らせる。 */
+        requires: WorldRequirementsSchema.optional(),
     }),
 
     access: InstanceAccessSchema,

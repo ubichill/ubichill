@@ -288,4 +288,5 @@ export * from './world/devEvents';
 export * from './world/identity';
 export * from './world/instanceDefinition';
 export * from './world/pagePath';
+export * from './world/requirements';
 export * from './world/resolve';

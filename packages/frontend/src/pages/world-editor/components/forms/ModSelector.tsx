@@ -23,6 +23,7 @@ import {
 } from '@/world';
 import {
     computeModDiff,
+    displayedModVersion,
     lockForSelection,
     type ModSelectionEntry,
     selectionToDependencies,
@@ -214,7 +215,7 @@ export function ModSelector({ dependencies, lock, onCommitDependencies }: ModSel
         const existing = selected.find((e) => e.id === p.id);
         if (existing && existing.baseUrl !== p.baseUrl) return;
         if (existing) removeSelected(p.id);
-        else upsertSelected({ id: p.id, version: 'latest', baseUrl: p.baseUrl });
+        else upsertSelected({ id: p.id, version: p.version, baseUrl: p.baseUrl });
     };
 
     const handleVersionChange = (p: AvailableMod, version: string) => {
@@ -238,9 +239,15 @@ export function ModSelector({ dependencies, lock, onCommitDependencies }: ModSel
                     {mods.map((p) => {
                         const selectedEntry = selected.find((e) => e.id === p.id && e.baseUrl === p.baseUrl);
                         const checked = !!selectedEntry;
-                        const pinnedVersion = selectedEntry?.version ?? 'latest';
-                        const isOutdated = pinnedVersion !== 'latest' && pinnedVersion !== p.version;
-                        const displayedVersion = pinnedVersion === 'latest' ? p.version : pinnedVersion;
+                        const displayedVersion = displayedModVersion(
+                            selectedEntry?.version,
+                            lockedMods(lock)[p.id]?.version,
+                            p.version,
+                        );
+                        const isOutdated = checked && displayedVersion !== p.version;
+                        const versionOptions = [
+                            ...new Set([displayedVersion, ...(p.versions ?? []).map((v) => v.version)]),
+                        ];
                         const componentCount =
                             displayedVersion === p.version
                                 ? p.components.length
@@ -337,7 +344,7 @@ export function ModSelector({ dependencies, lock, onCommitDependencies }: ModSel
                                     >
                                         <select
                                             aria-label={`バージョン (${p.name})`}
-                                            value={pinnedVersion}
+                                            value={displayedVersion}
                                             onChange={(e) => handleVersionChange(p, e.target.value)}
                                             className={css({
                                                 fontSize: '11px',
@@ -349,10 +356,9 @@ export function ModSelector({ dependencies, lock, onCommitDependencies }: ModSel
                                                 color: 'text',
                                             })}
                                         >
-                                            <option value="latest">latest（自動追従）</option>
-                                            {(p.versions ?? []).map((v) => (
-                                                <option key={v.version} value={v.version}>
-                                                    v{v.version}
+                                            {versionOptions.map((version) => (
+                                                <option key={version} value={version}>
+                                                    v{version}
                                                 </option>
                                             ))}
                                         </select>

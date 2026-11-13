@@ -5,6 +5,7 @@ import type {
     InstanceAccess,
     WorldIdentity,
     WorldMod,
+    WorldRequirements,
     WorldSource,
 } from '@ubichill/shared';
 import {
@@ -311,6 +312,7 @@ class InstanceManager {
             source?: WorldSource;
             mods?: WorldMod[];
             identity?: WorldIdentity;
+            requires?: WorldRequirements;
         },
         knownPresence?: Map<string, RoomPresence>,
     ): Promise<Instance> {
@@ -342,6 +344,7 @@ class InstanceManager {
                 source: world.source,
                 mods: world.mods ?? [],
                 identity: world.identity,
+                ...(world.requires ? { requires: world.requires } : {}),
             },
 
             access,
