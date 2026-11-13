@@ -78,6 +78,22 @@ describe('restorePlan', () => {
         expect(byPath['/host/pen/index.json'][0].versions.map((v) => v.version)).toEqual(['2.1.0', '2.0.0', '1.0.0']);
     });
 
+    it('公開済みの index.json の履歴から落ちた版も、配っていれば履歴に戻す（Component は lock から取る）', () => {
+        const fs = memoryFs({
+            '/pub/pen/v2.0.0/lock.json': JSON.stringify({ components: { 'pen:pen': {}, 'pen:tray': {} } }),
+            '/pub/pen/v2.1.0/lock.json': JSON.stringify({ components: { 'pen:pen': {} } }),
+            '/pub/pen/index.json': JSON.stringify([
+                { id: 'pen', version: '2.1.0', versions: [{ version: '2.1.0', components: ['pen:pen', 'pen:x'] }] },
+            ]),
+        });
+        const [{ entries }] = restorePlan('/pub', '/host', fs).indexes;
+        expect(entries[0].version).toBe('2.1.0');
+        expect(entries[0].versions).toEqual([
+            { version: '2.1.0', components: ['pen:pen', 'pen:x'] },
+            { version: '2.0.0', components: ['pen:pen', 'pen:tray'] },
+        ]);
+    });
+
     it('公開済みの mods が空なら何もしない', () => {
         expect(restorePlan('/pub', '/host', memoryFs({}))).toEqual({ copies: [], indexes: [] });
     });
@@ -117,17 +133,17 @@ describe('コマンドとして実行する', () => {
             mkdirSync(dirname(join(root, path)), { recursive: true });
             writeFileSync(join(root, path), text);
         };
-        write('pub/pen/v2.0.0/lock.json', 'old');
+        write('pub/pen/v2.0.0/lock.json', '{"components":{}}');
         write('pub/pen/v2.0.0/lock.sig.json', 'sig');
-        write('pub/pen/v2.1.0/lock.json', 'published');
+        write('pub/pen/v2.1.0/lock.json', '{"published":true}');
         write('pub/pen/index.json', index('pen', ['2.1.0', '2.0.0']));
-        write('host/pen/v2.1.0/lock.json', 'built');
+        write('host/pen/v2.1.0/lock.json', '{"built":true}');
 
         const script = fileURLToPath(new URL('./restore-published-mods.mjs', import.meta.url));
         execFileSync('node', [script, join(root, 'pub'), join(root, 'host')], { stdio: 'pipe' });
 
         expect(readFileSync(join(root, 'host/pen/v2.0.0/lock.sig.json'), 'utf8')).toBe('sig');
-        expect(readFileSync(join(root, 'host/pen/v2.1.0/lock.json'), 'utf8')).toBe('built');
+        expect(readFileSync(join(root, 'host/pen/v2.1.0/lock.json'), 'utf8')).toBe('{"built":true}');
         const restoredIndex = JSON.parse(readFileSync(join(root, 'host/pen/index.json'), 'utf8'));
         expect(restoredIndex[0].versions.map((v) => v.version)).toEqual(['2.1.0', '2.0.0']);
     });

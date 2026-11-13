@@ -45,6 +45,19 @@ export function mergeIndex(published, target) {
     });
 }
 
+/** 配っている版のディレクトリから作る履歴。Component は lock の components から取る。 */
+function servedVersions(publishedRoot, mod, fs) {
+    return fs
+        .listDirs(join(publishedRoot, mod))
+        .filter(isVersionDir)
+        .flatMap((dir) => {
+            const lockPath = join(publishedRoot, mod, dir, 'lock.json');
+            if (!fs.exists(lockPath)) return [];
+            const components = fs.readJson(lockPath)?.components;
+            return [{ version: dir.slice(1), components: components ? Object.keys(components) : [] }];
+        });
+}
+
 /**
  * 戻す内容（純粋。読み方は注入する）。
  * @param {{ listDirs: (path: string) => string[], exists: (path: string) => boolean, readJson: (path: string) => unknown }} fs
@@ -64,7 +77,10 @@ export function restorePlan(publishedRoot, targetRoot, fs) {
         const from = join(publishedRoot, mod, 'index.json');
         if (!fs.exists(from)) return [];
         const to = join(targetRoot, mod, 'index.json');
-        return [{ path: to, entries: mergeIndex(fs.readJson(from), fs.exists(to) ? fs.readJson(to) : undefined) }];
+        // 公開済みの index.json の履歴が欠けていても（過去のビルドで失った版）、配っている版はすべて選べるようにする
+        const served = { id: mod, versions: servedVersions(publishedRoot, mod, fs) };
+        const published = mergeIndex([served], fs.readJson(from));
+        return [{ path: to, entries: mergeIndex(published, fs.exists(to) ? fs.readJson(to) : undefined) }];
     });
     return { copies: copies.filter((c) => fs.exists(c.from) && !fs.exists(c.to)), indexes };
 }
