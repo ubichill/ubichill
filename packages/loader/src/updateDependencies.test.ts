@@ -6,9 +6,10 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ModLock } from '@ubichill/shared';
+import { type ModLock, PROTOCOL_VERSION } from '@ubichill/shared';
 import { recordingLogger, silentLogger } from '@ubichill/terminal';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import yaml from 'yaml';
 import { runUpdate } from './updateDependencies';
 
 function sri(text: string): string {
@@ -80,6 +81,16 @@ describe('runUpdate', () => {
         expect(rewritten).toMatch(/displayName: test # コメントは保持されるべき/);
     });
 
+    it('版を上げても、版の行のほかは元の文字列のまま（フロー形式の整形も変えない）', async () => {
+        const before = readFileSync(worldPath, 'utf-8');
+        await runUpdate([worldPath, `--mods-dir=${modsDir}`], silentLogger);
+        expect(readFileSync(worldPath, 'utf-8')).toBe(
+            before
+                .replace('version: 1.0.0\n  initialEntities', 'version: 2.0.0\n  initialEntities')
+                .replace('  initialEntities:', `  requires:\n    protocol: ${PROTOCOL_VERSION}\n  initialEntities:`),
+        );
+    });
+
     it('書き換え後にロックも再生成され、新バージョンが反映される', async () => {
         const outPath = worldPath.replace(/\.ya?ml$/i, '.lock.json');
         await runUpdate([worldPath, `--mods-dir=${modsDir}`], silentLogger);
@@ -88,8 +99,15 @@ describe('runUpdate', () => {
         expect(lock.mods.pen.version).toBe('2.0.0');
     });
 
-    it('既に最新版が pin されていれば world.yaml を書き換えない', async () => {
+    it('既に最新版が pin されていて ubichill の版もあれば world.yaml を書き換えない', async () => {
         writeWorld(worldPath, '2.0.0');
+        writeFileSync(
+            worldPath,
+            readFileSync(worldPath, 'utf-8').replace(
+                '  initialEntities:',
+                '  requires:\n    protocol: 7\n  initialEntities:',
+            ),
+        );
         const before = readFileSync(worldPath, 'utf-8');
 
         await runUpdate([worldPath, `--mods-dir=${modsDir}`], silentLogger);
@@ -97,13 +115,23 @@ describe('runUpdate', () => {
         expect(readFileSync(worldPath, 'utf-8')).toBe(before);
     });
 
-    it("source.version: 'latest'（常に最新を追う）は書き換え対象にしない", async () => {
-        writeWorld(worldPath, 'latest');
-        const before = readFileSync(worldPath, 'utf-8');
+    it('ubichill の版が無ければ今の版で固定する（版は上げない）', async () => {
+        writeWorld(worldPath, '2.0.0');
 
         await runUpdate([worldPath, `--mods-dir=${modsDir}`], silentLogger);
 
-        expect(readFileSync(worldPath, 'utf-8')).toBe(before);
+        const rewritten = readFileSync(worldPath, 'utf-8');
+        expect(yaml.parse(rewritten).spec.requires).toEqual({ protocol: PROTOCOL_VERSION });
+        expect(yaml.parse(rewritten).spec.dependencies[0].source.version).toBe('2.0.0');
+        expect(rewritten).toContain('# コメントは保持されるべき');
+    });
+
+    it("source.version: 'latest' は最新版で lock を作り、その版を world.yaml に書いて固定する", async () => {
+        writeWorld(worldPath, 'latest');
+
+        await runUpdate([worldPath, `--mods-dir=${modsDir}`], silentLogger);
+
+        expect(yaml.parse(readFileSync(worldPath, 'utf-8')).spec.dependencies[0].source.version).toBe('2.0.0');
     });
 
     it('--mods-dir が world.yaml より前に置かれても、lock 再生成に引き継がれる', async () => {

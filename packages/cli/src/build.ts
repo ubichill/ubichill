@@ -747,7 +747,10 @@ export async function writeArtifacts(artifacts: ModArtifacts, options: WriteArti
     // package.json の homepage）から公開済み index.json を取得して履歴を補う。CI の
     // クリーンチェックアウトではローカル履歴が毎回失われるため、これが無いと
     // 「latest」以外のバージョンが World Editor から選べなくなる。
-    const localVersions = readExistingVersions(join(distDir, 'index.json'), id);
+    // public 側も読む: Host のイメージは dist を持ち込まず、公開済みの版を public（Host の mods）へ戻してからビルドする
+    const localVersions = [...new Set([distDir, publicDir])]
+        .map((dir) => readExistingVersions(join(dir, 'index.json'), id))
+        .reduce(mergeVersionArrays, []);
     const remoteVersions = options.registryUrl
         ? await fetchRemoteVersions(options.registryUrl, id, options.fetchImpl)
         : [];

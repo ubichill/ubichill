@@ -90,6 +90,8 @@ export {
     type WorldMod,
     WorldModSchema,
     WorldPermissionsSchema,
+    type WorldRequirements,
+    WorldRequirementsSchema,
     type WorldSource,
     WorldSourceKind,
     WorldSourceSchema,

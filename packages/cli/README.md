@@ -180,7 +180,7 @@ MIT。ubichill 本体（Host/backend/frontend、AGPL-3.0-only）とは別ライ�
 `search <名前> --server=https://ubichill.com` は指定サーバーの公開作品を検索する。
 
 単体の `build` は従来の `dist/v<version>/…` を維持する。配布基点に置く `dist/<modId>/v<version>/…` は `--layout=registry` で明示する（新しいmodの雛形で使用）。
-`install world.yaml` は lock を再生成し、再ビルドを取り込む。通常の保存・ワールド公開は既存lockを保つ。
+`install world.yaml` は lock を再生成し、再ビルドを取り込む。版を書いていない依存は最新版を取って world.yaml に固定する（以後の install では版を変えない。上げるのは update）。通常の保存・ワールド公開は既存lockを保つ。
 `update world.yaml <mod>` は対象以外を保ち、古いlatestを理由に版を戻さない。install・updateとも既存packageの権限追加には `--accept-capabilities` が必要。
 
 `prefabs/*.json` に package の構成を同梱できる。

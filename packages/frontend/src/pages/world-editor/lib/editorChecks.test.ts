@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { blockingChecks, controlPanelAlert, type EditorCheckInput, editorChecks } from './editorChecks';
+import {
+    blockingChecks,
+    compatibilityMessage,
+    controlPanelAlert,
+    type EditorCheckInput,
+    editorChecks,
+} from './editorChecks';
 
 const ok: EditorCheckInput = {
     displayName: 'ぼくのワールド',
@@ -33,6 +39,18 @@ describe('editorChecks', () => {
         expect(blockingChecks(checks)).toEqual([]);
         expect(checks.map((c) => c.severity)).toEqual(['warning', 'warning']);
         expect(checks[1].target).toEqual({ kind: 'entity', entityId: 'door' });
+    });
+
+    it('Host より新しい ubichill で保存したワールドは、止めずに知らせる', () => {
+        const checks = editorChecks({ ...ok, compatibility: compatibilityMessage({ protocol: 99 }, 7) });
+        expect(blockingChecks(checks)).toEqual([]);
+        expect(checks.map((c) => c.id)).toEqual(['compatibility']);
+        expect(checks[0].message).toContain('v99');
+    });
+
+    it('この Host で開けるワールドには知らせを出さない', () => {
+        expect(compatibilityMessage({ protocol: 7 }, 7)).toBe('');
+        expect(compatibilityMessage(undefined, 7)).toBe('');
     });
 
     it('警告が先に入っていても error を前に並べる', () => {

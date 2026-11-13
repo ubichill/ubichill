@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createModLock, lockedMods, type ModLockEntry } from '@ubichill/shared';
+import { createModLock, lockedMods, type ModLockEntry, PROTOCOL_VERSION } from '@ubichill/shared';
 import { silentLogger } from '@ubichill/terminal';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import yaml from 'yaml';
@@ -65,23 +65,41 @@ describe('explicit install and monotonic update', () => {
         await runInstall([...w.args, '--check'], silentLogger);
         expect(process.exitCode).toBe(0);
     });
-    it('ワールド公開からの呼び出しは既存lockを維持し、明示installだけが再固定する', async () => {
+    it('install は最新版を取って world.yaml に固定し、そのあとの install・公開では版を変えない。上げるのは update', async () => {
         const w = setup();
         publish(w.modsDir, entry('1.0.0'));
         await runInstall(w.args, silentLogger);
+        const pinned = yaml.parse(readFileSync(w.path, 'utf8'));
+        expect(pinned.spec.dependencies[0].source.version).toBe('1.0.0');
+        expect(pinned.spec.requires).toEqual({ protocol: PROTOCOL_VERSION });
+
         publish(w.modsDir, entry('2.0.0'));
         await runInstall(w.args, silentLogger, { reuseExisting: true });
         expect(readLock(w.lockPath).demo.version).toBe('1.0.0');
         await runInstall(w.args, silentLogger);
+        expect(readLock(w.lockPath).demo.version).toBe('1.0.0');
+
+        await runUpdate(w.args, silentLogger);
         expect(readLock(w.lockPath).demo.version).toBe('2.0.0');
+        expect(yaml.parse(readFileSync(w.path, 'utf8')).spec.dependencies[0].source.version).toBe('2.0.0');
     });
-    it('latest依存の版が上がったらinstallで新しい版を固定する', async () => {
+    it('latest のまま公開から呼ばれたら、最新版ではなく今の lock の版で固定する', async () => {
         const w = setup();
         publish(w.modsDir, entry('1.0.0'));
-        await runInstall(w.args, silentLogger);
+        writeFileSync(w.lockPath, JSON.stringify(createModLock({ demo: entry('1.0.0') })));
         publish(w.modsDir, entry('2.0.0'));
-        await runInstall(w.args, silentLogger);
-        expect(readLock(w.lockPath).demo.version).toBe('2.0.0');
+        await runInstall(w.args, silentLogger, { reuseExisting: true });
+        expect(yaml.parse(readFileSync(w.path, 'utf8')).spec.dependencies[0].source.version).toBe('1.0.0');
+        expect(readLock(w.lockPath).demo.version).toBe('1.0.0');
+    });
+    it('固定していない world.yaml は --check で落とし、ファイルは書き換えない', async () => {
+        const w = setup();
+        publish(w.modsDir, entry('1.0.0'));
+        writeFileSync(w.lockPath, `${JSON.stringify(createModLock({ demo: entry('1.0.0') }), null, 2)}\n`);
+        const before = readFileSync(w.path, 'utf8');
+        await runInstall([...w.args, '--check'], silentLogger);
+        expect(process.exitCode).toBe(1);
+        expect(readFileSync(w.path, 'utf8')).toBe(before);
     });
     it.each(['latest', '2.0.0'])('古いlatestを指しても%sのupdateでは版を戻さない', async (version) => {
         const w = setup(version);
@@ -113,15 +131,15 @@ describe('explicit install and monotonic update', () => {
         expect(readLock(w.lockPath).demo.version).toBe('2.0.0');
         expect(catalog).not.toHaveBeenCalled();
     });
-    it('installの権限追加を承認するまで既存lockを変更しない', async () => {
+    it('update の権限追加を承認するまで既存の YAML と lock を変更しない', async () => {
         const w = setup();
         publish(w.modsDir, entry('1.0.0', 'a', ['ui:render']));
         await runInstall(w.args, silentLogger);
-        const before = readFileSync(w.lockPath, 'utf8');
+        const before = { world: readFileSync(w.path, 'utf8'), lock: readFileSync(w.lockPath, 'utf8') };
         publish(w.modsDir, entry('2.0.0', 'b', ['ui:render', 'network:fetch']));
-        await expect(runInstall(w.args, silentLogger)).rejects.toThrow('--accept-capabilities');
-        expect(readFileSync(w.lockPath, 'utf8')).toBe(before);
-        await runInstall([...w.args, '--accept-capabilities'], silentLogger);
+        await expect(runUpdate(w.args, silentLogger)).rejects.toThrow('--accept-capabilities');
+        expect({ world: readFileSync(w.path, 'utf8'), lock: readFileSync(w.lockPath, 'utf8') }).toEqual(before);
+        await runUpdate([...w.args, '--accept-capabilities'], silentLogger);
         expect(readLock(w.lockPath).demo.version).toBe('2.0.0');
     });
 });

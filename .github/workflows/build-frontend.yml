@@ -28,6 +28,16 @@ jobs:
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
+      # 一度公開した mod の版を配り続ける。クリーンな checkout からビルドすると今の版しか入らず、mod の版を上げた瞬間に
+      # 以前の版を固定しているワールドが動かなくなる。公開済み（gh-pages）の版を Host の mods に戻してからビルドする。
+      # 戻した版は gh-pages で公式アカウントの署名が付いている（イメージのビルドの verify --require-signatures で確かめる）。
+      - name: Restore published mod versions
+        run: |
+          git fetch --depth=1 origin gh-pages:refs/remotes/origin/gh-pages
+          mkdir -p "$RUNNER_TEMP/published"
+          git archive origin/gh-pages mods | tar -x -C "$RUNNER_TEMP/published"
+          node scripts/restore-published-mods.mjs "$RUNNER_TEMP/published/mods" packages/frontend/public/mods
+
       - name: Extract versions
         id: versions
         run: |

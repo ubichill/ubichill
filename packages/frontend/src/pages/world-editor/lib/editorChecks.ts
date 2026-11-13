@@ -1,3 +1,4 @@
+import { checkWorldCompatibility, type WorldRequirements } from '@ubichill/shared';
 import type { ControlPanelTab } from '../hooks/useEditorModals';
 
 /** 確認項目から直しに行く先。タブはコントロールパネルのタブ、entity はヒエラルキーで選ぶ。 */
@@ -19,6 +20,8 @@ export interface EditorCheckInput {
     referenceProblems: ReadonlyArray<{ entityId: string; message: string }>;
     /** mod の取得・検証の失敗 */
     packagesError: string;
+    /** ワールドがこの Host より新しい ubichill で保存されているときの知らせ */
+    compatibility?: string;
 }
 
 /** 保存・公開の前に作者に見せる確認項目。error を先に並べる。 */
@@ -46,6 +49,7 @@ export function editorChecks(input: EditorCheckInput): EditorCheck[] {
                   target: { kind: 'tab', tab: 'mods' },
               }
             : null,
+        input.compatibility ? { id: 'compatibility', severity: 'warning', message: input.compatibility } : null,
         ...input.referenceProblems.map(
             ({ entityId, message }, index): EditorCheck => ({
                 id: `ref:${index}:${entityId}`,
@@ -60,6 +64,12 @@ export function editorChecks(input: EditorCheckInput): EditorCheck[] {
 }
 
 const infoTab: CheckTarget = { kind: 'tab', tab: 'info' };
+
+/** ワールドがこの Host で一部動かない可能性があるときの知らせ（無ければ空）。 */
+export function compatibilityMessage(requires: WorldRequirements | undefined, hostProtocol?: number): string {
+    const result = checkWorldCompatibility(requires, hostProtocol);
+    return result.level === 'ok' ? '' : result.message;
+}
 
 /** 保存・公開を止める項目。 */
 export function blockingChecks(checks: readonly EditorCheck[]): EditorCheck[] {

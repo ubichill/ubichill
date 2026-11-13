@@ -4,7 +4,15 @@ import {
     createHttpLockEntryGetter,
     resolveLatestVersion,
 } from '@ubichill/loader';
-import { type Dependency, displayAuthorAccount, lockedMods, type ModLock } from '@ubichill/shared';
+import {
+    type Dependency,
+    displayAuthorAccount,
+    lockedMods,
+    type ModLock,
+    PROTOCOL_VERSION,
+    selectableProtocolVersions,
+    type WorldRequirements,
+} from '@ubichill/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { confirmModUpdate } from '@/lib/mods/confirmUpdate';
@@ -21,6 +29,7 @@ import {
     type ModInstallationCheck,
     modAuthorFetcher,
 } from '@/world';
+import { type ModListRow, modListRows } from '../../lib/modList';
 import {
     computeModDiff,
     lockForSelection,
@@ -101,21 +110,77 @@ function ModAuthor({ mod, version }: { mod: AvailableMod; version: string }) {
 interface ModSelectorProps {
     /** 現在 definition に登録済みの依存（インストール済み mod）。 */
     dependencies: Dependency[];
-    /** インストール確定時に dependencies を置き換える。 */
     lock?: ModLock;
-    onCommitDependencies: (next: Dependency[], lock: ModLock) => void;
+    /** ワールドが固定している ubichill の版（無ければ保存するときに今の版で固定する） */
+    requires?: WorldRequirements;
+    /** インストール確定時に、依存・lock・ubichill の版を置き換える。 */
+    onCommit: (next: { dependencies: Dependency[]; lock?: ModLock; requires?: WorldRequirements }) => void;
 }
 
+const listBox = css({
+    maxHeight: 'min(60vh, 560px)',
+    overflowY: 'auto',
+    border: '1px solid',
+    borderColor: 'border',
+    borderRadius: '8px',
+    bg: 'background',
+});
+const rowGrid = css({
+    display: 'grid',
+    // 狭い画面では「最新」の列を隠す（古い版なら「更新」が出るので分かる）
+    gridTemplateColumns: { base: 'minmax(0, 1fr) 88px 88px', md: 'minmax(0, 1fr) 104px 56px 96px' },
+    alignItems: 'center',
+    columnGap: '12px',
+    px: '12px',
+    py: '8px',
+});
+const headerRow = css({
+    position: 'sticky',
+    top: 0,
+    zIndex: 1,
+    bg: 'surface',
+    borderBottomWidth: '1px',
+    borderBottomStyle: 'solid',
+    borderBottomColor: 'border',
+    fontSize: '11px',
+    fontWeight: '600',
+    color: 'textSubtle',
+    py: '6px',
+});
+const listItem = css({
+    borderTopWidth: '1px',
+    borderTopStyle: 'solid',
+    borderTopColor: 'border',
+    _first: { borderTopWidth: '0' },
+});
+const nameText = css({ fontSize: '13px', fontWeight: '600', color: 'text', overflowWrap: 'anywhere' });
+const metaText = css({ fontSize: '11px', color: 'textSubtle', overflowWrap: 'anywhere', mt: '2px' });
+const mutedCell = css({ fontSize: '12px', color: 'textSubtle' });
+const versionSelect = css({
+    width: '100%',
+    fontSize: '12px',
+    p: '4px 6px',
+    borderRadius: '4px',
+    border: '1px solid',
+    borderColor: 'border',
+    bg: 'background',
+    color: 'text',
+});
+const actions = css({ display: 'flex', justifyContent: 'flex-end', gap: '4px' });
+const wideOnly = css({ display: { base: 'none', md: 'block' } });
+
 /**
- * 「mod管理」タブ。チェック/バージョン選択はローカルの選択状態に留め、
+ * 「mod管理」タブ。一覧での追加・版の選択・外すはローカルの選択状態に留め、
  * 「インストール」ボタンで初めて definition へ反映する。
  * 反映前に追加/削除/更新の差分と、外部 URL 由来 mod のセキュリティ注記を表示する。
+ * ubichill の版も 1 行として同じように固定し、上げるときは同じ差分に出す。
  */
-export function ModSelector({ dependencies, lock, onCommitDependencies }: ModSelectorProps) {
+export function ModSelector({ dependencies, lock, requires, onCommit }: ModSelectorProps) {
     const confirm = useConfirm();
     const [installationError, setInstallationError] = useState('');
     const [registryUrls, setRegistryUrls] = useSetting<string[]>(SETTINGS_KEYS.editorRegistryUrls, [], isStringArray);
     const { mods, loading } = useAvailableMods(registryUrls);
+    const [query, setQuery] = useState('');
 
     // 選択状態。タブを開くたびに現在の dependencies から初期化される（staging は保持しない）。
     const [selected, setSelected] = useState<ModSelectionEntry[]>(() =>
@@ -126,10 +191,19 @@ export function ModSelector({ dependencies, lock, onCommitDependencies }: ModSel
             author: d.source.author,
         })),
     );
+    const pinnedProtocol = requires?.protocol ?? PROTOCOL_VERSION;
+    const [protocol, setProtocol] = useState(pinnedProtocol);
+    const protocolChanged = protocol !== pinnedProtocol;
 
     const nextDependencies = useMemo(() => selectionToDependencies(selected), [selected]);
     const diff = useMemo(() => computeModDiff(dependencies, nextDependencies), [dependencies, nextDependencies]);
-    const hasDiff = diff.added.length > 0 || diff.removed.length > 0 || diff.updated.length > 0;
+    const modsChanged = diff.added.length > 0 || diff.removed.length > 0 || diff.updated.length > 0;
+    const hasDiff = modsChanged || protocolChanged;
+    // 読み込み中は mod 一覧が空のため、既存の依存を「一覧に無い mod」と誤判定しない。
+    const rows = useMemo(
+        () => (loading ? [] : modListRows({ mods, selected, dependencies, lock, query })),
+        [loading, mods, selected, dependencies, lock, query],
+    );
 
     const [installation, setInstallation] = useState<{ checking: boolean; failures: ModInstallationCheck[] }>({
         checking: false,
@@ -146,7 +220,13 @@ export function ModSelector({ dependencies, lock, onCommitDependencies }: ModSel
         attemptRef.current += 1;
         setInstallation({ checking: false, failures: [] });
     };
+    const commit = (next: Dependency[], nextLock: ModLock | undefined) =>
+        onCommit({ dependencies: next, lock: nextLock, requires: protocolChanged ? { protocol } : requires });
     const install = async () => {
+        if (!modsChanged) {
+            commit(dependencies, lock);
+            return;
+        }
         const attempt = ++attemptRef.current;
         setInstallation({ checking: true, failures: [] });
         setInstallationError('');
@@ -190,7 +270,7 @@ export function ModSelector({ dependencies, lock, onCommitDependencies }: ModSel
             );
             if (attemptRef.current !== attempt) return;
             if (!(await confirmModUpdate(lock, proposed, confirm))) return;
-            if (attemptRef.current === attempt) onCommitDependencies(next, proposed);
+            if (attemptRef.current === attempt) commit(next, proposed);
         } catch (e) {
             if (attemptRef.current === attempt) setInstallationError(e instanceof Error ? e.message : '追加できません');
         } finally {
@@ -198,248 +278,94 @@ export function ModSelector({ dependencies, lock, onCommitDependencies }: ModSel
         }
     };
 
-    const knownIds = new Set(mods.map((m) => `${m.id} ${m.baseUrl ?? ''}`));
-    // 読み込み中は mod 一覧が空のため、既存の依存を「未知」と誤判定しない。
-    const unknownSelected = loading ? [] : selected.filter((e) => !knownIds.has(`${e.id} ${e.baseUrl ?? ''}`));
-
     const upsertSelected = (entry: ModSelectionEntry) =>
         setSelected((prev) => {
             const exists = prev.some((e) => e.id === entry.id);
             return exists ? prev.map((e) => (e.id === entry.id ? entry : e)) : [...prev, entry];
         });
-    const removeSelected = (id: string) => setSelected((prev) => prev.filter((e) => e.id !== id));
-
-    const handleToggle = (p: AvailableMod) => {
+    const add = (p: AvailableMod) => {
         resetInstallation();
-        const existing = selected.find((e) => e.id === p.id);
-        if (existing && existing.baseUrl !== p.baseUrl) return;
-        if (existing) removeSelected(p.id);
-        else upsertSelected({ id: p.id, version: 'latest', baseUrl: p.baseUrl });
+        upsertSelected({ id: p.id, version: p.version, baseUrl: p.baseUrl });
     };
-
-    const handleVersionChange = (p: AvailableMod, version: string) => {
+    const remove = (id: string) => {
+        resetInstallation();
+        setSelected((prev) => prev.filter((e) => e.id !== id));
+    };
+    const changeVersion = (p: AvailableMod, version: string) => {
         resetInstallation();
         const existing = selected.find((e) => e.id === p.id);
-        if (existing && existing.baseUrl !== p.baseUrl) return;
         upsertSelected({ id: p.id, version, baseUrl: p.baseUrl, author: existing?.author });
     };
 
     return (
         <div className={css({ display: 'flex', flexDirection: 'column', gap: '3' })}>
             {installationError && <p role="alert">{installationError}</p>}
-            <PanelSection title={loading ? '使用するmod (読み込み中...)' : '使用するmod'}>
-                <div
-                    className={css({
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 220px), 1fr))',
-                        gap: '8px',
-                    })}
-                >
-                    {mods.map((p) => {
-                        const selectedEntry = selected.find((e) => e.id === p.id && e.baseUrl === p.baseUrl);
-                        const checked = !!selectedEntry;
-                        const pinnedVersion = selectedEntry?.version ?? 'latest';
-                        const isOutdated = pinnedVersion !== 'latest' && pinnedVersion !== p.version;
-                        const displayedVersion = pinnedVersion === 'latest' ? p.version : pinnedVersion;
-                        const componentCount =
-                            displayedVersion === p.version
-                                ? p.components.length
-                                : p.versions?.find((v) => v.version === displayedVersion)?.components?.length;
-                        return (
-                            <div
-                                key={`${p.sourceLabel}:${p.id}`}
-                                className={css({
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '6px',
-                                    p: '10px 12px',
-                                    bg: checked ? 'primarySubtle' : 'background',
-                                    border: '1px solid',
-                                    borderColor: checked ? 'primary' : 'border',
-                                    borderRadius: '8px',
-                                    _hover: { borderColor: 'borderStrong' },
-                                })}
-                            >
-                                <button
-                                    type="button"
-                                    onClick={() => handleToggle(p)}
-                                    aria-pressed={checked}
-                                    className={css({
-                                        display: 'flex',
-                                        alignItems: 'flex-start',
-                                        gap: '8px',
-                                        textAlign: 'left',
-                                        cursor: 'pointer',
-                                        bg: 'transparent',
-                                        border: 'none',
-                                        p: '0',
-                                        width: '100%',
-                                    })}
-                                >
-                                    <span
-                                        className={css({
-                                            flexShrink: 0,
-                                            width: '16px',
-                                            height: '16px',
-                                            borderRadius: '4px',
-                                            border: '2px solid',
-                                            borderColor: checked ? 'primary' : 'border',
-                                            bg: checked ? 'primary' : 'transparent',
-                                            color: 'textOnPrimary',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            mt: '2px',
-                                        })}
-                                    >
-                                        {checked && (
-                                            <svg
-                                                width="10"
-                                                height="10"
-                                                viewBox="0 0 12 12"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                strokeWidth="2"
-                                            >
-                                                <path d="M2 6l3 3 5-6" />
-                                            </svg>
-                                        )}
-                                    </span>
-                                    <div className={css({ flex: 1, minWidth: 0 })}>
-                                        <div
-                                            className={css({
-                                                fontSize: '14px',
-                                                fontWeight: '600',
-                                                color: 'text',
-                                            })}
-                                        >
-                                            {p.name}
-                                        </div>
-                                        <div className={css({ fontSize: '11px', color: 'textSubtle', mt: '2px' })}>
-                                            v{displayedVersion}
-                                            {componentCount === undefined ? '' : ` · ${componentCount} コンポーネント`}
-                                        </div>
-                                        <SourceLabel mod={p} />
-                                    </div>
-                                </button>
-                                <div className={css({ pl: '24px' })}>
-                                    <ModAuthor mod={p} version={displayedVersion} />
-                                </div>
-
-                                {checked && (
-                                    <div
-                                        className={css({
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '6px',
-                                            pl: '24px',
-                                        })}
-                                    >
-                                        <select
-                                            aria-label={`バージョン (${p.name})`}
-                                            value={pinnedVersion}
-                                            onChange={(e) => handleVersionChange(p, e.target.value)}
-                                            className={css({
-                                                fontSize: '11px',
-                                                p: '2px 6px',
-                                                borderRadius: '6px',
-                                                border: '1px solid',
-                                                borderColor: 'border',
-                                                bg: 'background',
-                                                color: 'text',
-                                            })}
-                                        >
-                                            <option value="latest">latest（自動追従）</option>
-                                            {(p.versions ?? []).map((v) => (
-                                                <option key={v.version} value={v.version}>
-                                                    v{v.version}
-                                                </option>
-                                            ))}
-                                        </select>
-                                        {isOutdated && (
-                                            <button
-                                                type="button"
-                                                onClick={() => handleVersionChange(p, p.version)}
-                                                className={css({
-                                                    fontSize: '11px',
-                                                    color: 'primary',
-                                                    bg: 'transparent',
-                                                    border: 'none',
-                                                    cursor: 'pointer',
-                                                    textDecoration: 'underline',
-                                                })}
-                                            >
-                                                最新 (v{p.version}) に更新
-                                            </button>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
-                    {!loading && mods.length === 0 && (
-                        <div className={css({ fontSize: '13px', color: 'textMuted', p: '12px' })}>
-                            利用可能なmodが見つかりません
-                        </div>
-                    )}
-                </div>
-
-                {unknownSelected.length > 0 && (
-                    <div
+            <PanelSection title="使用するmod">
+                <div className={css({ display: 'flex', flexDirection: 'column', gap: '8px' })}>
+                    <input
+                        type="search"
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        placeholder="名前・ID・作者で絞り込む"
+                        aria-label="mod を絞り込む"
                         className={css({
-                            bg: 'background',
-                            border: '1px dashed',
-                            borderColor: 'border',
+                            width: '100%',
+                            fontSize: '13px',
+                            p: '8px 12px',
                             borderRadius: '8px',
-                            p: '10px 12px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '4px',
-                            mt: '3',
+                            border: '1px solid',
+                            borderColor: 'border',
+                            bg: 'background',
+                            color: 'text',
                         })}
-                    >
-                        <span className={css({ fontSize: '11px', color: 'textSubtle', fontWeight: '600' })}>
-                            作者参照・追加の取得先のmod
-                        </span>
-                        {unknownSelected.map((e) => (
-                            <div
-                                key={e.id}
-                                className={css({
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    fontSize: '13px',
-                                    color: 'text',
-                                })}
-                            >
-                                <span>
-                                    {e.author ? `@${e.author}/${e.id}` : e.id} — {e.version}
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        resetInstallation();
-                                        removeSelected(e.id);
-                                    }}
-                                    className={css({
-                                        fontSize: '11px',
-                                        color: 'errorText',
-                                        bg: 'transparent',
-                                        border: 'none',
-                                        cursor: 'pointer',
-                                    })}
-                                >
-                                    削除
-                                </button>
-                            </div>
-                        ))}
+                    />
+                    <div className={listBox}>
+                        <div className={cx(rowGrid, headerRow)} aria-hidden="true">
+                            <span>名前</span>
+                            <span>使う版</span>
+                            <span className={wideOnly}>最新</span>
+                            <span />
+                        </div>
+                        <ul aria-label="ubichill と mod の一覧">
+                            <li className={listItem}>
+                                <UbichillRow current={protocol} pinned={pinnedProtocol} onChange={setProtocol} />
+                            </li>
+                            {rows.map((row) => (
+                                <li key={row.key} className={listItem}>
+                                    {row.kind === 'available' ? (
+                                        <AvailableModRow
+                                            row={row}
+                                            onAdd={() => add(row.mod)}
+                                            onRemove={() => remove(row.mod.id)}
+                                            onVersion={(version) => changeVersion(row.mod, version)}
+                                        />
+                                    ) : (
+                                        <ExtraModRow entry={row.entry} onRemove={() => remove(row.entry.id)} />
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                        {(loading || rows.length === 0) && (
+                            <p className={css({ fontSize: '13px', color: 'textMuted', p: '12px' })}>
+                                {loading
+                                    ? 'mod を読み込み中…'
+                                    : query
+                                      ? '一致する mod はありません'
+                                      : '利用可能なmodが見つかりません'}
+                            </p>
+                        )}
                     </div>
-                )}
+                </div>
             </PanelSection>
 
             <PanelSection title="インストール差分">
                 {hasDiff ? (
                     <div className={css({ display: 'flex', flexDirection: 'column', gap: '2' })}>
+                        {protocolChanged && (
+                            <span className={css({ fontSize: '13px', fontWeight: '600', color: 'text' })}>
+                                更新: ubichill (v{pinnedProtocol} → v{protocol})
+                            </span>
+                        )}
                         {diff.added.map((d) => (
                             <DiffRow key={`add:${d.name}`} kind="追加" dependency={d} />
                         ))}
@@ -491,7 +417,7 @@ export function ModSelector({ dependencies, lock, onCommitDependencies }: ModSel
                     <button
                         type="button"
                         onClick={install}
-                        disabled={!hasDiff || installation.checking || loading}
+                        disabled={!hasDiff || installation.checking || (modsChanged && loading)}
                         className={editorButton({ intent: 'success' })}
                     >
                         {installation.checking
@@ -510,13 +436,171 @@ export function ModSelector({ dependencies, lock, onCommitDependencies }: ModSel
     );
 }
 
-function SourceLabel({ mod }: { mod: AvailableMod }) {
-    const url = URL.parse(mod.baseUrl ?? MOD_CDN_URL, window.location.origin);
+/** ubichill の版。mod と同じく固定し、上げるのは作者が選んだときだけ（下げる選択肢は出さない）。 */
+function UbichillRow({
+    current,
+    pinned,
+    onChange,
+}: {
+    current: number;
+    pinned: number;
+    onChange: (protocol: number) => void;
+}) {
+    const outdated = current < PROTOCOL_VERSION;
     return (
-        <div className={css({ fontSize: '11px', mt: '2px', color: 'textSubtle', overflowWrap: 'anywhere' })}>
-            配信元: {url?.host ?? mod.sourceLabel}
+        <div className={rowGrid}>
+            <div>
+                <div className={nameText}>ubichill</div>
+                <div className={metaText}>本体の機能の版</div>
+            </div>
+            <select
+                aria-label="ubichill の版"
+                value={current}
+                onChange={(e) => onChange(Number(e.target.value))}
+                className={versionSelect}
+            >
+                {selectableProtocolVersions(pinned).map((version) => (
+                    <option key={version} value={version}>
+                        v{version}
+                    </option>
+                ))}
+            </select>
+            <LatestVersion version={`v${PROTOCOL_VERSION}`} outdated={outdated} />
+            <div className={actions}>
+                {outdated && (
+                    <button
+                        type="button"
+                        onClick={() => onChange(PROTOCOL_VERSION)}
+                        className={editorButton({ size: 'sm' })}
+                    >
+                        更新
+                    </button>
+                )}
+            </div>
         </div>
     );
+}
+
+function AvailableModRow({
+    row,
+    onAdd,
+    onRemove,
+    onVersion,
+}: {
+    row: Extract<ModListRow<AvailableMod>, { kind: 'available' }>;
+    onAdd: () => void;
+    onRemove: () => void;
+    onVersion: (version: string) => void;
+}) {
+    const { mod } = row;
+    return (
+        <div className={cx(rowGrid, row.selected && css({ bg: 'surfaceAccent' }))}>
+            <div>
+                <div className={nameText}>{mod.name}</div>
+                <div className={metaText}>
+                    {mod.id === mod.name ? '' : `${mod.id} · `}
+                    {sourceHost(mod)}
+                </div>
+                {row.selected && <ModAuthor mod={mod} version={row.version} />}
+            </div>
+            {row.selected ? (
+                <select
+                    aria-label={`${mod.name} の版`}
+                    value={row.version}
+                    onChange={(e) => onVersion(e.target.value)}
+                    className={versionSelect}
+                >
+                    {row.versions.map((version) => (
+                        <option key={version} value={version}>
+                            v{version}
+                        </option>
+                    ))}
+                </select>
+            ) : (
+                <span className={mutedCell}>—</span>
+            )}
+            <LatestVersion version={`v${mod.version}`} outdated={row.outdated} />
+            <div className={actions}>
+                {!row.selected ? (
+                    <button
+                        type="button"
+                        onClick={onAdd}
+                        disabled={row.blocked}
+                        title={row.blocked ? '同じ ID の mod が別の取得元から入っています' : undefined}
+                        aria-label={`${mod.name} を追加`}
+                        className={editorButton({ size: 'sm' })}
+                    >
+                        追加
+                    </button>
+                ) : (
+                    <>
+                        {row.outdated && (
+                            <button
+                                type="button"
+                                onClick={() => onVersion(mod.version)}
+                                aria-label={`${mod.name} を v${mod.version} に更新`}
+                                className={editorButton({ size: 'sm' })}
+                            >
+                                更新
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={onRemove}
+                            aria-label={`${mod.name} を外す`}
+                            className={editorButton({ intent: 'icon', size: 'sm' })}
+                        >
+                            外す
+                        </button>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+}
+
+/** 取得元の一覧に無い依存（作者参照で入れた mod など）。版を変えるときは作品ページから入れ直す。 */
+function ExtraModRow({ entry, onRemove }: { entry: ModSelectionEntry; onRemove: () => void }) {
+    const label = entry.author ? `@${entry.author}/${entry.id}` : entry.id;
+    return (
+        <div className={rowGrid}>
+            <div>
+                <div className={nameText}>{label}</div>
+                <div className={metaText}>
+                    {entry.baseUrl ? (URL.parse(entry.baseUrl)?.host ?? entry.baseUrl) : '一覧に無い mod'}
+                </div>
+            </div>
+            <span className={mutedCell}>{entry.version === 'latest' ? '—' : `v${entry.version}`}</span>
+            <span className={cx(mutedCell, wideOnly)}>—</span>
+            <div className={actions}>
+                <button
+                    type="button"
+                    onClick={onRemove}
+                    aria-label={`${label} を外す`}
+                    className={editorButton({ intent: 'icon', size: 'sm' })}
+                >
+                    外す
+                </button>
+            </div>
+        </div>
+    );
+}
+
+function LatestVersion({ version, outdated }: { version: string; outdated: boolean }) {
+    return (
+        <span
+            className={cx(
+                outdated ? css({ fontSize: '12px', fontWeight: '600', color: 'primary' }) : mutedCell,
+                wideOnly,
+            )}
+        >
+            {version}
+        </span>
+    );
+}
+
+function sourceHost(mod: AvailableMod): string {
+    return URL.parse(mod.baseUrl ?? MOD_CDN_URL, window.location.origin)?.host ?? mod.sourceLabel;
 }
 
 function DiffRow({
