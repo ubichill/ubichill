@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { instanceWorldRef, localWorldPagePath, needsSharePathLookup, worldPagePath } from './worldRef';
+import {
+    instanceWorldRef,
+    localWorldPagePath,
+    needsSharePathLookup,
+    worldCopyConfirmText,
+    worldEditTarget,
+    worldPagePath,
+} from './worldRef';
 
 describe('instanceWorldRef', () => {
     it('外部ワールドは取得元の URL（id だけでは自サーバーで解決できない）', () => {
@@ -90,5 +97,33 @@ describe('needsSharePathLookup', () => {
         expect(needsSharePathLookup({ url, source: { kind: 'github' }, identity: { status: 'verified' } })).toBe(false);
         expect(needsSharePathLookup({ url, source: { kind: 'github' }, identity: { status: 'unsigned' } })).toBe(false);
         expect(needsSharePathLookup({ source: { kind: 'github' }, identity: verified })).toBe(false);
+    });
+});
+
+describe('worldEditTarget', () => {
+    it('このサーバーのワールド（由来が無い古いデータも）はそのまま編集する', () => {
+        expect(worldEditTarget({ id: 'abc123' })).toEqual({ copy: false, path: '/world/abc123/edit' });
+        expect(
+            worldEditTarget({
+                id: 'abc123',
+                source: { kind: 'local', url: 'https://ubichill.com/api/v1/authors/me/worlds/w.yaml' },
+            }),
+        ).toEqual({ copy: false, path: '/world/abc123/edit' });
+    });
+
+    it('外部に公開したワールドは、取得元の URL からコピーを開く', () => {
+        const url = 'https://ieyoukan.github.io/ubichill-worlds/worlds/chillwa.yaml';
+        expect(worldEditTarget({ id: 'chillwa', source: { kind: 'github', url } })).toEqual({
+            copy: true,
+            path: `/worlds/new?from=${encodeURIComponent(url)}`,
+        });
+    });
+});
+
+describe('worldCopyConfirmText', () => {
+    it('公開先はホスト名で示す', () => {
+        expect(worldCopyConfirmText('https://ieyoukan.github.io/ubichill-worlds/worlds/chillwa.yaml')).toContain(
+            'ieyoukan.github.io で公開',
+        );
     });
 });

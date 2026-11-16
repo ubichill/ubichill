@@ -8,7 +8,7 @@ import { useInstances } from '@/components/worlds/useInstances';
 import { WorldDetailModal } from '@/components/worlds/WorldDetailModal';
 import { useBlockedIds } from '@/lib/social/blocks';
 import { fetchInstance } from '@/lib/worlds/instancesApi';
-import { instanceWorldRef } from '@/lib/worlds/worldRef';
+import { instanceWorldRef, worldCopyConfirmText, worldEditTarget } from '@/lib/worlds/worldRef';
 import { css } from '@/styled-system/css';
 import { sectionHeading, tabPanel, tabSection } from './shared';
 
@@ -113,11 +113,16 @@ export function InstanceTab({ currentInstanceId, onNavigate }: InstanceTabProps)
         }
     };
 
+    const editTarget = world ? worldEditTarget(world) : null;
     const handleEdit = async () => {
-        if (!world) return;
-        if (!(await confirm('ワールドの編集画面に移動しますか？'))) return;
+        if (!world || !editTarget) return;
+        const message =
+            editTarget.copy && world.source
+                ? worldCopyConfirmText(world.source.url)
+                : 'ワールドの編集画面に移動しますか？';
+        if (!(await confirm(message))) return;
         onNavigate?.();
-        navigate(`/world/${world.id}/edit`);
+        navigate(editTarget.path);
     };
 
     const participants = [...users.values()].filter((u) => !blockedIds.has(u.id));
@@ -287,7 +292,7 @@ export function InstanceTab({ currentInstanceId, onNavigate }: InstanceTabProps)
                                 <path d="M12 20h9" />
                                 <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
                             </svg>
-                            編集
+                            {editTarget?.copy ? 'コピーして編集' : '編集'}
                         </button>
                     )}
                 </div>

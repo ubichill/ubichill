@@ -6,6 +6,7 @@ import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { useDialogLayer } from '@/components/ui/dialogLayer';
 import { useSession } from '@/lib/session';
 import { createInstance, fetchInstances, fetchWorld } from '@/lib/worlds/instancesApi';
+import { worldCopyConfirmText, worldEditTarget } from '@/lib/worlds/worldRef';
 import { css } from '@/styled-system/css';
 import { AccessTypeSelect } from './AccessTypeSelect';
 import { AuthorAccountLabel } from './AuthorAccountLabel';
@@ -78,6 +79,7 @@ export function WorldDetailModal({
     }, [worldRef]);
 
     const [accessType, setAccessType] = useState<AccessType>('public');
+    const editTarget = worldEditTarget({ id: world?.id ?? worldId, source: world?.source });
 
     const handleCreate = async () => {
         if (creating) return;
@@ -306,8 +308,12 @@ export function WorldDetailModal({
                                         <button
                                             type="button"
                                             onClick={async () => {
-                                                if (await confirm('ワールドの編集画面に移動しますか？')) {
-                                                    navigate(`/world/${world.id}/edit`);
+                                                const message =
+                                                    editTarget.copy && world.source
+                                                        ? worldCopyConfirmText(world.source.url)
+                                                        : 'ワールドの編集画面に移動しますか？';
+                                                if (await confirm(message)) {
+                                                    navigate(editTarget.path);
                                                     onClose();
                                                 }
                                             }}
@@ -325,7 +331,7 @@ export function WorldDetailModal({
                                                 _hover: { opacity: 0.9 },
                                             })}
                                         >
-                                            編集
+                                            {editTarget.copy ? 'コピーして編集' : '編集'}
                                         </button>
                                     )}
                                 </div>

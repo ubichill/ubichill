@@ -24,3 +24,23 @@ export function needsSharePathLookup(world: {
     const authorUnknowable = !!world.identity && !(world.identity.status === 'verified' && world.identity.author);
     return !world.sharePath && !!world.url && world.source?.kind !== 'local' && !authorUnknowable;
 }
+
+/**
+ * 「編集」の行き先。このサーバーのワールドはそのまま編集する。外部（GitHub Pages など）に公開したワールドは、
+ * 公開先へ書き戻せないので、コピーを新しいワールドとして開く（元のワールドは変わらない）。
+ */
+export function worldEditTarget(world: { id: string; source?: { kind: string; url: string } }): {
+    copy: boolean;
+    path: string;
+} {
+    if (!world.source || world.source.kind === 'local') {
+        return { copy: false, path: `/world/${encodeURIComponent(world.id)}/edit` };
+    }
+    return { copy: true, path: `/worlds/new?from=${encodeURIComponent(world.source.url)}` };
+}
+
+/** 外部のワールドをコピーして編集する前の確認の文。 */
+export function worldCopyConfirmText(sourceUrl: string): string {
+    const host = URL.canParse(sourceUrl) ? new URL(sourceUrl).host : sourceUrl;
+    return `このワールドは ${host} で公開されているので、ここでは書き換えられません。コピーを新しいワールドとして編集しますか？（元のワールドは変わりません）`;
+}
