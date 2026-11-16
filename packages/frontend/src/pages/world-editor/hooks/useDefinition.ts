@@ -1,14 +1,15 @@
 /**
  * WorldDefinition のロード / state 管理 / dirty 判定。
  *
- * - 初期値は `createInitialDefinition()`、編集モードなら worldId から fetch して上書き
+ * - 初期値は `createInitialDefinition()`、編集モードなら worldId から fetch して上書き。`copyFrom` なら外部のワールドのコピーで始める
  * - savedYaml は「最後にサーバーへ保存した状態の YAML」を保持し dirty 判定のベースにする
  * - updateEntities(mutate) は entity array を更新する便利関数
  */
-import { type InitialEntity, type WorldDefinition, withoutWorldLock } from '@ubichill/shared';
+import { type InitialEntity, type ResolvedWorld, type WorldDefinition, withoutWorldLock } from '@ubichill/shared';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import yaml from 'yaml';
 import { API_BASE } from '@/lib/api';
+import { loadWorldCopy } from '../lib/worldCopy';
 
 /** 新しいワールドの metadata.name（作者のワールドの中で一意な識別子。保存後は変えない）。 */
 const newWorldName = (): string =>
@@ -35,7 +36,10 @@ function createInitialDefinition(): WorldDefinition {
 interface UseDefinitionOptions {
     isEdit: boolean;
     worldId?: string;
+    /** 新しいワールドを、この URL の外部のワールドのコピーから始める */
+    copyFrom?: string;
     onError: (msg: string) => void;
+    onCopied?: (sourceUrl: string) => void;
 }
 
 /** 公開状態。published = 一覧に公開中、hasDraft = 公開中の版とは別に未公開の下書きがある。 */
@@ -55,16 +59,41 @@ interface UseDefinitionResult {
     setSavedYaml: React.Dispatch<React.SetStateAction<string | null>>;
     /** ロード中 (= edit モードで fetch 中) */
     loading: boolean;
+    /** 読み込めなかった理由。読めないまま空のワールドを編集・保存させない */
+    loadError: string | null;
     /** 保存以降に何か変更があったか */
     dirty: boolean;
     /** initialEntities 配列だけを更新する糖衣 */
     updateEntities: (mutate: (prev: InitialEntity[]) => InitialEntity[]) => void;
 }
 
-export function useDefinition({ isEdit, worldId, onError }: UseDefinitionOptions): UseDefinitionResult {
+async function resolveExternalWorld(url: string, signal: AbortSignal) {
+    const res = await fetch(`${API_BASE}/api/v1/worlds/resolve?url=${encodeURIComponent(url)}`, {
+        credentials: 'include',
+        signal,
+    });
+    const body = (await res.json().catch(() => ({}))) as { error?: string; source?: { url: string } };
+    if (!res.ok || !body.source) throw new Error(body.error ?? `ワールドを読み込めません (${res.status})`);
+    return body as ResolvedWorld;
+}
+
+async function fetchWorldYaml(url: string, signal: AbortSignal): Promise<string> {
+    const res = await fetch(url, { headers: { Accept: 'application/yaml' }, signal }).catch(() => undefined);
+    if (!res?.ok) throw new Error(`公開先からワールドの YAML を読めません${res ? ` (${res.status})` : ''}`);
+    return res.text();
+}
+
+export function useDefinition({
+    isEdit,
+    worldId,
+    copyFrom,
+    onError,
+    onCopied,
+}: UseDefinitionOptions): UseDefinitionResult {
     const [definition, setDefinition] = useState<WorldDefinition>(createInitialDefinition);
     const [savedYaml, setSavedYaml] = useState<string | null>(null);
-    const [loading, setLoading] = useState(isEdit);
+    const [loading, setLoading] = useState(isEdit || !!copyFrom);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [publishState, setPublishState] = useState<PublishState>({
         published: false,
         hasDraft: false,
@@ -81,7 +110,12 @@ export function useDefinition({ isEdit, worldId, onError }: UseDefinitionOptions
         })
             .then(async (res) => {
                 if (res.status === 403) throw new Error('このワールドの編集権限がありません');
-                if (!res.ok) throw new Error(`定義取得失敗 (${res.status})`);
+                if (res.status === 404) {
+                    throw new Error(
+                        'このワールドはこのサーバーにありません。外部に公開したワールドは、ワールドの詳細の「コピーして編集」から開けます',
+                    );
+                }
+                if (!res.ok) throw new Error(`ワールドを読み込めません (${res.status})`);
                 // 下書きがあれば下書きを編集する（公開中の版はサーバー側に残っている）
                 const data = (await res.json()) as {
                     definition: WorldDefinition;
@@ -99,7 +133,9 @@ export function useDefinition({ isEdit, worldId, onError }: UseDefinitionOptions
             })
             .catch((e: unknown) => {
                 if (e instanceof DOMException && e.name === 'AbortError') return;
-                onError(e instanceof Error ? e.message : '読み込み失敗');
+                const message = e instanceof Error ? e.message : '読み込み失敗';
+                setLoadError(message);
+                onError(message);
             })
             .finally(() => {
                 if (ctrl.signal.aborted) return;
@@ -107,6 +143,34 @@ export function useDefinition({ isEdit, worldId, onError }: UseDefinitionOptions
             });
         return () => ctrl.abort();
     }, [worldId, isEdit, onError]);
+
+    useEffect(() => {
+        if (isEdit || !copyFrom) return;
+        const ctrl = new AbortController();
+        setLoading(true);
+        loadWorldCopy(copyFrom, {
+            resolve: (url) => resolveExternalWorld(url, ctrl.signal),
+            fetchText: (url) => fetchWorldYaml(url, ctrl.signal),
+            newName: newWorldName,
+        })
+            .then((copy) => {
+                if (ctrl.signal.aborted) return;
+                setDefinition(copy);
+                setSavedYaml(null);
+                onCopied?.(copyFrom);
+            })
+            .catch((e: unknown) => {
+                if (ctrl.signal.aborted) return;
+                const message = e instanceof Error ? e.message : '読み込み失敗';
+                setLoadError(message);
+                onError(message);
+            })
+            .finally(() => {
+                if (ctrl.signal.aborted) return;
+                setLoading(false);
+            });
+        return () => ctrl.abort();
+    }, [copyFrom, isEdit, onError, onCopied]);
 
     const dirty = useMemo(() => {
         if (savedYaml === null) return true;
@@ -126,6 +190,7 @@ export function useDefinition({ isEdit, worldId, onError }: UseDefinitionOptions
         savedYaml,
         setSavedYaml,
         loading,
+        loadError,
         dirty,
         updateEntities,
         publishState,

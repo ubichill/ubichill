@@ -67,12 +67,34 @@ export function WorldEditorPage() {
     const reportLoadError = useCallback((message: string) => reportError('読み込み', message), [reportError]);
     const reportEditorError = useCallback((message: string) => reportError('エディタ', message), [reportError]);
 
-    const { definition, setDefinition, setSavedYaml, loading, dirty, updateEntities, publishState, setPublishState } =
-        useDefinition({
-            isEdit,
-            worldId,
-            onError: reportLoadError,
+    // 外部のワールドのコピーから始める（`/worlds/new?from=<ワールドの URL>`）
+    const [copyFrom] = useState(() =>
+        isEdit ? undefined : (new URLSearchParams(window.location.search).get('from') ?? undefined),
+    );
+    const reportCopied = useCallback((sourceUrl: string) => {
+        logConsole({
+            level: 'info',
+            source: '読み込み',
+            message: `${sourceUrl} のワールドをコピーしました。保存すると、このサーバーの新しいワールドになります（元のワールドは変わりません）`,
         });
+    }, []);
+    const {
+        definition,
+        setDefinition,
+        setSavedYaml,
+        loading,
+        loadError,
+        dirty,
+        updateEntities,
+        publishState,
+        setPublishState,
+    } = useDefinition({
+        isEdit,
+        worldId,
+        copyFrom,
+        onError: reportLoadError,
+        onCopied: reportCopied,
+    });
 
     const handleSaveResult = useCallback((result: SaveResult) => {
         if (!result.ok) {
@@ -256,6 +278,15 @@ export function WorldEditorPage() {
 
     if (isPending || !session) return <CenteredMessage text="読み込み中..." />;
     if (loading) return <CenteredMessage text="ワールドを読み込み中..." />;
+    if (loadError) {
+        return (
+            <CenteredMessage text={loadError}>
+                <button type="button" className={editorButton({ intent: 'secondary' })} onClick={() => navigate(-1)}>
+                    戻る
+                </button>
+            </CenteredMessage>
+        );
+    }
 
     const selectedEntity = selection.selectedPath
         ? getEntityAt(definition.spec.initialEntities, selection.selectedPath)
@@ -576,18 +607,23 @@ export function WorldEditorPage() {
     );
 }
 
-function CenteredMessage({ text }: { text: string }) {
+function CenteredMessage({ text, children }: { text: string; children?: React.ReactNode }) {
     return (
         <div
             className={css({
                 minH: '100vh',
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
+                gap: '4',
+                px: '6',
                 color: 'textMuted',
+                textAlign: 'center',
             })}
         >
-            {text}
+            <p className={css({ maxW: '480px', lineHeight: '1.7' })}>{text}</p>
+            {children}
         </div>
     );
 }
