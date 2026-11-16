@@ -1,12 +1,15 @@
 {
     "name": "@ubichill/mod-wasm-demo",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "private": true,
     "type": "module",
     "main": "src/index.ts",
     "types": "src/index.ts",
     "exports": {
         ".": "./src/index.ts"
+    },
+    "ubichill": {
+        "description": "同梱した WebAssembly で FNV-1a のハッシュを計算するサンプルです。"
     },
     "peerDependencies": {
         "ubichill": "*"

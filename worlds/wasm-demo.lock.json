@@ -3,8 +3,8 @@
   "mods": {
     "wasm-demo": {
       "id": "wasm-demo",
-      "version": "1.0.0",
-      "manifestIntegrity": "sha256-o1k39MkuNLZzUAQy7aogkgi7JDu2dWr14fd6CQIrZts=",
+      "version": "1.0.1",
+      "manifestIntegrity": "sha256-Fyg0uZFfwIpLhUztl4gRQxQu+GWa/+65KSj97NYObf8=",
       "components": {
         "wasm-demo:checksum": {
           "workerUrl": "./checksum/index.faa2cf68.js",

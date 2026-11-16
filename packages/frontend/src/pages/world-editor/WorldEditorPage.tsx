@@ -1,20 +1,11 @@
-import {
-    assertPackageReplacement,
-    createModLock,
-    instantiatePrefab,
-    lockedMods,
-    WorldDefinitionSchema,
-} from '@ubichill/shared';
+import { instantiatePrefab, WorldDefinitionSchema } from '@ubichill/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ConsolePanel } from '@/components/console/ConsolePanel';
 import { ConsoleStatusBar } from '@/components/console/ConsoleStatusBar';
 import { useConsoleEntries } from '@/components/console/useConsoleEntries';
-import { PackagePicker } from '@/components/mods/PackagePicker';
-import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { consoleCounts } from '@/lib/console/console';
 import { appConsole, logConsole } from '@/lib/console/consoleStore';
-import { confirmModUpdate } from '@/lib/mods/confirmUpdate';
 import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
 import { EditorAssets } from './components/assets/EditorAssets';
@@ -23,7 +14,6 @@ import { ControlPanelTabs } from './components/ControlPanelTabs';
 import { DockSlot } from './components/DockSlot';
 import { EditorHeader } from './components/EditorHeader';
 import { EditorStage } from './components/EditorStage';
-import { ModSelector } from './components/forms/ModSelector';
 import { WorldInfoForm } from './components/forms/WorldInfoForm';
 import { YamlEditorForm } from './components/forms/YamlEditorForm';
 import { EditorHierarchy } from './components/hierarchy/EditorHierarchy';
@@ -31,6 +21,7 @@ import { EntityInspector } from './components/inspector/EntityInspector';
 import { MobileLeftHandle } from './components/MobileLeftHandle';
 import { MobileRightHandle } from './components/MobileRightHandle';
 import { Modal } from './components/Modal';
+import { ModManager } from './components/mods/ModManager';
 import { PanelSection } from './components/PanelSection';
 import { PrefabControls } from './components/PrefabControls';
 import { PublishPanel } from './components/PublishPanel';
@@ -61,7 +52,6 @@ import { editorButton } from './recipes/button';
 export function WorldEditorPage() {
     const { worldId } = useParams<{ worldId?: string }>();
     const navigate = useNavigate();
-    const confirm = useConfirm();
     const { data: session, isPending } = useSession();
     const isEdit = !!worldId;
 
@@ -83,9 +73,6 @@ export function WorldEditorPage() {
             worldId,
             onError: reportLoadError,
         });
-
-    const currentDefinition = useRef(definition);
-    currentDefinition.current = definition;
 
     const handleSaveResult = useCallback((result: SaveResult) => {
         if (!result.ok) {
@@ -484,60 +471,13 @@ export function WorldEditorPage() {
                 {modals.activeTab === 'info' && <WorldInfoForm definition={definition} onChange={setDefinition} />}
                 {modals.activeTab === 'mods' && (
                     <>
-                        <PackagePicker
-                            initialRef={new URLSearchParams(window.location.search).get('addMod') ?? ''}
-                            onInstall={async (pkg) => {
-                                const current = currentDefinition.current;
-                                const deps = current.spec.dependencies ?? [];
-                                const old = deps.find((d) => d.name === pkg.entry.id);
-                                if (old && old.source.author !== pkg.entry.author)
-                                    throw new Error('同名の別作者の mod が入っています');
-                                const previous = lockedMods(current.spec.lock)[pkg.entry.id];
-                                assertPackageReplacement(previous, pkg.entry);
-                                const proposed = createModLock({
-                                    ...lockedMods(current.spec.lock),
-                                    [pkg.entry.id]: pkg.entry,
-                                });
-                                if (!(await confirmModUpdate(current.spec.lock, proposed, confirm))) return false;
-                                if (
-                                    JSON.stringify(lockedMods(currentDefinition.current.spec.lock)[pkg.entry.id]) !==
-                                    JSON.stringify(previous)
-                                )
-                                    throw new Error('確認中に mod が変わりました。読み直して追加してください');
-                                setDefinition((prev) => ({
-                                    ...prev,
-                                    spec: {
-                                        ...prev.spec,
-                                        dependencies: [
-                                            ...(prev.spec.dependencies ?? []).filter((d) => d.name !== pkg.entry.id),
-                                            {
-                                                name: pkg.entry.id,
-                                                source: {
-                                                    author: pkg.entry.author,
-                                                    url: pkg.entry.baseUrl,
-                                                    version: pkg.entry.version,
-                                                },
-                                            },
-                                        ],
-                                        lock: createModLock({
-                                            ...lockedMods(prev.spec.lock),
-                                            [pkg.entry.id]: pkg.entry,
-                                        }),
-                                    },
-                                }));
-                                return true;
-                            }}
-                        />
                         {packagesError && <p role="alert">{packagesError}</p>}
-                        <ModSelector
-                            key={JSON.stringify([
-                                definition.spec.dependencies,
-                                definition.spec.lock,
-                                definition.spec.requires,
-                            ])}
+                        <ModManager
                             dependencies={definition.spec.dependencies ?? []}
                             lock={definition.spec.lock}
                             requires={definition.spec.requires}
+                            entities={definition.spec.initialEntities}
+                            initialQuery={new URLSearchParams(window.location.search).get('addMod') ?? ''}
                             onCommit={({ dependencies, lock, requires }) =>
                                 setDefinition((prev) => ({
                                     ...prev,

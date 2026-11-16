@@ -176,6 +176,11 @@ export const ModVersionedManifestSchema = z.object({
     prefabs: PackagePrefabsSchema.optional(),
     /** mod のサムネイル（assets 内の画像の相対パス。hash は assetIntegrity で固定される）。 */
     thumbnail: z.string().optional(),
+    /**
+     * mod の説明（package.json の `ubichill.description`）。エディタの一覧と作品ページに出す。
+     * 長さはビルドで確かめる。ここで制限すると、長い説明の mod が読み込めなくなるため制限しない。
+     */
+    description: z.string().optional(),
     /** 同梱アセットの相対パス一覧（versioned ディレクトリ直下からの相対）。 */
     assets: z.array(z.string()).optional(),
     /**

@@ -1,7 +1,11 @@
 import { externalWorkRepository, userRepository } from '@ubichill/db';
 import { HANDLE_PATTERN, type PackageDescriptor, PackageIdSchema } from '@ubichill/shared';
-import { selfAccount } from '../authors/authorKeys';
+import { safeFetch } from '../../lib/safeFetch';
+import { logger } from '../../utils/logger';
+import { selfAccount, selfDomain } from '../authors/authorKeys';
 import { confirmedExternalMod } from '../worlds/externalWorkService';
+import { worldRegistry } from '../worlds/worldRegistry';
+import { createFederatedModCatalog } from './federatedCatalog';
 
 export async function modDescriptor(handle: string, name: string): Promise<PackageDescriptor | undefined> {
     if (!HANDLE_PATTERN.test(handle) || !PackageIdSchema.safeParse(name).success) return undefined;
@@ -32,4 +36,25 @@ export async function modCatalog(query: string, offset: number, handle?: string)
         items.push(...batch.filter((p): p is PackageDescriptor => !!p));
     }
     return { items, nextOffset: rows.length === 20 && offset < 10000 ? offset + 20 : null };
+}
+
+const federated = createFederatedModCatalog({
+    peers: () => worldRegistry.listPeers(),
+    // ピアのローカルの一覧（既定の scope）だけを取る。ピアが連合で知った mod まで取り込まない
+    fetchPage: async (baseUrl, offset) => {
+        const res = await safeFetch(`${baseUrl}/api/v1/mods?offset=${offset}`, {
+            headers: { Accept: 'application/json' },
+            signal: AbortSignal.timeout(5000),
+            maxBytes: 256 * 1024,
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+    },
+    selfDomain,
+    onError: (baseUrl, error) => logger.warn(`ピア ${baseUrl} の mod 一覧を取得できません:`, error),
+});
+
+/** フォロー中のサーバーが公開している mod（検索語はほかのサーバーへ送らない）。 */
+export function federatedModCatalog(query: string) {
+    return federated.search(query);
 }

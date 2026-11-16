@@ -5,7 +5,7 @@
  *   安全な権限は常に許可でユーザーには見せない（判断が不要なため）。
  * - modごとに記憶済みの許可/拒否を危険度つきで確認し、取り消す。
  *
- * 外部modレジストリの管理は World Editor の ModSelector（RegistryUrlManager）に一本化した
+ * 外部modレジストリの管理は World Editor の mod管理（レジストリのタブ）に一本化した
  * （ワールド作成/編集以外での利用がほぼ無いため。設定タブに置いても発見されにくい）。
  *
  * 権限状態は @ubichill/react の PermissionProvider（main.tsx でマウント）から取得する。

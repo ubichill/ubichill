@@ -1,7 +1,7 @@
 import { readPackageManifest } from '@ubichill/loader';
 import { type InitialEntity, unpackPrefab, updatePrefabInstance } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
-import { packageButton } from '@/components/mods/PackagePicker';
+import { packageButton } from '@/components/mods/PackageSummary';
 import { MOD_CDN_URL } from '@/lib/mods/modCdn';
 import { type EditorPackage, editorPackageBytes } from '@/lib/mods/packages';
 import { css } from '@/styled-system/css';

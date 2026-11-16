@@ -2,14 +2,16 @@ import { MOD_AUTHOR_CACHE_TTL_MS } from '@ubichill/loader';
 import { useCallback, useEffect, useState } from 'react';
 import { HOST_MOD_SOURCE, MOD_CDN_URL } from '@/lib/mods/modCdn';
 import { type ModAuthorCheck, modAuthorFetcher } from '@/world';
-import type { AvailableMod } from './useAvailableMods';
 
 export type ModAuthorState = { status: 'checking' } | ModAuthorCheck;
 const cache = new Map<string, { checkedAt: number; result: ModAuthorCheck }>();
 const fetchModAuthor = modAuthorFetcher(HOST_MOD_SOURCE);
 
 /** 選択した版の作者を確認する。失敗は記憶せず、再確認は成功キャッシュも取り直す。 */
-export function useModAuthor(mod: AvailableMod, version: string): { state: ModAuthorState; retry: () => void } {
+export function useModAuthor(
+    mod: { id: string; baseUrl?: string },
+    version: string,
+): { state: ModAuthorState; retry: () => void } {
     const baseUrl = mod.baseUrl ?? MOD_CDN_URL;
     const key = `${baseUrl}::${mod.id}@${version}`;
     const [attempt, setAttempt] = useState(0);
