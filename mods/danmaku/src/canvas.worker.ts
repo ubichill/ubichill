@@ -18,6 +18,7 @@ export const config: ComponentConfig = {
     defaultTransform: { z: 5000 },
     capabilities: ['canvas:draw', 'event:emit', 'scene:read'],
     description: '自機が撃った弾を Canvas2D で描画する。',
+    thumbnail: 'previews/canvas.svg',
 };
 
 const CANVAS_TARGET = 'field';

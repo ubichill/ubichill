@@ -14,7 +14,7 @@ spec:
   dependencies:
     - name: wasm-demo
       source:
-        version: 1.0.1
+        version: 1.0.2
   requires:
     protocol: 7
   initialEntities:

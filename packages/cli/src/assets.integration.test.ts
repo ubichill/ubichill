@@ -50,7 +50,12 @@ describe('同梱アセット: build → manifest → Host の照合', () => {
     });
 
     it('manifest に全アセットの SRI が載り、一覧はソート済み', () => {
-        expect(manifest.assets).toEqual(['fnv1a.wasm', 'sample.txt']);
+        expect(manifest.assets).toEqual([
+            'fnv1a.wasm',
+            'previews/checksum.svg',
+            'previews/thumbnail.svg',
+            'sample.txt',
+        ]);
         expect(Object.keys(manifest.assetIntegrity)).toEqual(manifest.assets);
         for (const sri of Object.values(manifest.assetIntegrity)) expect(sri).toMatch(/^sha256-[A-Za-z0-9+/]{43}=$/);
     });
@@ -94,12 +99,14 @@ describe('同梱アセット: build → manifest → Host の照合', () => {
     });
 
     it('アセットの無い mod の manifest には assetIntegrity を出さない（既存 lock を変えない）', async () => {
-        const out = mkdtempSync(join(tmpdir(), 'ubichill-assets-mobile-'));
+        // 公式の mod はどれも画像を同梱しているので、アセットの無い最小の mod で確かめる
+        const out = mkdtempSync(join(tmpdir(), 'ubichill-assets-none-'));
         try {
-            const built = await buildMod(join(repoRoot, 'mods', 'mobile-controller'), {
-                distDir: join(out, 'd'),
-                publicDir: join(out, 'p'),
-            });
+            const modDir = join(out, 'mod');
+            mkdirSync(join(modDir, 'src'), { recursive: true });
+            writeFileSync(join(modDir, 'package.json'), JSON.stringify({ name: 'asset-free', version: '1.0.0' }));
+            writeFileSync(join(modDir, 'src', 'tick.worker.ts'), "export const config = { description: 'x' };\n");
+            const built = await buildMod(modDir, { distDir: join(out, 'd'), publicDir: join(out, 'p') });
             const manifest = JSON.parse(readFileSync(join(out, 'd', `v${built.version}`, 'manifest.json'), 'utf-8'));
             expect(manifest.assets).toEqual([]);
             expect(manifest).not.toHaveProperty('assetIntegrity');

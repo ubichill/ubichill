@@ -14,10 +14,10 @@ spec:
   dependencies:
     - name: danmaku
       source:
-        version: 1.0.3
+        version: 1.0.4
     - name: mobile-controller
       source:
-        version: 1.1.1
+        version: 1.1.2
   requires:
     protocol: 7
   initialEntities:

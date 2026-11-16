@@ -1,6 +1,6 @@
 {
     "name": "@ubichill/mod-danmaku",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "private": true,
     "main": "src/index.ts",
     "types": "src/index.ts",
@@ -8,6 +8,7 @@
         ".": "./src/index.ts"
     },
     "ubichill": {
+        "thumbnail": "previews/thumbnail.svg",
         "description": "矢印キーで自機を動かし、弾を撃ち合う弾幕のサンプルです。"
     },
     "peerDependencies": {
