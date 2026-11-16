@@ -61,9 +61,14 @@ async function main() {
     }
     term.success('Database is ready', formatDuration(performance.now() - waitStarted));
 
-    // Run database migrations
+    // drizzle/*.sql を本番と同じ手順で流す。drizzle-kit push は失敗しても終了コード 0 で進み、
+    // 記録の外に表だけ作って以降の migrate を壊すので使わない。
     term.info('Running database migrations...');
-    const migrate = spawnSync('pnpm', ['--filter', '@ubichill/db', 'push'], { stdio: 'inherit', shell: true });
+    const migrate = spawnSync('pnpm', ['--filter', '@ubichill/db', 'migrate:dev'], {
+        stdio: 'inherit',
+        shell: true,
+        env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL || 'postgresql://ubichill:password@127.0.0.1:5433/ubichill' },
+    });
     if (migrate.status !== 0) {
         term.error('Failed to run database migrations');
         process.exit(1);
