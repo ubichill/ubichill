@@ -78,7 +78,11 @@ export function ConsolePanel({ entries, onClear }: { entries: readonly ConsoleEn
                         </button>
                     ))}
                 </div>
-                <CopyButton text={formatConsole(rows)} disabled={rows.length === 0} label="表示中の記録をコピー" />
+                <CopyButton
+                    text={() => formatConsole(rows)}
+                    disabled={rows.length === 0}
+                    label="表示中の記録をコピー"
+                />
             </div>
             <div className={body}>
                 <div
@@ -162,13 +166,14 @@ function ConsoleDetail({ entry, onClose }: { entry: ConsoleEntry; onClose: () =>
                         {entry.action.label}
                     </button>
                 )}
-                <CopyButton text={formatConsoleEntry(entry)} label="この記録をコピー" />
+                <CopyButton text={() => formatConsoleEntry(entry)} label="この記録をコピー" />
             </div>
         </section>
     );
 }
 
-function CopyButton({ text, label, disabled }: { text: string; label: string; disabled?: boolean }) {
+/** 押したときに文を作る（mod がログを出し続けても、描き直しのたびに全行を文にしない）。 */
+function CopyButton({ text, label, disabled }: { text: () => string; label: string; disabled?: boolean }) {
     const [copied, setCopied] = useState(false);
     useEffect(() => {
         if (!copied) return;
@@ -181,7 +186,7 @@ function CopyButton({ text, label, disabled }: { text: string; label: string; di
             className={tool()}
             aria-label={label}
             disabled={disabled}
-            onClick={() => void navigator.clipboard.writeText(text).then(() => setCopied(true))}
+            onClick={() => void navigator.clipboard.writeText(text()).then(() => setCopied(true))}
         >
             <svg
                 width="13"
