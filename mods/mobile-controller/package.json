@@ -1,6 +1,6 @@
 {
     "name": "@ubichill/mod-mobile-controller",
-    "version": "1.1.1",
+    "version": "1.1.2",
     "private": true,
     "main": "src/index.ts",
     "types": "src/index.ts",
@@ -8,6 +8,7 @@
         ".": "./src/index.ts"
     },
     "ubichill": {
+        "thumbnail": "previews/thumbnail.svg",
         "description": "タッチやペンで操作するための、画面に固定する仮想スティックとボタンです。"
     },
     "peerDependencies": {

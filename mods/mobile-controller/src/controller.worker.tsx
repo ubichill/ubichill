@@ -30,6 +30,7 @@ export const config: ComponentConfig = {
     // 画面全体を覆う HUD レイヤー（スティックは左下・ボタンは右下に自前で配置する）。
     overlay: 'fill',
     description: 'タッチ/ペン環境で操作する画面固定コントローラ（仮想スティック + アクションボタン）。',
+    thumbnail: 'previews/controller.svg',
     dataFields: {
         target: {
             type: 'entityRef',

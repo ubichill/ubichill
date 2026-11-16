@@ -3,12 +3,12 @@
   "mods": {
     "danmaku": {
       "id": "danmaku",
-      "version": "1.0.3",
-      "manifestIntegrity": "sha256-HtKk4vwsmQ7wBVGJsOfpaoxn/JibnEbeomyzKW6HXaQ=",
+      "version": "1.0.4",
+      "manifestIntegrity": "sha256-Aiq8KFiJ2fa2QcxBVxI2rNxgU+4TwYMDx0LL/F8Jj+g=",
       "components": {
         "danmaku:canvas": {
-          "workerUrl": "./canvas/index.dfb0bae9.js",
-          "integrity": "sha256-37C66QjSsrKgCsacMd2psL0bG11gnfTAfWzZB2phSQA=",
+          "workerUrl": "./canvas/index.fa1a4cb0.js",
+          "integrity": "sha256-+hpMsL32u3SlEQMGX9wqO/dJQFJJghZPZxuP9Z2CZIM=",
           "capabilities": [
             "canvas:draw",
             "event:emit",
@@ -16,8 +16,8 @@
           ]
         },
         "danmaku:player": {
-          "workerUrl": "./player/index.b0923800.js",
-          "integrity": "sha256-sJI4AHnihbe1VpFFS6HPb8fQ4gpwqwZZjXRX6tYAuNk=",
+          "workerUrl": "./player/index.6aa3422b.js",
+          "integrity": "sha256-aqNCK6WHEE5G2tSgeGfAtA7n5Dq9/rbHII0GOouRVbs=",
           "capabilities": [
             "event:emit",
             "scene:read",
@@ -26,8 +26,8 @@
           ]
         },
         "danmaku:wall": {
-          "workerUrl": "./wall/index.8074af9d.js",
-          "integrity": "sha256-gHSvnbc2K/oeCzVsbux+RQ9Pf1N9/Hl/3sEhHd3xzDU=",
+          "workerUrl": "./wall/index.53800c55.js",
+          "integrity": "sha256-U4AMVaHj3AWJaVh1L/qeUuaBih8lrobzVOcUCpiy+6Y=",
           "capabilities": [
             "ui:render"
           ]
@@ -36,12 +36,12 @@
     },
     "mobile-controller": {
       "id": "mobile-controller",
-      "version": "1.1.1",
-      "manifestIntegrity": "sha256-2f26g6MqzvFaSHg6iALvFo9gKO/CG3xVxd8UNRedmH0=",
+      "version": "1.1.2",
+      "manifestIntegrity": "sha256-AfsBOkSvLL/yNiQ+He2udm79jspzOpOZnoL6UbTzEpw=",
       "components": {
         "mobile-controller:controller": {
-          "workerUrl": "./controller/index.ba481627.js",
-          "integrity": "sha256-ukgWJzPuV9evnCTednR2FkC9RKUsw1jQh/GD5jZycaY=",
+          "workerUrl": "./controller/index.8de11556.js",
+          "integrity": "sha256-jeEVVrEM33DCaArh2tY+ui+XX5549GSrlVmj547KN5g=",
           "capabilities": [
             "event:emit",
             "scene:read",

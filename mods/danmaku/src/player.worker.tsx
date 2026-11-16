@@ -19,6 +19,7 @@ export const config: ComponentConfig = {
     watchEntityTypes: ['core:collider'],
     // x/y は指定しない（Entity の位置を継承）。w/h/z だけ上書きする。
     defaultTransform: { z: 10, w: 32, h: 32 },
+    thumbnail: 'previews/player.svg',
     dataFields: {
         speed: { type: 'number', default: 160, min: 20, max: 600, step: 10, label: '移動速度 (px/秒)' },
         fireRate: { type: 'number', default: 6, min: 1, max: 30, step: 1, label: '発射レート (発/秒)' },

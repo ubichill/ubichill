@@ -12,6 +12,7 @@ import { createWasmHasher, toHex, type WasmHasher } from './fnv1a';
 export const config: ComponentConfig = {
     defaultTransform: { x: 40, y: 40, z: 10, w: 380, h: 250 },
     description: '同梱した WASM で FNV-1a を計算するサンプル（同梱アセット・バイナリ fetch・WASM 実行の確認用）。',
+    thumbnail: 'previews/checksum.svg',
 };
 
 const MAX_FETCH_BYTES = 8 * 1024 * 1024;

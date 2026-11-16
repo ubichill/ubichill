@@ -3,6 +3,7 @@ import type { ComponentConfig } from 'ubichill';
 export const config: ComponentConfig = {
     capabilities: ['ui:render'],
     description: 'core:collider と同じEntityに置く、弾幕ワールドの壁の見た目。',
+    thumbnail: 'previews/wall.svg',
 };
 
 export default function WallView() {
