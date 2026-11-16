@@ -1,0 +1,17 @@
+{
+  "id": "wasm-demo",
+  "version": "1.0.1",
+  "manifestIntegrity": "sha256-Fyg0uZFfwIpLhUztl4gRQxQu+GWa/+65KSj97NYObf8=",
+  "components": {
+    "wasm-demo:checksum": {
+      "workerUrl": "./checksum/index.faa2cf68.js",
+      "integrity": "sha256-+qLPaK4yBRSwNJ9Hulm2q1gN7CRZe7/QRz1u7lf7luU=",
+      "capabilities": [
+        "asset:read",
+        "net:fetch",
+        "scene:read",
+        "ui:render"
+      ]
+    }
+  }
+}

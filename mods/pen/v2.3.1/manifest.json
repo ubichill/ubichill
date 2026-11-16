@@ -1,0 +1,327 @@
+{
+  "id": "pen",
+  "name": "pen",
+  "version": "2.3.1",
+  "components": {
+    "pen:canvas": {
+      "thumbnail": "previews/canvas.svg",
+      "canvasTargets": [
+        "drawing"
+      ],
+      "watchEntityTypes": [
+        "pen:stroke",
+        "pen:pen"
+      ],
+      "watchScope": "world",
+      "defaultTransform": {
+        "x": 0,
+        "y": 0,
+        "z": 5000
+      },
+      "capabilities": [
+        "canvas:draw",
+        "event:emit",
+        "scene:read",
+        "scene:update"
+      ],
+      "workerUrl": "./canvas/index.de409401.js"
+    },
+    "pen:pen": {
+      "thumbnail": "previews/pen.svg",
+      "watchEntityTypes": [
+        "pen:pen"
+      ],
+      "watchScope": "entity",
+      "defaultTransform": {
+        "x": 0,
+        "y": 0,
+        "z": 1,
+        "w": 36,
+        "h": 48
+      },
+      "dataFields": {
+        "color": {
+          "type": "color",
+          "default": "#1a1a1a",
+          "label": "ペンの色"
+        },
+        "strokeWidth": {
+          "type": "number",
+          "default": 4,
+          "min": 1,
+          "max": 30,
+          "step": 1,
+          "label": "線の太さ"
+        },
+        "eraser": {
+          "type": "boolean",
+          "default": false,
+          "label": "消しゴム",
+          "help": "描く代わりに、なぞった線を消す"
+        }
+      },
+      "capabilities": [
+        "event:emit",
+        "host:message",
+        "scene:read",
+        "scene:update",
+        "ui:render"
+      ],
+      "workerUrl": "./pen/index.60d49223.js"
+    },
+    "pen:stroke": {
+      "dataOnly": true,
+      "description": "確定したストローク 1 本（点・色・太さ・描くか消すか）"
+    },
+    "pen:tray": {
+      "thumbnail": "previews/tray.svg",
+      "defaultTransform": {
+        "x": 20,
+        "y": 20,
+        "z": 1000,
+        "w": 60,
+        "h": 240
+      },
+      "capabilities": [
+        "event:emit",
+        "scene:read",
+        "ui:render"
+      ],
+      "workerUrl": "./tray/index.731bc985.js"
+    }
+  },
+  "prefabs": {
+    "pen-set": {
+      "name": "ペンセット",
+      "description": "描いた線を表示するキャンバスと、ペン置き場・ペン 2 本・消しゴム。キャンバスはワールドに 1 つだけ置く（2 つ目からは「ペン置き場」を使う）。",
+      "thumbnail": "previews/pen-set.svg",
+      "entities": [
+        {
+          "id": "canvas",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "z": 5000,
+            "scale": 1,
+            "rotation": 0
+          },
+          "components": [
+            {
+              "type": "pen:canvas",
+              "data": {}
+            }
+          ],
+          "tags": [],
+          "children": []
+        },
+        {
+          "id": "tray",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "z": 1000,
+            "w": 266,
+            "h": 67,
+            "scale": 1,
+            "rotation": 0
+          },
+          "components": [
+            {
+              "type": "pen:tray",
+              "data": {}
+            }
+          ],
+          "tags": [],
+          "children": [
+            {
+              "id": "pen-blue",
+              "transform": {
+                "x": 9,
+                "y": 7,
+                "z": 6,
+                "w": 55,
+                "h": 48,
+                "scale": 1,
+                "rotation": 0
+              },
+              "components": [
+                {
+                  "type": "pen:pen",
+                  "data": {
+                    "color": "#93bcf0",
+                    "strokeWidth": 4
+                  }
+                }
+              ],
+              "tags": [],
+              "children": []
+            },
+            {
+              "id": "pen-black",
+              "transform": {
+                "x": 76,
+                "y": 7,
+                "z": 6,
+                "w": 55,
+                "h": 48,
+                "scale": 1,
+                "rotation": 0
+              },
+              "components": [
+                {
+                  "type": "pen:pen",
+                  "data": {
+                    "color": "#1a1a1a",
+                    "strokeWidth": 4
+                  }
+                }
+              ],
+              "tags": [],
+              "children": []
+            },
+            {
+              "id": "eraser",
+              "transform": {
+                "x": 143,
+                "y": 7,
+                "z": 6,
+                "w": 55,
+                "h": 48,
+                "scale": 1,
+                "rotation": 0
+              },
+              "components": [
+                {
+                  "type": "pen:pen",
+                  "data": {
+                    "color": "#1a1a1a",
+                    "strokeWidth": 4,
+                    "eraser": true
+                  }
+                }
+              ],
+              "tags": [],
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    "pen-tray": {
+      "name": "ペン置き場",
+      "description": "ペン置き場とペン 2 本・消しゴム。線を表示するキャンバスは含まないので、ワールドに「ペンセット」かキャンバスを 1 つ置いておく。",
+      "thumbnail": "previews/pen-tray.svg",
+      "entities": [
+        {
+          "id": "tray",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "z": 1000,
+            "w": 266,
+            "h": 67,
+            "scale": 1,
+            "rotation": 0
+          },
+          "components": [
+            {
+              "type": "pen:tray",
+              "data": {}
+            }
+          ],
+          "tags": [],
+          "children": [
+            {
+              "id": "pen-blue",
+              "transform": {
+                "x": 9,
+                "y": 7,
+                "z": 6,
+                "w": 55,
+                "h": 48,
+                "scale": 1,
+                "rotation": 0
+              },
+              "components": [
+                {
+                  "type": "pen:pen",
+                  "data": {
+                    "color": "#93bcf0",
+                    "strokeWidth": 4
+                  }
+                }
+              ],
+              "tags": [],
+              "children": []
+            },
+            {
+              "id": "pen-black",
+              "transform": {
+                "x": 76,
+                "y": 7,
+                "z": 6,
+                "w": 55,
+                "h": 48,
+                "scale": 1,
+                "rotation": 0
+              },
+              "components": [
+                {
+                  "type": "pen:pen",
+                  "data": {
+                    "color": "#1a1a1a",
+                    "strokeWidth": 4
+                  }
+                }
+              ],
+              "tags": [],
+              "children": []
+            },
+            {
+              "id": "eraser",
+              "transform": {
+                "x": 143,
+                "y": 7,
+                "z": 6,
+                "w": 55,
+                "h": 48,
+                "scale": 1,
+                "rotation": 0
+              },
+              "components": [
+                {
+                  "type": "pen:pen",
+                  "data": {
+                    "color": "#1a1a1a",
+                    "strokeWidth": 4,
+                    "eraser": true
+                  }
+                }
+              ],
+              "tags": [],
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "thumbnail": "previews/thumbnail.svg",
+  "description": "ペンを手に取って、ワールドに線を描けます。描いた線は後から入った人にも残ります。ペン置き場とペンのセットをプレハブで置けます。",
+  "assets": [
+    "previews/canvas.svg",
+    "previews/pen-set.svg",
+    "previews/pen-tray.svg",
+    "previews/pen.svg",
+    "previews/thumbnail.svg",
+    "previews/tray.svg"
+  ],
+  "assetIntegrity": {
+    "previews/canvas.svg": "sha256-YRz3FCDCpNZHKoramj4QlFHFvrlR2MycJkcCkNRj0l4=",
+    "previews/pen-set.svg": "sha256-gy4RxP7uGheMOtK96OwNQnzV8kHgsJQMxQ/Opfp1g7w=",
+    "previews/pen-tray.svg": "sha256-Z6/RCHLsde6aZbpD3JoClgnomVwEFDUQMZ1XDkXXvaY=",
+    "previews/pen.svg": "sha256-Z7SENW2c9xqWO8fU1h+747zm0GalC5ORN2NgAjniJ20=",
+    "previews/thumbnail.svg": "sha256-kOzq3jfZI5dYN8V8O/bzXlaMvluj389fwOEeV+mF8n8=",
+    "previews/tray.svg": "sha256-zlKGo0kMxyLu6XkHnGJ/qF/pV6nrY6FsifZyRfHY+EY="
+  }
+}

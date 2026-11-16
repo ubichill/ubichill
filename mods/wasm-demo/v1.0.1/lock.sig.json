@@ -1,0 +1,12 @@
+{
+  "format": "ubichill-signature",
+  "version": 2,
+  "kind": "mod",
+  "alg": "ed25519",
+  "publicKey": "PUlU51o_Sch92myux0fHEFuRJSxUbKiN9GC54o1fKW0",
+  "author": "ubichill@ubichill.com",
+  "subject": "wasm-demo",
+  "subjectVersion": "1.0.1",
+  "contentHash": "sha256-E6HVbQla0bLaK/IMrLNf6E0/ffSjmg2MlvOGX3JBLZI=",
+  "signature": "kubtEtUSoOuZuCIOVrMIqnC0EeSxzWHAAdIUd9ZMZuoH6ZI7ehbZHUXIly-kpEn-YzJLKmhN42p0jEe08tWPBw"
+}
