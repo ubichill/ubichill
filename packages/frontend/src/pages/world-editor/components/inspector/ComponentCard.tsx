@@ -9,8 +9,7 @@ import {
 } from '@ubichill/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { css } from '@/styled-system/css';
-import type { AvailableEntityKind, DataFields } from '../../hooks/useAvailableEntityKinds';
-import { COMPONENT_DRAG_MIME } from '../../lib/dnd';
+import type { DataFields } from '../../hooks/useAvailableEntityKinds';
 import { uiMarkupNotices } from '../../lib/uiMarkupNotices';
 import { CloseIcon } from '../hierarchy/hierarchyIcons';
 import { ColliderDataFields } from './ColliderDataFields';
@@ -371,92 +370,6 @@ function DataJsonField({ text, error, onChange }: { text: string; error: string;
                 className={textareaStyle}
             />
             {error && <span className={css({ fontSize: '11px', color: 'errorText' })}>{error}</span>}
-        </div>
-    );
-}
-
-// ============================================
-// 新規 Component 追加ピッカー (drag-drop 対応)
-// ============================================
-
-interface ComponentPickerProps {
-    availableKinds: AvailableEntityKind[];
-    onAdd: (type: string) => void;
-}
-
-export function ComponentPicker({ availableKinds, onAdd }: ComponentPickerProps) {
-    const [type, setType] = useState('');
-    const [dragOver, setDragOver] = useState(false);
-    const candidates = useMemo(() => availableKinds.map((k) => k.kind).sort(), [availableKinds]);
-
-    const handleAdd = () => {
-        if (!type) return;
-        onAdd(type);
-        setType('');
-    };
-
-    return (
-        <div
-            onDragOver={(e) => {
-                if (e.dataTransfer.types.includes(COMPONENT_DRAG_MIME)) {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = 'copy';
-                    setDragOver(true);
-                }
-            }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={(e) => {
-                const ctype = e.dataTransfer.getData(COMPONENT_DRAG_MIME);
-                setDragOver(false);
-                if (!ctype) return;
-                e.preventDefault();
-                onAdd(ctype);
-            }}
-            className={css({
-                display: 'grid',
-                gridTemplateColumns: '1fr auto',
-                gap: '6px',
-                pt: '2',
-                borderTop: '1px dashed',
-                borderColor: 'border',
-                outline: dragOver ? '2px dashed' : 'none',
-                outlineColor: 'primary',
-                outlineOffset: '2px',
-                borderRadius: '4px',
-            })}
-        >
-            <select
-                name="add-component-type"
-                value={type}
-                onChange={(e) => setType(e.target.value)}
-                className={inputStyle}
-            >
-                <option value="">+ コンポーネントを選択...</option>
-                {candidates.map((k) => (
-                    <option key={k} value={k}>
-                        {k}
-                    </option>
-                ))}
-            </select>
-            <button
-                type="button"
-                onClick={handleAdd}
-                disabled={!type}
-                className={css({
-                    padding: '6px 12px',
-                    bg: 'primary',
-                    color: 'textOnPrimary',
-                    border: 'none',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    fontWeight: '600',
-                    cursor: 'pointer',
-                    _disabled: { opacity: 0.4, cursor: 'not-allowed' },
-                    _hover: { opacity: 0.9 },
-                })}
-            >
-                追加
-            </button>
         </div>
     );
 }

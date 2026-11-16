@@ -17,6 +17,8 @@ import {
     PackageIdSchema,
     PackagePrefabsSchema,
     type PrefabFields,
+    previewImageProblems,
+    previewImageRefs,
     validatePackagePrefabs,
 } from '@ubichill/shared';
 import { colorEnabled, formatBytes, formatDuration, type Logger, silentLogger } from '@ubichill/terminal';
@@ -404,7 +406,13 @@ function resolveDirs(options: BuildOptions): { distDir: string; publicDir: strin
     return { distDir, publicDir };
 }
 
-function readPackageJson(modDir: string): { id: string; name: string; version: string; homepage?: string } {
+function readPackageJson(modDir: string): {
+    id: string;
+    name: string;
+    version: string;
+    homepage?: string;
+    thumbnail?: string;
+} {
     const path = join(modDir, 'package.json');
     if (!existsSync(path)) {
         throw new Error(`package.json not found in ${modDir}`);
@@ -417,7 +425,14 @@ function readPackageJson(modDir: string): { id: string; name: string; version: s
     if (!version) {
         throw new Error(`package.json に version が必要です: ${path}`);
     }
-    return { id, name, version, homepage: typeof pkg.homepage === 'string' ? pkg.homepage : undefined };
+    return {
+        id,
+        name,
+        version,
+        homepage: typeof pkg.homepage === 'string' ? pkg.homepage : undefined,
+        // mod のサムネイル（assets/ 内の画像の相対パス）
+        thumbnail: typeof pkg.ubichill?.thumbnail === 'string' ? pkg.ubichill.thumbnail : undefined,
+    };
 }
 
 /** `index.json` エントリが持つバージョン履歴の1件。 */
@@ -541,7 +556,7 @@ export interface ModArtifacts {
  * 出すもの: Component ごとの成果物（info）、capability の宣言と検出のずれ（warn）、かかった時間（debug）。
  */
 export async function compileMod(modDir: string, log: Logger = silentLogger): Promise<ModArtifacts> {
-    const { id, name, version } = readPackageJson(modDir);
+    const { id, name, version, thumbnail } = readPackageJson(modDir);
     const rootTsconfig = join(modDir, 'tsconfig.json');
     const tsconfig = existsSync(rootTsconfig) ? rootTsconfig : undefined;
     const inputs = new Set<string>([join(modDir, 'package.json'), ...(tsconfig ? [tsconfig] : [])]);
@@ -664,6 +679,16 @@ export async function compileMod(modDir: string, log: Logger = silentLogger): Pr
         ),
     );
     validatePackagePrefabs(id, prefabs, versionedComponents as PrefabFields);
+    // 見た目の画像（mod のサムネイル・Component・プレハブ）は assets/ の画像を指す。hash は assetIntegrity で固定される
+    const imageProblems = previewImageProblems(
+        previewImageRefs({
+            thumbnail,
+            components: versionedComponents as Record<string, { thumbnail?: string }>,
+            prefabs,
+        }),
+        Object.fromEntries(assets.files.map((asset) => [asset, files.get(asset)?.byteLength ?? 0])),
+    );
+    if (imageProblems.length > 0) throw new Error(imageProblems.join('\n'));
     const versionedManifest = JSON.stringify(
         {
             id,
@@ -671,6 +696,7 @@ export async function compileMod(modDir: string, log: Logger = silentLogger): Pr
             version,
             components: versionedComponents,
             ...(Object.keys(prefabs).length ? { prefabs } : {}),
+            ...(thumbnail ? { thumbnail } : {}),
             assets: assets.files,
             // アセットの無い mod の manifest は従来とバイト単位で同じにする（既存の lock を壊さない）。
             ...(assets.files.length > 0 ? { assetIntegrity: assets.integrity } : {}),

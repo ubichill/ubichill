@@ -1,6 +1,7 @@
 import { CORE_COMPONENT_TYPES, MEDIA_FITS } from '@ubichill/core-components';
 import { createDefaultColliderData } from '@ubichill/runtime';
 import type { OverlayMode } from '@ubichill/shared';
+import { type PreviewImageSource, previewImageSource } from '../../../lib/mods/previewImage';
 
 /**
  * modの data フィールド宣言。インスペクタで「必ず表示する」フィールドの仕様。
@@ -73,8 +74,10 @@ export interface AvailableEntityKind {
     dataFields?: DataFields;
     /** Component追加時にそのまま使うdata。dataFieldsの単純な既定値では表せない組み込みComponent向け。 */
     defaultData?: Record<string, unknown>;
-    /** Component アイコン URL (アセットブラウザ表示用)。manifest の `thumbnail` を versioned base で絶対化済み。 */
-    thumbnailUrl?: string;
+    /** 見た目の画像（manifest の `thumbnail`。assetIntegrity で hash を固定したものだけ） */
+    thumbnail?: PreviewImageSource;
+    /** 表示名（manifest の `displayName`） */
+    displayName?: string;
     /** 見た目の描画方式。manifest の canvasTargets / ui:render capability から自動判定。 */
     viewKind: 'jsx' | 'canvas' | 'logic';
     /** 画面固定オーバーレイの既定値（基準の角。`true` は `top-left`）。 */
@@ -148,6 +151,7 @@ export interface VersionedManifestComponent {
     defaultTransform?: AvailableEntityKind['defaultTransform'];
     dataFields?: unknown;
     thumbnail?: string;
+    displayName?: string;
     overlay?: OverlayMode;
     /** Worker を持たないデータ専用 Component（mod が spawn するだけで、エディタでは置かない） */
     dataOnly?: boolean;
@@ -174,6 +178,7 @@ export function entityKindsFromManifest(
     modName: string,
     components: Record<string, VersionedManifestComponent>,
     versionedBase: string,
+    assetIntegrity?: Readonly<Record<string, string>>,
 ): AvailableEntityKind[] {
     return Object.entries(components)
         .filter(([, meta]) => meta.dataOnly !== true)
@@ -186,7 +191,8 @@ export function entityKindsFromManifest(
             suggestSize: !!(meta.canvasTargets?.length || meta.mediaTargets?.length),
             defaultTransform: meta.defaultTransform,
             dataFields: usableDataFields(meta.dataFields),
-            thumbnailUrl: meta.thumbnail ? `${versionedBase}/${meta.thumbnail}` : undefined,
+            thumbnail: previewImageSource({ assetIntegrity }, versionedBase, meta.thumbnail),
+            displayName: meta.displayName,
             viewKind: deriveViewKind(meta),
             overlay: meta.overlay,
         }));

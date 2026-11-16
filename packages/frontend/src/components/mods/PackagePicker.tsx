@@ -2,10 +2,12 @@ import { loadPackageRelease, resolvePackage } from '@ubichill/loader';
 import { formatPackageRef, type PackageDescriptor, PackageDescriptorSchema, parsePackageRef } from '@ubichill/shared';
 import { useState } from 'react';
 import { API_BASE } from '@/lib/api';
-import { HOST_MOD_SOURCE } from '@/lib/mods/modCdn';
+import { HOST_MOD_SOURCE, MOD_CDN_URL } from '@/lib/mods/modCdn';
 import type { EditorPackage } from '@/lib/mods/packages';
+import { packagePreviewImage } from '@/lib/mods/previewImage';
 import { css } from '@/styled-system/css';
 import { browserSignatureVerifier } from '@/world/modSignature';
+import { PreviewImage } from './PreviewImage';
 
 export const packageButton = css({
     px: '3',
@@ -143,10 +145,33 @@ export function PackageSummary({ pkg }: { pkg: EditorPackage }) {
     const capabilities = [...new Set(Object.values(pkg.entry.components).flatMap((c) => c.capabilities))];
     return (
         <div className={css({ display: 'flex', flexDirection: 'column', gap: '2', overflowWrap: 'anywhere' })}>
-            <strong>
-                {pkg.manifest.name ?? pkg.entry.id} — {pkg.entry.version}
-            </strong>
-            <p>作者: @{pkg.entry.author}</p>
+            <div className={css({ display: 'flex', alignItems: 'center', gap: '12px' })}>
+                <span
+                    className={css({
+                        width: '64px',
+                        height: '64px',
+                        flexShrink: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        overflow: 'hidden',
+                        borderRadius: '8px',
+                        bg: 'surface',
+                    })}
+                >
+                    <PreviewImage
+                        source={packagePreviewImage(pkg, pkg.manifest.thumbnail, MOD_CDN_URL)}
+                        alt=""
+                        fallback={null}
+                    />
+                </span>
+                <div>
+                    <strong>
+                        {pkg.manifest.name ?? pkg.entry.id} — {pkg.entry.version}
+                    </strong>
+                    <p>作者: @{pkg.entry.author}</p>
+                </div>
+            </div>
             <p>
                 Component {Object.keys(pkg.manifest.components).length} 個・プレハブ{' '}
                 {Object.keys(pkg.manifest.prefabs ?? {}).length} 個

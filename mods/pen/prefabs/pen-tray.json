@@ -1,6 +1,7 @@
 {
     "name": "ペン置き場",
     "description": "ペン置き場とペン 2 本・消しゴム。線を表示するキャンバスは含まないので、ワールドに「ペンセット」かキャンバスを 1 つ置いておく。",
+    "thumbnail": "previews/pen-tray.svg",
     "entities": [
         {
             "id": "tray",

@@ -1,6 +1,7 @@
 {
     "name": "ペンセット",
     "description": "描いた線を表示するキャンバスと、ペン置き場・ペン 2 本・消しゴム。キャンバスはワールドに 1 つだけ置く（2 つ目からは「ペン置き場」を使う）。",
+    "thumbnail": "previews/pen-set.svg",
     "entities": [
         {
             "id": "canvas",

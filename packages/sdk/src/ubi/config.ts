@@ -134,7 +134,7 @@ export interface ComponentConfig {
     canvasTargets?: readonly string[];
     /** メディアターゲット */
     mediaTargets?: readonly string[];
-    /** サムネイル画像のURL */
+    /** エディタでこの Component の見た目として出す画像。assets/ 内の相対パス（png・jpg・webp・avif・svg、256 KB まで） */
     thumbnail?: string;
     /** シングルトン（1ワールドに1つまで） */
     singleton?: boolean;

@@ -21,6 +21,7 @@ import { PenEvents } from './events';
 import { GRIP_OFFSET, HELD_ROTATION_DEG, PEN_BOX, strokePointFor } from './penTip';
 
 export const config: ComponentConfig = {
+    thumbnail: 'previews/pen.svg',
     watchEntityTypes: ['pen:pen'],
     watchScope: 'entity',
     defaultTransform: { x: 0, y: 0, z: 1, w: 36, h: 48 },
