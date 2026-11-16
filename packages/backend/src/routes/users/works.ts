@@ -54,7 +54,8 @@ router.get('/me/external-works', requireAuth, recheckLimiter, async (req, res) =
     return res.json({ works });
 });
 
-router.delete('/me/external-works', requireAuth, async (req, res) => {
+// 登録の取り消し。CI の `ubichill publish --check-public` も、配布先の一覧（index.json）から外した mod の登録を消す
+router.delete('/me/external-works', requirePublisher, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const { kind, url, name } = (req.body ?? {}) as Record<string, unknown>;
     if (typeof kind !== 'string' || typeof url !== 'string' || typeof name !== 'string') {

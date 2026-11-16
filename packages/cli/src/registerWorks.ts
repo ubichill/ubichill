@@ -7,7 +7,7 @@ import type { ExternalWorkRegistration, ModLockEntry } from '@ubichill/shared';
 import type { Logger } from '@ubichill/terminal';
 
 export type RegisterRequest = (
-    method: 'PUT',
+    method: 'PUT' | 'DELETE',
     path: string,
     body: unknown,
 ) => Promise<{ status: number; body: Record<string, unknown> }>;
@@ -53,18 +53,69 @@ export async function registerExternalWorks(
     return registered;
 }
 
-/** 配置前には登録先を動かさない。全配布物を確認できた後にだけカタログを更新する。 */
+/**
+ * 配布先の一覧（`ubichill build` が書く index.json）に載っている mod ID。一覧が無い・配列でなければ undefined（すべて載せる）。
+ * 一覧から外した mod も、その版を固定しているワールドのために配布物は残す。カタログとユーザーページにだけ出さない。
+ */
+export function listedModIds(index: unknown): ReadonlySet<string> | undefined {
+    if (!Array.isArray(index)) return undefined;
+    return new Set(
+        index.flatMap((item: unknown) => {
+            const id = item && typeof item === 'object' ? (item as { id?: unknown }).id : undefined;
+            return typeof id === 'string' ? [id] : [];
+        }),
+    );
+}
+
+/** 登録を消す。登録が無い（404）ものは黙って飛ばし、消せた件数を返す。 */
+export async function unregisterExternalMods(
+    request: RegisterRequest,
+    url: string,
+    ids: readonly string[],
+    log: Logger,
+): Promise<number> {
+    const results = await Promise.all(
+        ids.map(async (name) => {
+            const res = await request('DELETE', EXTERNAL_WORKS_PATH, { kind: 'mod', url, name }).catch(() => undefined);
+            if (res?.status === 204) {
+                log.success(
+                    `${name} をユーザーページから外しました`,
+                    `${url}/index.json に無いため（配布物は残します）`,
+                );
+                return true;
+            }
+            if (res?.status === 404) return false;
+            const reason =
+                typeof res?.body.error === 'string' ? res.body.error : res ? `HTTP ${res.status}` : '通信できません';
+            log.warn(`${name} をユーザーページから外せませんでした（${reason}）`);
+            return false;
+        }),
+    );
+    return results.filter(Boolean).length;
+}
+
+/**
+ * 配置前には登録先を動かさない。全配布物を確認できた後にだけカタログを更新する。
+ * `listed`（配布先の一覧）があれば、載っている mod だけを確かめて登録し、載っていない mod の登録は消す。
+ */
 export async function registerDeployedMods<T extends { entry: ModLockEntry }>(options: {
     checked: boolean;
     signed: readonly T[];
+    listed?: ReadonlySet<string>;
     verifyPublic: (mod: T) => Promise<void>;
     register: (latest: readonly T[]) => Promise<number>;
+    unregister: (ids: readonly string[]) => Promise<number>;
     log: Logger;
 }): Promise<number> {
     if (!options.checked) {
         options.log.info('配布先へ配置した後、publish --public-url=<基点> --check-public で検証・登録してください');
         return 0;
     }
-    for (const mod of options.signed) await options.verifyPublic(mod);
-    return options.register(latestPerMod(options.signed));
+    const { listed } = options;
+    const shown = listed ? options.signed.filter((mod) => listed.has(mod.entry.id)) : options.signed;
+    const hidden = [...new Set(options.signed.map((mod) => mod.entry.id))].filter((id) => listed && !listed.has(id));
+    for (const mod of shown) await options.verifyPublic(mod);
+    const registered = await options.register(latestPerMod(shown));
+    if (hidden.length > 0) await options.unregister(hidden);
+    return registered;
 }

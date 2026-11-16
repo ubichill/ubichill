@@ -23,7 +23,7 @@ export interface PublishDeps {
     fs: PublishFs;
     /** 認証付きで本体の API を呼ぶ。 */
     request: (
-        method: 'GET' | 'POST' | 'PUT',
+        method: 'GET' | 'POST' | 'PUT' | 'DELETE',
         path: string,
         body?: unknown,
     ) => Promise<{ status: number; body: Record<string, unknown> }>;
