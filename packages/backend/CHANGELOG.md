@@ -1,5 +1,21 @@
 # @ubichill/backend
 
+## 1.14.0
+
+### Minor Changes
+
+- 0d05e59: mod と ubichill の版を固定する。エディタは `latest` を書かず、既存の `latest` は保存時に lock の版へ固定する。`ubichill install world.yaml` は版を書いていない依存の最新版を取って world.yaml に固定し（以後の install では変えない。上げるのは `update`）、`update` も `latest` を版に書き換える。書き換えるのは版の行と `spec.requires` だけで、ほかの整形とコメントは変えない。ワールドは ubichill の版（`spec.requires.protocol`）を固定し、エディタの mod 管理の一覧で mod と同じく上げられる。古い版に固定したワールドはそのまま動かし、Host より新しい版のワールドだけ入る前とエディタで知らせる。Host のイメージは公開済みの mod の版を戻してからビルドし、一度公開した版を配り続ける。
+
+### Patch Changes
+
+- 4d47956: ワールドの取得で公開中の版も返す。エディタは中身が変わっていれば、公開する直前に版のパッチを 1 つ上げて署名する（作者が自分で上げた版はそのまま使う）。
+- 9022677: 公式ワールド（弾幕・wasm-demo）の mod を、見た目の画像（mod のサムネイルと Component の見た目）を同梱した版に上げる（danmaku 1.0.4・mobile-controller 1.1.2・wasm-demo 1.0.2）。
+- f44d751: `ubichill publish <mods> --check-public` は、出力の一覧（`index.json`）に載っている mod だけを確かめてユーザーページに登録し、載っていない mod の登録を消す（配布物は残す）。登録の取り消し（`DELETE /api/v1/users/me/external-works`）は、登録と同じく CI の API トークンでもできる。
+- Updated dependencies [84e07a3]
+- Updated dependencies [0d05e59]
+  - @ubichill/shared@1.17.0
+  - @ubichill/db@1.9.1
+
 ## 1.13.0
 
 ### Minor Changes

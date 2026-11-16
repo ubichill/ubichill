@@ -1,5 +1,13 @@
 # @ubichill/db
 
+## 1.9.1
+
+### Patch Changes
+
+- Updated dependencies [84e07a3]
+- Updated dependencies [0d05e59]
+  - @ubichill/shared@1.17.0
+
 ## 1.9.0
 
 ### Minor Changes

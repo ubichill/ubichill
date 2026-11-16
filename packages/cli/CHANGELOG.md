@@ -1,5 +1,24 @@
 # @ubichill/cli
 
+## 1.4.0
+
+### Minor Changes
+
+- 355c29d: mod に説明を書けるようにする。`package.json` の `ubichill.description`（500 文字まで。文字列でない・長すぎる説明は `ubichill build` で止める）を manifest の `description` に入れ、エディタの mod 管理の一覧と作品ページに出す。npm の `description` は読まない（名前が無いときに名前として使ってきたため、既存の mod の manifest は変わらない）。
+- 84e07a3: mod に見た目の画像を同梱できるようにする。mod のサムネイル（`package.json` の `ubichill.thumbnail` → manifest の `thumbnail`）・Component の見た目（`config.thumbnail`）・プレハブの見た目（`prefabs/*.json` の `thumbnail`）は、どれも `assets/` 内の画像を指し、`assetIntegrity` で hash を固定する。`ubichill build` は参照先が `assets/` にあり、png・jpg・webp・avif・svg で 256 KB 以下かを確かめる。エディタは hash を確かめた画像だけを、アセット欄・Component の追加・mod 管理の一覧・作品ページに出す。
+- 0d05e59: mod と ubichill の版を固定する。エディタは `latest` を書かず、既存の `latest` は保存時に lock の版へ固定する。`ubichill install world.yaml` は版を書いていない依存の最新版を取って world.yaml に固定し（以後の install では変えない。上げるのは `update`）、`update` も `latest` を版に書き換える。書き換えるのは版の行と `spec.requires` だけで、ほかの整形とコメントは変えない。ワールドは ubichill の版（`spec.requires.protocol`）を固定し、エディタの mod 管理の一覧で mod と同じく上げられる。古い版に固定したワールドはそのまま動かし、Host より新しい版のワールドだけ入る前とエディタで知らせる。Host のイメージは公開済みの mod の版を戻してからビルドし、一度公開した版を配り続ける。
+
+### Patch Changes
+
+- 9124fa9: README とコマンドの一覧の説明を、今のコマンド（init・search・prefab・作者参照の install など）に合わせる。
+- 98a161e: `ubichill publish --public-url` は、公開済みの版を確かめるときに公開先が一時的なエラー（5xx・通信の失敗）を返したら、間をおいて 3 回までやり直す。GitHub Pages が反映中に返す 503 で公開が止まらないようにする。
+- d5af9f4: `ubichill dev` の画面（world.html）に、Unity の Console のようなコンソールを付ける。読み込めなかった mod・mod のログ（`Ubi.log`・Worker の console・例外）・dev サーバーのビルドと参照の問題をコンソールに溜め、エラー・警告があるときだけ画面の下の端に最後の 1 件と件数を出す。左下に浮かせていた診断の表示はやめる。右上の dev の札のボタンからも開ける。
+- f44d751: `ubichill publish <mods> --check-public` は、出力の一覧（`index.json`）に載っている mod だけを確かめてユーザーページに登録し、載っていない mod の登録を消す（配布物は残す）。登録の取り消し（`DELETE /api/v1/users/me/external-works`）は、登録と同じく CI の API トークンでもできる。
+- Updated dependencies [84e07a3]
+- Updated dependencies [0d05e59]
+  - @ubichill/shared@1.17.0
+  - @ubichill/loader@1.4.1
+
 ## 1.3.0
 
 ### Minor Changes
