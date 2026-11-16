@@ -89,7 +89,8 @@ async function enterHome(page: Page): Promise<string> {
 async function waitForRender(page: Page): Promise<void> {
     const pen = page.locator('[data-entity-type="pen:pen"]').first();
     const unsigned = page.getByText('作者を確認できないワールドです');
-    const rejection = page.getByRole('region', { name: 'mod の読み込み状況' });
+    // 読み込めなかった mod は、画面の下の端のステータスバー（コンソールの最後の 1 件）に出る
+    const rejection = page.getByRole('button', { name: /読み込めませんでした/ });
     const penAttached = async () => (await pen.count()) > 0;
     const rejected = () => rejection.isVisible();
     const deadline = Date.now() + STEP_TIMEOUT_MS;

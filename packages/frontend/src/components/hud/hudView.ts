@@ -1,12 +1,12 @@
 /**
  * ランチパッド（インスタンスの中の HUD）の表示状態。タブは 2 列に分ける:
- * - 下: その場のこと（ランチパッド・現在地・音声）と通知
+ * - 下: その場のこと（ランチパッド・現在地・音声）と通知、この部屋のコンソール（読み込めなかった mod・mod のログ）
  * - 左: 探すもの・人・自分（プロフィール・ワールド・ソーシャル・設定）と、管理者だけのコントロールパネル。
  *   ワールド・ソーシャル・設定・コントロールパネルは中でさらに左で切り替える
  * タブの画面の上に画面を重ねて進み（招待・ほかの人のプロフィール・メッセージの会話）、戻ると 1 枚ずつ外す。タブを押すと重ねた画面は忘れる。
  */
 
-export const PLACE_TABS = ['launchpad', 'instance', 'audio', 'notifications'] as const;
+export const PLACE_TABS = ['launchpad', 'instance', 'audio', 'notifications', 'console'] as const;
 export const PERSON_TABS = ['profile', 'worlds', 'social', 'settings', 'control'] as const;
 export type HudTab = (typeof PLACE_TABS)[number] | (typeof PERSON_TABS)[number];
 

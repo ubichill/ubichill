@@ -1,20 +1,36 @@
 import { useSocket } from '@ubichill/react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router';
+import { ConsoleStatusBar } from '@/components/console/ConsoleStatusBar';
+import { useConsoleEntries } from '@/components/console/useConsoleEntries';
 import { useNotifications } from '@/components/notifications';
+import { consoleCounts, latestProblem } from '@/lib/console/console';
 import { css } from '@/styled-system/css';
 import { HudIcon } from './HudIcon';
 import { HudOverlay } from './HudOverlay';
+import type { HudTab } from './hudView';
 import { useLaunchpadHotkey } from './useLaunchpadHotkey';
 
-/** インスタンス内の常時表示 HUD。ボタンか Esc でランチパッドを開く。 */
+/**
+ * インスタンス内の常時表示 HUD。ボタンか Esc でランチパッドを開く。
+ * エラー・警告がコンソールにあるときだけ、Unity のステータスバーのように画面の下の端に最後の 1 件と件数を出す
+ * （押すとコンソールのタブを開く）。
+ */
 export function InstanceHUD() {
     const { id: instanceId } = useParams<{ id: string }>();
     const { isConnected } = useSocket();
     const [open, setOpen] = useState(false);
+    const [initialTab, setInitialTab] = useState<HudTab | undefined>(undefined);
     const close = useCallback(() => setOpen(false), []);
     const unread = useNotifications().feed.unreadCount > 0;
+    const entries = useConsoleEntries();
+    const counts = useMemo(() => consoleCounts(entries), [entries]);
+    const problem = latestProblem(entries);
     useLaunchpadHotkey(open, setOpen);
+    // Esc やボタンで開いたときはランチパッドから
+    useEffect(() => {
+        if (!open) setInitialTab(undefined);
+    }, [open]);
 
     return (
         <>
@@ -24,13 +40,29 @@ export function InstanceHUD() {
                 aria-label={unread ? 'ランチパッドを開く（未読の通知あり）' : 'ランチパッドを開く'}
                 aria-keyshortcuts="Escape"
                 className={launcher}
+                data-raised={!!problem}
             >
                 <HudIcon name="rocket" size={24} />
                 <span className={statusDot} data-connected={isConnected} />
                 {unread && <span aria-hidden="true" className={unreadDot} />}
             </button>
 
-            {open && instanceId && <HudOverlay currentInstanceId={instanceId} onClose={close} />}
+            {!open && problem && (
+                <div className={statusBar}>
+                    <ConsoleStatusBar
+                        entry={problem}
+                        counts={counts}
+                        onOpen={() => {
+                            setInitialTab('console');
+                            setOpen(true);
+                        }}
+                    />
+                </div>
+            )}
+
+            {open && instanceId && (
+                <HudOverlay currentInstanceId={instanceId} initialTab={initialTab} onClose={close} />
+            )}
         </>
     );
 }
@@ -56,7 +88,12 @@ const launcher = css({
     boxShadow: '0 6px 20px rgba(0,0,0,0.35)',
     transition: 'background-color 0.15s ease',
     _hover: { bg: 'hudBgHover' },
+    // スマホは右下に置くので、下の帯が出ている間は帯の上に上げる
+    '&[data-raised="true"]': { bottom: { base: '44px', md: 'auto' } },
 });
+
+/** 画面の下の端に付ける（浮かせない） */
+const statusBar = css({ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 9999 });
 
 const statusDot = css({
     position: 'absolute',

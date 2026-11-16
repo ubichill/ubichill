@@ -1,12 +1,16 @@
 import { instantiatePrefab, WorldDefinitionSchema } from '@ubichill/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import { ConsolePanel } from '@/components/console/ConsolePanel';
+import { ConsoleStatusBar } from '@/components/console/ConsoleStatusBar';
+import { useConsoleEntries } from '@/components/console/useConsoleEntries';
+import { consoleCounts } from '@/lib/console/console';
+import { appConsole, logConsole } from '@/lib/console/consoleStore';
 import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
 import { EditorAssets } from './components/assets/EditorAssets';
 import { type BottomDockTab, BottomDockTabs } from './components/BottomDockTabs';
 import { ControlPanelTabs } from './components/ControlPanelTabs';
-import { ConsoleActions, EditorConsole } from './components/console/EditorConsole';
 import { DockSlot } from './components/DockSlot';
 import { EditorHeader } from './components/EditorHeader';
 import { EditorStage } from './components/EditorStage';
@@ -24,7 +28,7 @@ import { PublishPanel } from './components/PublishPanel';
 import { PublishSetupDialog } from './components/PublishSetupDialog';
 import { useAvailableEntityKinds } from './hooks/useAvailableEntityKinds';
 import { useDefinition } from './hooks/useDefinition';
-import { useEditorConsole, useLogNewWarnings } from './hooks/useEditorConsole';
+import { useLogNewWarnings } from './hooks/useEditorConsole';
 import { useEditorModals } from './hooks/useEditorModals';
 import { useEntityOps } from './hooks/useEntityOps';
 import { useEntitySelection } from './hooks/useEntitySelection';
@@ -40,7 +44,6 @@ import {
     controlPanelAlert,
     editorChecks,
 } from './lib/editorChecks';
-import { consoleCounts } from './lib/editorConsole';
 import { findEntityPath, flattenForStage, getEntityAt, updateEntityAt } from './lib/entityTree';
 import { editorReferenceProblems, problemsByEntity } from './lib/referenceProblems';
 import { withSavedFields } from './lib/savedDefinition';
@@ -52,19 +55,15 @@ export function WorldEditorPage() {
     const { data: session, isPending } = useSession();
     const isEdit = !!worldId;
 
-    // エラーはコンソールに溜め、直近の 1 件だけ画面下のトーストでも知らせる
-    const editorConsole = useEditorConsole();
-    const [error, setError] = useState('');
+    // エラー・警告・操作の結果は、画面に通知を出さずコンソールに溜める（最後の 1 件は下のステータスバーに出る）。
+    // プレビューで読み込めなかった mod・mod のログも同じコンソールに入る。開いた時点で前の画面の記録は消す
+    const consoleEntries = useConsoleEntries();
+    useEffect(() => appConsole.clear(), []);
     const [bottomTab, setBottomTab] = useState<BottomDockTab>('assets');
     const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
-    const { log } = editorConsole;
-    const reportError = useCallback(
-        (source: string, message: string) => {
-            setError(message);
-            if (message) log({ level: 'error', source, message });
-        },
-        [log],
-    );
+    const reportError = useCallback((source: string, message: string) => {
+        if (message) logConsole({ level: 'error', source, message });
+    }, []);
     const reportLoadError = useCallback((message: string) => reportError('読み込み', message), [reportError]);
     const reportEditorError = useCallback((message: string) => reportError('エディタ', message), [reportError]);
 
@@ -75,19 +74,15 @@ export function WorldEditorPage() {
             onError: reportLoadError,
         });
 
-    const handleSaveResult = useCallback(
-        (result: SaveResult) => {
-            if (!result.ok) {
-                // コンソールは出どころの欄に段階が出るので、文は理由だけにする
-                setError(`${failureTitle(result.stage)}: ${result.message}`);
-                log({ level: 'error', source: stageLabel(result.stage), message: result.message });
-                return;
-            }
-            const message = result.stage === 'publish' ? '公開しました' : '下書きを保存しました';
-            log({ level: 'info', source: stageLabel(result.stage), message });
-        },
-        [log],
-    );
+    const handleSaveResult = useCallback((result: SaveResult) => {
+        if (!result.ok) {
+            // コンソールは出どころの欄に段階が出るので、文は理由だけにする
+            logConsole({ level: 'error', source: stageLabel(result.stage), message: result.message });
+            return;
+        }
+        const message = result.stage === 'publish' ? '公開しました' : '下書きを保存しました';
+        logConsole({ level: 'info', source: stageLabel(result.stage), message });
+    }, []);
 
     const publishSetup = usePublishSetup();
     const editorApi = useWorldEditorApi({
@@ -155,7 +150,7 @@ export function WorldEditorPage() {
                 })),
         [checks],
     );
-    useLogNewWarnings(consoleWarnings, log);
+    useLogNewWarnings(consoleWarnings, logConsole);
     const mobile = useMobilePanels();
 
     // 認証ガード
@@ -175,7 +170,6 @@ export function WorldEditorPage() {
             reportError('エディタ', blocker.message);
             return false;
         }
-        setError('');
         return true;
     }, [checks, reportError]);
 
@@ -217,12 +211,12 @@ export function WorldEditorPage() {
     );
 
     const showConsole = useCallback(() => {
-        setError('');
         setBottomTab('console');
         modals.closeControlPanel();
     }, [modals.closeControlPanel]);
 
-    const consoleCount = useMemo(() => consoleCounts(editorConsole.entries), [editorConsole.entries]);
+    const latestEntry = consoleEntries.at(-1);
+    const consoleCount = useMemo(() => consoleCounts(consoleEntries), [consoleEntries]);
     const headerAlert = useMemo(
         () =>
             controlPanelAlert(
@@ -408,18 +402,9 @@ export function WorldEditorPage() {
             </DockSlot>
 
             <DockSlot area="bottom" mobileVisible={true}>
-                <BottomDockTabs
-                    active={bottomTab}
-                    onChange={setBottomTab}
-                    counts={consoleCount}
-                    actions={
-                        bottomTab === 'console' && (
-                            <ConsoleActions entries={editorConsole.entries} onClear={editorConsole.clear} />
-                        )
-                    }
-                />
+                <BottomDockTabs active={bottomTab} onChange={setBottomTab} counts={consoleCount} />
                 {bottomTab === 'console' ? (
-                    <EditorConsole entries={editorConsole.entries} />
+                    <ConsolePanel entries={consoleEntries} onClear={appConsole.clear} />
                 ) : (
                     <EditorAssets
                         kinds={kinds}
@@ -453,37 +438,13 @@ export function WorldEditorPage() {
                         }}
                     />
                 )}
+                {bottomTab !== 'console' && latestEntry && (
+                    <ConsoleStatusBar entry={latestEntry} onOpen={showConsole} />
+                )}
             </DockSlot>
 
             {!mobile.leftOpen && <MobileLeftHandle onClick={mobile.openLeft} />}
             {selectedEntity && !mobile.rightOpen && <MobileRightHandle onClick={mobile.openRight} />}
-
-            {error && (
-                <button
-                    type="button"
-                    onClick={showConsole}
-                    className={css({
-                        position: 'fixed',
-                        bottom: { base: '180px', md: '232px' },
-                        left: { base: '12px', md: '252px' },
-                        right: { base: '12px', md: '332px' },
-                        padding: '8px 12px',
-                        bg: 'errorBg',
-                        color: 'errorText',
-                        border: '1px solid',
-                        borderColor: 'errorLight',
-                        borderRadius: '8px',
-                        fontSize: '13px',
-                        zIndex: 99999,
-                        cursor: 'pointer',
-                        boxShadow: 'toast',
-                        textAlign: 'left',
-                    })}
-                >
-                    {error}
-                    <span className={css({ ml: '2', opacity: 0.7, fontSize: '12px' })}>コンソールで見る</span>
-                </button>
-            )}
 
             <Modal
                 open={modals.open}

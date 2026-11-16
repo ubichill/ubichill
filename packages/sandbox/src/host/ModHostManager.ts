@@ -35,7 +35,7 @@ import { type CommandContext, dispatchCommand, RpcTimeoutError } from './command
 import { CMD_TO_HANDLER } from './commandHandlers';
 import { createHostRequests, type HostRequests, transferablesOf } from './hostRequests';
 import { getActiveWorkerCount, getWorker, registerWorker, unregisterWorker } from './ModRegistry';
-import { isMetricEnabled, reportDiagnostic, reportMetric } from './modDiagnostics';
+import { isMetricEnabled, reportDiagnostic, reportMetric, reportModLog } from './modDiagnostics';
 import { subscribeWorkerTick, unsubscribeWorkerTick } from './SimulationLoop';
 import type { HostHandlers, ModHostManagerOptions } from './types';
 
@@ -171,7 +171,11 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
             // 初期化失敗: ロード状態は「完了」にして他のエンティティ表示を止めない (graceful degradation)。
             // 失敗した worker は機能しないが、UI のローディングスピナーは止まる。
             if (e.data.type === CommandType.CMD_INIT_FAILED) {
-                console.error(`${this._logPrefix} 初期化失敗:`, e.data.payload.error);
+                reportModLog({
+                    level: 'error',
+                    modId: this._modId,
+                    message: `初期化に失敗しました: ${e.data.payload.error}`,
+                });
                 this.handlers.onInitFailed?.(e.data.payload.error);
                 this.handlers.onReady?.(); // ロード終了として扱う (ハングを防ぐ)
                 return;
@@ -180,7 +184,7 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
         });
 
         this.worker.onerror = (e) => {
-            console.error(`${this._logPrefix} Worker エラー:`, e);
+            reportModLog({ level: 'error', modId: this._modId, message: `Worker エラー: ${e.message || '詳細不明'}` });
         };
 
         if (maxExecutionTime > 0) {

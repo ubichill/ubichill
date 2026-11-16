@@ -1,6 +1,12 @@
 import { blockedAuthorKeys } from '@ubichill/shared';
-import { describe, expect, it } from 'vitest';
-import { blockedAuthorRejection, describeModRejection, groupRejections } from './modRejection';
+import { describe, expect, it, vi } from 'vitest';
+import {
+    blockedAuthorRejection,
+    describeModRejection,
+    modIdOfType,
+    modRejectionLog,
+    retryTargets,
+} from './modRejection';
 
 describe('describeModRejection', () => {
     it('再試行できるのは「いまは確認できない」だけ（確定した拒否に再試行を出さない）', () => {
@@ -31,41 +37,52 @@ describe('describeModRejection', () => {
     });
 });
 
-describe('groupRejections', () => {
-    it('同じ mod の Component は 1 件にまとめる', () => {
-        const grouped = groupRejections(
-            new Map([
-                ['video-player:screen', 'signature-missing'],
-                ['video-player:controls', 'signature-missing'],
-                ['pen:pen', 'author-pending'],
-            ]),
-        );
-        expect(grouped).toEqual([
-            { modId: 'pen', message: expect.any(String), retryable: true, entityTypes: ['pen:pen'] },
-            {
-                modId: 'video-player',
-                message: describeModRejection('signature-missing').message,
-                retryable: false,
-                entityTypes: ['video-player:controls', 'video-player:screen'],
-            },
-        ]);
+describe('modRejectionLog', () => {
+    it('確定した拒否はエラーで、再試行を付けない', () => {
+        const log = modRejectionLog('video-player', 'signature-missing', () => {});
+        expect(log).toMatchObject({ level: 'error', source: 'video-player' });
+        expect(log.message).toContain(describeModRejection('signature-missing').message);
+        expect(log.detail).toContain('理由: signature-missing');
+        expect(log.action).toBeUndefined();
     });
 
-    it('mod の中で理由が分かれたら、再試行しても直らない理由を見せ、回復できる部品の再試行を残す', () => {
-        const [mod] = groupRejections(
-            new Map([
-                ['m:a', 'author-pending'],
-                ['m:b', 'integrity-mismatch'],
-            ]),
-        );
-        expect(mod).toMatchObject({
-            message: describeModRejection('integrity-mismatch').message,
-            retryable: true,
-        });
+    it('時間をおけば通るものは警告で、再試行を付ける', () => {
+        const retry = vi.fn();
+        const log = modRejectionLog('pen', 'author-pending', retry);
+        expect(log.level).toBe('warning');
+        log.action?.run();
+        expect(retry).toHaveBeenCalledTimes(1);
     });
 
-    it('拒否が無ければ空', () => {
-        expect(groupRejections(new Map())).toEqual([]);
+    it('知らない理由もそのまま出す（エラーとして扱う）', () => {
+        const log = modRejectionLog('m', 'constructor', () => {});
+        expect(log).toMatchObject({ level: 'error', message: expect.stringContaining('constructor') });
+    });
+});
+
+describe('retryTargets', () => {
+    const rejections = new Map([
+        ['video-player:screen', 'author-pending'],
+        ['video-player:controls', 'integrity-mismatch'],
+        ['video:other', 'author-pending'],
+        ['pen:pen', 'load-unavailable'],
+    ]);
+
+    it('その mod のうち、再試行で通る可能性のある Component だけを選ぶ（ID の前方一致で別の mod を拾わない）', () => {
+        expect(retryTargets(rejections, 'video-player')).toEqual({ targets: ['video-player:screen'], rejected: 2 });
+        expect(retryTargets(rejections, 'video')).toEqual({ targets: ['video:other'], rejected: 1 });
+    });
+
+    it('止まっていない mod は空', () => {
+        expect(retryTargets(rejections, 'danmaku')).toEqual({ targets: [], rejected: 0 });
+    });
+});
+
+describe('modIdOfType', () => {
+    it('最初の : より前', () => {
+        expect(modIdOfType('pen:pen')).toBe('pen');
+        expect(modIdOfType('a:b:c')).toBe('a');
+        expect(modIdOfType('plain')).toBe('plain');
     });
 });
 
@@ -82,18 +99,10 @@ describe('blockedAuthorRejection', () => {
         expect(blockedAuthorRejection(undefined, blocked)).toBeNull();
     });
 
-    it('同じ mod の部品は 1 つにまとめて、ブロックの理由で出す', () => {
-        const rejections = new Map([
-            ['evil:a', 'author-blocked'],
-            ['evil:b', 'author-blocked'],
-        ]);
-        expect(groupRejections(rejections)).toEqual([
-            {
-                modId: 'evil',
-                message: 'ブロックした人が作った mod です',
-                retryable: false,
-                entityTypes: ['evil:a', 'evil:b'],
-            },
-        ]);
+    it('ブロックの理由で記録し、再試行は付けない', () => {
+        const log = modRejectionLog('evil', 'author-blocked', () => {});
+        expect(log).toMatchObject({ level: 'error', message: '読み込めませんでした: ブロックした人が作った mod です' });
+        expect(log.action).toBeUndefined();
+        expect(retryTargets(new Map([['evil:a', 'author-blocked']]), 'evil').targets).toEqual([]);
     });
 });

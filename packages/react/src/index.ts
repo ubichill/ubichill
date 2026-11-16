@@ -4,8 +4,12 @@
 export {
     type DiagnosticLevel,
     type ModDiagnostic,
+    type ModLog,
+    type ModLogLevel,
     resetDiagnosticHandler,
+    resetModLogHandler,
     setDiagnosticHandler,
+    setModLogHandler,
 } from '@ubichill/sandbox';
 export {
     type CapabilityInfo,

@@ -8,7 +8,7 @@
 import { useSocket, useWorld, WorkerLoadingProvider } from '@ubichill/react';
 import { checkWorldCompatibility, type Instance, type ModLock } from '@ubichill/shared';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { pushToast } from '@/lib/toast';
+import { appConsole, logConsole } from '@/lib/console/consoleStore';
 import { CursorLayer } from './cursor/CursorLayer';
 import { acceptEntry, hasAcceptedEntry, unverifiedEntryKey, unverifiedEntryMessage } from './entryGate';
 import { InstanceLoadingScreen } from './InstanceLoadingScreen';
@@ -101,6 +101,8 @@ export function WorldView({
         const previousId = joinedIdRef.current;
         joinedIdRef.current = instanceId;
         const stillTarget = () => joinedIdRef.current === instanceId;
+        // コンソールは部屋ごと。前の部屋で読み込めなかった mod の記録（と、その再試行）を持ち越さない
+        appConsole.clear();
 
         const connect = async () => {
             // 前のインスタンスからの退出完了を待ってから join する
@@ -138,9 +140,10 @@ export function WorldView({
             }
             if (!stillTarget()) return;
             setLoadError(null);
-            // 新しい ubichill で作られたワールドも入れる。動かない部分があり得ることだけ先に知らせる
+            // 新しい ubichill で作られたワールドも入れる。動かない部分があり得ることをコンソールに残す
             const compatibility = checkWorldCompatibility(fetched.instance.world.requires);
-            if (compatibility.level !== 'ok') pushToast(compatibility.message, 'warn');
+            if (compatibility.level !== 'ok')
+                logConsole({ level: 'warning', source: 'ワールド', message: compatibility.message });
 
             // ワールドの中身はサーバー（Go）が snapshot で配る。クライアントは ID だけを渡す。
             joinWorld(userName, instanceId, (message) => {

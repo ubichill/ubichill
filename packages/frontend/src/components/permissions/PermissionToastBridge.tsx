@@ -1,12 +1,14 @@
 /**
- * PermissionToastBridge — 診断（権限拒否など）を console 出力＋ユーザー向けトーストに橋渡しする。
+ * PermissionToastBridge — 診断（権限拒否など）をコンソールに溜め、権限の拒否だけはトーストでも知らせる。
  *
- * PermissionProvider の内側に置くことで、拒否トーストに「許可」ボタンを付けて
- * その場で grant に変えられる（retry 情報がある拒否のみ）。沈黙させない可視化も兼ねる。
+ * PermissionProvider の内側に置くことで、拒否に「許可」ボタンを付けて
+ * その場で grant に変えられる（retry 情報がある拒否のみ）。許可は本人が決めることなので、権限の拒否はトーストにも出す。
  */
 import { resetDiagnosticHandler, setDiagnosticHandler, useUbiPermissions } from '@ubichill/react';
 import { UbiErrorCode } from '@ubichill/shared';
 import { useEffect, useRef } from 'react';
+import { logConsole } from '@/lib/console/consoleStore';
+import { diagnosticInput } from '@/lib/console/modLogs';
 import { pushToast, type ToastAction } from '@/lib/toast';
 
 /** ユーザーに見せる価値のある拒否コード（権限系）。 */
@@ -22,10 +24,8 @@ export function PermissionToastBridge() {
     permissionsRef.current = permissions;
 
     useEffect(() => {
-        setDiagnosticHandler(({ level, modId, code, message, retry }) => {
-            console[level](`[Mod:${modId}] [${code}] ${message}`);
-            if (!USER_FACING_DENIAL.has(code)) return;
-
+        setDiagnosticHandler((diagnostic) => {
+            const { code, message, retry } = diagnostic;
             const p = permissionsRef.current;
             let action: ToastAction | undefined;
             if (p && retry) {
@@ -35,7 +35,8 @@ export function PermissionToastBridge() {
                         ? { label: '許可', run: () => p.grantCapability(retry.subject, retry.capability) }
                         : { label: '許可', run: () => p.grantExternalDomain(retry.subject, retry.domain) };
             }
-            pushToast(message, 'warn', action);
+            logConsole(diagnosticInput(diagnostic, action));
+            if (USER_FACING_DENIAL.has(code)) pushToast(message, 'warn', action);
         });
         return () => resetDiagnosticHandler();
     }, []);
