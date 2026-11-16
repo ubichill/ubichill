@@ -1,17 +1,17 @@
 import { useEffect, useState } from 'react';
 import { MOD_CDN_URL } from '@/lib/mods/modCdn';
 
-/**
- * 利用可能modの 1 エントリ。
- * - ローカル（`sourceLabel === 'local'`）: dependencies の source.url なし に変換
- * - リモート: `baseUrl` を持つ → dependencies の source.url に変換
- */
 /** index.json が持つバージョン履歴の1件。 */
 export interface ModVersionSummary {
     version: string;
     components: string[];
 }
 
+/**
+ * 利用可能modの 1 エントリ。
+ * - 本体の mods（`sourceLabel === 'local'`）: 依存の source.url なし
+ * - レジストリ: `baseUrl` を持つ → 依存の source.url
+ */
 export interface AvailableMod {
     id: string;
     name: string;
@@ -62,54 +62,45 @@ async function fetchRegistry(url: string, sourceLabel: string): Promise<Availabl
 }
 
 /**
- * 利用可能modの一覧を返す。
- * ローカル `${MOD_CDN_URL}/index.json` と、追加されたレジストリ URL を全部統合する。
- * 同一 id がある場合は最初に登場したものを優先（ローカルを先にロードするため、ローカル優先）。
+ * 本体の `${MOD_CDN_URL}/index.json` と、追加したレジストリの mod。取得元ごとに分けて返す
+ * （同じ ID でも取得元が違えば別の mod。どちらを入れるかは利用者が選ぶ）。取れなかった取得元は空。
  */
 export function useAvailableMods(registryUrls: string[]): {
-    mods: AvailableMod[];
+    host: AvailableMod[];
+    registries: AvailableMod[];
     loading: boolean;
 } {
-    const [mods, setMods] = useState<AvailableMod[]>([]);
+    const [lists, setLists] = useState<{ host: AvailableMod[]; registries: AvailableMod[] }>({
+        host: [],
+        registries: [],
+    });
     const [loading, setLoading] = useState(false);
-
     const urlsKey = registryUrls.join('|');
 
-    // biome-ignore lint/correctness/useExhaustiveDependencies: urlsKey は registryUrls 配列の identity 安定化に使う。registryUrls は最新値が closure から取れる。
+    // biome-ignore lint/correctness/useExhaustiveDependencies: urlsKey は registryUrls 配列の identity 安定化に使う
     useEffect(() => {
-        let cancelled = false;
+        const run = { cancelled: false };
         setLoading(true);
-        const sources: Array<Promise<AvailableMod[]>> = [
+        Promise.all([
             fetchRegistry(`${MOD_CDN_URL}/index.json`, 'local'),
-            ...registryUrls.map((u) => fetchRegistry(u, u)),
-        ];
-        Promise.all(sources)
-            .then((results) => {
-                if (cancelled) return;
-                const seen = new Set<string>();
-                const merged: AvailableMod[] = [];
-                for (const list of results) {
-                    for (const p of list) {
-                        if (seen.has(p.id)) continue;
-                        seen.add(p.id);
-                        merged.push(p);
-                    }
-                }
-                setMods(merged);
-            })
-            .catch(() => {
-                if (cancelled) return;
-                setMods([]);
+            Promise.all(registryUrls.map((url) => fetchRegistry(url, url))),
+        ])
+            .then(([host, registries]) => {
+                if (run.cancelled) return;
+                // 2 つのレジストリが同じ mod を載せている場合は 1 件にする
+                const all = registries.flat();
+                const unique = all.filter(
+                    (mod, index) => all.findIndex((m) => m.id === mod.id && m.baseUrl === mod.baseUrl) === index,
+                );
+                setLists({ host, registries: unique });
             })
             .finally(() => {
-                if (cancelled) return;
-                setLoading(false);
+                if (!run.cancelled) setLoading(false);
             });
         return () => {
-            cancelled = true;
+            run.cancelled = true;
         };
-        // urlsKey で再評価する（registryUrls 配列の identity 安定化のため）
     }, [urlsKey]);
 
-    return { mods, loading };
+    return { ...lists, loading };
 }

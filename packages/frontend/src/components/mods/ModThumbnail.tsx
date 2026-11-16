@@ -1,8 +1,3 @@
-import type { ModLockEntry } from '@ubichill/shared';
-import { useEffect, useState } from 'react';
-import { MOD_CDN_URL } from '@/lib/mods/modCdn';
-import { type ModThumbnailTarget, modThumbnailSource } from '@/lib/mods/modThumbnail';
-import { editorPackageBytes } from '@/lib/mods/packages';
 import type { PreviewImageSource } from '@/lib/mods/previewImage';
 import { css, cx } from '@/styled-system/css';
 import { PreviewImage } from './PreviewImage';
@@ -17,50 +12,23 @@ const thumbBox = css({
     bg: 'surface',
     color: 'textSubtle',
 });
-const small = css({ width: '32px', height: '32px' });
-const large = css({ width: '64px', height: '64px' });
+const sizes = {
+    32: css({ width: '32px', height: '32px' }),
+    40: css({ width: '40px', height: '40px' }),
+    64: css({ width: '64px', height: '64px' }),
+} as const;
 
-const cache = new Map<string, Promise<PreviewImageSource | undefined>>();
-
-/** 同じ mod の同じ版は 1 回だけ調べる（失敗は覚えない）。 */
-function cachedSource(target: ModThumbnailTarget, locked?: ModLockEntry) {
-    const key = `${target.baseUrl ?? ''} ${target.id} ${target.version}`;
-    const cached = cache.get(key);
-    if (cached) return cached;
-    const pending = modThumbnailSource(target, { fallbackBase: MOD_CDN_URL, fetchBytes: editorPackageBytes, locked });
-    pending.catch(() => cache.delete(key));
-    cache.set(key, pending);
-    return pending;
-}
-
-/** mod のサムネイル。その版の manifest と画像の hash を確かめてから出し、無ければ印を出す。 */
+/** mod のサムネイル（useModPreview で hash を確かめた画像）。無ければ印を出す。 */
 export function ModThumbnail({
-    target,
-    locked,
+    image,
     size = 32,
 }: {
-    target: ModThumbnailTarget | undefined;
-    locked?: ModLockEntry;
-    size?: 32 | 64;
+    image: PreviewImageSource | undefined;
+    size?: keyof typeof sizes;
 }) {
-    const [source, setSource] = useState<{ key: string; value: PreviewImageSource | undefined } | null>(null);
-    const key = target ? `${target.baseUrl ?? ''} ${target.id} ${target.version}` : '';
-    // biome-ignore lint/correctness/useExhaustiveDependencies: target・locked の同一性は key で決める
-    useEffect(() => {
-        if (!target || target.version === 'latest') return;
-        const run = { cancelled: false };
-        cachedSource(target, locked)
-            .then((value) => {
-                if (!run.cancelled) setSource({ key, value });
-            })
-            .catch(() => {});
-        return () => {
-            run.cancelled = true;
-        };
-    }, [key]);
     return (
-        <span className={cx(thumbBox, size === 64 ? large : small)}>
-            <PreviewImage source={source?.key === key ? source.value : undefined} alt="" fallback={<ModGlyph />} />
+        <span className={cx(thumbBox, sizes[size])}>
+            <PreviewImage source={image} alt="" fallback={<ModGlyph />} />
         </span>
     );
 }

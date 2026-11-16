@@ -72,6 +72,7 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
   ワールドは ubichill の版を `spec.requires.protocol` に固定し（mod の版と同じく、上げるのは作者）、Host より新しい版のワールドだけ入る前に知らせる（`shared/world/requirements.ts`）。
   互換を切る変更（`MIN_COMPATIBLE_PROTOCOL_VERSION` を上げる）をするときは、それより前の版に固定したワールドを古い版として動かす処理も一緒に入れる。
 - **mod の見た目の画像**: manifest の `thumbnail`（mod）・Component の `thumbnail`・プレハブの `thumbnail` は、どれも `assetIntegrity` に載ったアセットを指す（足した項目。古い Host は読み飛ばす）。読む側は hash を確かめてから出す（`frontend/src/lib/mods/previewImage.ts`）。
+- **mod の説明**: manifest の `description`（`package.json` の `ubichill.description`）。足した項目で、古い Host は読み飛ばす。長さはビルドで確かめ（500 文字まで）、manifest の schema では制限しない（長い説明の mod が読み込めなくなるため）。
 - **公開した mod の版は配り続ける**: Host のイメージは、公開済み（gh-pages）の版を `scripts/restore-published-mods.mjs` で戻してからビルドする。リポジトリから外した mod の版も残る。
 - SDK のビルド結果が変わったのに changeset が無ければ落ちる（`scripts/check-npm-drift.mjs`）。
 
@@ -83,7 +84,7 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 | `GET /api/v1/authors/:handle/signing-keys` | 同上（`Access-Control-Allow-Origin: *`） |
 | `GET /api/v1/authors/:handle/worlds/:name.yaml`（`.lock.json`・`.sig.json`） | ワールドを読む他のサーバー |
 | `GET /api/v1/authors/:handle/mods`（`?offset=`）・`/api/v1/authors/:handle/mods/:id` | 作者参照を解決するブラウザ・CLI（`PackageDescriptor` を返す。`Access-Control-Allow-Origin: *`）。WebFinger の rel `https://ubichill.com/ns/mods` から辿る |
-| `GET /api/v1/mods?q=…&offset=…` | `ubichill search`・ブラウザの検索（このサーバーの公開 mod） |
+| `GET /api/v1/mods?q=…&offset=…` | `ubichill search`・ブラウザの検索・連合のピア（このサーバーの公開 mod だけを返す。`?scope=global` はこのサーバーの画面向けで、フォロー中のサーバーの mod を返す。検索語はピアへ送らず、ピアの一覧を検索語なしで取って絞る） |
 | `GET /api/v1/worlds?scope=local` | 連合のピア（このサーバーのワールドだけを返す） |
 | `GET /api/v1/service-tokens/keys` | サービストークンを検証する外部サービス |
 | `GET /.well-known/nodeinfo`・`/nodeinfo/2.1` | ubichill のサーバーかを確かめるほかのサーバー |

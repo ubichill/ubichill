@@ -3,8 +3,8 @@
   "mods": {
     "danmaku": {
       "id": "danmaku",
-      "version": "1.0.2",
-      "manifestIntegrity": "sha256-e9P6RLOAE2rWX+/92kWl3s/OJKppKkl9i499Wf9gg40=",
+      "version": "1.0.3",
+      "manifestIntegrity": "sha256-HtKk4vwsmQ7wBVGJsOfpaoxn/JibnEbeomyzKW6HXaQ=",
       "components": {
         "danmaku:canvas": {
           "workerUrl": "./canvas/index.dfb0bae9.js",
@@ -36,8 +36,8 @@
     },
     "mobile-controller": {
       "id": "mobile-controller",
-      "version": "1.1.0",
-      "manifestIntegrity": "sha256-wzwzO0QrCqjsOk1QRFDVXAX0t1MfJq00geaktWALXs8=",
+      "version": "1.1.1",
+      "manifestIntegrity": "sha256-2f26g6MqzvFaSHg6iALvFo9gKO/CG3xVxd8UNRedmH0=",
       "components": {
         "mobile-controller:controller": {
           "workerUrl": "./controller/index.ba481627.js",

@@ -27,7 +27,14 @@ import {
 import { type ModLockEntry, verifyModSignature } from '@ubichill/shared';
 import { silentLogger } from '@ubichill/terminal';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { buildMod, dataOnlyEntryFromSource, dataOnlyManifestEntry, mediaTargetCollisions } from './build.ts';
+import {
+    buildMod,
+    dataOnlyEntryFromSource,
+    dataOnlyManifestEntry,
+    MOD_DESCRIPTION_MAX_LENGTH,
+    mediaTargetCollisions,
+    readModDescription,
+} from './build.ts';
 import { listDirsOnDisk } from './modLayout.ts';
 import { publishMods } from './publishMods.ts';
 import { verifyAllModLocks, verifyAllModSignatures } from './verify.ts';
@@ -139,6 +146,12 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
             const bytes = readFileSync(join(publicDir, modId, `v${version}`, path as string));
             expect(integrity[path as string]).toBe(`sha256-${createHash('sha256').update(bytes).digest('base64')}`);
         }
+    });
+
+    it('package.json の ubichill.description を manifest の説明に載せる', () => {
+        const pkg = JSON.parse(readFileSync(join(penModDir, 'package.json'), 'utf-8'));
+        expect(pkg.ubichill.description).toBeTruthy();
+        expect(manifest.description).toBe(pkg.ubichill.description);
     });
 
     it('manifest に pen:canvas の canvasTargets が出力される', () => {
@@ -526,5 +539,31 @@ describe('mediaTargetCollisions', () => {
         expect(mediaTargetCollisions(null)).toEqual([]);
         expect(mediaTargetCollisions({ mediaTargets: 'screen', dataFields: null })).toEqual([]);
         expect(mediaTargetCollisions({ mediaTargets: [1, 'screen'], dataFields: { screen: null } })).toEqual([]);
+    });
+});
+
+describe('readModDescription', () => {
+    it('書いていなければ説明なし、空白だけでも説明なし', () => {
+        expect(readModDescription(undefined)).toBeUndefined();
+        expect(readModDescription('  \n ')).toBeUndefined();
+    });
+
+    it('前後の空白を落とし、途中の改行は残す', () => {
+        expect(readModDescription('  一行目\n二行目  ')).toBe('一行目\n二行目');
+    });
+
+    it('上限は UTF-16 の長さではなく文字数で数える（絵文字 1 つは 1 文字）', () => {
+        expect(readModDescription('😀'.repeat(MOD_DESCRIPTION_MAX_LENGTH))).toHaveLength(
+            MOD_DESCRIPTION_MAX_LENGTH * 2,
+        );
+        expect(() => readModDescription('😀'.repeat(MOD_DESCRIPTION_MAX_LENGTH + 1))).toThrow(
+            `${MOD_DESCRIPTION_MAX_LENGTH + 1} 文字`,
+        );
+    });
+
+    it('文字列でなければビルドを止める（null や配列を黙って捨てない）', () => {
+        for (const value of [null, 1, ['説明'], { ja: '説明' }]) {
+            expect(() => readModDescription(value)).toThrow('文字列');
+        }
     });
 });

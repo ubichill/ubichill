@@ -15,7 +15,9 @@ import { verifyAllModLocks } from './verify.ts';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const demoModDir = join(repoRoot, 'mods', 'wasm-demo');
-const MOD_BASE = 'https://cdn.example.com/mods/wasm-demo/v1.0.0';
+const demoVersion = (JSON.parse(readFileSync(join(demoModDir, 'package.json'), 'utf-8')) as { version: string })
+    .version;
+const MOD_BASE = `https://cdn.example.com/mods/wasm-demo/v${demoVersion}`;
 
 describe('同梱アセット: build → manifest → Host の照合', () => {
     let distDir: string;
@@ -38,7 +40,7 @@ describe('同梱アセット: build → manifest → Host の照合', () => {
         distDir = mkdtempSync(join(tmpdir(), 'ubichill-assets-dist-'));
         publicDir = mkdtempSync(join(tmpdir(), 'ubichill-assets-public-'));
         await buildMod(demoModDir, { distDir: join(distDir, 'wasm-demo'), publicDir: join(publicDir, 'wasm-demo') });
-        versionDir = join(distDir, 'wasm-demo', 'v1.0.0');
+        versionDir = join(distDir, 'wasm-demo', `v${demoVersion}`);
         manifest = JSON.parse(readFileSync(join(versionDir, 'manifest.json'), 'utf-8'));
     });
 

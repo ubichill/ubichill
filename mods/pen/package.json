@@ -1,6 +1,6 @@
 {
     "name": "@ubichill/mod-pen",
-    "version": "2.3.0",
+    "version": "2.3.1",
     "private": true,
     "main": "src/index.ts",
     "types": "src/index.ts",
@@ -8,7 +8,8 @@
         ".": "./src/index.ts"
     },
     "ubichill": {
-        "thumbnail": "previews/thumbnail.svg"
+        "thumbnail": "previews/thumbnail.svg",
+        "description": "ペンを手に取って、ワールドに線を描けます。描いた線は後から入った人にも残ります。ペン置き場とペンのセットをプレハブで置けます。"
     },
     "peerDependencies": {
         "ubichill": "*"

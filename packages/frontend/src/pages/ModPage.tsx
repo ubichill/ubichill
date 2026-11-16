@@ -2,7 +2,7 @@ import { loadPackageRelease } from '@ubichill/loader';
 import { PackageDescriptorSchema } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { PackageSummary, packageButton } from '@/components/mods/PackagePicker';
+import { PackageSummary, packageButton } from '@/components/mods/PackageSummary';
 import { API_BASE } from '@/lib/api';
 import { HOST_MOD_SOURCE } from '@/lib/mods/modCdn';
 import type { EditorPackage } from '@/lib/mods/packages';

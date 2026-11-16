@@ -406,12 +406,29 @@ function resolveDirs(options: BuildOptions): { distDir: string; publicDir: strin
     return { distDir, publicDir };
 }
 
+/** mod の説明の上限（文字数）。一覧では 2 行に詰め、作品ページでは全文を出す。 */
+export const MOD_DESCRIPTION_MAX_LENGTH = 500;
+
+/** `ubichill.description` を読む。空なら無いものとして扱う。 */
+export function readModDescription(value: unknown): string | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'string') throw new Error('package.json の ubichill.description は文字列で書いてください');
+    const description = value.trim();
+    const length = [...description].length;
+    if (length > MOD_DESCRIPTION_MAX_LENGTH)
+        throw new Error(
+            `package.json の ubichill.description は ${MOD_DESCRIPTION_MAX_LENGTH} 文字までです（${length} 文字）`,
+        );
+    return description || undefined;
+}
+
 function readPackageJson(modDir: string): {
     id: string;
     name: string;
     version: string;
     homepage?: string;
     thumbnail?: string;
+    description?: string;
 } {
     const path = join(modDir, 'package.json');
     if (!existsSync(path)) {
@@ -432,6 +449,8 @@ function readPackageJson(modDir: string): {
         homepage: typeof pkg.homepage === 'string' ? pkg.homepage : undefined,
         // mod のサムネイル（assets/ 内の画像の相対パス）
         thumbnail: typeof pkg.ubichill?.thumbnail === 'string' ? pkg.ubichill.thumbnail : undefined,
+        // npm の description は名前の代わりに使ってきたので、説明は ubichill.description だけから読む
+        description: readModDescription(pkg.ubichill?.description),
     };
 }
 
@@ -556,7 +575,7 @@ export interface ModArtifacts {
  * 出すもの: Component ごとの成果物（info）、capability の宣言と検出のずれ（warn）、かかった時間（debug）。
  */
 export async function compileMod(modDir: string, log: Logger = silentLogger): Promise<ModArtifacts> {
-    const { id, name, version, thumbnail } = readPackageJson(modDir);
+    const { id, name, version, thumbnail, description } = readPackageJson(modDir);
     const rootTsconfig = join(modDir, 'tsconfig.json');
     const tsconfig = existsSync(rootTsconfig) ? rootTsconfig : undefined;
     const inputs = new Set<string>([join(modDir, 'package.json'), ...(tsconfig ? [tsconfig] : [])]);
@@ -697,6 +716,7 @@ export async function compileMod(modDir: string, log: Logger = silentLogger): Pr
             components: versionedComponents,
             ...(Object.keys(prefabs).length ? { prefabs } : {}),
             ...(thumbnail ? { thumbnail } : {}),
+            ...(description ? { description } : {}),
             assets: assets.files,
             // アセットの無い mod の manifest は従来とバイト単位で同じにする（既存の lock を壊さない）。
             ...(assets.files.length > 0 ? { assetIntegrity: assets.integrity } : {}),
