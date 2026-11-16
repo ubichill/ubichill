@@ -31,7 +31,13 @@ import {
 import { listDirsOnDisk, modVersionDirs } from './modLayout.ts';
 import { confirmEnvironment, publish } from './publish.ts';
 import { publishMods, type SignedMod } from './publishMods.ts';
-import { normalizePublicUrl, registerDeployedMods, registerExternalWorks } from './registerWorks.ts';
+import {
+    listedModIds,
+    normalizePublicUrl,
+    registerDeployedMods,
+    registerExternalWorks,
+    unregisterExternalMods,
+} from './registerWorks.ts';
 import { assertReleaseUnchanged, checkPublicRelease } from './release.ts';
 import { verifyAllModLocks } from './verify.ts';
 
@@ -41,7 +47,7 @@ const argValue = (argv: string[], name: string): string | undefined =>
     argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 
 async function requestJson(
-    method: 'GET' | 'POST' | 'PUT',
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE',
     url: string,
     body?: unknown,
     token?: string,
@@ -208,6 +214,16 @@ function homepageOf(dir: string): string | undefined {
     return typeof homepage === 'string' && homepage.length > 0 ? homepage : undefined;
 }
 
+/** 配布先の一覧に載っている mod ID。どれか 1 つでも一覧（index.json）が無ければ undefined（すべて載せる）。 */
+function listedModsOf(modsDirs: readonly string[]): ReadonlySet<string> | undefined {
+    const lists = modsDirs.map((dir) => {
+        const path = join(dir, 'index.json');
+        return existsSync(path) ? listedModIds(JSON.parse(readFileSync(path, 'utf-8')) as unknown) : undefined;
+    });
+    if (lists.length === 0 || lists.some((list) => list === undefined)) return undefined;
+    return new Set(lists.flatMap((list) => [...(list ?? [])]));
+}
+
 /**
  * `ubichill publish <world.yaml>...` / `ubichill publish <mods のビルド出力>...`。
  * ディレクトリを渡すと mod の配布物に、world.yaml を渡すとワールドに、同じアカウント・同じ鍵で署名する。
@@ -230,7 +246,7 @@ export async function runPublish(argv: string[], term: Terminal): Promise<void> 
             writeText: (path: string, text: string) => writeFileSync(path, text, 'utf-8'),
             mkdir: (path: string) => mkdirSync(path, { recursive: true }),
         },
-        request: (method: 'GET' | 'POST' | 'PUT', path: string, body?: unknown) =>
+        request: (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown) =>
             requestJson(method, `${credential.server}${path}`, body, credential.token),
         key,
         crypto: webWorldCrypto,
@@ -291,6 +307,7 @@ export async function runPublish(argv: string[], term: Terminal): Promise<void> 
             await registerDeployedMods({
                 checked: argv.includes('--check-public'),
                 signed: signedMods,
+                listed: listedModsOf(modsDirs),
                 log: term,
                 verifyPublic: async (signed) => {
                     await checkPublicRelease(signed.entry, normalizePublicUrl(publicUrl));
@@ -312,6 +329,7 @@ export async function runPublish(argv: string[], term: Terminal): Promise<void> 
                         })),
                         deps.log,
                     ),
+                unregister: (ids) => unregisterExternalMods(deps.request, normalizePublicUrl(publicUrl), ids, deps.log),
             });
         } else {
             term.next(

@@ -4,10 +4,12 @@ import { describe, expect, it, vi } from 'vitest';
 import {
     compareVersions,
     latestPerMod,
+    listedModIds,
     normalizePublicUrl,
     type RegisterRequest,
     registerDeployedMods,
     registerExternalWorks,
+    unregisterExternalMods,
 } from './registerWorks.ts';
 
 const entry = (id: string, version: string) => ({ entry: { id, version } as ModLockEntry });
@@ -103,6 +105,7 @@ describe('registerDeployedMods', () => {
                 signed: [entry('demo', '2.0.0')],
                 verifyPublic,
                 register,
+                unregister: vi.fn(),
                 log: logger,
             }),
         ).toBe(0);
@@ -120,6 +123,7 @@ describe('registerDeployedMods', () => {
                     throw new Error('not deployed');
                 },
                 register,
+                unregister: vi.fn(),
                 log: logger,
             }),
         ).rejects.toThrow('not deployed');
@@ -129,7 +133,74 @@ describe('registerDeployedMods', () => {
         const signed = [entry('demo', '2.0.0'), entry('demo', '1.9.1')];
         const register = vi.fn(async () => 1);
         const { logger } = recordingLogger();
-        await registerDeployedMods({ checked: true, signed, verifyPublic: async () => {}, register, log: logger });
+        const unregister = vi.fn(async () => 0);
+        await registerDeployedMods({
+            checked: true,
+            signed,
+            verifyPublic: async () => {},
+            register,
+            unregister,
+            log: logger,
+        });
         expect(register).toHaveBeenCalledWith([signed[0]]);
+        expect(unregister).not.toHaveBeenCalled();
+    });
+    it('配布先の一覧に載っている mod だけを確かめて登録し、載っていない mod の登録は 1 回ずつ消す', async () => {
+        const signed = [entry('pen', '2.3.1'), entry('video-player', '2.1.0'), entry('video-player', '2.0.0')];
+        const verifyPublic = vi.fn(async () => {});
+        const register = vi.fn(async () => 1);
+        const unregister = vi.fn(async () => 1);
+        const { logger } = recordingLogger();
+        await registerDeployedMods({
+            checked: true,
+            signed,
+            listed: new Set(['pen', 'danmaku']),
+            verifyPublic,
+            register,
+            unregister,
+            log: logger,
+        });
+        expect(verifyPublic.mock.calls).toEqual([[signed[0]]]);
+        expect(register).toHaveBeenCalledWith([signed[0]]);
+        expect(unregister).toHaveBeenCalledWith(['video-player']);
+    });
+});
+
+describe('listedModIds', () => {
+    it('index.json の id を集める。id の無い項目は飛ばす', () => {
+        expect(listedModIds([{ id: 'pen' }, { name: 'x' }, null, { id: 'danmaku' }])).toEqual(
+            new Set(['pen', 'danmaku']),
+        );
+    });
+
+    it('配列でなければ一覧として扱わない（すべて載せる）', () => {
+        expect(listedModIds({ id: 'pen' })).toBeUndefined();
+        expect(listedModIds(undefined)).toBeUndefined();
+    });
+});
+
+describe('unregisterExternalMods', () => {
+    it('消せた件数を返す。登録が無い（404）ものは黙って飛ばし、断られた・通信できないものは警告する', async () => {
+        const { logger, entries } = recordingLogger();
+        const bodies: unknown[] = [];
+        const answers: Record<string, { status: number; body: Record<string, unknown> } | undefined> = {
+            a: { status: 204, body: {} },
+            b: { status: 404, body: {} },
+            c: { status: 401, body: { error: 'Unauthorized' } },
+        };
+        const request: RegisterRequest = async (method, _path, body) => {
+            expect(method).toBe('DELETE');
+            bodies.push(body);
+            const answer = answers[(body as { name: string }).name];
+            if (!answer) throw new Error('offline');
+            return answer;
+        };
+        const removed = await unregisterExternalMods(request, 'https://a.example/mods', ['a', 'b', 'c', 'd'], logger);
+        expect(removed).toBe(1);
+        expect(bodies[0]).toEqual({ kind: 'mod', url: 'https://a.example/mods', name: 'a' });
+        expect(entries.filter((e) => e.level === 'warn').map((e) => e.message)).toEqual([
+            expect.stringContaining('Unauthorized'),
+            expect.stringContaining('通信できません'),
+        ]);
     });
 });

@@ -97,3 +97,20 @@ jobs:
             git push origin HEAD:gh-pages --force
             echo "✅ Mods published to GitHub Pages"
           fi
+
+      # 署名だけでは公式アカウントのユーザーページと mod の検索は変わらない。Pages に出たのを確かめてから登録する
+      # （反映を待つため、確かめられるまで繰り返す）。index.json に無い mod（リポジトリから外した mod）は、
+      # その版を固定しているワールドのために配布物を残したまま、登録だけを消す。
+      - name: Register mods in the catalog
+        env:
+          UBICHILL_CREDENTIALS: ${{ secrets.UBICHILL_CREDENTIALS }}
+        run: |
+          for attempt in $(seq 1 20); do
+            if node packages/cli/src/index.ts publish /tmp/gh-pages/mods --public-url=https://ubichill.github.io/ubichill/mods --check-public; then
+              exit 0
+            fi
+            echo "Pages への反映を待っています（${attempt}/20）"
+            sleep 30
+          done
+          echo "::error::公開先で mod を確かめられなかったので、カタログに登録していません"
+          exit 1

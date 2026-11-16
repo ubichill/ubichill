@@ -89,6 +89,7 @@ export default function Hello() { return <div>Hello</div>; }
 外部ホストへのアップロードは作者のデプロイ処理が行う。`--public-url` を省くと `package.json` の `homepage` を使う。
 内容が変わるビルドをすると、その版の以前の `lock.sig.json` は消える（署名し直す）。同じ内容の再ビルドでは残る。
 作品のカタログ登録は配置後の `--check-public` が成功したときに行う。登録APIも依頼された内容が公開先にあることを検証し、未配置・取得失敗では既存の登録を維持する。
+出力に一覧（`index.json`）があれば、載っている mod だけを確かめて登録し、載っていない mod の登録は消す（配布物は消さないので、その版を固定したワールドは動き続ける）。リポジトリから外した mod を、配布物を残したままカタログから下げるのに使う。
 `--check-public` は配置後の lock・manifest・Worker・アセット・作者署名を取得して確認する。
 Worker とアセットは 1 ファイルも合計も 32 MiB までしか調べない。実行時のアセットの上限（1 ファイル 256 MiB、[MOD_RUNTIME.md](MOD_RUNTIME.md#制限値fetch_limits)）より小さいので、これを超える mod は `--check-public` を通らず、カタログに登録できない。
 公開先（`--public-url` か `homepage`）があれば、同じ版に違う内容が既に公開されているとき署名前に失敗する。版を上げて公開すること。
