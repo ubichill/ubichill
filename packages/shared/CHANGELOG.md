@@ -1,5 +1,12 @@
 # @ubichill/shared
 
+## 1.17.0
+
+### Minor Changes
+
+- 84e07a3: mod に見た目の画像を同梱できるようにする。mod のサムネイル（`package.json` の `ubichill.thumbnail` → manifest の `thumbnail`）・Component の見た目（`config.thumbnail`）・プレハブの見た目（`prefabs/*.json` の `thumbnail`）は、どれも `assets/` 内の画像を指し、`assetIntegrity` で hash を固定する。`ubichill build` は参照先が `assets/` にあり、png・jpg・webp・avif・svg で 256 KB 以下かを確かめる。エディタは hash を確かめた画像だけを、アセット欄・Component の追加・mod 管理の一覧・作品ページに出す。
+- 0d05e59: mod と ubichill の版を固定する。エディタは `latest` を書かず、既存の `latest` は保存時に lock の版へ固定する。`ubichill install world.yaml` は版を書いていない依存の最新版を取って world.yaml に固定し（以後の install では変えない。上げるのは `update`）、`update` も `latest` を版に書き換える。書き換えるのは版の行と `spec.requires` だけで、ほかの整形とコメントは変えない。ワールドは ubichill の版（`spec.requires.protocol`）を固定し、エディタの mod 管理の一覧で mod と同じく上げられる。古い版に固定したワールドはそのまま動かし、Host より新しい版のワールドだけ入る前とエディタで知らせる。Host のイメージは公開済みの mod の版を戻してからビルドし、一度公開した版を配り続ける。
+
 ## 1.16.0
 
 ### Minor Changes
