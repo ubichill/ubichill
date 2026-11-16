@@ -1,0 +1,17 @@
+{
+  "id": "mobile-controller",
+  "version": "1.1.2",
+  "manifestIntegrity": "sha256-AfsBOkSvLL/yNiQ+He2udm79jspzOpOZnoL6UbTzEpw=",
+  "components": {
+    "mobile-controller:controller": {
+      "workerUrl": "./controller/index.8de11556.js",
+      "integrity": "sha256-jeEVVrEM33DCaArh2tY+ui+XX5549GSrlVmj547KN5g=",
+      "capabilities": [
+        "event:emit",
+        "scene:read",
+        "scene:update",
+        "ui:render"
+      ]
+    }
+  }
+}

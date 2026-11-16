@@ -1,0 +1,44 @@
+{
+  "id": "mobile-controller",
+  "name": "mobile-controller",
+  "version": "1.1.2",
+  "components": {
+    "mobile-controller:controller": {
+      "defaultTransform": {
+        "x": 0,
+        "y": 0,
+        "z": 2000
+      },
+      "watchEntityTypes": [
+        "mobile-controller:controller"
+      ],
+      "overlay": "fill",
+      "description": "タッチ/ペン環境で操作する画面固定コントローラ（仮想スティック + アクションボタン）。",
+      "thumbnail": "previews/controller.svg",
+      "dataFields": {
+        "target": {
+          "type": "entityRef",
+          "label": "操作する Entity",
+          "help": "矢印キー相当のイベントを送る先（例: 自機）。その Entity 上の Component すべてに届く。未設定ならこの Entity（と子）に送る。"
+        }
+      },
+      "capabilities": [
+        "event:emit",
+        "scene:read",
+        "scene:update",
+        "ui:render"
+      ],
+      "workerUrl": "./controller/index.8de11556.js"
+    }
+  },
+  "thumbnail": "previews/thumbnail.svg",
+  "description": "タッチやペンで操作するための、画面に固定する仮想スティックとボタンです。",
+  "assets": [
+    "previews/controller.svg",
+    "previews/thumbnail.svg"
+  ],
+  "assetIntegrity": {
+    "previews/controller.svg": "sha256-/ODJdbz6iOeZknPr6xDDPjRnLm763ZnERX/8am/M4AM=",
+    "previews/thumbnail.svg": "sha256-wxm+CUDLNJsI+FH7MHL5AuXGSTyEF+psQNsmLz4zSYE="
+  }
+}

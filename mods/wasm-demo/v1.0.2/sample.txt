@@ -1,0 +1,1 @@
+ubichill の mod は、同梱したアセットを integrity を確かめてから受け取ります。

@@ -2,13 +2,13 @@
   {
     "id": "mobile-controller",
     "name": "mobile-controller",
-    "version": "1.1.1",
+    "version": "1.1.2",
     "components": [
       "mobile-controller:controller"
     ],
     "versions": [
       {
-        "version": "1.1.1",
+        "version": "1.1.2",
         "components": [
           "mobile-controller:controller"
         ]
