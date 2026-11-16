@@ -1,6 +1,6 @@
+import { ConsoleCounts } from '@/components/console/ConsoleCounts';
+import type { ConsoleLevel } from '@/lib/console/console';
 import { css } from '@/styled-system/css';
-import type { ConsoleLevel } from '../lib/editorConsole';
-import { StatusIcon } from './statusIcons';
 
 export type BottomDockTab = 'assets' | 'console';
 
@@ -8,12 +8,13 @@ interface BottomDockTabsProps {
     active: BottomDockTab;
     onChange: (tab: BottomDockTab) => void;
     counts: Record<ConsoleLevel, number>;
-    /** 右端に置く、今のタブの操作 */
-    actions?: React.ReactNode;
 }
 
-/** 下のドックの切り替え（アセット / コンソール）。コンソールには溜まったエラー・警告の数を出す。 */
-export function BottomDockTabs({ active, onChange, counts, actions }: BottomDockTabsProps) {
+/**
+ * 下のドックの切り替え（アセット / コンソール）。コンソールを閉じている間は、溜まったエラー・警告の数をタブに出す
+ * （開いている間はコンソールのツールバーに件数がある）。
+ */
+export function BottomDockTabs({ active, onChange, counts }: BottomDockTabsProps) {
     return (
         <div
             className={css({
@@ -34,13 +35,9 @@ export function BottomDockTabs({ active, onChange, counts, actions }: BottomDock
                 </Tab>
                 <Tab id="console" active={active} onChange={onChange}>
                     コンソール
-                    {counts.error > 0 && <Count level="error" value={counts.error} />}
-                    {counts.warning > 0 && <Count level="warning" value={counts.warning} />}
+                    {active !== 'console' && <ConsoleCounts counts={counts} className={css({ fontWeight: '500' })} />}
                 </Tab>
             </div>
-            {actions && (
-                <div className={css({ ml: 'auto', display: 'flex', alignItems: 'center', gap: '6px' })}>{actions}</div>
-            )}
         </div>
     );
 }
@@ -82,14 +79,5 @@ function Tab({
         >
             {children}
         </button>
-    );
-}
-
-function Count({ level, value }: { level: ConsoleLevel; value: number }) {
-    return (
-        <span className={css({ display: 'inline-flex', alignItems: 'center', gap: '2px', fontWeight: '500' })}>
-            <StatusIcon level={level} />
-            {value > 99 ? '99+' : value}
-        </span>
     );
 }

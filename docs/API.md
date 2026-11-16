@@ -115,7 +115,7 @@ await Ubi.fetch(url, options?)                     // HTTP (外部はドメイ�
 //              responseType: 'text' | 'arrayBuffer', maxBytes, timeoutMs, signal }
 //   失敗は res.ok === false と res.error.code（取り消しだけは FETCH_ABORTED で reject）
 Ubi.registerSystem((entities, deltaTimeMs, events) => {...}) // ECS System 登録。deltaTimeMs はミリ秒（秒ではない）
-Ubi.log(message, level?)                           // ログ ('debug' | 'info' | 'warn' | 'error')
+Ubi.log(message, level?)                           // ログ ('debug' | 'info' | 'warn' | 'error')。Host のコンソールに出る（debug は開発者ツールだけ）
 
 // ──── 読み取り専用プロパティ (初期化後に自動セット) ──────
 Ubi.worldId               // string | undefined

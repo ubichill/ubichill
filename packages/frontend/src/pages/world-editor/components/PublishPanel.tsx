@@ -1,8 +1,8 @@
+import { ConsoleLevelIcon } from '@/components/console/ConsoleLevelIcon';
 import { css } from '@/styled-system/css';
 import { type ActionFailure, failureTitle } from '../lib/actionFailure';
 import { blockingChecks, type CheckTarget, type EditorCheck } from '../lib/editorChecks';
 import { editorButton } from '../recipes/button';
-import { StatusIcon } from './statusIcons';
 
 interface PublishPanelProps {
     isEdit: boolean;
@@ -53,7 +53,7 @@ export function PublishPanel({
                         fontSize: '12px',
                     })}
                 >
-                    <StatusIcon level="error" />
+                    <ConsoleLevelIcon level="error" />
                     <div className={css({ flex: 1, minW: 0, userSelect: 'text' })}>
                         <div className={css({ fontWeight: '600' })}>{failureTitle(failure.stage)}</div>
                         <div className={css({ whiteSpace: 'pre-wrap', wordBreak: 'break-word' })}>
@@ -94,7 +94,7 @@ export function PublishPanel({
                 )}
                 {checks.map((check) => (
                     <li key={check.id} className={checkRow}>
-                        <StatusIcon level={check.severity} />
+                        <ConsoleLevelIcon level={check.severity} />
                         <span className={css({ flex: 1, minW: 0, wordBreak: 'break-word' })}>{check.message}</span>
                         {check.target && (
                             <button

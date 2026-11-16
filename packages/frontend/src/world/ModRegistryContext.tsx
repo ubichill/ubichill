@@ -2,11 +2,10 @@ import type { WidgetDefinition, WorkerModDefinition } from '@ubichill/react';
 import { isWorkerMod } from '@ubichill/react';
 import type { ModLock } from '@ubichill/shared';
 import type React from 'react';
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { pushToast } from '@/lib/toast';
-import { ModRejectionNotice } from './ModRejectionNotice';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { logConsole } from '@/lib/console/consoleStore';
 import { loadVerifiedMod } from './modLoader';
-import { describeModRejection, groupRejections, type RejectedMod } from './modRejection';
+import { modIdOfType, modRejectionLog, retryTargets } from './modRejection';
 import type { ModSource } from './modSource';
 
 // ============================================
@@ -32,10 +31,6 @@ interface ModRegistryContextType {
     pendingModCount: number;
     /** エンティティタイプを指定してmodを動的ロードする（未ロードの場合のみ実行） */
     loadMod: (entityType: string) => void;
-    /** 検証に失敗して実行しなかった mod（理由つき）。 */
-    rejectedMods: RejectedMod[];
-    /** 実行しなかった mod を読み込み直す（作者をいま確認できなかった場合など）。 */
-    retryRejected: (mod: RejectedMod) => void;
 }
 
 // ============================================
@@ -46,8 +41,6 @@ const ModRegistryContext = createContext<ModRegistryContextType>({
     modMap: new Map(),
     pendingModCount: 0,
     loadMod: () => {},
-    rejectedMods: [],
-    retryRejected: () => {},
 });
 
 // ============================================
@@ -66,10 +59,13 @@ export const ModRegistryProvider: React.FC<{
 }> = ({ children, onStatusChange, lock, source, blockedAuthors }) => {
     const [modMap, setModMap] = useState<Map<string, AnyModDefinition>>(new Map());
     const [loadCounts, setLoadCounts] = useState<ModLoadingStatus>({ completed: 0, total: 0 });
+    // 実行しなかった mod は画面に通知を出さず、コンソールに記録する（再試行はコンソールの行から）。
     // Component 型 → 実行しなかった理由
-    const [rejections, setRejections] = useState<ReadonlyMap<string, string>>(new Map());
-    const [retryingMods, setRetryingMods] = useState<ReadonlySet<string>>(new Set());
-    const rejectedMods = useMemo(() => groupRejections(rejections), [rejections]);
+    const rejectionsRef = useRef(new Map<string, string>());
+    // 記録した (mod, 理由)。同じ mod の別の Component が同じ理由で止まっても 1 回だけ記録する
+    const loggedRef = useRef(new Set<string>());
+    const retryingRef = useRef(new Set<string>());
+    const retryRef = useRef<(modId: string) => void>(() => {});
     const pendingModCount = loadCounts.total - loadCounts.completed;
 
     useEffect(() => {
@@ -115,13 +111,19 @@ export const ModRegistryProvider: React.FC<{
             if (loadingRef.current.has(entityType)) return Promise.resolve(false);
             loadingRef.current.add(entityType);
             setLoadCounts((c) => ({ ...c, total: c.total + 1 }));
-            const clearRejection = () =>
-                setRejections((prev) => {
-                    if (!prev.has(entityType)) return prev;
-                    const next = new Map(prev);
-                    next.delete(entityType);
-                    return next;
-                });
+            const modId = modIdOfType(entityType);
+            const clearRejection = () => {
+                rejectionsRef.current.delete(entityType);
+                if (retryTargets(rejectionsRef.current, modId).rejected === 0) forgetLogged(loggedRef.current, modId);
+            };
+            const reject = (reason: string) => {
+                rejectionsRef.current.set(entityType, reason);
+                loadingRef.current.delete(entityType);
+                const key = `${modId}\n${reason}`;
+                if (loggedRef.current.has(key)) return;
+                loggedRef.current.add(key);
+                logConsole(modRejectionLog(modId, reason, () => retryRef.current(modId)));
+            };
 
             return loadVerifiedMod(entityType, { lock, source, blockedAuthors })
                 .then((result) => {
@@ -133,37 +135,30 @@ export const ModRegistryProvider: React.FC<{
                     if (result === 'data-only' || result === 'undeclared') {
                         // Worker の無いデータだけの entity（例: pen:stroke）。Worker を起動しない。
                         // 結果は変わらないので loadingRef に残し、同じ型の Entity が増えるたびに取り直さない（知らせるのも 1 回になる）。
-                        // 宣言の無い型は、訪れた人には何も出さず（直せないので）、作った人向けにコンソールへ残す
+                        // 宣言の無い型は、作った人向けにコンソールへ情報として残す（訪れた人には直せないので目立たせない）
                         if (result === 'undeclared') {
-                            console.info(
-                                `[ModRegistry] component "${entityType}" は mod の manifest に宣言されていないので、データとして扱います（コードは実行しません）。打ち間違いでなければ、mod 側で config に dataOnly: true を書いてください`,
-                            );
+                            logConsole({
+                                level: 'info',
+                                source: modId,
+                                message: `Component「${entityType}」は manifest に宣言されていないので、データとして扱います`,
+                                detail: 'コードは実行しません。打ち間違いでなければ、mod の config に dataOnly: true を書いてください。',
+                            });
                         }
                         clearRejection();
                         return true;
                     }
                     if (typeof result === 'object' && 'rejected' in result) {
                         // lock の照合か作者署名の確認に失敗した mod。実行しない。
-                        console.warn(
-                            `[ModRegistry] component "${entityType}" は検証に失敗 (${result.rejected})。実行を拒否します。`,
-                        );
-                        setRejections((prev) => new Map(prev).set(entityType, result.rejected));
-                        loadingRef.current.delete(entityType);
+                        reject(result.rejected);
                         return false;
                     }
                     // 'not-found': manifest・Worker が取れない（削除済みの mod・版を参照している、通信の失敗）。
-                    // 取得失敗の理由を画面にも出す。
-                    console.warn(
-                        `[ModRegistry] component "${entityType}" を読み込めませんでした（manifest か Worker を取得できない）。スキップします。`,
-                    );
-                    setRejections((prev) => new Map(prev).set(entityType, 'load-unavailable'));
-                    loadingRef.current.delete(entityType);
+                    reject('load-unavailable');
                     return false;
                 })
                 .catch((err) => {
                     console.error(`[ModRegistry] Failed to load mod: ${entityType}`, err);
-                    setRejections((prev) => new Map(prev).set(entityType, 'load-unavailable'));
-                    loadingRef.current.delete(entityType);
+                    reject('load-unavailable');
                     return false;
                 })
                 .finally(() => {
@@ -173,45 +168,45 @@ export const ModRegistryProvider: React.FC<{
         [addMod, lock, source, blockedAuthors],
     );
 
-    const retryRejected = useCallback(
-        async (mod: RejectedMod) => {
-            if (retryingMods.has(mod.modId)) return;
-            const targets = mod.entityTypes.filter(
-                (type) => describeModRejection(rejections.get(type) ?? '').retryable,
-            );
+    const retryMod = useCallback(
+        async (modId: string) => {
+            if (retryingRef.current.has(modId)) return;
+            const { targets, rejected } = retryTargets(rejectionsRef.current, modId);
             if (targets.length === 0) return;
-            setRetryingMods((prev) => new Set(prev).add(mod.modId));
+            retryingRef.current.add(modId);
+            // 再試行しても通らなければ、もう一度記録する（押したのに何も起きないように見えないよう）
+            forgetLogged(loggedRef.current, modId);
             try {
                 const results = await Promise.all(targets.map(loadMod));
                 if (results.every(Boolean))
-                    pushToast(
-                        targets.length === mod.entityTypes.length
-                            ? `${mod.modId} を読み込みました`
-                            : `${mod.modId} の一部の部品を読み込みました`,
-                        'info',
-                    );
+                    logConsole({
+                        level: 'info',
+                        source: modId,
+                        message: targets.length === rejected ? '読み込みました' : '一部の Component を読み込みました',
+                    });
             } finally {
-                setRetryingMods((prev) => {
-                    const next = new Set(prev);
-                    next.delete(mod.modId);
-                    return next;
-                });
+                retryingRef.current.delete(modId);
             }
         },
-        [loadMod, rejections, retryingMods],
+        [loadMod],
     );
+    retryRef.current = (modId) => void retryMod(modId);
 
     // dependencies が登録されているからといって全 worker を一括起動しない。
     // シーン (initialEntities) に置かれたエンティティだけが EntityRenderer 経由で
     // loadMod される。singleton も同じく entity が無ければ起動しない。
 
     return (
-        <ModRegistryContext.Provider value={{ modMap, pendingModCount, loadMod, rejectedMods, retryRejected }}>
+        <ModRegistryContext.Provider value={{ modMap, pendingModCount, loadMod }}>
             {children}
-            <ModRejectionNotice mods={rejectedMods} retryingMods={retryingMods} onRetry={retryRejected} />
         </ModRegistryContext.Provider>
     );
 };
+
+/** その mod について記録した理由を忘れる（読み込めた・再試行するときに、次の失敗をまた記録する）。 */
+function forgetLogged(logged: Set<string>, modId: string): void {
+    for (const key of [...logged]) if (key.startsWith(`${modId}\n`)) logged.delete(key);
+}
 
 // ============================================
 // Hook

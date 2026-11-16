@@ -1,10 +1,12 @@
 import type { Instance } from '@ubichill/shared';
 import { type ReactNode, useEffect, useId, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { useConsoleEntries } from '@/components/console/useConsoleEntries';
 import { ConversationView } from '@/components/messages';
 import { useNotifications } from '@/components/notifications';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { useIsAdmin } from '@/lib/account/useIsAdmin';
+import { consoleCounts } from '@/lib/console/console';
 import { isHomeInstance } from '@/lib/home/home';
 import { useHome } from '@/lib/home/homeStore';
 import { unreadMessageCount } from '@/lib/messages/messages';
@@ -31,6 +33,7 @@ import {
 } from './hudView';
 import { LaunchpadHome } from './LaunchpadHome';
 import { AudioTab } from './tabs/AudioTab';
+import { ConsoleTab } from './tabs/ConsoleTab';
 import { type ControlPanelSection, ControlPanelTab } from './tabs/ControlPanelTab';
 import { InstanceTab } from './tabs/InstanceTab';
 import { InviteTab } from './tabs/InviteTab';
@@ -44,6 +47,8 @@ import { useHudActions } from './useHudActions';
 interface HudOverlayProps {
     onClose: () => void;
     currentInstanceId: string;
+    /** 開いたときのタブ（コンソールの件数から開いたときはコンソール） */
+    initialTab?: HudTab;
 }
 
 interface TabItem {
@@ -60,6 +65,7 @@ const PLACE_ITEMS: readonly TabItem[] = [
     { id: 'instance', label: '現在地', icon: 'pin' },
     { id: 'audio', label: '音声', icon: 'volume' },
     { id: 'notifications', label: '通知', icon: 'bell' },
+    { id: 'console', label: 'コンソール', icon: 'terminal' },
 ];
 
 /** 左: 探すもの・人・自分（中でさらに左で切り替える）。プロフィールはアカウントのアイコン。 */
@@ -76,14 +82,15 @@ const PERSON_ITEMS: readonly TabItem[] = [
  * その上に画面を重ねて進む。
  * 背景（パネルの外）を押すか Esc（InstanceHUD）で閉じる。
  */
-export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
+export function HudOverlay({ onClose, currentInstanceId, initialTab }: HudOverlayProps) {
     const navigate = useNavigate();
     const confirm = useConfirm();
     const notifications = useNotifications();
+    const consoleEntries = useConsoleEntries();
     const { data: session } = useSession();
     const { home } = useHome();
     const [audio] = useMediaOutput();
-    const [view, setView] = useState<HudView>(INITIAL_HUD_VIEW);
+    const [view, setView] = useState<HudView>(initialTab ? selectTab(initialTab) : INITIAL_HUD_VIEW);
     // 中の切り替えはタブを離れても覚えておく（人を開いて戻ったときに同じ欄に帰る）
     const [worldsSection, setWorldsSection] = useState<WorldsSection>('local');
     const [socialSection, setSocialSection] = useState<SocialSection>('locations');
@@ -200,15 +207,26 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
                 return <SettingsTab section={settingsSection} onSectionChange={setSettingsSection} />;
             case 'control':
                 return <ControlPanelTab section={controlSection} onSectionChange={setControlSection} />;
+            case 'console':
+                return <ConsoleTab />;
         }
     };
 
     const userName = session?.user.name ?? '';
     const unread = unreadBadge(notifications.feed.unreadCount);
     const unreadMessages = unreadBadge(unreadMessageCount(notifications.feed.items));
+    const counts = consoleCounts(consoleEntries);
+    const problems = unreadBadge(counts.error + counts.warning);
     const tabButton = (item: TabItem, placement: 'rail' | 'dock') => {
         const active = shown.tab === item.id;
-        const badge = item.id === 'notifications' ? unread : item.id === 'social' ? unreadMessages : null;
+        const badge =
+            item.id === 'notifications'
+                ? unread
+                : item.id === 'social'
+                  ? unreadMessages
+                  : item.id === 'console'
+                    ? problems
+                    : null;
         const icon = item.id === 'audio' && audio.muted ? 'mute' : item.icon;
         return (
             <button
@@ -226,7 +244,11 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
                         <HudIcon name={icon} />
                     )}
                     {badge && (
-                        <span role="status" aria-label={`未読 ${badge} 件`} className={badgeStyle}>
+                        <span
+                            role="status"
+                            aria-label={item.id === 'console' ? `エラーと警告 ${badge} 件` : `未読 ${badge} 件`}
+                            className={badgeStyle}
+                        >
                             {badge}
                         </span>
                     )}

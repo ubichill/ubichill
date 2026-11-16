@@ -4,6 +4,7 @@ import {
     type HostHandlers,
     ModHostManager,
     type ModHostManagerOptions,
+    reportModLog,
 } from '@ubichill/sandbox';
 import {
     type ComponentInstance,
@@ -238,11 +239,11 @@ export function useModWorker<TPayloadMap extends Record<string, unknown> = Recor
                 onNetworkBroadcast: (type, data) => handlersRef.current.onNetworkBroadcast?.(type, data),
                 onEventEmit: (type, data, scope, targetType, senderId) =>
                     handlersRef.current.onEventEmit?.(type, data, scope, targetType, senderId),
-                onLog: (level, message, prefix) => {
+                onLog: (level, message) => {
                     if (handlersRef.current.onLog) {
                         handlersRef.current.onLog(level, message);
                     } else {
-                        console[level](`${prefix ?? '[ModSandbox]'} ${message}`);
+                        reportModLog({ level, modId: options.modId ?? '', message });
                     }
                 },
                 onCreateEntity: async (entity) => {
