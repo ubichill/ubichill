@@ -3,8 +3,8 @@
   "mods": {
     "pen": {
       "id": "pen",
-      "version": "2.1.0",
-      "manifestIntegrity": "sha256-CtV0JUIMC+mzIy2uZWsfpuGGk/9kFtWe1Xzy+/sIAk0=",
+      "version": "2.2.0",
+      "manifestIntegrity": "sha256-M+4UfymNEAl//dpz773lWJVLxmnwpl9XQiv0zTAnbVs=",
       "components": {
         "pen:canvas": {
           "workerUrl": "./canvas/index.8f0d9792.js",

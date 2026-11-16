@@ -14,7 +14,9 @@ spec:
   dependencies:
     - name: wasm-demo
       source:
-        version: latest
+        version: 1.0.0
+  requires:
+    protocol: 7
   initialEntities:
     - id: checksum
       tags: []

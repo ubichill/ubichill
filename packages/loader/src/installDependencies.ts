@@ -38,6 +38,7 @@ import {
     type LockEntryGetter,
 } from './buildWorldLock.ts';
 import { writeWorldFiles } from './worldFiles.ts';
+import { pinWorldYaml } from './worldPins.ts';
 
 function argValue(argv: string[], name: string): string | undefined {
     const hit = argv.find((a) => a.startsWith(`--${name}=`));
@@ -69,6 +70,7 @@ function createFsLockEntryGetter(modsDir: string): LockEntryGetter {
  * 使い方: `<world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>] [--check]`。
  * 署名はしない（`ubichill publish` が固定と署名をまとめて行う）。lock を変えたら署名し直しが要る。
  * `dependencies[].source.version` が pin されていればそのバージョンを固定して取得する。
+ * 'latest'（と省略）の依存は最新版を取り、その版を world.yaml に書いて固定する。ubichill の版（spec.requires）が無ければ今の版で固定する。
  * `--mods-dir` 既定は `process.cwd()` 直下の `mods`。ただし外部 world の標準フローでは
  * `dependencies[].source.url` が優先されるため、この暗黙値は参照されない。
  *
@@ -88,7 +90,8 @@ export async function runInstall(
         );
     }
 
-    const def = WorldDefinitionSchema.parse(yaml.parse(readFileSync(worldPath, 'utf-8')));
+    const worldText = readFileSync(worldPath, 'utf-8');
+    const def = WorldDefinitionSchema.parse(yaml.parse(worldText));
     const outPath = argValue(argv, 'out') ?? worldPath.replace(/\.ya?ml$/i, '.lock.json');
     const previousText = existsSync(outPath) ? readFileSync(outPath, 'utf8') : null;
     const previous = previousText ? ModLockSchema.parse(JSON.parse(previousText)) : undefined;
@@ -129,8 +132,18 @@ export async function runInstall(
         return;
     }
 
+    const pinnedText = pinWorldYaml(worldText, lock);
+
     if (argv.includes('--check')) {
         const current = existsSync(outPath) ? readFileSync(outPath, 'utf-8') : null;
+        if (pinnedText !== worldText) {
+            log.error(
+                `${worldPath} に固定していない版があります（latest か、ubichill の版が無い）\n` +
+                    `ubichill install ${worldPath} --mods-dir=${modsDir} で固定してください`,
+            );
+            process.exitCode = 1;
+            return;
+        }
         if (current !== nextJson) {
             log.error(
                 `${outPath} が今の mod のビルドと一致しません（古いか、まだ作っていない）\n` +
@@ -144,6 +157,12 @@ export async function runInstall(
     }
 
     assertCapabilityUpdate(previous, lock, argv.includes('--accept-capabilities'));
-    writeWorldFiles([{ path: outPath, text: nextJson, expected: previousText }]);
-    log.success(`${outPath} に mod を固定しました`, `mod ${lockedIds.length}/${modIds.length}`);
+    writeWorldFiles([
+        ...(pinnedText === worldText ? [] : [{ path: worldPath, text: pinnedText, expected: worldText }]),
+        { path: outPath, text: nextJson, expected: previousText },
+    ]);
+    log.success(
+        `${outPath} に mod を固定しました`,
+        `mod ${lockedIds.length}/${modIds.length}${pinnedText === worldText ? '' : `。${worldPath} に版を書きました`}`,
+    );
 }

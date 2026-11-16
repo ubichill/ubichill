@@ -421,6 +421,16 @@ export type Dependency = z.infer<typeof DependencySchema>;
 // World Definition（ワールド定義 CRD）
 // ============================================
 
+/**
+ * ワールドを保存した ubichill の版（Host ⇔ mod のプロトコルの版、`PROTOCOL_VERSION`）。エディタが保存のたびに書き、
+ * 作者は書かなくてよい。これより古い Host（更新していないほかのサーバー）は、開く前に一部が動かない可能性を知らせる。
+ * 互換を壊す変更が避けられなくなったときに、古いワールドを見分けて移し替える手がかりにもなる。無いワールドは 0 とみなす。
+ */
+export const WorldRequirementsSchema = z.object({
+    protocol: z.number().int().min(0),
+});
+export type WorldRequirements = z.infer<typeof WorldRequirementsSchema>;
+
 export const WorldDefinitionSchema = z.object({
     apiVersion: z.literal('ubichill.com/v1alpha1'),
     kind: z.literal('World'),
@@ -439,6 +449,7 @@ export const WorldDefinitionSchema = z.object({
         dependencies: z.array(DependencySchema).optional(),
         initialEntities: InitialEntitiesSchema,
         permissions: WorldPermissionsSchema.optional(),
+        requires: WorldRequirementsSchema.optional(),
         // mod 完全性ロック（保存時に焼き込む）。外部 provenance のワールドでは
         // ロード時にこの hash と照合し、不一致 mod の実行を拒否する。
         lock: ModLockSchema.optional(),
@@ -509,6 +520,7 @@ export const ResolvedWorldSchema = z.object({
     lock: ModLockSchema.optional(),
     /** 識別結果（署名検証済み / 未署名）。解決側が付与する。 */
     identity: WorldIdentitySchema.optional(),
+    requires: WorldRequirementsSchema.optional(),
 });
 
 export type ResolvedWorld = z.infer<typeof ResolvedWorldSchema>;

@@ -49,11 +49,15 @@ spec:
 
   # 依存する mod の入手元ヒント（任意）。実際にどの Component を載せるかは
   # initialEntities の component type で決まる。
-  # version は 'latest'（省略時もこれ）か、完全一致 (x.y.z) の pin のどちらか。
-  # 'latest' でも保存・公開は既存の lock を保つ。版が動くのは `ubichill install world.yaml` と `ubichill update` のときだけ。
+  # version は完全一致 (x.y.z) で固定する。`ubichill install` が最新版を取って書くので、最初は省略してよい。
+  # 上げるときは `ubichill update world.yaml pen`（latest も読めるが、install・update・エディタが版に書き換える）。
   dependencies:
     - name: pen
-      source: { url: "https://yourname.github.io/pen-mod", version: latest }
+      source: { url: "https://yourname.github.io/pen-mod", version: 1.2.0 }
+
+  # ubichill の版（固定。無ければ install・update・エディタが今の版で書く）
+  requires:
+    protocol: 7
 
   # ワールド起動時の初期エンティティ（Entity=箱、component が振る舞いを配布）
   initialEntities:

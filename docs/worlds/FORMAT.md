@@ -133,8 +133,9 @@ Host が持つ Component。mod を読み込まずに使え、`dependencies` に�
 
 - `dependencies[]`：`{ name, source: { url?, author?, version? } }`。`url` があれば外部 mod（GitHub Pages 等）をその URL から取得し、無ければローカル（public mods）から解決する。mod の入手元ヒント。
   - `author`（`handle@domain`）は作者参照で追加した依存が持つ（`ubichill install @作者@サーバー/mod`・ブラウザの追加）。lock は版 2 になり、Host は署名の作者がこの作者と一致する mod だけを実行する。
-  - `version` は完全一致（`x.y.z`）か `latest`（省略時）。`latest` でも保存・公開は既存の lock を保ち、版が動くのは `ubichill install world.yaml` と `ubichill update` のときだけ。
+  - `version` はいつも完全一致（`x.y.z`）で固定する。エディタ・`ubichill install`・`update` は `latest` を書かず、`latest` が残っていれば実際に使う版に書き換える（読む側は古いワールドのために `latest`・省略も受け付ける）。
 - `permissions`：`{ allowGuestCreate: bool, allowGuestDelete: bool }`。
+- `requires`：`{ protocol: number }`。ワールドが固定している ubichill の版（Host ⇔ mod のプロトコルの版 `PROTOCOL_VERSION`）。mod の版と同じく固定し、エディタの mod 管理か YAML で作者が上げたときだけ変わる。無いワールドは、エディタの保存・`ubichill install`・`update` が今の版で固定する。古い版に固定したワールドは、新しい Host でもそのまま古い版として動く（知らせない）。Host より新しい版のワールドだけ、入る前とエディタで「一部が動かない可能性」を知らせる（止めはしない）。
 
 ## 連合（他インスタンス／外部ホスト）
 

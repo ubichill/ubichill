@@ -190,6 +190,7 @@ export function mapToResolved(
         // 別配信の lock（兄弟ファイル / DB カラム）を優先し、無ければ埋め込みフォールバック。
         lock: extra?.lock ?? def.spec.lock,
         identity: extra?.identity,
+        ...(def.spec.requires ? { requires: def.spec.requires } : {}),
     };
 }
 

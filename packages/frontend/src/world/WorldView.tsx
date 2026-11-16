@@ -6,8 +6,9 @@
  * SNS に固有のもの（認証・ホームへの導線・HUD）は持たず、props で受け取る。
  */
 import { useSocket, useWorld, WorkerLoadingProvider } from '@ubichill/react';
-import type { Instance, ModLock } from '@ubichill/shared';
+import { checkWorldCompatibility, type Instance, type ModLock } from '@ubichill/shared';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { pushToast } from '@/lib/toast';
 import { CursorLayer } from './cursor/CursorLayer';
 import { acceptEntry, hasAcceptedEntry, unverifiedEntryKey, unverifiedEntryMessage } from './entryGate';
 import { InstanceLoadingScreen } from './InstanceLoadingScreen';
@@ -137,6 +138,9 @@ export function WorldView({
             }
             if (!stillTarget()) return;
             setLoadError(null);
+            // 新しい ubichill で作られたワールドも入れる。動かない部分があり得ることだけ先に知らせる
+            const compatibility = checkWorldCompatibility(fetched.instance.world.requires);
+            if (compatibility.level !== 'ok') pushToast(compatibility.message, 'warn');
 
             // ワールドの中身はサーバー（Go）が snapshot で配る。クライアントは ID だけを渡す。
             joinWorld(userName, instanceId, (message) => {

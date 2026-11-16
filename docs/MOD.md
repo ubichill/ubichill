@@ -28,10 +28,10 @@ ubichill search pen --server=https://ubichill.com
 
 既存の `dependencies[].source.url` による依存も使える。
 `install @作者@サーバー/mod`（作品ページの URL も可）は作者署名と manifest hash を確かめ、`source.version` に正確な版を書く。
-`install world.yaml` は明示的に lock を再生成する。手元の再ビルドや、`source.version: latest` の依存の最新版を取り込む。
+`install world.yaml` は明示的に lock を再生成する（手元の再ビルドを取り込む）。版を書いていない依存（`latest`・省略）は最新版を取り、その版を world.yaml に書いて固定する。ubichill の版（`spec.requires`）が無ければ今の版で固定する。
 このとき署名と作者は確かめない。作者参照の依存も lock に `author` を書くだけで、照合は実行時に Host が行う。
 ブラウザの保存と CLI のワールド公開は、取得元・作者・指定した版が同じなら既存 lock を保つ。
-そのため `latest` の依存が新しい版に移るのは、明示的な `install world.yaml` と `update` のときだけ。
+そのため依存の版が上がるのは `update` のときだけ（`install world.yaml` は版を書いていない依存を最新版で固定するだけ）。
 更新するときは `ubichill update world.yaml pen`。作者参照の依存は作者のカタログの版を確かめて取り込み、`latest` も正確な版に書き換える。
 対象外の依存は更新せず、権限が増える場合は内容を確認して `--accept-capabilities` を指定する。取得失敗では YAML と lock を書き換えない。
 既存依存の権限が増える場合は install でも `--accept-capabilities` を必要とする。

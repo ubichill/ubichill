@@ -20,6 +20,7 @@
     "build:instance": "turbo build --filter=@ubichill/instance",
     "gen:install": "node packages/cli/src/index.ts install --mods-dir=packages/frontend/public/mods",
     "gen:world-locks": "node scripts/world-locks.mjs",
+    "mods:restore": "git fetch --depth=1 origin gh-pages:refs/remotes/origin/gh-pages && rm -rf .published-mods && mkdir -p .published-mods && git archive origin/gh-pages mods | tar -x -C .published-mods && node scripts/restore-published-mods.mjs .published-mods/mods packages/frontend/public/mods && rm -rf .published-mods",
     "gen:emoji": "node scripts/generate-emoji-data.mjs",
     "verify:mod-locks": "node packages/cli/src/index.ts verify --dist-dir=dist/mods",
     "verify:world-locks": "node scripts/world-locks.mjs --check",

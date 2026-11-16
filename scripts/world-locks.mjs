@@ -1,7 +1,9 @@
 /**
  * `worlds/*.yaml` 全件の mod 完全性ロック（兄弟 `<world>.lock.json`）を、現在の mod ビルド
  * （`packages/frontend/public/mods`、先に `pnpm build:workers` 済みが前提）から再生成する。
- * `--check` 付きなら書き込まず、既存ファイルと一致するかだけ検証して不一致なら非ゼロ終了する（CI 用の drift 検出）。
+ * 公式ワールドは同じリポジトリの mod と一緒に出すので、`ubichill update` でリポジトリの今の版に上げて YAML に固定する
+ * （mod の版を上げた PR では、公式ワールドの版の変更も差分に出る）。
+ * `--check` 付きなら書き込まず、版が固定されていて既存ファイルと一致するかだけ検証して不一致なら非ゼロ終了する（CI 用の drift 検出）。
  *
  * `worlds/*.lock.json` はコミットされる、レビュー可能な固定ピン（`pnpm-lock.yaml` と同じ位置づけ）。
  * 署名（`.sig.json`）はリポジトリに置かない。main に入ったら CI が公式アカウントの公開環境（Secret UBICHILL_CREDENTIALS）で
@@ -35,6 +37,8 @@ const run = (args) => {
 // 1 つ失敗しても残りのワールドも確かめる（map は途中で止まらない）
 const results = worldFiles
     .sort()
-    .map((relPath) => run(['install', relPath, `--mods-dir=${modsDir}`, ...(check ? ['--check'] : [])]));
+    .map((relPath) =>
+        run(check ? ['install', relPath, `--mods-dir=${modsDir}`, '--check'] : ['update', relPath, `--mods-dir=${modsDir}`]),
+    );
 
 process.exit(results.every(Boolean) ? 0 : 1);

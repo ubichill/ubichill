@@ -1,7 +1,14 @@
 import { buildWorldLock, createDependencyAwareLockEntryGetter } from '@ubichill/loader';
 import { createModLock, type Dependency, lockedMods, type ModLockEntry } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
-import { computeModDiff, lockForSelection, modToDependency, selectionToDependencies } from './modSelection';
+import {
+    computeModDiff,
+    displayedModVersion,
+    lockForSelection,
+    modToDependency,
+    pinDependencies,
+    selectionToDependencies,
+} from './modSelection';
 
 const local = (name: string, version = 'latest'): Dependency => ({ name, source: { version } });
 const url = (name: string, u: string, version = 'latest'): Dependency => ({
@@ -21,8 +28,8 @@ describe('selectionToDependencies', () => {
 });
 
 describe('modToDependency', () => {
-    it('ローカル mod は local 依存にする', () => {
-        expect(modToDependency({ id: 'm', name: 'm', version: '1.0.0' })).toEqual(local('m'));
+    it('ローカル mod は local 依存にし、版はいまの最新版に固定する（latest を書かない）', () => {
+        expect(modToDependency({ id: 'm', name: 'm', version: '1.0.0' })).toEqual(local('m', '1.0.0'));
     });
 
     it('baseUrl を持つ mod は url 依存にする', () => {
@@ -134,5 +141,49 @@ describe('lockForSelection', () => {
 
     it('初めて追加するmodの取得失敗も拒否する', () => {
         expect(() => lockForSelection([local('demo')], undefined, createModLock({}))).toThrow('demo');
+    });
+});
+
+describe('pinDependencies', () => {
+    it('latest の依存を lock が固定している版に書き換える', () => {
+        const lock = createModLock({ demo: entry('1.2.3') });
+        expect(pinDependencies([local('demo')], lock)).toEqual([local('demo', '1.2.3')]);
+    });
+
+    it('利用者が選んだ版は lock と違っても書き換えない（版を変えるのは選んだときだけ）', () => {
+        const lock = createModLock({ demo: entry('1.0.0') });
+        expect(pinDependencies([local('demo', '2.0.0')], lock)).toEqual([local('demo', '2.0.0')]);
+    });
+
+    it('lock に無い依存・lock が無いときは latest のまま残す（取れていない版を推測で書かない）', () => {
+        expect(pinDependencies([local('other')], createModLock({ demo: entry('1.0.0') }))).toEqual([local('other')]);
+        expect(pinDependencies([local('demo')], undefined)).toEqual([local('demo')]);
+    });
+
+    it('取得元と作者は保つ', () => {
+        const dep: Dependency = {
+            name: 'demo',
+            source: { url: 'https://cdn.example/m', author: 'a@example.com', version: 'latest' },
+        };
+        expect(pinDependencies([dep], createModLock({ demo: entry('3.0.0') }))[0].source).toEqual({
+            url: 'https://cdn.example/m',
+            author: 'a@example.com',
+            version: '3.0.0',
+        });
+    });
+});
+
+describe('displayedModVersion', () => {
+    it('固定した版をそのまま出す', () => {
+        expect(displayedModVersion('1.0.0', '2.0.0', '3.0.0')).toBe('1.0.0');
+    });
+
+    it('latest の依存は、実際に使っている lock の版を出す（最新版と取り違えない）', () => {
+        expect(displayedModVersion('latest', '2.0.0', '3.0.0')).toBe('2.0.0');
+    });
+
+    it('lock がまだ無ければ最新版を出す', () => {
+        expect(displayedModVersion('latest', undefined, '3.0.0')).toBe('3.0.0');
+        expect(displayedModVersion(undefined, undefined, '3.0.0')).toBe('3.0.0');
     });
 });

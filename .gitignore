@@ -50,6 +50,8 @@ coverage/
 
 # Build pipeline outputs (pnpm build:workers で生成)
 packages/frontend/public/mods/
+# pnpm mods:restore が公開済みの mod を一時的に展開する先
+.published-mods/
 CODE_STUDY.md
 
 # Antigravity CLI

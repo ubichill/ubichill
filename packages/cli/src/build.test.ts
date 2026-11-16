@@ -11,7 +11,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -375,6 +375,26 @@ describe('リモート registry からのバージョン履歴マージ（CI ク
         const versionNumbers = entry.versions.map((v) => v.version);
         // リモート履歴 (1.9.0 / 1.8.0) + 今回ビルドした現行版が新しい順で揃う
         expect(versionNumbers).toEqual([penVersion, '1.9.0', '1.8.0']);
+    });
+
+    it('public 側（公開済みの版を戻した Host の mods）にある履歴も引き継ぐ。dist が空でも以前の版を失わない', async () => {
+        mkdirSync(join(publicDir, 'pen'), { recursive: true });
+        writeFileSync(
+            join(publicDir, 'pen', 'index.json'),
+            JSON.stringify([
+                {
+                    id: 'pen',
+                    name: 'pen',
+                    version: '1.9.0',
+                    components: [],
+                    versions: [{ version: '1.9.0', components: [] }],
+                },
+            ]),
+        );
+        const entry = await buildMod(penModDir, { distDir: join(distDir, 'pen'), publicDir: join(publicDir, 'pen') });
+        expect(entry.versions.map((v) => v.version)).toEqual([penVersion, '1.9.0']);
+        const written = JSON.parse(readFileSync(join(distDir, 'pen', 'index.json'), 'utf-8'));
+        expect(written[0].versions.map((v: { version: string }) => v.version)).toEqual([penVersion, '1.9.0']);
     });
 
     it('registryUrl への fetch が失敗しても（オフライン/404）ビルドは成功する', async () => {

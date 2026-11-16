@@ -1,0 +1,44 @@
+{
+    "name": "ペンセット",
+    "description": "描いた線を表示するキャンバスと、ペン置き場・ペン 2 本・消しゴム。キャンバスはワールドに 1 つだけ置く（2 つ目からは「ペン置き場」を使う）。",
+    "entities": [
+        {
+            "id": "canvas",
+            "transform": { "x": 0, "y": 0, "z": 5000, "scale": 1, "rotation": 0 },
+            "components": [{ "type": "pen:canvas", "data": {} }],
+            "tags": [],
+            "children": []
+        },
+        {
+            "id": "tray",
+            "transform": { "x": 0, "y": 0, "z": 1000, "w": 266, "h": 67, "scale": 1, "rotation": 0 },
+            "components": [{ "type": "pen:tray", "data": {} }],
+            "tags": [],
+            "children": [
+                {
+                    "id": "pen-blue",
+                    "transform": { "x": 9, "y": 7, "z": 6, "w": 55, "h": 48, "scale": 1, "rotation": 0 },
+                    "components": [{ "type": "pen:pen", "data": { "color": "#93bcf0", "strokeWidth": 4 } }],
+                    "tags": [],
+                    "children": []
+                },
+                {
+                    "id": "pen-black",
+                    "transform": { "x": 76, "y": 7, "z": 6, "w": 55, "h": 48, "scale": 1, "rotation": 0 },
+                    "components": [{ "type": "pen:pen", "data": { "color": "#1a1a1a", "strokeWidth": 4 } }],
+                    "tags": [],
+                    "children": []
+                },
+                {
+                    "id": "eraser",
+                    "transform": { "x": 143, "y": 7, "z": 6, "w": 55, "h": 48, "scale": 1, "rotation": 0 },
+                    "components": [
+                        { "type": "pen:pen", "data": { "color": "#1a1a1a", "strokeWidth": 4, "eraser": true } }
+                    ],
+                    "tags": [],
+                    "children": []
+                }
+            ]
+        }
+    ]
+}
