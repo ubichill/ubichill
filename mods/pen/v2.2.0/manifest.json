@@ -1,0 +1,305 @@
+{
+  "id": "pen",
+  "name": "pen",
+  "version": "2.2.0",
+  "components": {
+    "pen:canvas": {
+      "canvasTargets": [
+        "drawing"
+      ],
+      "watchEntityTypes": [
+        "pen:stroke",
+        "pen:pen"
+      ],
+      "watchScope": "world",
+      "defaultTransform": {
+        "x": 0,
+        "y": 0,
+        "z": 5000
+      },
+      "capabilities": [
+        "canvas:draw",
+        "event:emit",
+        "scene:read",
+        "scene:update"
+      ],
+      "workerUrl": "./canvas/index.8f0d9792.js"
+    },
+    "pen:pen": {
+      "watchEntityTypes": [
+        "pen:pen"
+      ],
+      "watchScope": "entity",
+      "defaultTransform": {
+        "x": 0,
+        "y": 0,
+        "z": 1,
+        "w": 36,
+        "h": 48
+      },
+      "dataFields": {
+        "color": {
+          "type": "color",
+          "default": "#1a1a1a",
+          "label": "ペンの色"
+        },
+        "strokeWidth": {
+          "type": "number",
+          "default": 4,
+          "min": 1,
+          "max": 30,
+          "step": 1,
+          "label": "線の太さ"
+        },
+        "eraser": {
+          "type": "boolean",
+          "default": false,
+          "label": "消しゴム",
+          "help": "描く代わりに、なぞった線を消す"
+        }
+      },
+      "capabilities": [
+        "event:emit",
+        "host:message",
+        "scene:read",
+        "scene:update",
+        "ui:render"
+      ],
+      "workerUrl": "./pen/index.cc4a7370.js"
+    },
+    "pen:stroke": {
+      "dataOnly": true,
+      "description": "確定したストローク 1 本（点・色・太さ・描くか消すか）"
+    },
+    "pen:tray": {
+      "defaultTransform": {
+        "x": 20,
+        "y": 20,
+        "z": 1000,
+        "w": 60,
+        "h": 240
+      },
+      "capabilities": [
+        "event:emit",
+        "scene:read",
+        "ui:render"
+      ],
+      "workerUrl": "./tray/index.14ded3ea.js"
+    }
+  },
+  "prefabs": {
+    "pen-set": {
+      "name": "ペンセット",
+      "description": "描いた線を表示するキャンバスと、ペン置き場・ペン 2 本・消しゴム。キャンバスはワールドに 1 つだけ置く（2 つ目からは「ペン置き場」を使う）。",
+      "entities": [
+        {
+          "id": "canvas",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "z": 5000,
+            "scale": 1,
+            "rotation": 0
+          },
+          "components": [
+            {
+              "type": "pen:canvas",
+              "data": {}
+            }
+          ],
+          "tags": [],
+          "children": []
+        },
+        {
+          "id": "tray",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "z": 1000,
+            "w": 266,
+            "h": 67,
+            "scale": 1,
+            "rotation": 0
+          },
+          "components": [
+            {
+              "type": "pen:tray",
+              "data": {}
+            }
+          ],
+          "tags": [],
+          "children": [
+            {
+              "id": "pen-blue",
+              "transform": {
+                "x": 9,
+                "y": 7,
+                "z": 6,
+                "w": 55,
+                "h": 48,
+                "scale": 1,
+                "rotation": 0
+              },
+              "components": [
+                {
+                  "type": "pen:pen",
+                  "data": {
+                    "color": "#93bcf0",
+                    "strokeWidth": 4
+                  }
+                }
+              ],
+              "tags": [],
+              "children": []
+            },
+            {
+              "id": "pen-black",
+              "transform": {
+                "x": 76,
+                "y": 7,
+                "z": 6,
+                "w": 55,
+                "h": 48,
+                "scale": 1,
+                "rotation": 0
+              },
+              "components": [
+                {
+                  "type": "pen:pen",
+                  "data": {
+                    "color": "#1a1a1a",
+                    "strokeWidth": 4
+                  }
+                }
+              ],
+              "tags": [],
+              "children": []
+            },
+            {
+              "id": "eraser",
+              "transform": {
+                "x": 143,
+                "y": 7,
+                "z": 6,
+                "w": 55,
+                "h": 48,
+                "scale": 1,
+                "rotation": 0
+              },
+              "components": [
+                {
+                  "type": "pen:pen",
+                  "data": {
+                    "color": "#1a1a1a",
+                    "strokeWidth": 4,
+                    "eraser": true
+                  }
+                }
+              ],
+              "tags": [],
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    "pen-tray": {
+      "name": "ペン置き場",
+      "description": "ペン置き場とペン 2 本・消しゴム。線を表示するキャンバスは含まないので、ワールドに「ペンセット」かキャンバスを 1 つ置いておく。",
+      "entities": [
+        {
+          "id": "tray",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "z": 1000,
+            "w": 266,
+            "h": 67,
+            "scale": 1,
+            "rotation": 0
+          },
+          "components": [
+            {
+              "type": "pen:tray",
+              "data": {}
+            }
+          ],
+          "tags": [],
+          "children": [
+            {
+              "id": "pen-blue",
+              "transform": {
+                "x": 9,
+                "y": 7,
+                "z": 6,
+                "w": 55,
+                "h": 48,
+                "scale": 1,
+                "rotation": 0
+              },
+              "components": [
+                {
+                  "type": "pen:pen",
+                  "data": {
+                    "color": "#93bcf0",
+                    "strokeWidth": 4
+                  }
+                }
+              ],
+              "tags": [],
+              "children": []
+            },
+            {
+              "id": "pen-black",
+              "transform": {
+                "x": 76,
+                "y": 7,
+                "z": 6,
+                "w": 55,
+                "h": 48,
+                "scale": 1,
+                "rotation": 0
+              },
+              "components": [
+                {
+                  "type": "pen:pen",
+                  "data": {
+                    "color": "#1a1a1a",
+                    "strokeWidth": 4
+                  }
+                }
+              ],
+              "tags": [],
+              "children": []
+            },
+            {
+              "id": "eraser",
+              "transform": {
+                "x": 143,
+                "y": 7,
+                "z": 6,
+                "w": 55,
+                "h": 48,
+                "scale": 1,
+                "rotation": 0
+              },
+              "components": [
+                {
+                  "type": "pen:pen",
+                  "data": {
+                    "color": "#1a1a1a",
+                    "strokeWidth": 4,
+                    "eraser": true
+                  }
+                }
+              ],
+              "tags": [],
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "assets": []
+}
