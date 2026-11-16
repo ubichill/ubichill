@@ -49,7 +49,8 @@ spec:
 
   # 依存する mod の入手元ヒント（任意）。実際にどの Component を載せるかは
   # initialEntities の component type で決まる。
-  # version は 'latest'（常に最新を追う。省略時もこれになる）か、完全一致 (x.y.z) の pin のどちらか。
+  # version は 'latest'（省略時もこれ）か、完全一致 (x.y.z) の pin のどちらか。
+  # 'latest' でも保存・公開は既存の lock を保つ。版が動くのは `ubichill install world.yaml` と `ubichill update` のときだけ。
   dependencies:
     - name: pen
       source: { url: "https://yourname.github.io/pen-mod", version: latest }
@@ -67,7 +68,7 @@ spec:
     allowGuestDelete: false
 ```
 
-> **mod の定義（`mod.json`）は [../MOD.md](../MOD.md) を参照。** ワールドは複数の mod を URL から
+> **mod の作り方・配布は [../MOD.md](../MOD.md) を参照。** ワールドは複数の mod を URL から
 > 読み込んで構成する。ワールド YAML は初期エンティティに載せる Component（`<modId>:<name>`）と
 > 入手元 `dependencies` を宣言し、各 mod の中身（Component・権限・配布形式）は mod 側の関心事として分離している。
 > フィールドの完全な定義は [FORMAT.md](./FORMAT.md)。
@@ -112,8 +113,8 @@ spec:
 
 ## 認証・所有権
 
-- YAML を `ubi mod deploy` したユーザーが **owner**（PostgreSQL レコードに `ownerId` を保存）
-- `config` など作者専用フィールドの更新は `ownerId` 一致チェックで保護
+- ブラウザで保存、または `ubichill publish world.yaml` したアカウントが作者（PostgreSQL の `worlds.author_id`）
+- 同じ作者・同じ `metadata.name` のときだけ、そのワールドの更新になる
 - 将来的に OAuth（GitHub 等）と連携予定
 
 ---
@@ -122,22 +123,22 @@ spec:
 
 ワールドは初期エンティティの Component（`<modId>:<name>`）と `spec.dependencies[].source` の URL から
 mod を読み込む。配布方法（GitHub Pages / CDN・versioned manifest）は mod 側の関心事なので
-[MOD.md](../MOD.md#配布) を参照。
+[MOD.md](../MOD.md#配布と信頼) を参照。
 
 依存する mod は **ロックファイルで内容ハッシュ（integrity）ごと固定**する（world owner が所有）。
 URL のドメイン乗っ取りや CDN 改竄で「同じバージョンの別物」が配信されても、ハッシュ不一致で
-実行を拒否できる。詳細は [MOD.md（バージョンと lock）](../MOD.md#バージョンと-lock)。
+実行を拒否できる。lock の形式は [PROTOCOLS.md](../PROTOCOLS.md#mod-の-lock版-1版-2)、作者署名は [MOD.md](../MOD.md#作者署名必須)。
 
 ---
 
 ## バリデーション
 
-ワールド YAML を `ubi mod deploy` した際、サーバー側で以下を検証する。
+ワールドを保存・公開（`PUT /api/v1/worlds`）した際、サーバー側で以下を検証する。
 
 | チェック | 目的 |
 |---|---|
 | YAML サイズ制限（100KB） | YAML Bomb 防止 |
-| Alias 上限（100） | 再帰爆発防止 |
-| URL ホワイトリスト | XSS / フィッシング防止 |
-| 依存深度制限（3階層） | 無限ループ防止 |
-| SemVer 形式 | バージョン解決の一貫性 |
+| Alias 上限（100。`yaml` ライブラリの既定値） | 再帰爆発防止 |
+| スキーマ（`WorldDefinitionSchema`。SemVer 形式を含む） | バージョン解決の一貫性 |
+
+URL のホワイトリストと依存の深さの制限は未実装（依存は `spec.dependencies` の 1 階層だけで、mod から別の mod への依存は無い）。

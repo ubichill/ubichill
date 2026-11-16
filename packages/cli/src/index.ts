@@ -1,19 +1,23 @@
 #!/usr/bin/env node
 /**
- * `ubichill` CLI（mod開発者向け）。サブコマンドで build/install/update/verify を振り分ける。
+ * `ubichill` CLI（mod・ワールドの作者向け）。サブコマンドを振り分ける。
  *
  * 使い方:
- *   ubichill build   [--mods-dir=<dir>] [--public-mods-dir=<dir>] [--dist-dir=<dir>]
- *   ubichill install <world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>] [--check]
- *   ubichill update  <world.yaml> [<modName>] [--mods-dir=<dir>] [--out=<path>]
+ *   ubichill init    mod|world <名前>
+ *   ubichill build   [--mods-dir=<dir>] [--public-mods-dir=<dir>] [--dist-dir=<dir>] [--registry-url=<url>] [--layout=registry]
+ *   ubichill install @<作者>@<サーバー>/<mod>[@<版>] | <作品ページの URL> [--world=<world.yaml>] [--accept-capabilities]
+ *   ubichill install <world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>] [--check] [--accept-capabilities]
+ *   ubichill update  <world.yaml> [<modName>] [--mods-dir=<dir>] [--out=<path>] [--accept-capabilities]
+ *   ubichill search  <名前> [--server=<url>]
+ *   ubichill prefab  add <mod>/<プレハブ> | update <Entity ID> [--apply] | unpack <Entity ID> [--world=<world.yaml>]
  *   ubichill verify  [--dist-dir=<dir>] [--require-signatures]   mod のビルド（lock.json と署名）を検証する
  *   ubichill verify  <world.yaml>            ワールドの署名が今の内容に対して有効か調べる
  *   ubichill login   [--server=<url>] [--device] [--name=<表示名>] [--no-browser]
  *   ubichill logout  [--server=<url>]
  *   ubichill whoami  [--server=<url>]
  *   ubichill ci create --name=<表示名> [--server=<url>] [--device]
- *   ubichill publish <world.yaml>... [--server=<url>] [--out=<dir>] [--public-url=<url>] [--no-install]
- *   ubichill publish <mods のビルド出力>...   mod の配布物（例 dist/mods）に署名する
+ *   ubichill publish <world.yaml>... [--server=<url>] [--out=<dir>] [--public-url=<url>] [--no-install] [--accept-capabilities]
+ *   ubichill publish <mods のビルド出力>... [--server=<url>] [--public-url=<url>] [--check-public]   mod の配布物に署名する
  *   ubichill world build <world.yaml> [--id=<instanceId>] [--max-users=<n>] [--out=<path>]   Go に渡す定義 JSON を作る
  *   ubichill dev     [world.yaml] [--port=<n>] [--host[=<addr>]] [--mods-dir=<dir>] [--max-users=<n>]   手元の mod を本番と同じ Go で動かす開発サーバー
  *

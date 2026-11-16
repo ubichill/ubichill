@@ -44,6 +44,9 @@ spec:
 
 - **Entity**：`id`＋`transform`＋`components[]` を持つ「箱」。`children[]` で入れ子。id はツリー全体で一意。
 - **Component**：`type: "<modId>:<componentName>"`（例 `pen:tray`）で振る舞いを配布。1 Entity に複数可。`data` は Component ごとの初期値。
+- **`prefab`**（任意）：package のプレハブを配置したときに作る親 Entity（子にプレハブの Entity 一式を持つ）の出典（`PrefabLink`）。
+  `{ modId, name, version, manifestIntegrity, baseUrl?, author?, entityIds }`。`entityIds` はプレハブ内の Entity id → 配置した id の対応。
+  差分更新は `manifestIntegrity` で元の版の manifest を配布先から取り直して比べる。Unpack すると外れる（[MOD.md のプレハブ](../MOD.md#プレハブ)）。
 
 ```yaml
 initialEntities:
@@ -128,7 +131,9 @@ Host が持つ Component。mod を読み込まずに使え、`dependencies` に�
 
 ## その他の `spec` フィールド（任意）
 
-- `dependencies[]`：`{ name, source: { url?, version? } }`。`url` があれば外部 mod（GitHub Pages 等）をその URL から取得し、無ければローカル（public mods）から解決する。mod の入手元ヒント。
+- `dependencies[]`：`{ name, source: { url?, author?, version? } }`。`url` があれば外部 mod（GitHub Pages 等）をその URL から取得し、無ければローカル（public mods）から解決する。mod の入手元ヒント。
+  - `author`（`handle@domain`）は作者参照で追加した依存が持つ（`ubichill install @作者@サーバー/mod`・ブラウザの追加）。lock は版 2 になり、Host は署名の作者がこの作者と一致する mod だけを実行する。
+  - `version` は完全一致（`x.y.z`）か `latest`（省略時）。`latest` でも保存・公開は既存の lock を保ち、版が動くのは `ubichill install world.yaml` と `ubichill update` のときだけ。
 - `permissions`：`{ allowGuestCreate: bool, allowGuestDelete: bool }`。
 
 ## 連合（他インスタンス／外部ホスト）
@@ -151,7 +156,7 @@ Host が持つ Component。mod を読み込まずに使え、`dependencies` に�
 - **署名を検証できないワールド（未署名）は公開しない**：ワールド一覧・連合（global）一覧・プロフィール・インスタンス一覧に出さない。URL を直接指定すれば入れるが、入室前に確認を求める。
 - 連合ピアの一覧に書かれた署名状態は信用せず、受け手が各ワールドを取得して検証する。
 - サーバーは署名しない（鍵を持たない）。本体で作ったワールドも外部と同じく、作者が手元（ブラウザ・CLI）で「定義・lock」に署名し、`PUT /api/v1/worlds` に `{ yaml, lock, signature }` を一緒に送る（サーバーは中身を書き換えない。署名が通らなければ何も保存しない）。同じ作者・同じ `metadata.name` なら同じワールドの更新になる。エディタで `metadata.name` を変えると名前の変更（URL が変わり、以前の URL からもたどれる）。署名なしで送ると、公開中のワールドなら公開中の版を残して下書きになる。
-- 公式ワールド（`worlds/`）は main に入ったら CI が公式アカウントで署名し（`ubichill publish worlds/*.yaml --out=worlds`）、イメージに同梱する。署名はコミットしない。ほかのリポジトリも同じ方法で公開できる（`packages/sdk/README.md` の CI の例）。
+- 公式ワールド（`worlds/`）は main に入ったら CI が公式アカウントで署名し（`ubichill publish worlds/*.yaml --out=worlds`）、イメージに同梱する。署名はコミットしない。ほかのリポジトリも同じ方法で公開できる（[CLI の README](../../packages/cli/README.md#ci-から公開する)。CI 用の認証情報の作り方）。
 - 本体は YAML・lock・署名をファイル（DB）の生の値のまま配信する（既定値で補うと署名と一致しなくなるため）。
 
 ## 正準スキーマ

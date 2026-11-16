@@ -17,11 +17,21 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 | 形式 | 版 | 定義 | 置き場所 |
 | --- | --- | --- | --- |
 | ワールドの定義 | `apiVersion: ubichill.com/v1alpha1` | `shared/schemas/world.schema.ts` | `<world>.yaml` |
-| mod の lock | `lockVersion: 1` | `shared/schemas/modLock.schema.ts` | `<world>.lock.json`・`v<版>/lock.json` |
+| mod の lock | `lockVersion: 1` / `2` | `shared/schemas/modLock.schema.ts` | `<world>.lock.json`（`v<版>/lock.json` はその 1 項目 `ModLockEntry`） |
+| mod の manifest（プレハブを含む） | 版なし（項目を足すだけ） | `shared/schemas/mod.schema.ts`（`ModVersionedManifestSchema`）・`shared/mod/prefab.ts` | `v<版>/manifest.json`（lock が hash で固定） |
+| mod の取得先（カタログの項目） | 版なし | `shared/mod/packageRef.ts`（`PackageDescriptorSchema`） | 作者のサーバーの `/api/v1/authors/:handle/mods/:id` |
+| 配置したプレハブの出典 | 版なし | `shared/schemas/world.schema.ts`（`PrefabLinkSchema`） | ワールドの Entity の `prefab` |
 | 作者署名（ワールド） | `version: 2`・`kind: 'world'` | `shared/signature/envelope.ts`（内容のハッシュは `shared/world/identity.ts`） | `<world>.sig.json` |
 | 作者署名（mod） | `version: 2`・`kind: 'mod'` | `shared/signature/envelope.ts`（内容のハッシュは `shared/mod/modSignature.ts`） | `v<版>/lock.sig.json` |
 | サービストークン | JWT（EdDSA） | `shared/mod/serviceToken.ts` | 外部サービスへ渡す |
 | CLI・CI の認証情報 | `version: 1` | `cli/src/credentials.ts` | `~/.config/ubichill`・CI の Secret |
+
+### mod の lock（版 1・版 2）
+
+- **版 1**: `{ lockVersion: 1, mods: { <modId>: ModLockEntry } }`。項目に `author` を持てない。
+- **版 2**: `{ lockVersion: 2, mods: {}, packages: { <modId>: ModLockEntry } }`。作者参照で追加した依存（`author` を持つ項目）が 1 つでもあれば版 2 で書く。
+  旧 Host は `mods` だけを読むので、`mods` を空にして作者の照合を知らない Host では lock が無いものとして実行させない。
+- 読む側は両方を読み続ける（`lockedMods`）。版 2 で `mods` に項目がある、版 1 に `packages`・`author` がある lock は不正として拒否する。
 
 ### 作者署名の形式（版 2）
 
@@ -67,6 +77,8 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 | `GET /.well-known/webfinger` | 作者を確かめる他のサーバー・ブラウザ |
 | `GET /api/v1/authors/:handle/signing-keys` | 同上（`Access-Control-Allow-Origin: *`） |
 | `GET /api/v1/authors/:handle/worlds/:name.yaml`（`.lock.json`・`.sig.json`） | ワールドを読む他のサーバー |
+| `GET /api/v1/authors/:handle/mods`（`?offset=`）・`/api/v1/authors/:handle/mods/:id` | 作者参照を解決するブラウザ・CLI（`PackageDescriptor` を返す。`Access-Control-Allow-Origin: *`）。WebFinger の rel `https://ubichill.com/ns/mods` から辿る |
+| `GET /api/v1/mods?q=…&offset=…` | `ubichill search`・ブラウザの検索（このサーバーの公開 mod） |
 | `GET /api/v1/worlds?scope=local` | 連合のピア（このサーバーのワールドだけを返す） |
 | `GET /api/v1/service-tokens/keys` | サービストークンを検証する外部サービス |
 | `GET /.well-known/nodeinfo`・`/nodeinfo/2.1` | ubichill のサーバーかを確かめるほかのサーバー |
