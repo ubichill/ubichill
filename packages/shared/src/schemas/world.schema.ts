@@ -404,9 +404,9 @@ export const WorldPermissionsSchema = z.object({
 export const DependencySourceSchema = z.object({
     url: z.string().url().optional(),
     author: PackageAuthorSchema.optional(),
-    // 完全一致 (x.y.z) の pin か、明示的な 'latest'（常に最新版を追う）のどちらか。
-    // 省略時も 'latest' として扱う（既存ワールドとの後方互換）が、解決後は必ずどちらかの値になるため
-    // 「省略＝最新追従」という暗黙の意味を読み手が推測する必要がない。
+    // 完全一致 (x.y.z) の pin か、明示的な 'latest' のどちらか。省略時は 'latest'（既存ワールドとの後方互換）。
+    // 'latest' は lock を作り直すときに最新版を取る意味で、保存・公開は既存の lock を保つ。版が動くのは
+    // 明示的な `ubichill install <world.yaml>` と `ubichill update` のときだけ（update は作者参照の依存を正確な版に書き換える）。
     version: z.union([SemVer, z.literal('latest')]).default('latest'),
 });
 export type DependencySource = z.infer<typeof DependencySourceSchema>;
