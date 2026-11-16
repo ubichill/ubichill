@@ -1,11 +1,11 @@
 /**
- * `ubichill dev` の状態表示と診断。世代・部屋・接続の状態、「部屋を作り直す」、ビルドとワールドの失敗。
+ * `ubichill dev` の状態表示。世代・部屋・接続の状態、「部屋を作り直す」、コンソールの開閉。
+ * ビルドとワールドの失敗は、コンソール（画面の下の端）に出す。
  *
  * 状態表示は右上の小さな札にする。ステージは画面全体（ポインタの座標は `clientY + scrollTop`）なので、
  * 上端に帯を敷くと `overlay: top-left` の HUD やワールドの上端が本番と違って隠れる。
  */
 
-import type { DevFailure } from '@ubichill/shared';
 import { css } from '@/styled-system/css';
 
 const bar = css({
@@ -39,32 +39,29 @@ const button = css({
     backgroundColor: 'transparent',
     cursor: 'pointer',
     _hover: { backgroundColor: 'hudBgHover' },
+    _pressed: { backgroundColor: 'hudBgHover' },
 });
 const dot = css({ width: '8px', height: '8px', borderRadius: '50%' });
 // 繋がっているか（SSE）。色はトークンから
 const dotState = { connected: css({ backgroundColor: 'success' }), disconnected: css({ backgroundColor: 'warning' }) };
-const diagnostics = css({
-    position: 'fixed',
-    left: '12px',
-    bottom: '12px',
-    zIndex: 10010,
-    maxWidth: '520px',
-    maxHeight: '40vh',
-    overflowY: 'auto',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '6px',
-    p: '10px 12px',
-    fontSize: '12px',
-    fontFamily: 'monospace',
-    color: 'errorText',
-    backgroundColor: 'errorBg',
-    border: '1px solid',
-    borderColor: 'border',
-    borderRadius: '10px',
-    whiteSpace: 'pre-wrap',
-    overflowWrap: 'anywhere',
-});
+
+function ConsoleIcon() {
+    return (
+        <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+        >
+            <path d="m4 17 6-6-6-6M12 19h8" />
+        </svg>
+    );
+}
 
 function RefreshIcon() {
     return (
@@ -79,11 +76,15 @@ export function DevBar({
     instanceId,
     connected,
     onReconfigure,
+    consoleOpen,
+    onToggleConsole,
 }: {
     buildId: string | null;
     instanceId: string | null;
     connected: boolean;
     onReconfigure: () => void;
+    consoleOpen: boolean;
+    onToggleConsole: () => void;
 }) {
     return (
         <div
@@ -100,32 +101,21 @@ export function DevBar({
             <button
                 type="button"
                 className={button}
+                onClick={onToggleConsole}
+                aria-pressed={consoleOpen}
+                aria-label="コンソール"
+            >
+                <ConsoleIcon />
+            </button>
+            <button
+                type="button"
+                className={button}
                 onClick={onReconfigure}
                 aria-label="部屋を作り直す"
                 title="部屋を作り直す（状態を初期に戻す）"
             >
                 <RefreshIcon />
             </button>
-        </div>
-    );
-}
-
-export function DevDiagnostics({ failures }: { failures: readonly DevFailure[] }) {
-    if (failures.length === 0) return null;
-    return (
-        <div className={diagnostics} role="log">
-            {failures.map((failure, index) =>
-                failure.kind === 'build' ? (
-                    <div key={`build:${failure.mod}`}>
-                        [{failure.mod}] {failure.message}
-                    </div>
-                ) : failure.kind === 'reference' ? (
-                    // 同じ型の Component が 1 つの Entity に 2 つあると、同じ文の問題が 2 件になる
-                    <div key={`reference:${index}`}>[参照] {failure.message}</div>
-                ) : (
-                    <div key="world">[world] {failure.message}</div>
-                ),
-            )}
         </div>
     );
 }

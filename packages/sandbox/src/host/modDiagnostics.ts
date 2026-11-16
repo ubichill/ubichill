@@ -92,6 +92,42 @@ export function resetDiagnosticThrottleForTests(): void {
 }
 
 // ============================================================
+// mod のログ (Ubi.log・Worker の console・Worker の例外)
+// ============================================================
+
+export type ModLogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+export interface ModLog {
+    level: ModLogLevel;
+    /** 出した mod の ID（分からなければ空） */
+    modId: string;
+    message: string;
+}
+
+export type ModLogHandler = (log: ModLog) => void;
+
+const _defaultModLogHandler: ModLogHandler = ({ level, modId, message }) => {
+    console[level](`[Mod:${modId || '?'}] ${message}`);
+};
+
+let _modLogHandler: ModLogHandler = _defaultModLogHandler;
+
+/** mod のログの行き先を差し替える（Host のコンソールの画面など）。 */
+export function setModLogHandler(handler: ModLogHandler): void {
+    _modLogHandler = handler;
+}
+
+/** mod のログの行き先をデフォルト（console）に戻す */
+export function resetModLogHandler(): void {
+    _modLogHandler = _defaultModLogHandler;
+}
+
+/** mod が出したログを渡す。レート制限はしない（同じ文の連続は受け取る側でまとめる）。 */
+export function reportModLog(log: ModLog): void {
+    _modLogHandler(log);
+}
+
+// ============================================================
 // メトリクス (Metric)
 // ============================================================
 

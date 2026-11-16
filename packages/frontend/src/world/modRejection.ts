@@ -3,6 +3,7 @@
  * 理由は loader の `{ rejected }`（lock の照合・作者署名の確認）と、作者をブロックしている（{@link blockedAuthorRejection}）。
  */
 import { isModAuthorBlocked } from '@ubichill/shared';
+import type { ConsoleInput } from '@/lib/console/console';
 
 export interface ModRejectionText {
     message: string;
@@ -46,31 +47,37 @@ export function describeModRejection(reason: string): ModRejectionText {
     return TEXT_BY_REASON.get(reason) ?? { message: `検証に失敗しました (${reason})`, retryable: false };
 }
 
-export interface RejectedMod {
-    modId: string;
-    message: string;
-    retryable: boolean;
-    /** この mod で実行しなかった Component 型（`modId:componentName`）。再試行の対象。 */
-    entityTypes: string[];
+/** Component 型（`modId:componentName`）の mod の ID。 */
+export function modIdOfType(entityType: string): string {
+    return entityType.split(':')[0] ?? entityType;
 }
 
-/** Component 型ごとの理由を、mod ごとの表示にまとめる。mod の中で理由が分かれたら、再試行できない理由を優先して出す。 */
-export function groupRejections(rejections: ReadonlyMap<string, string>): RejectedMod[] {
-    const byMod = new Map<string, { entityType: string; reason: string }[]>();
-    for (const [entityType, reason] of rejections) {
-        const modId = entityType.split(':')[0] ?? entityType;
-        byMod.set(modId, [...(byMod.get(modId) ?? []), { entityType, reason }]);
-    }
-    return [...byMod.entries()]
-        .map(([modId, items]) => {
-            const texts = items.map((item) => describeModRejection(item.reason));
-            const shown = texts.find((t) => !t.retryable) ?? texts[0] ?? describeModRejection('');
-            return {
-                modId,
-                message: shown.message,
-                retryable: texts.some((t) => t.retryable),
-                entityTypes: items.map((item) => item.entityType).sort(),
-            };
-        })
-        .sort((a, b) => a.modId.localeCompare(b.modId));
+/**
+ * 読み込めなかった mod のコンソールの記録。確定した拒否（署名・内容の不一致）はエラー、
+ * 時間をおけば通るもの（通信・作者のサーバーの都合）は警告にして再試行を付ける。
+ */
+export function modRejectionLog(modId: string, reason: string, retry: () => void): ConsoleInput {
+    const text = describeModRejection(reason);
+    const hint = text.retryable
+        ? '通信が回復したら、再試行してください。'
+        : '署名や内容の問題です。ワールドの作者にこの理由を伝えてください。';
+    return {
+        level: text.retryable ? 'warning' : 'error',
+        source: modId,
+        message: `読み込めませんでした: ${text.message}`,
+        detail: `${hint}\n理由: ${reason}`,
+        ...(text.retryable ? { action: { label: '再試行', run: retry } } : {}),
+    };
+}
+
+/** 再試行で読み込み直す Component 型（その mod のうち、再試行で通る可能性のあるもの）と、止まっている数。 */
+export function retryTargets(
+    rejections: ReadonlyMap<string, string>,
+    modId: string,
+): { targets: string[]; rejected: number } {
+    const ofMod = [...rejections].filter(([type]) => modIdOfType(type) === modId);
+    return {
+        targets: ofMod.filter(([, reason]) => describeModRejection(reason).retryable).map(([type]) => type),
+        rejected: ofMod.length,
+    };
 }

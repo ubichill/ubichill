@@ -174,6 +174,8 @@ export const WORLD_APP_ALLOWED = [
     'styles/',
     'components/ui/',
     'components/permissions/',
+    'components/console/',
+    'lib/console/',
     'lib/toast.ts',
     'lib/settings/',
     'lib/notifications/notifications.ts',

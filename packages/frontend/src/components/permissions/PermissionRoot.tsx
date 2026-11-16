@@ -7,6 +7,7 @@
 import { DEFAULT_PERMISSION_POLICY, type PermissionPolicy, PermissionProvider } from '@ubichill/react';
 import type React from 'react';
 import { useCallback, useMemo } from 'react';
+import { ModConsoleBridge } from '@/components/console/ModConsoleBridge';
 import { ToastHost } from '@/components/ui/ToastHost';
 import { readSetting, SETTINGS_KEYS, writeSetting } from '@/lib/settings';
 import { PermissionPromptModal } from './PermissionPromptModal';
@@ -44,8 +45,9 @@ export const PermissionRoot: React.FC<{ children: React.ReactNode }> = ({ childr
         <PermissionProvider initialPolicy={initialPolicy} onPolicyChange={handlePolicyChange}>
             {children}
             <PermissionPromptModal />
-            {/* 診断→トースト橋渡し（拒否の可視化＋「許可」ボタン）。Provider 内で許可操作にアクセス。 */}
+            {/* 診断→コンソール（権限の拒否はトーストにも「許可」ボタンつきで）。Provider 内で許可操作にアクセス。 */}
             <PermissionToastBridge />
+            <ModConsoleBridge />
             <ToastHost />
         </PermissionProvider>
     );

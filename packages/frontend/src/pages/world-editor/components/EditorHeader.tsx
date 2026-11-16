@@ -1,9 +1,9 @@
 import { useCallback, useState } from 'react';
+import { ConsoleLevelIcon } from '@/components/console/ConsoleLevelIcon';
 import { css } from '@/styled-system/css';
 import type { PublishState } from '../hooks/useDefinition';
 import type { ControlPanelAlert } from '../lib/editorChecks';
 import { editorButton } from '../recipes/button';
-import { StatusIcon } from './statusIcons';
 
 interface EditorHeaderProps {
     title: string;
@@ -219,7 +219,7 @@ function AlertBadge({ alert }: { alert: ControlPanelAlert }) {
                 fontWeight: '600',
             })}
         >
-            <StatusIcon level={alert.level} />
+            <ConsoleLevelIcon level={alert.level} />
             {alert.count}
         </span>
     );
