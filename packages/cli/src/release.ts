@@ -8,6 +8,24 @@ import {
 } from '@ubichill/loader';
 import { type ModLockEntry, ModLockEntrySchema, modContentHash } from '@ubichill/shared';
 
+/**
+ * 一時的なサーバーエラー（5xx・通信の失敗）だけをやり直す。GitHub Pages は反映中に 503 を返すことがあり、
+ * 1 回で諦めると公開が止まる。404 などはそのまま返す（「まだ公開していない」も答えのうち）。
+ */
+export async function fetchRetryingServerErrors(
+    request: () => Promise<Response>,
+    options: { attempts?: number; delayMs?: number; sleep?: (ms: number) => Promise<void> } = {},
+): Promise<Response> {
+    const { attempts = 4, delayMs = 3000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = options;
+    const response = await request().catch((error: unknown) => {
+        if (attempts <= 1) throw error;
+        return undefined;
+    });
+    if (response && (response.status < 500 || attempts <= 1)) return response;
+    await sleep(delayMs);
+    return fetchRetryingServerErrors(request, { attempts: attempts - 1, delayMs: delayMs * 2, sleep });
+}
+
 /** 配置前の検査。同じ版を異なる内容で上書きして既存ワールドを壊さない。 */
 export async function assertReleaseUnchanged(
     entry: ModLockEntry,

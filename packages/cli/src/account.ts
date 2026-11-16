@@ -38,7 +38,7 @@ import {
     registerExternalWorks,
     unregisterExternalMods,
 } from './registerWorks.ts';
-import { assertReleaseUnchanged, checkPublicRelease } from './release.ts';
+import { assertReleaseUnchanged, checkPublicRelease, fetchRetryingServerErrors } from './release.ts';
 import { verifyAllModLocks } from './verify.ts';
 
 export const DEFAULT_SERVER = 'https://ubichill.com';
@@ -267,7 +267,9 @@ export async function runPublish(argv: string[], term: Terminal): Promise<void> 
             for (const target of modVersionDirs(modsDir, listDirsOnDisk)) {
                 const entry = ModLockEntrySchema.parse(JSON.parse(readFileSync(join(target.dir, 'lock.json'), 'utf8')));
                 await assertReleaseUnchanged(entry, normalizePublicUrl(publicUrl), async (url) => {
-                    const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(8000) });
+                    const response = await fetchRetryingServerErrors(() =>
+                        fetch(url, { redirect: 'error', signal: AbortSignal.timeout(8000) }),
+                    );
                     if (response.status === 404) return undefined;
                     if (!response.ok) throw new Error(`公開済みの版を確認できません (${response.status})`);
                     const text = await response.text();
