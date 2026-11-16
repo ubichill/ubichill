@@ -8,13 +8,16 @@ export function ConsoleStatusBar({
     entry,
     counts,
     onOpen,
+    expanded,
 }: {
     entry: ConsoleEntry;
     counts?: Readonly<Record<ConsoleLevel, number>>;
     onOpen: () => void;
+    /** すぐ上でコンソールを開いているか（押すと閉じる） */
+    expanded?: boolean;
 }) {
     return (
-        <button type="button" onClick={onOpen} className={bar}>
+        <button type="button" onClick={onOpen} aria-expanded={expanded} className={bar}>
             <ConsoleLevelIcon level={entry.level} />
             <span className={css({ color: 'textSubtle', flexShrink: 0 })}>{entry.source}</span>
             <span className={message}>{entry.message.split('\n')[0]}</span>
