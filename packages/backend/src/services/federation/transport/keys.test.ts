@@ -12,6 +12,8 @@ const A = createFederationIdentity('https://a.example');
 const B = createFederationIdentity('https://b.example');
 const ALICE = A.actorUrl('alice');
 const T0 = Date.parse('2026-11-08T00:00:00Z');
+/** 数えない窓（署名の失敗・知らない actor の取得を絞らない） */
+const unlimited = { exceeded: async () => false, take: async () => true };
 
 /** A のサーバーが keyring で署名して送った要求を、B が受けた形にする。 */
 async function signedBy(keyring: Keyring, at: number): Promise<InboundRequest> {
@@ -55,6 +57,7 @@ async function signedBy(keyring: Keyring, at: number): Promise<InboundRequest> {
         originalUrl: url.pathname + url.search,
         header: (name) => headers[name.toLowerCase()],
         rawBody: new TextEncoder().encode(sent.body ?? ''),
+        ip: '192.0.2.1',
     };
 }
 
@@ -89,6 +92,8 @@ function receiver(
         },
         seen: { remember: async () => true },
         crypto: { verifyEd25519: nodeWorldCrypto.verifyEd25519, verifyRsaSha256 },
+        failures: unlimited,
+        unknownActors: unlimited,
         now: () => clock.now,
     });
     return { verifier, state };

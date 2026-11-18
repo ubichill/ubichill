@@ -88,9 +88,9 @@ describe('draft-cavage の署名', () => {
 
     it('未認証の POST で来る長い Signature は、読み直しで時間を食わせずに断る', () => {
         const timed = (header: string) => {
-            const start = performance.now();
+            const start = Date.now();
             const parsed = parseCavageSignature(header);
-            return { parsed, ms: performance.now() - start };
+            return { parsed, ms: Date.now() - start };
         };
         // 英字だけの並び（matchAll なら二次以上に読み直す入力）。上限ちょうどと、Node の既定のヘッダー上限（16KB）まで
         for (const header of [

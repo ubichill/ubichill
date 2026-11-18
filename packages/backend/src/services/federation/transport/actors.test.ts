@@ -156,6 +156,34 @@ describe('ほかのサーバーの actor を引く', () => {
         expect(fetched).toEqual([]);
     });
 
+    it('admitUnknown が断れば、知らない actor は取りに行かず覚えない。知っている actor の取り直しには使わない', async () => {
+        const { directory, fetched, store } = setup({ routes: { [BOB]: ap(person()), [WEBFINGER]: jrd(BOB) } });
+        const asked: string[] = [];
+        const deny = async () => {
+            asked.push('deny');
+            return false;
+        };
+        expect(await directory.get(BOB, { admitUnknown: deny })).toBeNull();
+        expect(fetched).toEqual([]);
+        expect(store.size).toBe(0);
+        expect(await directory.get(BOB, { admitUnknown: async () => true })).toMatchObject({ id: BOB });
+        expect(await directory.get(BOB, { refresh: true, admitUnknown: deny })).toMatchObject({ id: BOB });
+        expect(fetched).toEqual([BOB, WEBFINGER, BOB]);
+        expect(asked).toEqual(['deny']);
+    });
+
+    it('admitUnknown は、取りに行かないホスト（連合しない・このサーバー）では数えない', async () => {
+        const counted: string[] = [];
+        const admitUnknown = async () => {
+            counted.push('x');
+            return true;
+        };
+        const blocked = setup({ routes: { [BOB]: ap(person()) }, policy: 'block' });
+        expect(await blocked.directory.get(BOB, { admitUnknown })).toBeNull();
+        expect(await blocked.directory.get('https://a.example/ap/users/alice', { admitUnknown })).toBeNull();
+        expect(counted).toEqual([]);
+    });
+
     it('このサーバーの人・このサーバーのアカウントは引かない', async () => {
         const { directory, fetched } = setup({ routes: {} });
         expect(await directory.get('https://a.example/ap/users/alice')).toBeNull();
