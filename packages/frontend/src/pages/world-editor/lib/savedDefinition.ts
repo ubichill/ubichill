@@ -37,3 +37,8 @@ export function savingChangesDefinition(definition: WorldDefinition): boolean {
         (definition.spec.dependencies ?? []).some((dep) => dep.source.version === 'latest')
     );
 }
+
+/** 再読み込み・タブを閉じる前にブラウザの確認を出すか。読み込み中・読み込めなかったときは読み込み直せるように出さない。 */
+export function guardsUnload(state: { dirty: boolean; loading: boolean; loadError: string | null }): boolean {
+    return state.dirty && !state.loading && !state.loadError;
+}
