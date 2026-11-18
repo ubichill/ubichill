@@ -18,6 +18,7 @@ vi.mock('./instanceRuntime', () => ({
     instanceRuntime: {
         provision: vi.fn(async () => ({ base: 'http://runtime.test', gen: 'g1', epoch: 1 })),
         presence: vi.fn(async () => new Map()),
+        roomPresence: vi.fn(async () => new Map()),
         ticket: vi.fn(async (instanceId: string, userId: string) => ({ token: `ticket:${instanceId}:${userId}` })),
     },
 }));

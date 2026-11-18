@@ -1,5 +1,5 @@
 import type { ModLock, WorldSignature } from '@ubichill/shared';
-import { and, count, eq, gt, inArray, notExists, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gt, inArray, isNotNull, notExists, sql } from 'drizzle-orm';
 import { customAlphabet } from 'nanoid';
 import { type Database, db } from '../index';
 import { instances, worldDrafts, worldNameAliases, worlds, worldVersions } from '../schema';
@@ -93,8 +93,14 @@ async function findStates(database: Database, where: ReturnType<typeof eq> | und
  * ワールドリポジトリ。中身は版（world_versions、変えない）と下書き（world_drafts）に分けて持つ。
  */
 export const worldRepository = {
-    async findAll(): Promise<WorldRecord[]> {
-        return db.select(worldColumns).from(worlds);
+    /** 公開中の版があるワールド（一覧に出せるもの）を、更新の新しい順に `limit` 件まで。 */
+    async findPublished(limit: number): Promise<WorldRecord[]> {
+        return db
+            .select(worldColumns)
+            .from(worlds)
+            .where(isNotNull(worlds.currentVersionId))
+            .orderBy(desc(worlds.updatedAt))
+            .limit(limit);
     },
 
     async findById(id: string): Promise<WorldRecord | undefined> {

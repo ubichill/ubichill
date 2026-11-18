@@ -35,6 +35,8 @@ import {
 } from '@ubichill/shared';
 import yaml from 'yaml';
 import { assertPublicUrl, safeFetch } from '../../lib/safeFetch';
+import { setBounded } from '../../utils/boundedMap';
+import { createJobGate } from '../../utils/jobGate';
 import { logger } from '../../utils/logger';
 import { isAuthorKey, resolveAuthorDisplayName } from '../authors/authorKeyService';
 import { selfAccount, selfDomain } from '../authors/authorKeys';
@@ -209,6 +211,13 @@ class WorldRegistry {
      * ほかの backend での保存・削除は知らせ（{@link BackendEvents}）で捨てるが、届かなくても LOCAL_TTL_MS で揃う。
      */
     private readonly _resolvedCache = new Map<string, { resolution: WorldResolution; at: number }>();
+    /** 解決している途中のもの。同じワールドを同時に解決しない（キャッシュが冷えたときに DB へ同じ問い合わせを重ねない）。 */
+    private readonly _resolving = new Map<string, Promise<WorldResolution>>();
+    private static readonly LOCAL_CACHE_MAX = 2000;
+    /** 一覧に出すこのサーバーのワールドの数の上限（更新の新しい順）。 */
+    private static readonly LOCAL_LIST_MAX = 200;
+    /** 一覧で同時に解決する数（1 件で DB に数回問い合わせるので、接続を使い切らない）。 */
+    private static readonly LIST_RESOLVE_CONCURRENCY = 8;
     private static readonly LOCAL_TTL_MS = 5 * 60 * 1000;
     private static readonly LOCAL_FAILURE_TTL_MS = 60 * 1000;
     /** 外部（他インスタンス/URL）ワールドの解決キャッシュ（連合、TTL 付き） */
@@ -248,9 +257,7 @@ class WorldRegistry {
     private readonly _debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
     constructor(private readonly events: BackendEvents = backendEvents) {
-        events.on('world.changed', ({ worldId }) => {
-            this._resolvedCache.delete(worldId);
-        });
+        events.on('world.changed', ({ worldId }) => this._forgetResolved(worldId));
         events.on('world.reload', ({ worldId }) => this._reloadWorldHere(worldId).then(() => undefined));
         events.on('worlds.reload', () => this._reloadWorldsHere());
         events.on('worlds.resolved-stale', () => this._dropResolvedHere());
@@ -339,12 +346,17 @@ class WorldRegistry {
 
     /** 自インスタンスのワールド一覧（署名検証済みのみ。未署名は URL を知っている人だけが入れる）。 */
     private async _listLocalWorlds(): Promise<WorldListItem[]> {
-        const allRecords = await worldRepository.findAll();
+        // 下書き（公開中の版が無い）は一覧に出ないので引かない
+        const allRecords = await worldRepository.findPublished(WorldRegistry.LOCAL_LIST_MAX);
         const dbRecordById = new Map<string, WorldRecord>(allRecords.map((r: WorldRecord) => [r.id, r]));
+        const gate = createJobGate({
+            concurrency: WorldRegistry.LIST_RESOLVE_CONCURRENCY,
+            maxWaiting: Number.POSITIVE_INFINITY,
+        });
 
         const repositoryItems = await Promise.all(
             this._order.map(async (id) => {
-                const w = await this.getWorld(id);
+                const w = await gate.run(() => this.getWorld(id));
                 return w ? [this._toListItem(w, dbRecordById.get(w.id))] : [];
             }),
         );
@@ -353,7 +365,7 @@ class WorldRegistry {
         const userRecords = allRecords.filter((r: WorldRecord) => !known.has(r.id));
         const dbItems = await Promise.all(
             userRecords.map(async (r: WorldRecord) => {
-                const resolved = await this.getWorld(r.id);
+                const resolved = await gate.run(() => this.getWorld(r.id));
                 return resolved ? [this._toListItem(resolved, r)] : [];
             }),
         );
@@ -437,6 +449,16 @@ class WorldRegistry {
         if (cached && Date.now() - cached.at < ttl) {
             return cached.resolution;
         }
+        const inFlight = this._resolving.get(worldId);
+        if (inFlight) return inFlight;
+        const resolving = this._resolveLocalFresh(worldId).finally(() => {
+            if (this._resolving.get(worldId) === resolving) this._resolving.delete(worldId);
+        });
+        this._resolving.set(worldId, resolving);
+        return resolving;
+    }
+
+    private async _resolveLocalFresh(worldId: string): Promise<WorldResolution> {
         const repository = this._repository.get(worldId);
         const state = repository ? undefined : await worldRepository.findState(worldId);
         // 存在しない id は覚えない（任意の id で問い合わせてキャッシュを膨らませられないように）
@@ -444,8 +466,14 @@ class WorldRegistry {
         const resolution = repository
             ? await this._resolveRepositoryWorld(worldId, repository.hosted)
             : await this._resolveWorld(state as WorldState);
-        this._resolvedCache.set(worldId, { resolution, at: Date.now() });
+        setBounded(this._resolvedCache, worldId, { resolution, at: Date.now() }, WorldRegistry.LOCAL_CACHE_MAX);
         return resolution;
+    }
+
+    /** 解決の結果と、解決している途中のものを捨てる（途中のものは変更の前の値を返し得るので、あとから来た人に渡さない）。 */
+    private _forgetResolved(worldId: string): void {
+        this._resolvedCache.delete(worldId);
+        this._resolving.delete(worldId);
     }
 
     /**
@@ -787,7 +815,7 @@ class WorldRegistry {
             };
         }
         const worldId = saved.worldId;
-        this._resolvedCache.delete(worldId);
+        this._forgetResolved(worldId);
         this.events.broadcast({ type: 'world.changed', worldId });
         if (saved.status === 'published') await this._pruneVersions(worldId, authorId);
         const world = await this.getWorld(worldId);
@@ -895,7 +923,7 @@ class WorldRegistry {
     async deleteWorld(worldId: string): Promise<boolean> {
         const success = await worldRepository.delete(worldId);
         if (success) {
-            this._resolvedCache.delete(worldId);
+            this._forgetResolved(worldId);
             this.events.broadcast({ type: 'world.changed', worldId });
         }
         return success;
@@ -908,7 +936,6 @@ class WorldRegistry {
     }
 
     private async _reloadWorldsHere(): Promise<void> {
-        this._resolvedCache.clear();
         await this._scanLocal();
         logger.info('ワールド定義を全件再読み込みしました');
     }
@@ -942,6 +969,7 @@ class WorldRegistry {
     private async _scanLocal(): Promise<void> {
         this._repository.clear();
         this._resolvedCache.clear();
+        this._resolving.clear();
         const nextOrder: string[] = [];
         if (!fs.existsSync(this.worldsDir)) {
             this._order = nextOrder;
@@ -976,7 +1004,7 @@ class WorldRegistry {
                 throw new Error('metadata.name は [a-z0-9-] で書いてください');
             }
             this._repository.set(name, { filePath, hosted });
-            this._resolvedCache.delete(name);
+            this._forgetResolved(name);
             return name;
         } catch (err) {
             logger.error(`リポジトリのワールドを読み込めません（配信しません）: ${filePath}`, err);
@@ -1087,7 +1115,7 @@ class WorldRegistry {
             const id = [...this._repository.entries()].find(([, r]) => path.basename(r.filePath) === filename)?.[0];
             if (id) {
                 this._repository.delete(id);
-                this._resolvedCache.delete(id);
+                this._forgetResolved(id);
                 this._order = this._order.filter((n) => n !== id);
                 logger.info(`ワールド削除を検知: ${id}`);
             }
@@ -1168,6 +1196,7 @@ class WorldRegistry {
 
     private _dropResolvedHere(): void {
         this._resolvedCache.clear();
+        this._resolving.clear();
         this._remoteCache.clearWorlds();
     }
 
