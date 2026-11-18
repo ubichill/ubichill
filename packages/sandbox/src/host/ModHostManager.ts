@@ -31,7 +31,7 @@ import {
 } from '@ubichill/ui-renderer';
 import { loadModAsset } from './assetLoader';
 import { type CapabilityGate, createCapabilityGate } from './capabilityGate';
-import { type CommandContext, dispatchCommand, RpcTimeoutError } from './commandDispatch';
+import { type CommandContext, dispatchCommand, RpcTimeoutError, withRpcTimeout } from './commandDispatch';
 import { CMD_TO_HANDLER } from './commandHandlers';
 import { createHostRequests, type HostRequests, transferablesOf } from './hostRequests';
 import { getActiveWorkerCount, getWorker, registerWorker, unregisterWorker } from './ModRegistry';
@@ -136,7 +136,7 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
         const assetSource = { modBase: options.modBase, integrity: options.assetIntegrity };
         this._commandContext = {
             handlers: this.handlers,
-            withTimeout: (promise, cmdType) => this._withTimeout(promise, cmdType),
+            withTimeout: (promise, cmdType) => withRpcTimeout(promise, ModHostManager.RPC_TIMEOUT_MS, cmdType),
             senderComponentInstanceId: () => getWorker(this._instanceKey)?.componentInstanceId,
             logPrefix: this._logPrefix,
             openRequest: (id, timeoutMs) => this._requests.open(id, timeoutMs),
@@ -268,25 +268,6 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
         console.warn(`${this._logPrefix} リソース制限超過: ${reason}`);
         this.onResourceLimitExceeded?.(reason);
         this.destroy();
-    }
-
-    /**
-     * Promise にタイムアウトを付加する。
-     * RPC_TIMEOUT_MS 以内に解決しない場合は reject する。
-     */
-    private _withTimeout<T>(promise: Promise<T>, cmdType: string): Promise<T> {
-        return Promise.race([
-            promise,
-            new Promise<never>((_, reject) =>
-                setTimeout(
-                    () =>
-                        reject(
-                            new RpcTimeoutError(`RPC タイムアウト (${ModHostManager.RPC_TIMEOUT_MS}ms): ${cmdType}`),
-                        ),
-                    ModHostManager.RPC_TIMEOUT_MS,
-                ),
-            ),
-        ]);
     }
 
     private async _handleCommand(e: MessageEvent<ModGuestCommand>): Promise<void> {

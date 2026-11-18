@@ -28,6 +28,19 @@ export class RpcTimeoutError extends Error {
     }
 }
 
+/**
+ * RPC にタイムアウトを付ける。終わったら timer を外す（秒に数千回 RPC を送る mod で、timer と
+ * 期限切れのエラーの生成を溜めない）。
+ */
+export function withRpcTimeout<T>(promise: Promise<T>, timeoutMs: number, cmdType: string): Promise<T> {
+    const timeout = Promise.withResolvers<never>();
+    const timer = setTimeout(
+        () => timeout.reject(new RpcTimeoutError(`RPC タイムアウト (${timeoutMs}ms): ${cmdType}`)),
+        timeoutMs,
+    );
+    return Promise.race([promise, timeout.promise]).finally(() => clearTimeout(timer));
+}
+
 /** dispatchCommand が必要とする Manager 側のコンテキスト。 */
 export interface CommandContext<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> {
     handlers: HostHandlers<TPayloadMap>;
