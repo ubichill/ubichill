@@ -134,6 +134,9 @@ jobs:
       - name: Build shared
         run: pnpm turbo build --filter=@ubichill/shared
 
+      - name: Verify capability docs are generated
+        run: pnpm docs:capabilities --check
+
       # 実際に mod をビルドし、lock.json の integrity が生成バイト列と一致するか検証する。
       # worlds/*.lock.json（mod 完全性ロック、pnpm-lock.yaml と同じくコミット対象）もここで
       # 自動再生成される（build:workers の最終ステップ）。
