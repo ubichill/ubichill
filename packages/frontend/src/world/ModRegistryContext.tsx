@@ -1,5 +1,4 @@
-import type { WidgetDefinition, WorkerModDefinition } from '@ubichill/react';
-import { isWorkerMod } from '@ubichill/react';
+import type { WorkerModDefinition } from '@ubichill/react';
 import type { ModLock } from '@ubichill/shared';
 import type React from 'react';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
@@ -10,14 +9,12 @@ import type { ModSource } from './modSource';
 
 // ============================================
 // mod ローダー（取得 + lock 照合は modLoader.ts に委譲）
-// このファイルは React の state / キャッシュ / register だけを持つ。
+// このファイルは React の state / キャッシュだけを持つ。
 // ============================================
 
 // ============================================
 // Types
 // ============================================
-
-export type AnyModDefinition = WidgetDefinition | WorkerModDefinition;
 
 /** mod（worker コード）のダウンロード進捗。total = 開始数 / completed = 完了数 */
 export interface ModLoadingStatus {
@@ -26,7 +23,7 @@ export interface ModLoadingStatus {
 }
 
 interface ModRegistryContextType {
-    modMap: Map<string, AnyModDefinition>;
+    modMap: Map<string, WorkerModDefinition>;
     /** フェッチ中のmod数 */
     pendingModCount: number;
     /** エンティティタイプを指定してmodを動的ロードする（未ロードの場合のみ実行） */
@@ -57,7 +54,7 @@ export const ModRegistryProvider: React.FC<{
     /** ブロックした人の作者アカウント（突き合わせる形）。この人たちが作った mod は実行しない */
     blockedAuthors?: ReadonlySet<string>;
 }> = ({ children, onStatusChange, lock, source, blockedAuthors }) => {
-    const [modMap, setModMap] = useState<Map<string, AnyModDefinition>>(new Map());
+    const [modMap, setModMap] = useState<Map<string, WorkerModDefinition>>(new Map());
     const [loadCounts, setLoadCounts] = useState<ModLoadingStatus>({ completed: 0, total: 0 });
     // 実行しなかった mod は画面に通知を出さず、コンソールに記録する（再試行はコンソールの行から）。
     // Component 型 → 実行しなかった理由
@@ -73,36 +70,17 @@ export const ModRegistryProvider: React.FC<{
     }, [loadCounts, onStatusChange]);
     // ロード済み（またはロード中）のエンティティタイプを追跡して重複ロードを防ぐ
     const loadingRef = useRef(new Set<string>());
-    // register() 呼び出し済みの mod id を追跡（StrictMode での二重呼び出し防止）
+    // 登録済みの mod id を追跡（StrictMode での二重呼び出し防止）
     const registeredRef = useRef(new Set<string>());
 
-    const addMod = useCallback((def: AnyModDefinition) => {
+    const addMod = useCallback((def: WorkerModDefinition) => {
         if (registeredRef.current.has(def.id)) return;
         registeredRef.current.add(def.id);
-
-        if (isWorkerMod(def)) {
-            // WorkerModDefinition は CE 不要。即座にマップへ追加する。
-            setModMap((prev) => {
-                if (prev.has(def.id)) return prev;
-                const next = new Map(prev);
-                next.set(def.id, def);
-                return next;
-            });
-            return;
-        }
-
-        // CE クラスの import() + define() を開始
-        def.register();
-
-        // elementTag の define が完了してから modMap に追加する。
-        const allTags = [def.elementTag];
-        Promise.all(allTags.map((tag) => customElements.whenDefined(tag))).then(() => {
-            setModMap((prev) => {
-                if (prev.has(def.id)) return prev;
-                const next = new Map(prev);
-                next.set(def.id, def);
-                return next;
-            });
+        setModMap((prev) => {
+            if (prev.has(def.id)) return prev;
+            const next = new Map(prev);
+            next.set(def.id, def);
+            return next;
         });
     }, []);
 
