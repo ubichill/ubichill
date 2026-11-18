@@ -76,6 +76,7 @@ export type FollowerAction = 'approved' | 'rejected' | 'absent';
 export function createFollows(deps: FollowDeps) {
     const now = () => new Date(deps.now());
     const actorUrl = (userId: string) => deps.identity.actorUrl(userId);
+    const undoneUntil = () => new Date(deps.now() + FEDERATION_LIMITS.UNDONE_MS);
 
     /** 2 人のフォローをロックして fn を実行する。通知は確定してから出す。 */
     const withPair = async <T>(
@@ -135,6 +136,11 @@ export function createFollows(deps: FollowDeps) {
             const welcome = acceptsNewContact(deps.policyOf(actor.domain));
             const blocked = await deps.blocked(userId, actor.id);
             await withPair(userId, actor, async (row, pair) => {
+                // 置き換える前の Follow の id を覚える（onUndo が相手と宛先で引いたとき、いまの Follow を消さない）。
+                // 書き込みより前に覚え、ロックを待っていた Undo にも見えるようにする
+                if (row && row.followId !== activity.id) {
+                    await deps.seen.remember(`replaced-follow|${row.followId}`, undoneUntil(), now());
+                }
                 // ブロックしたときに外したフォロワーの行が、行き違いで残っていても消す
                 if (blocked) {
                     if (row) await pair.remove();
@@ -177,13 +183,7 @@ export function createFollows(deps: FollowDeps) {
          * 埋め込まれた Follow（id が分からない実装のために、相手と宛先の組でも引く）。
          */
         async onUndo(actor: Pick<FollowActor, 'id' | 'inbox'>, object: ActivityRef): Promise<boolean> {
-            if (object.type === 'Follow') {
-                await deps.seen.remember(
-                    `undone-follow|${object.id}`,
-                    new Date(now().getTime() + FEDERATION_LIMITS.UNDONE_MS),
-                    now(),
-                );
-            }
+            if (object.type === 'Follow') await deps.seen.remember(`undone-follow|${object.id}`, undoneUntil(), now());
             const byId = (await deps.repo.findByFollowId(object.id)).filter((r) => r.actorId === actor.id);
             const fallback =
                 byId.length === 0 && object.type === 'Follow' && object.object
@@ -194,6 +194,13 @@ export function createFollows(deps: FollowDeps) {
                 await withPair(userId, actor, async (row, pair) => {
                     // 間に来直した Follow は消さない（遅れて届いた前の Follow の Undo）
                     if (!row || (!fallback && row.followId !== object.id)) return;
+                    // 来直した Follow で置き換えた、前の Follow の Undo（送り直し・遅れて届いた）
+                    if (
+                        fallback &&
+                        row.followId !== object.id &&
+                        (await deps.seen.has(`replaced-follow|${object.id}`, now()))
+                    )
+                        return;
                     await pair.remove();
                     if (row.state === 'pending') pair.later(() => deps.notify.fediverseFollowSettled(userId, actor.id));
                 });
