@@ -314,14 +314,17 @@ func (r *RedisDirectory) Forget(ctx context.Context, room string) error {
 	return err
 }
 
+// retired の印には閉じた token を持たせる。go-redis が応答の消えた Retire を送り直すと割り当てはもう無いので、
+// 同じ token で閉じ済みなら成功を返す（失敗に見えると、閉じた部屋の DB の行を backend が消さない）。
 var retireScript = redis.NewScript(`
 local token = redis.call('HGET', KEYS[1], 'token')
 if token then
   if token ~= ARGV[1] then return 0 end
 elseif ARGV[1] ~= '' then
+  if redis.call('GET', KEYS[2]) == ARGV[1] then return 1 end
   return 0
 end
-redis.call('SET', KEYS[2], '1', 'PX', ARGV[2])
+redis.call('SET', KEYS[2], ARGV[1], 'PX', ARGV[2])
 redis.call('DEL', KEYS[1], KEYS[3])
 redis.call('SREM', KEYS[4], ARGV[3])
 return 1`)

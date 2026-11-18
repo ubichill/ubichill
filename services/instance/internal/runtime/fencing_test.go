@@ -602,3 +602,58 @@ func TestRedisDirectoryAcrossNodes(t *testing.T) {
 		t.Fatalf("after the generation change: %v", err)
 	}
 }
+
+// lostRetireReply は Retire を Directory に適用したあとに、lose の回数だけ応答が消える Directory。resent なら go-redis が
+// 送り直した結果を、そうでなければエラーを返す。
+type lostRetireReply struct {
+	coord.Directory
+	resent bool
+	lose   atomic.Int32
+}
+
+func (l *lostRetireReply) Retire(ctx context.Context, room, token string, ttl time.Duration) (bool, error) {
+	ok, err := l.Directory.Retire(ctx, room, token, ttl)
+	if err != nil || l.lose.Add(-1) < 0 {
+		return ok, err
+	}
+	if l.resent {
+		return l.Directory.Retire(ctx, room, token, ttl)
+	}
+	return false, errors.New("i/o timeout")
+}
+
+// 閉じる操作（Retire）が適用されたあとに応答が消えても、閉じた部屋を 409 にしない（409 だと backend は DB の行を消さない）。
+// 送り直しで閉じ済みに見えたら 204、結果が分からず 503 にしたときも、backend の送り直しで 204 になる。
+func TestCloseSurvivesALostRetireReply(t *testing.T) {
+	for _, resent := range []bool{true, false} {
+		t.Run(map[bool]string{true: "resent", false: "lost"}[resent], func(t *testing.T) {
+			c := newCluster()
+			dir := &lostRetireReply{Directory: c.dir, resent: resent}
+			a := startPodWith(t, dir, "node-a", c.clock.Now, nil)
+			a.maintain()
+			provision(t, a, "room")
+			bob, out := joinWith(t, a.http, "room", memberGrant(t, a, "room", "bob"))
+			joined(t, out)
+			dir.lose.Store(1)
+			code, out := call(t, a.http, "DELETE", "/instances/room", nil, true)
+			if !resent {
+				if code != 503 {
+					t.Fatalf("close with an unknown outcome = %d %v", code, out)
+				}
+				code, out = call(t, a.http, "DELETE", "/instances/room", nil, true)
+			}
+			if code != 204 {
+				t.Fatalf("close = %d %v", code, out)
+			}
+			receive(t, bob, "instance:closing")
+			if a.room("room") != nil {
+				t.Fatal("the closed room remains")
+			}
+			ctx := context.Background()
+			gen, _ := c.dir.ClusterGen(ctx)
+			if _, _, err := c.dir.Assign(ctx, "room", "node-b", gen, testFencing.TTL); !errors.Is(err, coord.ErrRetired) {
+				t.Fatalf("assign after the close: %v", err)
+			}
+		})
+	}
+}

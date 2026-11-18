@@ -145,6 +145,7 @@ backendのデプロイや設定変更ではGoを再起動しない（状態が�
   上限で断った入室の数（counter）を Prometheus の text 形式で出す。KEDA の scale-out に使う（chart の README の「Go インスタンスの自動スケール（KEDA）」）。
 - **閉じた部屋**: 終了した部屋は 2 分間どの Pod でも作り直せない（Directory の `ubi:retired:<id>`。memory なら Pod の中だけ）。割り当ての Lua の中で確かめ、
   閉じる側は token の照合・印の設定・割り当てと在席の削除を原子的に行う。owner が変わっていたら 409、Redis に届かなければ 503 を返し、DB の削除を止める。作成は 400。
+  印には閉じた token を持たせ、応答が消えて送り直された同じ token の閉鎖（go-redis の自動の送り直し・503 のあとの backend の送り直し）は成功にする。
 - **WS Router**: 各 Pod が Router を兼ねる。最初の `world:join` の部屋が手元に無ければ、Directory の owner の内部アドレス
   （heartbeat の `addr`）の `/realtime/v1/relay` へ WebSocket を張り、`world:join` から先を双方向に中継する。owner は Upgrade の後に1回だけ決め、
   owner が接続を閉じたら（自己停止・終了・退出）中継も閉じる。クライアントはチケットを取り直して繋ぎ直す。
