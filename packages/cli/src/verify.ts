@@ -35,7 +35,7 @@ function verifyAssets(versionDir: string, label: string, manifestBytes: Buffer):
 /** 1 つの版のディレクトリを検証する。問題があれば文字列配列で返す（空なら OK）。 */
 function verifyVersionDir({ dir: versionDir, label }: ModVersionDir): string[] {
     const lockPath = join(versionDir, 'lock.json');
-    if (!existsSync(lockPath)) return []; // data-only mod 等、lock.json が無い場合はスキップ
+    if (!existsSync(lockPath)) return [`${label}: lock.json が無い（ubichill build し直してください）`];
 
     // lock.json は ModLockEntry 単体（buildWorker が mod 単位で出す形）。スキーマ違反も検出する。
     const parsed = ModLockEntrySchema.safeParse(JSON.parse(readFileSync(lockPath, 'utf-8')));
@@ -71,7 +71,9 @@ export function verifyAllModLocks(distDir: string): string[] {
     if (!existsSync(distDir)) {
         return [`${distDir} が存在しません（先に ubichill build を実行してください）`];
     }
-    return modVersionDirs(distDir, listDirsOnDisk).flatMap(verifyVersionDir);
+    const versionDirs = modVersionDirs(distDir, listDirsOnDisk);
+    if (versionDirs.length === 0) return [`${distDir} に mod の版のディレクトリがありません（v<版>/）`];
+    return versionDirs.flatMap(verifyVersionDir);
 }
 
 /**
