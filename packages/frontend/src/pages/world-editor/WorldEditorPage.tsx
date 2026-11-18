@@ -46,7 +46,7 @@ import {
 } from './lib/editorChecks';
 import { findEntityPath, flattenForStage, getEntityAt, updateEntityAt } from './lib/entityTree';
 import { editorReferenceProblems, problemsByEntity } from './lib/referenceProblems';
-import { withSavedFields } from './lib/savedDefinition';
+import { guardsUnload, withSavedFields } from './lib/savedDefinition';
 import { editorButton } from './recipes/button';
 
 export function WorldEditorPage() {
@@ -253,6 +253,15 @@ export function WorldEditorPage() {
         if (dirty) setLeaveConfirmOpen(true);
         else navigate(-1);
     }, [dirty, navigate]);
+
+    // 再読み込み・タブを閉じるときは確認モーダルを出せないので、ブラウザの確認に任せる
+    const unloadGuarded = guardsUnload({ dirty, loading, loadError });
+    useEffect(() => {
+        if (!unloadGuarded) return;
+        const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();
+        window.addEventListener('beforeunload', onBeforeUnload);
+        return () => window.removeEventListener('beforeunload', onBeforeUnload);
+    }, [unloadGuarded]);
 
     const handleDiscardAndLeave = useCallback(() => {
         setLeaveConfirmOpen(false);

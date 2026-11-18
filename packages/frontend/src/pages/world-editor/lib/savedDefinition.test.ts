@@ -1,6 +1,6 @@
 import { createModLock, type ModLockEntry, type WorldDefinition } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
-import { savingChangesDefinition, withSavedFields } from './savedDefinition';
+import { guardsUnload, savingChangesDefinition, withSavedFields } from './savedDefinition';
 
 const entry = (id: string, version: string): ModLockEntry => ({
     id,
@@ -86,5 +86,21 @@ describe('savingChangesDefinition', () => {
                 world({ requires: { protocol: 7 }, dependencies: [{ name: 'pen', source: { version: 'latest' } }] }),
             ),
         ).toBe(true);
+    });
+});
+
+describe('guardsUnload: 再読み込み・タブを閉じる前に確認するか', () => {
+    it('読み込んだ後に未保存の変更があるときだけ確認する', () => {
+        expect(guardsUnload({ dirty: true, loading: false, loadError: null })).toBe(true);
+        expect(guardsUnload({ dirty: false, loading: false, loadError: null })).toBe(false);
+    });
+
+    it('読み込み中・読み込みに失敗したときは、保存していない状態でも確認しない（読み込み直せるように）', () => {
+        expect(guardsUnload({ dirty: true, loading: true, loadError: null })).toBe(false);
+        expect(guardsUnload({ dirty: true, loading: false, loadError: 'HTTP 500' })).toBe(false);
+    });
+
+    it('空のエラー文字列は失敗として扱わない', () => {
+        expect(guardsUnload({ dirty: true, loading: false, loadError: '' })).toBe(true);
     });
 });
