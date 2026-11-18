@@ -209,8 +209,9 @@ export function cloneEntitySubtree(
         return {
             id: newId,
             transform: { ...e.transform },
+            // id・overlay も残す。Component の id は Entity の中で一意であればよいので、複製先でもそのまま使える
             components: e.components.map((c) => ({
-                type: c.type,
+                ...c,
                 data: structuredClone(c.data) as Record<string, unknown>,
                 ...(c.transform ? { transform: { ...c.transform } } : {}),
             })),
