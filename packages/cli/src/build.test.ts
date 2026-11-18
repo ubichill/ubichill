@@ -25,7 +25,7 @@ import {
     webWorldCrypto,
 } from '@ubichill/loader';
 import { type ModLockEntry, verifyModSignature } from '@ubichill/shared';
-import { silentLogger } from '@ubichill/terminal';
+import { recordingLogger, silentLogger } from '@ubichill/terminal';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
     buildMod,
@@ -553,9 +553,59 @@ describe('dataOnlyEntryFromSource', () => {
         }
     });
 
-    it('dataOnly を書いていなければ、config を読めなくても従来どおり Worker（ビルドは止めない）', () => {
-        expect(dataOnlyEntryFromSource('m:x', source('{ description: `x` }'))).toBeNull();
-        expect(dataOnlyEntryFromSource('m:x', 'export const foo = 1;')).toBeNull();
+    it('dataOnly を書いていなければ、config を読めなくてもビルドは止めず、宣言を取り込めないことを警告する', () => {
+        const unreadable = [
+            '{ description: `x` }',
+            "{ capabilities: ['network:fetch'], watchScope: 'world', description: `説明` }",
+            '{ ...base, capabilities: [] }',
+            '{ capabilities: CAPS }',
+        ];
+        for (const config of unreadable) {
+            const { logger, entries } = recordingLogger();
+            expect(dataOnlyEntryFromSource('m:x', source(config), logger), config).toBeNull();
+            expect(entries, config).toEqual([
+                expect.objectContaining({
+                    level: 'warn',
+                    message: expect.stringContaining('[m:x] config を静的に読めなかったので宣言を取り込めません'),
+                }),
+            ]);
+        }
+    });
+
+    it('config を書いていない・読める config なら警告しない', () => {
+        const { logger, entries } = recordingLogger();
+        expect(dataOnlyEntryFromSource('m:x', 'export const foo = 1;', logger)).toBeNull();
+        expect(dataOnlyEntryFromSource('m:x', source("{ capabilities: ['ui:render'] }"), logger)).toBeNull();
+        expect(entries).toEqual([]);
+    });
+
+    it('文字列のエスケープは JS と同じ意味に読む', () => {
+        const config = String.raw`{ dataOnly: true, 'k\'ey': "\"", description: 'a\nb\tc\rd\'e\\f\/g\-h\`i\bj\fk\vl' }`;
+        expect(dataOnlyEntryFromSource('m:x', source(config))).toEqual({
+            dataOnly: true,
+            "k'ey": '"',
+            description: "a\nb\tc\rd'e\\f/g-h`i\bj\fk\vl",
+        });
+    });
+
+    it('読み替えられないエスケープ（\\x・\\u・数字・行の継続）は誤訳せず、config を読めないものとして扱う', () => {
+        const escapes = [
+            String.raw`\x41`,
+            String.raw`\u0041`,
+            String.raw`\u{1F600}`,
+            String.raw`\0`,
+            String.raw`\1`,
+            '\\\n',
+        ];
+        for (const sequence of escapes) {
+            const dataOnly = `{ dataOnly: true, description: 'a${sequence}b' }`;
+            expect(() => dataOnlyEntryFromSource('m:stroke', source(dataOnly)), dataOnly).toThrow(
+                /dataOnly を書いていますが、export const config をリテラルとして読めません/,
+            );
+            const { logger, entries } = recordingLogger();
+            expect(dataOnlyEntryFromSource('m:x', source(`{ description: 'a${sequence}b' }`), logger)).toBeNull();
+            expect(entries.map((e) => e.level)).toEqual(['warn']);
+        }
     });
 
     it('読める config で dataOnly が true 以外なら Worker のまま', () => {
