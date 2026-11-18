@@ -10,6 +10,7 @@
  * mod 開発者が「どの権限で何ができるか・危険度・既定の許可挙動」を迷わず確認でき、
  * かつカタログを変更したら `pnpm docs:capabilities` で常に最新へ再生成できる。
  * 手書きしないことで定義とドキュメントの乖離を防ぐ。
+ * `--check` 付きなら書き込まず、コミット済みの内容と違えば非ゼロ終了する（CI 用）。
  */
 
 import * as esbuild from 'esbuild';
@@ -46,12 +47,6 @@ async function loadShared() {
     return import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
 }
 
-const { CAPABILITY_CATALOG, CAPABILITY_DETECTORS, PROTOCOL_VERSION, MIN_COMPATIBLE_PROTOCOL_VERSION } =
-    await loadShared();
-
-// capability → それを付ける Ubi API のヒント（静的検出ルール由来。@ubichill/shared が正）。
-const API_BY_CAP = Object.fromEntries(CAPABILITY_DETECTORS.map((d) => [d.cap, d.api]));
-
 // ── 危険度メタ（表示順と説明。capability.ts の CapabilityRisk と対応）────────
 const RISK_META = {
     safe: {
@@ -72,34 +67,43 @@ const RISK_META = {
 };
 const RISK_ORDER = ['safe', 'sensitive', 'dangerous'];
 
-const entries = Object.entries(CAPABILITY_CATALOG);
+/** docs/CAPABILITIES.md の中身（純粋。@ubichill/shared の定数を受け取る）。 */
+export function renderCapabilityDocs({
+    CAPABILITY_CATALOG,
+    CAPABILITY_DETECTORS,
+    PROTOCOL_VERSION,
+    MIN_COMPATIBLE_PROTOCOL_VERSION,
+}) {
+    // capability → それを付ける Ubi API のヒント（静的検出ルール由来。@ubichill/shared が正）。
+    const API_BY_CAP = Object.fromEntries(CAPABILITY_DETECTORS.map((d) => [d.cap, d.api]));
+    const entries = Object.entries(CAPABILITY_CATALOG);
 
-const section = (risk) => {
-    const rows = entries
-        .filter(([, spec]) => spec.risk === risk)
-        .map(([cap, spec]) => {
-            const commands = spec.commands.map((c) => `\`${c}\``).join('<br>');
-            const api = API_BY_CAP[cap] ? `\`${API_BY_CAP[cap]}\`` : '（自動検出対象外）';
-            return `| \`${cap}\` | ${spec.label} | ${api} | ${spec.description} | ${commands} |`;
-        });
-    if (rows.length === 0) return '';
-    const meta = RISK_META[risk];
-    return [
-        `### ${meta.heading}`,
-        '',
-        meta.note,
-        '',
-        '| capability | ラベル | 発生元 API | 説明 | 許可されるコマンド |',
-        '| --- | --- | --- | --- | --- |',
-        ...rows,
-        '',
-    ].join('\n');
-};
+    const section = (risk) => {
+        const rows = entries
+            .filter(([, spec]) => spec.risk === risk)
+            .map(([cap, spec]) => {
+                const commands = spec.commands.map((c) => `\`${c}\``).join('<br>');
+                const api = API_BY_CAP[cap] ? `\`${API_BY_CAP[cap]}\`` : '（自動検出対象外）';
+                return `| \`${cap}\` | ${spec.label} | ${api} | ${spec.description} | ${commands} |`;
+            });
+        if (rows.length === 0) return '';
+        const meta = RISK_META[risk];
+        return [
+            `### ${meta.heading}`,
+            '',
+            meta.note,
+            '',
+            '| capability | ラベル | 発生元 API | 説明 | 許可されるコマンド |',
+            '| --- | --- | --- | --- | --- |',
+            ...rows,
+            '',
+        ].join('\n');
+    };
 
-const total = entries.length;
-const countByRisk = (risk) => entries.filter(([, s]) => s.risk === risk).length;
+    const total = entries.length;
+    const countByRisk = (risk) => entries.filter(([, s]) => s.risk === risk).length;
 
-const md = `<!-- このファイルは scripts/gen-capability-docs.mjs による自動生成物です。手で編集しないでください。 -->
+    return `<!-- このファイルは scripts/gen-capability-docs.mjs による自動生成物です。手で編集しないでください。 -->
 <!-- 再生成: pnpm docs:capabilities -->
 
 # mod 権限（capability）リファレンス
@@ -167,21 +171,31 @@ Worker と Host の RPC の名前・ペイロードは変わらないため、�
 通常の本体・URL依存は作者を自動付与せず lock v1 のまま使える。作者参照を明示して追加した依存は lock v2 となり、
 旧 Host が読む \`mods\` は空にして、その形式を理解しない Host での実行を拒否する。
 `;
+}
 
-const term = createTerminal(processIO(), { debug: debugFromEnv(process.env) });
-const outPath = join(root, 'docs', 'CAPABILITIES.md');
-const prev = (() => {
-    try {
-        return readFileSync(outPath, 'utf8');
-    } catch {
-        return null;
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+    const shared = await loadShared();
+    const md = renderCapabilityDocs(shared);
+    const term = createTerminal(processIO(), { debug: debugFromEnv(process.env) });
+    const outPath = join(root, 'docs', 'CAPABILITIES.md');
+    const prev = (() => {
+        try {
+            return readFileSync(outPath, 'utf8');
+        } catch {
+            return null;
+        }
+    })();
+
+    const summary = `capability ${Object.keys(shared.CAPABILITY_CATALOG).length} 件  protocol v${shared.PROTOCOL_VERSION}`;
+    if (prev === md) {
+        term.success('docs/CAPABILITIES.md は最新です（変更なし）', summary);
+    } else if (process.argv.includes('--check')) {
+        term.error(
+            'docs/CAPABILITIES.md が capability の定義と一致しません。`pnpm docs:capabilities` で生成し直してコミットしてください',
+        );
+        process.exit(1);
+    } else {
+        writeFileSync(outPath, md);
+        term.success('docs/CAPABILITIES.md を生成しました', summary);
     }
-})();
-
-const summary = `capability ${total} 件  protocol v${PROTOCOL_VERSION}`;
-if (prev === md) {
-    term.success('docs/CAPABILITIES.md は最新です（変更なし）', summary);
-} else {
-    writeFileSync(outPath, md);
-    term.success('docs/CAPABILITIES.md を生成しました', summary);
 }
