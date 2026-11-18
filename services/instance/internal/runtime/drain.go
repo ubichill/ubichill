@@ -10,7 +10,8 @@ import (
 // migrateRetry は引っ越しに失敗した部屋を次に試すまでの時間。
 const migrateRetry = 30 * time.Second
 
-// Drain は draining に入り、接続（部屋の参加者と中継）と進めている引っ越しが無くなるか ctx が終わるまで待つ。
+// Drain は draining に入り、接続（部屋の参加者と中継）・進めている引っ越し・引っ越し先として準備した部屋が無くなるか
+// ctx が終わるまで待つ。
 // そのあと Close で残りを閉じる。
 //
 //   - 持っている部屋は、作ってから MigrateAfter 経つまで待ち、経っても参加者が居れば別の Pod へ引っ越す（クライアントは繋ぎ直さない）。
@@ -31,8 +32,10 @@ func (s *Server) Drain(ctx context.Context) {
 			s.noticeDisconnect(deadline)
 			noticed = true
 		}
+		// draining のあとは準備が増えない。引っ越す部屋を選ぶ前に数えれば、確定して部屋になった準備も選ぶ側で見える
+		preparing := s.preparing()
 		s.scheduleMigration()
-		if s.migrations.Load() == 0 && s.connections() == 0 {
+		if preparing == 0 && s.migrations.Load() == 0 && s.connections() == 0 {
 			return
 		}
 		select {
@@ -42,6 +45,9 @@ func (s *Server) Drain(ctx context.Context) {
 		}
 	}
 }
+
+// preparing は引っ越し先として準備し、確定か期限を待っている部屋の数。
+func (s *Server) preparing() int { s.mu.RLock(); defer s.mu.RUnlock(); return len(s.pending) }
 
 // scheduleMigration は引っ越しを 1 つずつ進める（同時に多く動かすと、先の Pod が一度に受ける中継の繋ぎ直しが増える）。
 func (s *Server) scheduleMigration() {

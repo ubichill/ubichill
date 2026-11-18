@@ -332,6 +332,55 @@ func TestDrainMovesOldRoomsAndWaitsForDirectClients(t *testing.T) {
 	createEntity(t, scene.alice, Object{"after": "drain"})
 }
 
+// 引っ越し先として準備している部屋がある間は、接続も部屋も無くても Drain を終えない。準備のまま抜けると、
+// 付け替わっていた部屋は Directory の owner だけが残り、TTL のあと初期状態で作り直される。
+func TestDrainWaitsForAPreparedHandoff(t *testing.T) {
+	for _, transferred := range []bool{true, false} {
+		t.Run(fmt.Sprintf("transferred=%v", transferred), func(t *testing.T) {
+			c := newCluster()
+			a, b := c.pod(t, "node-a"), c.pod(t, "node-b")
+			b.handoffTimeout = 300 * time.Millisecond
+			for _, n := range []*node{a, b} {
+				n.maintain()
+			}
+			r := provision(t, a, "room")
+			_, out := joinWith(t, a.http, "room", memberGrant(t, a, "room", "alice"))
+			joined(t, out)
+			snapshot, _ := r.freeze()
+			var prepared struct {
+				Token string `json:"token"`
+			}
+			if code, err := a.sendHandoff(context.Background(), handoffTargets(a.node, mustNodes(t, a))[0], "room", handoffRequest{Phase: "prepare", From: a.node, Snapshot: snapshot}, &prepared); err != nil || code != 200 {
+				t.Fatalf("prepare: %d %v", code, err)
+			}
+			if transferred {
+				gen, _, from := r.lease()
+				if _, ok, err := a.dir.Transfer(context.Background(), "room", from, b.node, prepared.Token, gen, testFencing.TTL); err != nil || !ok {
+					t.Fatalf("transfer: %v %v", ok, err)
+				}
+			}
+			drained := make(chan struct{})
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				b.Drain(ctx)
+				close(drained)
+			}()
+			select {
+			case <-drained:
+			case <-time.After(3 * time.Second):
+				t.Fatal("drain did not end after the prepare was settled")
+			}
+			if b.awaiting("room") {
+				t.Fatal("drain ended while a handoff was prepared")
+			}
+			if took := b.owned("room") != nil; took != transferred {
+				t.Fatalf("took over the room = %v, want %v", took, transferred)
+			}
+		})
+	}
+}
+
 // 凍結の間、変更系の要求は再試行できるエラー（code: migrating）になり、状態は変わらない。取りやめれば元どおり動く。
 func TestFrozenRoomRejectsChangesWithARetryableError(t *testing.T) {
 	c := newCluster()
