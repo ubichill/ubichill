@@ -256,3 +256,25 @@ Frontend image
 {{- printf "%s:%s" .Values.frontend.image.repository (.Values.frontend.image.tag | default .Chart.AppVersion) }}
 {{- end }}
 {{- end }}
+
+{{/*
+nodeAffinity の優先条件のうち API サーバーが受け付けるもの。In・NotIn・Gt・Lt で values が空の条件を含むものは出さない
+（既定値はゾーン名が空なので、そのまま nodeAffinity.enabled にすると Deployment が拒否される）
+*/}}
+{{- define "ubichill.nodeAffinity.preferred" -}}
+{{- $terms := list }}
+{{- range .Values.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution }}
+{{- $valid := true }}
+{{- range .preference.matchExpressions }}
+{{- if and (not (has .operator (list "Exists" "DoesNotExist"))) (empty .values) }}
+{{- $valid = false }}
+{{- end }}
+{{- end }}
+{{- if $valid }}
+{{- $terms = append $terms . }}
+{{- end }}
+{{- end }}
+{{- with $terms }}
+{{- toYaml . }}
+{{- end }}
+{{- end }}
