@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { VNode } from '@ubichill/shared';
+import type { VNode, VNodeChild } from '@ubichill/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { renderVNode } from './VNodeRenderer';
 
@@ -112,5 +112,121 @@ describe('VNodeRenderer: mod から届いた値で Host を操作させない', 
     it('パスワード欄は描かない', () => {
         const { container } = render(el('input', { type: 'password', name: 'password' }));
         expect(container.querySelector('input')?.type).toBe('text');
+    });
+});
+
+/** mod は VNode を自由に作れる。型に合わない値も届く前提で描く。 */
+const untrusted = (value: unknown): VNode => value as VNode;
+
+/** `depth` 段の div の入れ子（再帰を使わずに作る）。一番内側に文字を置く。 */
+function nestedDivs(depth: number): VNode {
+    return Array.from({ length: depth - 1 }).reduce<VNode>(
+        (inner) => el('div', {}, [inner]),
+        el('div', {}, ['deepest']),
+    );
+}
+
+const depthOf = (root: Element): number => {
+    const walk = (node: Element, depth: number): number =>
+        Math.max(depth, ...Array.from(node.children).map((child) => walk(child, depth + 1)));
+    return walk(root, 0);
+};
+
+describe('VNodeRenderer: 型に合わない VNode でも例外を出さない', () => {
+    it.each([
+        ['props が null', { type: 'div', props: null, children: ['x'] }],
+        ['props が無い', { type: 'div', children: ['x'] }],
+        ['props が数値', { type: 'div', props: 7, children: ['x'] }],
+        ['props が配列', { type: 'div', props: ['a'], children: ['x'] }],
+    ])('%s なら属性なしで描く', (_, vnode) => {
+        const { container } = render(untrusted(vnode));
+        const div = container.querySelector('div');
+        expect(div?.textContent).toBe('x');
+        expect(div?.getAttributeNames().filter((name) => name !== 'style')).toEqual([]);
+    });
+
+    it('文字列にできない属性・スタイルの値（toString が関数でない）は捨て、ほかは残す', () => {
+        const { container } = render(
+            untrusted({
+                type: 'div',
+                props: { title: { toString: 1 }, id: 'kept', style: { color: { toString: 1 }, opacity: 0.5 } },
+                children: [],
+            }),
+        );
+        const div = container.querySelector('div');
+        expect(div?.hasAttribute('title')).toBe(false);
+        expect(div?.id).toBe('kept');
+        expect(div?.style.color).toBe('');
+        expect(div?.style.opacity).toBe('0.5');
+    });
+
+    it.each([
+        ['数値', 7],
+        ['文字列', 'abc'],
+        ['オブジェクト', { length: 3 }],
+        ['null', null],
+        ['無い', undefined],
+    ])('children が%sなら子なしで描く', (_, children) => {
+        const { container } = render(untrusted({ type: 'p', props: {}, children }));
+        expect(container.querySelector('p')?.childNodes).toHaveLength(0);
+    });
+
+    it('子の中の型の違う値（type の無いオブジェクト・数値の type）は描かずに兄弟は残す', () => {
+        const { container } = render(
+            untrusted({
+                type: 'ul',
+                props: {},
+                children: [{}, { type: 42 }, { type: 'li', props: {}, children: ['ok'] }],
+            }),
+        );
+        expect(container.querySelectorAll('li')).toHaveLength(1);
+        expect(container.textContent).toBe('ok');
+    });
+
+    it('Fragment の props・children が壊れていても描く', () => {
+        const { container } = render(untrusted({ type: 'ubichill:fragment', props: null, children: 3 }));
+        expect(container.childNodes).toHaveLength(0);
+        const nested = render(
+            untrusted({
+                type: 'div',
+                props: {},
+                children: [{ type: 'ubichill:fragment', props: null, children: null }, 'after'],
+            }),
+        );
+        expect(nested.container.textContent).toBe('after');
+    });
+
+    it('20000 段の入れ子は上限の深さで切り、浅い兄弟は残す', () => {
+        const { container } = render(el('section', {}, [nestedDivs(20_000), el('span', {}, ['sibling'])]));
+        const section = container.querySelector('section');
+        if (!section) throw new Error('section がない');
+        expect(depthOf(container)).toBeLessThanOrEqual(32);
+        expect(container.textContent).not.toContain('deepest');
+        expect(section.querySelector(':scope > span')?.textContent).toBe('sibling');
+    });
+
+    it('上限ちょうどの深さは描く', () => {
+        const { container } = render(nestedDivs(32));
+        expect(depthOf(container)).toBe(32);
+        expect(container.textContent).toBe('deepest');
+    });
+
+    it('20000 段の配列・Fragment の入れ子でも例外を出さない', () => {
+        const deepArray = Array.from({ length: 20_000 }).reduce<VNodeChild>((inner) => [inner], 'leaf');
+        const deepFragment = Array.from({ length: 20_000 }).reduce<VNodeChild>(
+            (inner) => ({ type: 'ubichill:fragment', props: {}, children: [inner] }),
+            'leaf',
+        );
+        expect(render(el('div', {}, [deepArray, 'tail'])).container.textContent).toBe('tail');
+        expect(render(el('div', {}, [deepFragment, 'tail'])).container.textContent).toBe('tail');
+    });
+
+    it('壊れた VNode の後に正しい VNode が来れば描き直せる', () => {
+        const container = document.createElement('div');
+        const sendAction = vi.fn();
+        renderVNode(untrusted({ type: 'div', props: null, children: 7 }), container, sendAction);
+        renderVNode(el('div', { title: 't' }, ['ok']), container, sendAction);
+        expect(container.querySelector('div')?.getAttribute('title')).toBe('t');
+        expect(container.textContent).toBe('ok');
     });
 });

@@ -18,10 +18,27 @@
 
 import type { VNode, VNodeChild } from '@ubichill/shared';
 import { ALLOWED_TAGS, SVG_CAMEL_ATTRS, SVG_TAGS } from './elements';
+import { MARKUP_LIMITS } from './markup';
 import { sanitizeHtmlAttr, sanitizeStyle, sanitizeSvgAttr } from './sanitize';
 
 const FRAGMENT = 'ubichill:fragment' as const;
 const SVG_NS = 'http://www.w3.org/2000/svg';
+
+// ============================================================
+// mod から届いた値の形を揃える（型どおりとは限らない）
+// ============================================================
+
+/** 要素の深さの上限。超えた要素は中身ごと捨てる（core:ui の解析と同じ規則）。 */
+const MAX_DEPTH = MARKUP_LIMITS.maxDepth;
+
+const propsOf = (vnode: VNode): Record<string, unknown> =>
+    typeof vnode.props === 'object' && vnode.props !== null && !Array.isArray(vnode.props) ? vnode.props : {};
+
+const childrenOf = (vnode: VNode): VNodeChild[] => (Array.isArray(vnode.children) ? vnode.children : []);
+
+/** 属性・スタイルの値にするのはプリミティブだけ（`{ toString: 1 }` は文字列にすると例外になる）。 */
+const textOf = (value: unknown): string | null =>
+    typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? String(value) : null;
 
 // ============================================================
 // スタイル
@@ -69,11 +86,11 @@ const UNITLESS_STYLE_PROPS = new Set([
     'zoom',
 ]);
 
-function styleValue(camelProp: string, val: string | number): string {
+function styleValue(camelProp: string, val: unknown): string | null {
     if (typeof val === 'number' && !UNITLESS_STYLE_PROPS.has(camelProp)) {
         return val === 0 ? '0' : `${val}px`;
     }
-    return String(val);
+    return textOf(val);
 }
 
 // ============================================================
@@ -149,9 +166,10 @@ function _patchProps(el: Element, newProps: Record<string, unknown>, sendAction:
 
         // style オブジェクト
         if (key === 'style' && typeof val === 'object') {
-            for (const [prop, sv] of Object.entries(val as Record<string, string | number>)) {
+            for (const [prop, sv] of Object.entries(val)) {
                 const name = camelToHyphen(prop);
-                const safe = sanitizeStyle(name, styleValue(prop, sv));
+                const value = styleValue(prop, sv);
+                const safe = value === null ? null : sanitizeStyle(name, value);
                 if (safe !== null) (el as HTMLElement).style.setProperty(name, safe);
             }
             continue;
@@ -175,13 +193,15 @@ function _patchProps(el: Element, newProps: Record<string, unknown>, sendAction:
         }
 
         // 通常属性
+        const text = textOf(val);
+        if (text === null) continue;
         if (inSvg) {
             const attrKey = SVG_CAMEL_ATTRS.has(key) ? key : camelToHyphen(key);
-            const safe = sanitizeSvgAttr(attrKey, String(val));
+            const safe = sanitizeSvgAttr(attrKey, text);
             if (safe !== null) applyAttr(attrKey, safe);
             continue;
         }
-        const safe = sanitizeHtmlAttr(el.tagName.toLowerCase(), key, String(val));
+        const safe = sanitizeHtmlAttr(el.tagName.toLowerCase(), key, text);
         if (safe === null) continue;
         if (key === 'value' && el instanceof HTMLInputElement) {
             // フォーカス中の <input> は value 属性を上書きしない（入力中の文字を保護）
@@ -238,28 +258,20 @@ function preventSubmit(e: Event): void {
 
 type FlatChild = string | VNode;
 
-function _flatten(children: VNodeChild[]): FlatChild[] {
-    const out: FlatChild[] = [];
+/** 配列・Fragment の入れ子も深さの上限で切る（再帰が呼び出しの上限に届かないように）。 */
+function _flatten(children: readonly VNodeChild[], out: FlatChild[] = [], nesting = 0): FlatChild[] {
+    if (nesting > MAX_DEPTH) return out;
     for (const c of children) {
-        if (c === null || c === undefined || c === false || c === true) continue;
         if (typeof c === 'string') {
             out.push(c);
-            continue;
-        }
-        if (typeof c === 'number') {
+        } else if (typeof c === 'number') {
             out.push(String(c));
-            continue;
+        } else if (Array.isArray(c)) {
+            _flatten(c, out, nesting + 1);
+        } else if (typeof c === 'object' && c !== null) {
+            if (c.type === FRAGMENT) _flatten(childrenOf(c), out, nesting + 1);
+            else out.push(c);
         }
-        if (Array.isArray(c)) {
-            out.push(..._flatten(c));
-            continue;
-        }
-        const v = c as VNode;
-        if (v.type === FRAGMENT) {
-            out.push(..._flatten(v.children));
-            continue;
-        }
-        out.push(v);
     }
     return out;
 }
@@ -281,6 +293,7 @@ function _patchNode(
     newChild: FlatChild | null,
     sendAction: SendAction,
     isSvg: boolean,
+    depth: number,
 ): Node | null {
     // ── 削除 ──────────────────────────────────────────────────────
     if (newChild === null) {
@@ -305,8 +318,12 @@ function _patchNode(
     // Fragment が _flatten をすり抜けた場合（防御的処理）
     if (vnode.type === FRAGMENT) {
         if (oldNode) parent.removeChild(oldNode);
-        const flat = _flatten(vnode.children);
-        for (const c of flat) _patchNode(parent, null, c, sendAction, isSvg);
+        for (const c of _flatten(childrenOf(vnode))) _patchNode(parent, null, c, sendAction, isSvg, depth);
+        return null;
+    }
+
+    if (depth > MAX_DEPTH) {
+        if (oldNode) parent.removeChild(oldNode);
         return null;
     }
 
@@ -322,8 +339,8 @@ function _patchNode(
     if (oldNode?.nodeType === Node.ELEMENT_NODE) {
         const oldEl = oldNode as Element;
         if (oldEl.tagName.toLowerCase() === vnode.type) {
-            _patchProps(oldEl, vnode.props, sendAction, inSvg);
-            _patchChildren(oldEl, vnode.children, sendAction, inSvg);
+            _patchProps(oldEl, propsOf(vnode), sendAction, inSvg);
+            _patchChildren(oldEl, childrenOf(vnode), sendAction, inSvg, depth);
             return oldEl;
         }
     }
@@ -332,8 +349,8 @@ function _patchNode(
     const newEl: Element = inSvg ? document.createElementNS(SVG_NS, vnode.type) : document.createElement(vnode.type);
     // 送信先を持たないフォームでも、送信すると Host のページが入力値付きの URL へ遷移する
     if (newEl instanceof HTMLFormElement) newEl.addEventListener('submit', preventSubmit);
-    _patchProps(newEl, vnode.props, sendAction, inSvg);
-    _patchChildren(newEl, vnode.children, sendAction, inSvg);
+    _patchProps(newEl, propsOf(vnode), sendAction, inSvg);
+    _patchChildren(newEl, childrenOf(vnode), sendAction, inSvg, depth);
     if (oldNode) parent.replaceChild(newEl, oldNode);
     else parent.appendChild(newEl);
     return newEl;
@@ -342,8 +359,15 @@ function _patchNode(
 /**
  * `parent` の子ノード群を `newChildren` で差分更新する。
  * Fragment / 配列はあらかじめ平坦化してから位置ベースでマッチする。
+ * `depth` は `parent` の深さ（コンテナは 0）。
  */
-function _patchChildren(parent: Element, newChildren: VNodeChild[], sendAction: SendAction, inSvg: boolean): void {
+function _patchChildren(
+    parent: Element,
+    newChildren: VNodeChild[],
+    sendAction: SendAction,
+    inSvg: boolean,
+    depth: number,
+): void {
     const flat = _flatten(newChildren);
     const oldNodes = Array.from(parent.childNodes) as Node[];
 
@@ -351,7 +375,7 @@ function _patchChildren(parent: Element, newChildren: VNodeChild[], sendAction: 
     for (let i = 0; i < len; i++) {
         const old = oldNodes[i] ?? null;
         const next = flat[i] ?? null;
-        _patchNode(parent, old, next, sendAction, inSvg);
+        _patchNode(parent, old, next, sendAction, inSvg, depth + 1);
     }
 }
 
@@ -373,12 +397,12 @@ export function renderVNode(vnode: VNode | null, container: HTMLElement, sendAct
     }
     // ルートが Fragment の場合は子を直接コンテナにパッチ
     if (vnode.type === FRAGMENT) {
-        _patchChildren(container, vnode.children, sendAction, false);
+        _patchChildren(container, childrenOf(vnode), sendAction, false, 0);
         return;
     }
     // 通常: コンテナの直下にルート要素 1 つ
     const firstChild = container.firstChild as Node | null;
-    _patchNode(container, firstChild, vnode, sendAction, false);
+    _patchNode(container, firstChild, vnode, sendAction, false, 1);
     // ルート以降の余分なノードを削除
     while (container.childNodes.length > 1) {
         const lastChild = container.lastChild;
