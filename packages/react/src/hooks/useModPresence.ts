@@ -49,10 +49,7 @@ export function useModPresence(
                     const prevUser = prev.get(id);
                     if (!prevUser) continue;
                     const positionChanged = prevUser.position !== user.position;
-                    const metaChanged =
-                        prevUser.name !== user.name ||
-                        prevUser.avatarUrl !== user.avatarUrl ||
-                        prevUser.cursorUrl !== user.cursorUrl;
+                    const metaChanged = prevUser.name !== user.name;
                     if (positionChanged) {
                         sendEvent({
                             type: 'EVT_PLAYER_CURSOR_MOVED',
