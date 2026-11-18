@@ -176,6 +176,8 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
                     modId: this._modId,
                     message: `初期化に失敗しました: ${e.data.payload.error}`,
                 });
+                // 入力を読まない Worker のカーソルが残ると、ほかの Worker の読んだ入力も捨てられなくなる
+                if (this._autoInputEnabled) releaseSharedInput(this._instanceKey);
                 this.handlers.onInitFailed?.(e.data.payload.error);
                 this.handlers.onReady?.(); // ロード終了として扱う (ハングを防ぐ)
                 return;

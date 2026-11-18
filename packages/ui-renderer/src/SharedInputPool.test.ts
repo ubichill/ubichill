@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { InputCollector } from './InputCollector';
 import {
     acquireSharedInput,
     collectSharedInputFor,
@@ -91,6 +92,44 @@ describe('SharedInputPool: スクロール要素の共有', () => {
         setSharedScrollElement('new', makeScrollEl(300, 120));
         pointerDown(40, 50);
         expect(worldPointOf('new')).toEqual({ x: 340, y: 170 });
+    });
+
+    it('後から acquire した Worker には、acquire より前の入力を渡さない', () => {
+        acquire('early');
+        Array.from({ length: 3000 }, (_, i) => pointerDown(i, i));
+        acquire('late');
+        pointerDown(1, 2);
+        expect(collectSharedInputFor('late').filter((ev) => ev.type === 'MOUSE_DOWN')).toHaveLength(1);
+        expect(collectSharedInputFor('early').filter((ev) => ev.type === 'MOUSE_DOWN')).toHaveLength(3001);
+    });
+
+    it('一度も収集しない Worker を release すれば、ほかの Worker の読んだ分は捨てられる', () => {
+        const prune = vi.spyOn(InputCollector.prototype, 'pruneEventsBefore');
+        acquire('reader');
+        acquireSharedInput('never-ready');
+        releaseSharedInput('never-ready');
+        Array.from({ length: 10 }, (_, i) => pointerDown(i, i));
+        collectSharedInputFor('reader');
+        expect(prune).toHaveBeenLastCalledWith(10);
+        prune.mockRestore();
+    });
+
+    it('同じ key を 2 回 release しても、ほかの Worker の collector を壊さない', () => {
+        acquire('alive');
+        acquireSharedInput('failed');
+        releaseSharedInput('failed'); // 初期化の失敗で release
+        releaseSharedInput('failed'); // destroy でもう一度 release
+        pointerDown(40, 50);
+        expect(worldPointOf('alive')).toEqual({ x: 40, y: 50 });
+    });
+
+    it('release 済みの key のスクロール要素は使わない', () => {
+        acquire('alive');
+        acquireSharedInput('gone');
+        releaseSharedInput('gone');
+        setSharedScrollElement('gone', makeScrollEl(300, 120));
+        pointerDown(40, 50);
+        expect(worldPointOf('alive')).toEqual({ x: 40, y: 50 });
     });
 
     it('全 Worker が release されると collector は破棄され、以降の収集は空になる', () => {
