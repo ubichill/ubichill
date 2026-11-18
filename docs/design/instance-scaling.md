@@ -69,7 +69,7 @@ Prometheus ──▶ KEDA ──▶ HPA ──▶ Go Deployment
 
 ## Redis が使えないとき
 
-Redis を設定した環境では、Redis が落ちても**プロセス内の状態（メモリのリースなど）に切り替えない**。切り替えると、各 Pod がそれぞれ持ち主になり、同じ部屋の owner や reaper が複数になる（R1 の `leaseFor` / `LeaseFor` がこれを固定している）。
+Redis を設定した環境では、Redis が落ちても**プロセス内の状態（メモリのリースなど）に切り替えない**。切り替えると、各 Pod がそれぞれ持ち主になり、同じ部屋の owner や reaper が複数になる（backend の `leaseFor` と Go の `DirectoryFor` がこれを固定している）。
 
 | 機能 | Redis が落ちている間 | 戻ったとき |
 |---|---|---|
