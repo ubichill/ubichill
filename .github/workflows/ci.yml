@@ -17,9 +17,10 @@ on:
       - ".vscode/**"
       - ".gitignore"
 
+# main への push は取り消さない。取り消された run のイメージは作られず、途中まで push した :vX.Y.Z を次の run が同じ版で上書きする
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Node 20 は GitHub Actions runner 上で deprecate された (2026-09-16 削除予定)。
 # 各 actions は Node 24 対応版へ更新済み (docker/* は v4/v7、mise-action は v4 等)。
@@ -296,6 +297,11 @@ jobs:
             NEXT="v${major}.${minor}.$((patch + 1))"
           fi
           echo "tag=${NEXT}" >> "$GITHUB_OUTPUT"
+          # 変更の検出は前のリリースのコミットから取る。push 前の HEAD からだと、待機中に取り消された run の変更が漏れる
+          # （同じ concurrency で待てる run は 1 つだけで、次の push が来ると待機中の run は取り消される）
+          if [ -n "$LATEST" ]; then
+            echo "base=$(git rev-list -n 1 "$LATEST")" >> "$GITHUB_OUTPUT"
+          fi
 
       # ── 変更検知 ───────────────────────────────────────────────
       # 実装は .github/scripts/detect-changed-paths.sh を参照。
@@ -305,7 +311,7 @@ jobs:
         env:
           PR_ACTION: ${{ github.event_name == 'push' && 'synchronize' || github.event.action }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          PR_BEFORE_SHA: ${{ github.event.before }}
+          PR_BEFORE_SHA: ${{ github.event_name == 'push' && steps.next-version.outputs.base || github.event.before }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: .github/scripts/detect-changed-paths.sh
 
