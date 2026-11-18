@@ -77,6 +77,18 @@ jobs:
             --set redis.auth.password=test-redis-password \
             > /tmp/ubichill-dev.yaml
 
+      # プレビュー（home-manifests の ApplicationSet）は values-dev.yaml の上に values-preview.yaml を重ねる
+      - name: Render chart with preview values
+        run: |
+          helm template ubichill-preview charts/ubichill \
+            -f charts/ubichill/values-dev.yaml \
+            -f charts/ubichill/values-preview.yaml \
+            --set global.domain=pr-1.example.test \
+            --set postgresql.auth.postgresPassword=test-postgres-password \
+            --set postgresql.auth.password=test-app-password \
+            --set redis.auth.password=test-redis-password \
+            > /tmp/ubichill-preview.yaml
+
       - name: Render chart with production values
         run: |
           helm template ubichill-prod charts/ubichill \

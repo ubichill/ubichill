@@ -31,11 +31,11 @@ spec:
       {{- end }}
       {{- if .Values.nodeAffinity.enabled }}
       affinity:
+        {{- with include "ubichill.nodeAffinity.preferred" . }}
         nodeAffinity:
-          {{- with .Values.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution }}
           preferredDuringSchedulingIgnoredDuringExecution:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- . | nindent 12 }}
+        {{- end }}
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
           - weight: 100
