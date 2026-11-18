@@ -77,7 +77,7 @@ func testRedis(t *testing.T) *redis.Client {
 
 func runDirectoryContract(t *testing.T, newDirectory func(t *testing.T) testDirectory) {
 	ctx := context.Background()
-	const ttl = contractTTL
+	const ttl = 200 * time.Millisecond
 	gen := func(t *testing.T, d Directory) string {
 		t.Helper()
 		g, err := d.ClusterGen(ctx)

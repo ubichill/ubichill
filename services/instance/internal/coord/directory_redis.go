@@ -12,9 +12,12 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// 部屋の割り当ては R1 のリースの値（token を 1 項目に持つハッシュ）に node・epoch・gen を足した形。
-// 照合は token の項目だけを見るので、R1 の RedisLease の延長・解放とも互換のまま。
+// 部屋の割り当ては token・node・epoch・gen を持つハッシュ。延長・解放・付け替えの照合は token の項目だけを見る。
 var (
+	// KEYS: room / ARGV: token
+	releaseScript = redis.NewScript(`
+if redis.call('HGET', KEYS[1], 'token') ~= ARGV[1] then return 0 end
+return redis.call('DEL', KEYS[1])`)
 	clusterGenScript = redis.NewScript(`
 local g = redis.call('GET', KEYS[1])
 if g then return g end
@@ -332,8 +335,9 @@ func (r *RedisDirectory) Retire(ctx context.Context, room, token string, ttl tim
 	return err == nil && n == 1, err
 }
 
-// DirectoryFor は Redis を設定していれば Redis の Directory だけを返す。LeaseFor と同じく、
-// Redis が落ちてもメモリに切り替えない（各 Pod がそれぞれ owner になる）。落ちている間の操作はエラーになる。
+// DirectoryFor は Redis を設定していれば Redis の Directory だけを返す。Redis が落ちてもメモリに切り替えない
+// （切り替えると各 Pod がそれぞれ owner になり、同じ部屋の owner が複数になる）。落ちている間の操作はエラーになる。
+// *redis.Client で受けるのは、nil の判定を確実にするため（インタフェースで受けると型付きの nil を見逃す）。
 func DirectoryFor(client *redis.Client, now func() time.Time) Directory {
 	if client == nil {
 		return NewMemoryDirectory(now)
