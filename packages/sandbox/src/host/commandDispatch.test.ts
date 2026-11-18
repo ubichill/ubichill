@@ -1,6 +1,6 @@
 import { CommandType, type ModGuestCommand } from '@ubichill/shared';
 import { describe, expect, it, vi } from 'vitest';
-import { type CommandContext, dispatchCommand, RpcTimeoutError } from './commandDispatch';
+import { type CommandContext, dispatchCommand, RpcTimeoutError, withRpcTimeout } from './commandDispatch';
 import { createHostRequests } from './hostRequests';
 import type { HostHandlers } from './types';
 
@@ -219,5 +219,36 @@ describe('dispatchCommand: IDENTITY_TOKEN', () => {
         const pending = dispatchCommand(command('i3'), ctx);
         await dispatchCommand({ type: CommandType.CMD_ABORT, payload: { requestId: 'i3' } } as ModGuestCommand, ctx);
         await expect(pending).rejects.toMatchObject({ code: 'FETCH_ABORTED' });
+    });
+});
+
+describe('withRpcTimeout', () => {
+    it('解決した RPC の timer は残さない（秒に数千回送る mod でも timer が溜まらない）', async () => {
+        vi.useFakeTimers();
+        try {
+            await Promise.all(Array.from({ length: 5000 }, (_, i) => withRpcTimeout(Promise.resolve(i), 10_000, 'X')));
+            await withRpcTimeout(Promise.reject(new Error('boom')), 10_000, 'X').catch(() => {});
+            expect(vi.getTimerCount()).toBe(0);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('時間内に終わらなければ RpcTimeoutError で失敗する', async () => {
+        vi.useFakeTimers();
+        try {
+            const pending = withRpcTimeout(new Promise<never>(() => {}), 10_000, 'SCENE_UPDATE_ENTITY');
+            const assertion = expect(pending).rejects.toBeInstanceOf(RpcTimeoutError);
+            await vi.advanceTimersByTimeAsync(10_000);
+            await assertion;
+            await expect(pending).rejects.toThrow('SCENE_UPDATE_ENTITY');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('元の失敗はそのまま返す', async () => {
+        const error = new Error('handler');
+        await expect(withRpcTimeout(Promise.reject(error), 10_000, 'X')).rejects.toBe(error);
     });
 });
