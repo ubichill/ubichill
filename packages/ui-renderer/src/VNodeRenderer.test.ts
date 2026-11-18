@@ -33,6 +33,71 @@ describe('VNodeRenderer: テキスト入力', () => {
     });
 });
 
+/** ModUIMount と同じく Shadow DOM の中に描く。 */
+function renderInShadow(vnode: VNode): { container: HTMLElement; shadow: ShadowRoot; dispose: () => void } {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const shadow = host.attachShadow({ mode: 'open' });
+    const container = document.createElement('div');
+    shadow.appendChild(container);
+    renderVNode(vnode, container, vi.fn());
+    return { container, shadow, dispose: () => host.remove() };
+}
+
+const field = (type: string, value: string, children: VNode['children'] = []): VNode => ({
+    type,
+    props: { value, onUbiInput: '__h0' },
+    children,
+});
+
+const options = ['a', 'b', 'c'].map((v): VNode => ({ type: 'option', props: { value: v }, children: [v] }));
+
+describe('VNodeRenderer: Shadow DOM の中の入力欄', () => {
+    it.each(['input', 'textarea'])(
+        'フォーカス中の <%s> は、Worker から遅れて届いた別の値で上書きしない（IME の変換を壊さない）',
+        (type) => {
+            const { container, shadow, dispose } = renderInShadow(field(type, 'l'));
+            const input = container.querySelector<HTMLInputElement | HTMLTextAreaElement>(type);
+            if (!input) throw new Error(`${type} がない`);
+            input.focus();
+            expect(shadow.activeElement).toBe(input);
+            input.value = 'lo fi';
+            // ユーザーが 'lo fi' まで打った後に、'lo' の時点の VNode が届く
+            renderVNode(field(type, 'lo'), container, vi.fn());
+            expect(input.value).toBe('lo fi');
+            dispose();
+        },
+    );
+
+    it.each(['input', 'textarea'])('フォーカスしていない <%s> には新しい値を反映する', (type) => {
+        const { container, dispose } = renderInShadow(field(type, 'first'));
+        const input = container.querySelector<HTMLInputElement | HTMLTextAreaElement>(type);
+        expect(input?.value).toBe('first');
+        renderVNode(field(type, 'second'), container, vi.fn());
+        expect(input?.value).toBe('second');
+        dispose();
+    });
+
+    it('<select> の value は初回から選択に反映し、変わったら選び直す', () => {
+        const { container, dispose } = renderInShadow(field('select', 'b', options));
+        const select = container.querySelector('select');
+        expect(select?.value).toBe('b');
+        renderVNode(field('select', 'c', options), container, vi.fn());
+        expect(select?.value).toBe('c');
+        dispose();
+    });
+
+    it('<select> を選び直した後、同じ value の VNode が来ても選択を戻さない', () => {
+        const { container, dispose } = renderInShadow(field('select', 'a', options));
+        const select = container.querySelector('select');
+        if (!select) throw new Error('select がない');
+        select.value = 'c';
+        renderVNode(field('select', 'a', options), container, vi.fn());
+        expect(select.value).toBe('c');
+        dispose();
+    });
+});
+
 function render(vnode: VNode): { container: HTMLElement; sendAction: ReturnType<typeof vi.fn> } {
     const container = document.createElement('div');
     document.body.appendChild(container);
