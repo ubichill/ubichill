@@ -34,6 +34,7 @@ import {
     MOD_DESCRIPTION_MAX_LENGTH,
     mediaTargetCollisions,
     readModDescription,
+    readModVersion,
 } from './build.ts';
 import { listDirsOnDisk } from './modLayout.ts';
 import { publishMods } from './publishMods.ts';
@@ -429,6 +430,52 @@ describe('リモート registry からのバージョン履歴マージ（CI ク
         expect(written[0].versions.map((v: { version: string }) => v.version)).toEqual([penVersion, '1.9.0']);
     });
 
+    it('履歴はプレリリースを含んでも SemVer の新しい順に並ぶ（入力の順のままにしない）', async () => {
+        const remoteIndex = [
+            {
+                id: 'pen',
+                name: 'pen',
+                version: '1.0.0',
+                components: [],
+                versions: ['1.0.0-beta.1', '0.9.0', '1.0.0', '1.0.0-beta.11', '1.0.0-beta.2', '1.10.0'].map(
+                    (version) => ({ version, components: [] }),
+                ),
+            },
+        ];
+        const entry = await buildMod(penModDir, {
+            distDir: join(distDir, 'pen'),
+            publicDir: join(publicDir, 'pen'),
+            registryUrl: 'https://example.com/registry',
+            fetchImpl: fakeRegistryFetch(remoteIndex),
+        });
+        expect(entry.versions.map((v) => v.version)).toEqual([
+            penVersion,
+            '1.10.0',
+            '1.0.0',
+            '1.0.0-beta.11',
+            '1.0.0-beta.2',
+            '1.0.0-beta.1',
+            '0.9.0',
+        ]);
+    });
+
+    it('package.json の version が x.y.z でなければ、何も書き出さずにビルドを止める', async () => {
+        const modDir = mkdtempSync(join(tmpdir(), 'ubichill-mod-bad-version-'));
+        try {
+            writeFileSync(
+                join(modDir, 'package.json'),
+                JSON.stringify({ name: 'escape', version: '../../../escaped' }),
+            );
+            const out = join(distDir, 'a', 'b');
+            await expect(buildMod(modDir, { distDir: out })).rejects.toThrow('version');
+            // `v../../../escaped` は <out>/v.. → <out> → <out>/.. で、出力先の 1 つ上に書き出していた
+            expect(existsSync(join(distDir, 'a', 'escaped'))).toBe(false);
+            expect(existsSync(out)).toBe(false);
+        } finally {
+            rmSync(modDir, { recursive: true, force: true });
+        }
+    });
+
     it('registryUrl への fetch が失敗しても（オフライン/404）ビルドは成功する', async () => {
         const failingFetch: typeof fetch = async () => {
             throw new Error('network down');
@@ -565,5 +612,30 @@ describe('readModDescription', () => {
         for (const value of [null, 1, ['説明'], { ja: '説明' }]) {
             expect(() => readModDescription(value)).toThrow('文字列');
         }
+    });
+});
+
+describe('readModVersion', () => {
+    it.each(['1.0.0', '0.0.0', '10.20.30'])('%s は版として読む', (version) => {
+        expect(readModVersion(version)).toBe(version);
+    });
+
+    it.each([
+        ['プレリリース', '1.0.0-beta.1'],
+        ['ビルドメタデータ', '1.0.0+build.1'],
+        ['2 つだけ', '1.0'],
+        ['4 つ', '1.0.0.0'],
+        ['v 付き', 'v1.0.0'],
+        ['前後の空白', ' 1.0.0 '],
+        ['末尾の改行', '1.0.0\n'],
+        ['親のディレクトリ', '../../1.0.0'],
+        ['パスの区切り', '1.0.0/../../x'],
+        ['Windows のパス', '1.0.0\\..\\x'],
+        ['空', ''],
+        ['数値', 1],
+        ['無い', undefined],
+        ['null', null],
+    ])('%s（%j）はビルドを止める', (_label, version) => {
+        expect(() => readModVersion(version)).toThrow('version');
     });
 });

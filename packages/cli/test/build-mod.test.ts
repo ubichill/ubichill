@@ -246,7 +246,7 @@ describe('buildMod（新規mod作成パイプライン）', () => {
         tmpDirs.push(outDir);
 
         await expect(buildMod(modDir, { distDir: outDir, publicDir: outDir })).rejects.toThrow(
-            'package.json に version が必要です',
+            'package.json の version は x.y.z の形で書いてください（無し）',
         );
     });
 
