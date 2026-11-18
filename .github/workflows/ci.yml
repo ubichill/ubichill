@@ -324,10 +324,10 @@ jobs:
   #   いずれも immutable な :sha-<sha> を付与。共有の可変 :dev タグは廃止し、
   #   デプロイ（PR ごとの環境など）は GitOps 側がこれらのタグを参照する。
 
-  # 本番は品質検査の完了を待つ。プレビューは typecheck と変更検出だけを待つ。
+  # 本番は品質検査（mod・SDK の検証も）の完了を待つ。プレビューは typecheck と変更検出だけを待つ。
   build-backend:
     name: Build and push Backend image
-    needs: [lint, test, typecheck, detect-changes]
+    needs: [lint, test, typecheck, verify-mods, verify-sdk, detect-changes]
     if: github.event_name == 'push' && needs.detect-changes.outputs.backend == 'true'
     permissions:
       contents: read
@@ -352,10 +352,10 @@ jobs:
     with:
       next-version: ${{ needs.detect-changes.outputs.next-version }}
 
-  # 本番は品質検査の完了を待つ。プレビューは typecheck と変更検出だけを待つ。
+  # 本番は品質検査（mod・SDK の検証も）の完了を待つ。プレビューは typecheck と変更検出だけを待つ。
   build-frontend:
     name: Build and push Frontend image
-    needs: [lint, test, typecheck, detect-changes]
+    needs: [lint, test, typecheck, verify-mods, verify-sdk, detect-changes]
     if: github.event_name == 'push' && needs.detect-changes.outputs.frontend == 'true'
     permissions:
       contents: read
@@ -380,10 +380,10 @@ jobs:
     with:
       next-version: ${{ needs.detect-changes.outputs.next-version }}
 
-  # 本番は品質検査の完了を待つ。プレビューは typecheck と変更検出だけを待つ。
+  # 本番は品質検査（mod・SDK の検証も）の完了を待つ。プレビューは typecheck と変更検出だけを待つ。
   build-instance:
     name: Build and push Instance image
-    needs: [lint, test, typecheck, detect-changes]
+    needs: [lint, test, typecheck, verify-mods, verify-sdk, detect-changes]
     if: github.event_name == 'push' && needs.detect-changes.outputs.instance == 'true'
     permissions:
       contents: read
