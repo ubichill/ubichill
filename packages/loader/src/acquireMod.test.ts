@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
-import { type AuthorKeyCheck, type ModLock, signMod, verifyModSignature } from '@ubichill/shared';
+import { readdirSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { type AuthorKeyCheck, type ModLock, ModLockSchema, signMod, verifyModSignature } from '@ubichill/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
     type AcquireModOptions,
@@ -578,6 +580,77 @@ describe('作者署名', () => {
         await Promise.all([acquireMod(TYPE, options), acquireMod(TYPE, options)]);
         await acquireMod(TYPE, options);
         expect(calls).toEqual([AUTHOR]);
+    });
+});
+
+describe('lock の値を URL にする前に確かめる（検証は取得の後なので、先に任意の場所へ GET させない）', () => {
+    const recording = (): { fetchImpl: FetchLike; urls: string[] } => {
+        const urls: string[] = [];
+        const good = fakeFetch(goodRoutes());
+        return {
+            urls,
+            fetchImpl: (url, init) => {
+                urls.push(url);
+                return good(url, init);
+            },
+        };
+    };
+
+    const withEntry = (patch: (entry: ModLock['mods'][string]) => void): ModLock => {
+        const l = lock();
+        patch(l.mods[MOD]);
+        return l;
+    };
+
+    it('リポジトリの worlds/*.lock.json は確かめを通る（形を絞っても今のワールドは動く）', () => {
+        const dir = resolve(process.cwd(), 'worlds');
+        const files = readdirSync(dir).filter((name) => name.endsWith('.lock.json'));
+        expect(files.length).toBeGreaterThan(0);
+        for (const name of files) {
+            const result = ModLockSchema.safeParse(JSON.parse(readFileSync(resolve(dir, name), 'utf8')));
+            expect(result.success, `${name}: ${result.error?.message}`).toBe(true);
+        }
+    });
+
+    it.each([
+        ['version にパスとクエリ', withEntry((e) => Object.assign(e, { version: '1/../../x?' }))],
+        [
+            'workerUrl が versioned ディレクトリの外',
+            withEntry((e) => Object.assign(e.components[TYPE], { workerUrl: '../../../api/v1/users/me' })),
+        ],
+        ['baseUrl にクエリ', withEntry((e) => Object.assign(e, { baseUrl: 'https://mods.example.com/?q=' }))],
+    ])('%s の lock は、どこにも取りに行かずに拒否する', async (_, badLock) => {
+        const { fetchImpl, urls } = recording();
+        expect(await acquireMod(TYPE, { baseUrl: BASE, lock: badLock, ...unsignedDev, fetchImpl })).toEqual({
+            rejected: 'lock-missing',
+        });
+        expect(urls).toEqual([]);
+    });
+
+    it('http の baseUrl は、開発用の Host が自分のオリジンとして許すときだけ取りに行く', async () => {
+        const local = 'http://127.0.0.1:8080';
+        const httpLock = withEntry((e) => Object.assign(e, { baseUrl: local }));
+        const denied = recording();
+        expect(
+            await acquireMod(TYPE, {
+                baseUrl: BASE,
+                lock: httpLock,
+                verifySignature: unsignedDev.verifySignature,
+                allowUnsigned: (base) => base === 'http://localhost:5173',
+                fetchImpl: denied.fetchImpl,
+            }),
+        ).toEqual({ rejected: 'lock-missing' });
+        expect(denied.urls).toEqual([]);
+
+        const allowed = recording();
+        await acquireMod(TYPE, {
+            baseUrl: BASE,
+            lock: httpLock,
+            verifySignature: unsignedDev.verifySignature,
+            allowUnsigned: (base) => base === local,
+            fetchImpl: allowed.fetchImpl,
+        });
+        expect(allowed.urls[0]).toBe(`${local}/${MOD}/v${VER}/manifest.json`);
     });
 });
 
