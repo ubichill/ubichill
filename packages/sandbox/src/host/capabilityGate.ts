@@ -3,8 +3,7 @@
  *
  * ModHostManager から分離した純粋なロジック（Worker/DOM 非依存）。単体テスト可能。
  *
- * モードは 3 つ:
- *  - allowAll  : 全コマンド許可（信頼済み first-party / 開発用エスケープハッチ）。
+ * モードは 2 つ:
  *  - dynamic   : allowlist（lock が許す天井）**かつ** authorizeCapability（ユーザーの許可）。
  *                ユーザー設定の既定で許される権限でも、lock に無ければ拒否する。
  *                コールバックは**毎回評価する（キャッシュしない）**。承認はmod読み込み時に別途まとめて確定するため、
@@ -21,8 +20,6 @@ export interface CapabilityGate {
 }
 
 export interface CapabilityGateOptions {
-    /** 全コマンドを許可する（他の判定を一切行わない）。 */
-    allowAll?: boolean;
     /** lock が許すコマンド（天井）。authorizeCapability があってもこれを超えては許可しない。未指定は全拒否。 */
     allowedCommands?: ReadonlySet<string>;
     /**
@@ -37,7 +34,6 @@ const ALWAYS_ALLOWED = new Set<string>(ALWAYS_ALLOWED_COMMANDS);
 export function createCapabilityGate(options: CapabilityGateOptions): CapabilityGate {
     return {
         authorize(commandType): boolean {
-            if (options.allowAll) return true;
             if (ALWAYS_ALLOWED.has(commandType)) return true;
             if (!options.allowedCommands?.has(commandType)) return false;
 

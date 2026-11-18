@@ -137,12 +137,10 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
         // capability ゲートを構築する。
         // - authorizeCapability あり: on-demand（初回アクセス時にユーザーへ問い合わせ）。
         // - なし: 宣言 capability からの静的 allowlist（capabilities 未指定でも default-deny）。
-        // - allowAllCapabilities: 全許可の明示的エスケープハッチ（信頼済み first-party / 開発用）。
-        this._onDemand = !options.allowAllCapabilities && !!options.authorizeCapability;
+        this._onDemand = !!options.authorizeCapability;
         this._gate = createCapabilityGate({
-            allowAll: options.allowAllCapabilities,
             allowedCommands: buildAllowedCommands(options.capabilities),
-            authorizeCapability: options.allowAllCapabilities ? undefined : options.authorizeCapability,
+            authorizeCapability: options.authorizeCapability,
         });
 
         const assetSource = { modBase: options.modBase, integrity: options.assetIntegrity };
@@ -236,17 +234,6 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
         if (this._autoInputEnabled) {
             acquireSharedInput(this._instanceKey);
         }
-    }
-
-    static async fromUrl<TPayloadMap extends Record<string, unknown> = Record<string, unknown>>(
-        url: string,
-        options: Omit<ModHostManagerOptions<TPayloadMap>, 'modCode'>,
-    ): Promise<ModHostManager<TPayloadMap>> {
-        const res = await fetch(url);
-        if (!res.ok) {
-            throw new Error(`[ModHostManager] modコードの取得に失敗: ${res.status} ${url}`);
-        }
-        return new ModHostManager<TPayloadMap>({ ...options, modCode: await res.text() });
     }
 
     private _sendTick(deltaTime: number): void {
