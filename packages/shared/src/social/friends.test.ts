@@ -79,9 +79,9 @@ describe('friendGroupsOf', () => {
         const edges = Array.from({ length: 20_000 }, (_, i) =>
             i % 2 === 0 ? edge('me', `u${i}`, 'accepted') : edge(`u${i}`, 'me'),
         );
-        const started = performance.now();
+        const started = Date.now();
         const groups = friendGroupsOf(edges, 'me');
-        expect(performance.now() - started).toBeLessThan(1000);
+        expect(Date.now() - started).toBeLessThan(1000);
         expect(groups.friends).toHaveLength(10_000);
         expect(groups.incoming).toHaveLength(10_000);
     });
