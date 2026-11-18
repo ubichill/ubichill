@@ -4,15 +4,19 @@
 import { userRepository } from '@ubichill/db';
 import { DisplayNameSchema, HandleSchema } from '@ubichill/shared';
 import { Router } from 'express';
+import { appConfig } from '../../config';
 import { createPendingRegistration, resendOTP, verifyAndRegister } from '../../lib/auth';
 import { optionalAuth } from '../../middleware/auth';
 import { displayNameAvailability } from '../../services/users/displayName';
 import { logger } from '../../utils/logger';
+import { createRegistrationLimiters } from './registrationLimits';
 
 export const router = Router();
 
+const limiters = createRegistrationLimiters({ disabled: appConfig.email.skipVerification });
+
 // 仮登録（OTP送信）
-router.post('/register', async (req, res) => {
+router.post('/register', ...limiters.register, async (req, res) => {
     const { email, password, displayName, handle } = req.body as {
         email?: string;
         password?: string;
@@ -51,7 +55,7 @@ router.post('/register', async (req, res) => {
 });
 
 // OTP検証して本登録
-router.post('/verify', async (req, res) => {
+router.post('/verify', ...limiters.verify, async (req, res) => {
     const { registrationId, otp } = req.body as { registrationId?: unknown; otp?: unknown };
     if (typeof registrationId !== 'string' || typeof otp !== 'string' || !registrationId || !otp) {
         return res.status(400).json({ error: '登録の ID と認証コードは必須です' });
@@ -62,7 +66,7 @@ router.post('/verify', async (req, res) => {
 });
 
 // OTP再送信
-router.post('/resend-otp', async (req, res) => {
+router.post('/resend-otp', ...limiters.resendOtp, async (req, res) => {
     const { registrationId } = req.body as { registrationId?: unknown };
     if (typeof registrationId !== 'string' || !registrationId) {
         return res.status(400).json({ error: '登録の ID は必須です' });
