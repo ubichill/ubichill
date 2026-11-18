@@ -5,7 +5,6 @@
  * │ 自分 (CSS cursor):                                                    │
  * │   - `body { cursor: url(...) }` を注入。OS コンポジタが描画 → ラグ無し  │
  * │   - button → pointer / input → text I-beam に browser が自動切替       │
- * │   - user.cursorUrl があれば矢印画像をそれで置換 (pointer / text は固定) │
  * │                                                                       │
  * │ 他人 (RemoteCursorsPortal):                                           │
  * │   - インスタンス内のときだけ                                            │
@@ -52,7 +51,6 @@ export function CursorLayer({
     const { entities, environment } = useWorld();
     const scrollEl = useScrollWorldEl();
 
-    const selfCursorUrl = currentUser?.cursorUrl ?? null;
     const selfId = currentUser?.id ?? fallbackSelfId;
     const riding = useSyncExternalStore(ridingSyncRef.subscribe, ridingSyncRef.get, ridingSyncRef.get);
 
@@ -63,11 +61,11 @@ export function CursorLayer({
         entitiesRef.current = entities;
     });
 
-    // CSS cursor を注入 (user.cursorUrl が変わったら更新)
+    // CSS cursor を注入 (搭乗中は native cursor を隠す)
     useEffect(() => {
-        applyCursorStyles(selfCursorUrl, riding !== null);
+        applyCursorStyles(riding !== null);
         return removeCursorStyles;
-    }, [selfCursorUrl, riding]);
+    }, [riding]);
 
     // 自分のカーソル位置を他人へブロードキャスト (インスタンス参加中のみ実効)
     // HeldEntityStateRef 経由で heldEntityId を cursor:move に含める

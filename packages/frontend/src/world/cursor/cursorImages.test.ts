@@ -6,13 +6,13 @@ describe('ride cursor styles', () => {
     afterEach(removeCursorStyles);
 
     it('搭乗中はnative cursorを隠す', () => {
-        applyCursorStyles(null, true);
+        applyCursorStyles(true);
         expect(document.getElementById('ubichill-cursor-style')?.textContent).toContain('cursor: none !important');
     });
 
     it('降車後は通常のcursorへ戻す', () => {
-        applyCursorStyles(null, true);
-        applyCursorStyles(null, false);
+        applyCursorStyles(true);
+        applyCursorStyles(false);
         const css = document.getElementById('ubichill-cursor-style')?.textContent;
         expect(css).toContain('body {');
         expect(css).not.toContain('cursor: none !important');

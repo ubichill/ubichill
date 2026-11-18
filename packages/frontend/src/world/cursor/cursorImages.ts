@@ -46,11 +46,6 @@ function svgToDataUri(svg: string): string {
     return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 }
 
-/** デフォルト矢印の data URI (cursorUrl 未設定時のフォールバック) */
-export function defaultArrowDataUri(): string {
-    return svgToDataUri(ARROW_SVG);
-}
-
 // ── CSS 注入 ─────────────────────────────────────────────────────────────
 
 const STYLE_TAG_ID = 'ubichill-cursor-style';
@@ -58,23 +53,14 @@ const STYLE_TAG_ID = 'ubichill-cursor-style';
 /**
  * `<head>` に `<style id="ubichill-cursor-style">` を作成/更新する。
  *
- * - `arrowImageUrl`: 矢印用カーソル画像 (user.cursorUrl があればそれ、無ければ default arrow)
- * - pointer / text は固定の SVG (ホバー / テキスト入力カーソルを置換)
+ * - 矢印 / pointer / text は固定の SVG (ホバー / テキスト入力カーソルを置換)
+ * - `hidden` (搭乗中) のときは native cursor を隠す
  *
  * `body` に基本 cursor を指定し、button / 入力欄に override する CSS を入れる。
  * セレクタが broader な場合 (`button`) はブラウザの cascade で自然に勝つ。
  */
-/**
- * CSS `url("...")` の中身として安全に埋め込むために `"` / `\` / 改行をエスケープする。
- * cursorUrl は user 入力に起源を持ち得るので、生の URL を style.textContent に流すと
- * CSS injection (例: `");}body{display:none}` 等) が可能になる。最低限のエスケープで防ぐ。
- */
-function escapeCssUrl(url: string): string {
-    return url.replace(/["\\\n\r]/g, '\\$&');
-}
-
-export function applyCursorStyles(arrowImageUrl?: string | null, hidden = false): void {
-    const arrowUri = arrowImageUrl ? `url("${escapeCssUrl(arrowImageUrl)}")` : svgToDataUri(ARROW_SVG);
+export function applyCursorStyles(hidden: boolean): void {
+    const arrowUri = svgToDataUri(ARROW_SVG);
     const pointerUri = svgToDataUri(POINTER_SVG);
     const textUri = svgToDataUri(TEXT_SVG);
 
