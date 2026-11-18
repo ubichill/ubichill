@@ -2,17 +2,14 @@ import type { CreateInstanceRequest, Instance, WorldListItem } from '@ubichill/s
 import { useCallback, useEffect, useState } from 'react';
 
 import { API_BASE } from '../../lib/api';
-import { createInstance as createInstanceApi, fetchInstances } from '../../lib/worlds/instancesApi';
+import { createInstance as createInstanceApi } from '../../lib/worlds/instancesApi';
 
 interface UseInstancesReturn {
-    instances: Instance[];
     worlds: WorldListItem[];
     globalWorlds: WorldListItem[];
     loading: boolean;
     error: string | null;
     createInstance: (request: CreateInstanceRequest) => Promise<Instance | null>;
-    refreshInstances: (worldId?: string) => Promise<void>;
-    refreshWorlds: (force?: boolean) => Promise<void>;
     refreshGlobalWorlds: (force?: boolean) => Promise<void>;
 }
 
@@ -63,23 +60,10 @@ async function fetchWorlds(scope: 'local' | 'global', force: boolean): Promise<W
 }
 
 export function useInstances(): UseInstancesReturn {
-    const [instances, setInstances] = useState<Instance[]>([]);
     const [worlds, setWorlds] = useState<WorldListItem[]>([]);
     const [globalWorlds, setGlobalWorlds] = useState<WorldListItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-
-    const refreshInstances = useCallback(async (worldId?: string) => {
-        setLoading(true);
-        setError(null);
-        try {
-            setInstances(await fetchInstances(worldId));
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Unknown error');
-        } finally {
-            setLoading(false);
-        }
-    }, []);
 
     const refreshWorlds = useCallback(async (force = false) => {
         // キャッシュヒット時はローディング表示を出さず即時反映
@@ -120,9 +104,7 @@ export function useInstances(): UseInstancesReturn {
         setLoading(true);
         setError(null);
         try {
-            const instance = await createInstanceApi(request);
-            setInstances((prev) => [...prev, instance]);
-            return instance;
+            return await createInstanceApi(request);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Unknown error');
             return null;
@@ -136,14 +118,11 @@ export function useInstances(): UseInstancesReturn {
     }, [refreshWorlds]);
 
     return {
-        instances,
         worlds,
         globalWorlds,
         loading,
         error,
         createInstance,
-        refreshInstances,
-        refreshWorlds,
         refreshGlobalWorlds,
     };
 }
