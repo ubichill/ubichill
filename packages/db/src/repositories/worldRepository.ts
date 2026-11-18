@@ -17,6 +17,8 @@ export interface WorldTarget {
     authorId: string;
     worldName: string;
     worldId?: string;
+    /** 作るときの上限（作者のワールドの数）。作者ごとのロックを取ってから数える（同時に作っても超えない）。 */
+    maxWorlds?: number;
 }
 
 export interface PublishInput {
@@ -35,9 +37,11 @@ export interface PublishInput {
  */
 export type PublishOutcome =
     | { status: 'published' | 'resigned'; worldId: string; versionId: string }
-    | { status: 'version-conflict'; version: string };
+    | { status: 'version-conflict'; version: string }
+    | { status: 'limit' };
 
 class VersionConflict extends Error {}
+class WorldLimitReached extends Error {}
 
 const worldColumns = {
     id: worlds.id,
@@ -51,6 +55,7 @@ const worldColumns = {
 /** 保存先のワールドを決める（作成・名前の変更）。返すのはワールドの ID。 */
 async function ensureWorld(tx: Transaction, target: WorldTarget): Promise<string> {
     if (!target.worldId) {
+        if (target.maxWorlds !== undefined) await assertBelowLimit(tx, target, target.maxWorlds);
         // 以前ほかのワールドが使っていた名前なら、新しいワールドを優先する
         await tx
             .delete(worldNameAliases)
@@ -77,6 +82,21 @@ async function ensureWorld(tx: Transaction, target: WorldTarget): Promise<string
     }
     await tx.update(worlds).set({ worldName: target.worldName, updatedAt: new Date() }).where(eq(worlds.id, worldId));
     return worldId;
+}
+
+/**
+ * 作者のワールドの数が上限未満か。数える前に作者ごとのロックを取る（違う名前の作成が同時に来ても上限を超えない）。
+ * 同じ名前のワールドがもうあれば数えない: 作成は一意制約で失敗し、呼び出し側が更新として送り直す。
+ */
+async function assertBelowLimit(tx: Transaction, target: WorldTarget, maxWorlds: number): Promise<void> {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`worlds:${target.authorId}`}, 0))`);
+    const [row] = await tx.select({ n: count() }).from(worlds).where(eq(worlds.authorId, target.authorId));
+    if ((row?.n ?? 0) < maxWorlds) return;
+    const [sameName] = await tx
+        .select({ id: worlds.id })
+        .from(worlds)
+        .where(and(eq(worlds.authorId, target.authorId), eq(worlds.worldName, target.worldName)));
+    if (!sameName) throw new WorldLimitReached();
 }
 
 async function findStates(database: Database, where: ReturnType<typeof eq> | undefined): Promise<WorldState[]> {
@@ -212,19 +232,17 @@ export const worldRepository = {
             });
         } catch (err) {
             if (err instanceof VersionConflict) return { status: 'version-conflict', version: input.version };
+            if (err instanceof WorldLimitReached) return { status: 'limit' };
             throw err;
         }
     },
 
-    /**
-     * 下書きを保存する。`unpublish` なら公開中を外す（過去の版は残す）。外すと下書きを署名なしとして配る。
-     * 返すのはワールドの ID。
-     */
+    /** 下書きを保存する。`unpublish` なら公開中を外す（過去の版は残す）。外すと下書きを署名なしとして配る。 */
     async saveDraft(
         target: WorldTarget,
         input: { definition: unknown; lock: ModLock | null; unpublish: boolean },
-    ): Promise<string> {
-        return db.transaction(async (tx) => {
+    ): Promise<{ status: 'draft'; worldId: string } | { status: 'limit' }> {
+        const saved = db.transaction(async (tx) => {
             const worldId = await ensureWorld(tx, target);
             const now = new Date();
             await tx
@@ -237,7 +255,11 @@ export const worldRepository = {
             if (input.unpublish) {
                 await tx.update(worlds).set({ currentVersionId: null }).where(eq(worlds.id, worldId));
             }
-            return worldId;
+            return { status: 'draft' as const, worldId };
+        });
+        return saved.catch((err: unknown) => {
+            if (err instanceof WorldLimitReached) return { status: 'limit' as const };
+            throw err;
         });
     },
 
