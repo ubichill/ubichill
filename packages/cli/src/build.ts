@@ -57,10 +57,11 @@ function findWorkerFiles(srcDir: string): string[] {
     return results;
 }
 
+const CONFIG_EXPORT = /export\s+const\s+config\s*(?::\s*[^=]+)?\s*=/;
+
 /** `export const config =` のあるファイルのみを Worker として扱う */
 function isWorkerFile(path: string): boolean {
-    const code = readFileSync(path, 'utf-8');
-    return /export\s+const\s+config\s*(?::\s*[^=]+)?\s*=/.test(code);
+    return CONFIG_EXPORT.test(readFileSync(path, 'utf-8'));
 }
 
 // ============================================================
@@ -114,9 +115,12 @@ function parseString(src: string, pos: ParsePos): string {
     let out = '';
     while (pos.i < src.length && src[pos.i] !== quote) {
         if (src[pos.i] === '\\') {
-            const esc = src[pos.i + 1];
-            const map: Record<string, string> = { n: '\n', t: '\t', r: '\r', '"': '"', "'": "'", '\\': '\\', '`': '`' };
-            out += map[esc] ?? esc ?? '';
+            const esc = src[pos.i + 1] ?? '';
+            // \x・\u・\0〜\9・行の継続は JS では別の文字になる。読み替えずに誤訳するより読めないものとして扱う
+            if (/[xu0-9\n\r\u2028\u2029]/.test(esc))
+                throw new Error(`config: 未対応のエスケープ \\${esc} (pos ${pos.i})`);
+            const map: Record<string, string> = { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', v: '\v' };
+            out += map[esc] ?? esc;
             pos.i += 2;
         } else {
             out += src[pos.i];
@@ -267,19 +271,31 @@ export function dataOnlyManifestEntry(config: Record<string, unknown> | null): R
     return rest;
 }
 
+const LITERAL_CONFIG_HINT =
+    'テンプレート文字列・定数・スプレッド・式・\\x や \\u のエスケープを使わず、JSON と同じ書き方（文字列・数・真偽値・配列・オブジェクト）で書いてください';
+
 /**
- * ソースから data-only の宣言を読む（純粋）。data-only でなければ null。
+ * ソースから data-only の宣言を読む。data-only でなければ null。
  *
  * config はコードを実行せずリテラルとしてだけ読むので、テンプレート文字列・定数・スプレッドを使うと読めない。
  * そのとき `dataOnly` を書いていても黙って Worker として bundle すると、spawn した Entity ごとに Worker が
- * 起動してしまうので、ビルドを止める。
+ * 起動してしまうので、ビルドを止める。dataOnly でなければ、capabilities などの宣言を落とすことを警告する。
  */
-export function dataOnlyEntryFromSource(componentType: string, source: string): Record<string, unknown> | null {
+export function dataOnlyEntryFromSource(
+    componentType: string,
+    source: string,
+    log: Logger = silentLogger,
+): Record<string, unknown> | null {
     const config = extractConfigFromCode(source);
     if (config === null && /\bdataOnly\b/.test(source)) {
         throw new Error(
-            `[${componentType}] dataOnly を書いていますが、export const config をリテラルとして読めません。` +
-                'テンプレート文字列・定数・スプレッド・式を使わず、JSON と同じ書き方（文字列・数・真偽値・配列・オブジェクト）で書いてください',
+            `[${componentType}] dataOnly を書いていますが、export const config をリテラルとして読めません。${LITERAL_CONFIG_HINT}`,
+        );
+    }
+    if (config === null && CONFIG_EXPORT.test(source)) {
+        log.warn(
+            `[${componentType}] config を静的に読めなかったので宣言を取り込めません（capabilities・dataFields などは manifest に載りません）`,
+            LITERAL_CONFIG_HINT,
         );
     }
     return dataOnlyManifestEntry(config);
@@ -594,7 +610,7 @@ export async function compileMod(modDir: string, log: Logger = silentLogger): Pr
             continue;
         }
 
-        const dataOnly = dataOnlyEntryFromSource(componentType, readFileSync(workerPath, 'utf-8'));
+        const dataOnly = dataOnlyEntryFromSource(componentType, readFileSync(workerPath, 'utf-8'), log);
         if (dataOnly) {
             versionedComponents[componentType] = dataOnly;
             log.info(`  ${componentType} はデータだけの型（Worker なし）`);

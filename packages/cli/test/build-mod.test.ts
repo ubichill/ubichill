@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { afterAll, describe, expect, it } from 'vitest';
-import { silentLogger } from '@ubichill/terminal';
+import { recordingLogger, silentLogger } from '@ubichill/terminal';
 import { buildMod, type ModIndexEntry, runBuild } from '../src/build.ts';
 
 function sriOf(text: string): string {
@@ -227,6 +227,35 @@ describe('buildMod（新規mod作成パイプライン）', () => {
 
         expect(Object.keys(comps)).toHaveLength(1);
         expect(comps['skip:valid']).toBeDefined();
+    });
+
+    it('config を静的に読めないと、宣言を落としたことをビルドの警告で知らせる', async () => {
+        const fixture: ModFixture = {
+            packageJson: { name: '@ubichill/mod-template-config', version: '1.0.0' },
+            files: {
+                'main.worker.ts': [
+                    'import type { ComponentConfig } from "ubichill";',
+                    'export const config: ComponentConfig = {',
+                    '    capabilities: ["network:fetch"],',
+                    '    watchScope: "world",',
+                    '    description: `テンプレート`,',
+                    '};',
+                ].join('\n'),
+            },
+        };
+        const { modDir, distDir, publicDir } = buildFixture(fixture);
+        const { logger, entries } = recordingLogger();
+
+        await buildMod(modDir, { distDir, publicDir, log: logger });
+
+        const manifest = JSON.parse(readFileSync(join(distDir, 'v1.0.0', 'manifest.json'), 'utf-8'));
+        expect(manifest.components['template-config:main']).not.toHaveProperty('watchScope');
+        expect(entries).toContainEqual(
+            expect.objectContaining({
+                level: 'warn',
+                message: expect.stringContaining('[template-config:main] config を静的に読めなかった'),
+            }),
+        );
     });
 
     it('package.json に version がないと例外を throw する', async () => {
