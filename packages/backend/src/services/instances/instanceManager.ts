@@ -146,7 +146,7 @@ class InstanceManager {
      * インスタンスを取得 (公開用 Instance。world 解決が必要)。
      * world が解決できない場合は undefined を返す。
      */
-    async getInstance(instanceId: string): Promise<Instance | undefined> {
+    async getInstance(instanceId: string, knownPresence?: Map<string, RoomPresence>): Promise<Instance | undefined> {
         const dbInstance = await instanceRepository.findById(instanceId);
         if (!dbInstance) {
             logger.debug(`getInstance: DB に instance がありません (id: ${instanceId})`);
@@ -159,7 +159,7 @@ class InstanceManager {
             return undefined;
         }
 
-        return this.toPublicInstance(dbInstance, world);
+        return this.toPublicInstance(dbInstance, world, knownPresence);
     }
 
     /**
@@ -169,9 +169,10 @@ class InstanceManager {
     async getInstanceFor(instanceId: string, viewerId: string | null): Promise<Instance | undefined> {
         const dbInstance = await instanceRepository.findById(instanceId);
         if (!dbInstance) return undefined;
-        const access = await this.accessFor(dbInstance, viewerId);
+        const presence = await instanceRuntime.roomPresence(instanceId);
+        const access = await this.accessFor(dbInstance, viewerId, presence);
         if (!access.canSee && !access.canJoin) return undefined;
-        const instance = await this.getInstance(instanceId);
+        const instance = await this.getInstance(instanceId, presence);
         return instance && { ...instance, canJoin: access.canJoin };
     }
 
@@ -185,10 +186,11 @@ class InstanceManager {
     private async accessFor(
         dbInstance: Pick<InstanceRecord, 'id' | 'accessType' | 'leaderId' | 'maxUsers'>,
         viewerId: string | null,
+        knownPresence?: Map<string, RoomPresence>,
     ): Promise<{ canSee: boolean; canJoin: boolean; full: boolean; overCapacity: boolean }> {
         // パブリックの部屋はフレンドで決まらない（入室・詳細のたびにフレンドを引かない）
         const [presence, friends] = await Promise.all([
-            instanceRuntime.presence(),
+            knownPresence ?? instanceRuntime.roomPresence(dbInstance.id),
             dbInstance.accessType === 'public' ? new Set<string>() : friendIdsOf(viewerId),
         ]);
         const audience = this.audienceOf(dbInstance, presence);
@@ -325,7 +327,7 @@ class InstanceManager {
             tags: dbInstance.accessTags ?? [],
         };
 
-        const presence = knownPresence ?? (await instanceRuntime.presence());
+        const presence = knownPresence ?? (await instanceRuntime.roomPresence(dbInstance.id));
         const truthCount = presence.get(dbInstance.id)?.memberIds.length ?? 0;
         const derivedStatus: Instance['status'] = truthCount >= dbInstance.maxUsers ? 'full' : 'active';
 
