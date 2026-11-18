@@ -238,10 +238,12 @@ export function createRemoteFriendships(deps: FriendshipDeps) {
             if (await deps.blocked(userId, actor.id)) return;
             await withPair(userId, actor, async (row, pair) => {
                 if (row?.state === 'accepted') {
-                    // もうフレンド（承認が届いていなかった）。承認を送り直す
+                    // もうフレンド（承認が届いていなかった）。承認を送り直す。相手の承認でフレンドになった行の acceptId は
+                    // 相手の id なので使わない（actor のオリジンと食い違い、相手が断る）
+                    const ours = row.acceptId && sameOrigin(row.acceptId, deps.identity.origin) ? row.acceptId : null;
                     await pair.send(
                         buildResponse('Accept', {
-                            id: row.acceptId ?? deps.identity.newActivityId(),
+                            id: ours ?? deps.identity.newActivityId(),
                             actor: actorOf(userId),
                             to: actor.id,
                             object: { id: activity.id, type: 'Offer', actor: actor.id },
