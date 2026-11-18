@@ -1,13 +1,9 @@
 import type { AdminUserView, Role, RoleInput, RoleMember } from '@ubichill/shared';
 import { recheckIfForbidden, requestAdminRecheck } from '../account/adminStatus';
 import { API_BASE } from '../api';
+import { errorMessage } from '../apiError';
 
 const BASE = `${API_BASE}/api/v1/admin`;
-
-async function errorMessage(res: Response): Promise<string> {
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
-    return data.error ?? `HTTP ${res.status}`;
-}
 
 async function request(path: string, init: RequestInit = {}): Promise<Response> {
     const res = await fetch(`${BASE}${path}`, {

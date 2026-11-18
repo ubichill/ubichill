@@ -1,6 +1,7 @@
 import { webWorldCrypto } from '@ubichill/loader';
 import { type ModLock, signWorld, type WorldIdentity } from '@ubichill/shared';
 import yaml from 'yaml';
+import { errorMessage } from '../apiError';
 import type { WorldSigner } from './signer';
 
 export interface WorldSaveBody {
@@ -25,11 +26,6 @@ export interface SavedWorld {
 
 /** ブラウザの fetch を this に依存せず渡すための既定値。 */
 export const browserFetch: typeof fetch = (input, init) => globalThis.fetch(input, init);
-
-export async function errorMessage(res: Response): Promise<string> {
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
-    return data.error ?? `HTTP ${res.status}`;
-}
 
 /**
  * ワールドを本体に保存する（外部に置くワールドと同じ「定義・lock・署名」の組をそのまま送る。サーバーは中身を書き換えない）。
