@@ -16,6 +16,7 @@ import {
     type ModAuthorProof,
     type ModLock,
     type ModLockEntry,
+    ModLockEntrySchema,
     type ModSignatureRejectReason,
     type ModSignatureVerdict,
     resolveLockedMod,
@@ -73,6 +74,7 @@ export interface AcquireModOptions {
     /**
      * 署名ファイルの無い mod を「署名なし（開発）」として動かしてよいか（取得元の baseUrl で判定）。
      * 開発用の Host が自分のオリジンの mod にだけ許す。既定は不可。署名ファイルがあれば常に検証する。
+     * lock の http の baseUrl を取りに行くのも、これが許すときだけ。
      */
     allowUnsigned?: (baseUrl: string) => boolean;
     /** 注入 fetch（既定: globalThis.fetch）。テスト・Node 実行で差し替える。 */
@@ -309,6 +311,11 @@ export async function acquireMod(entityType: string, opts: AcquireModOptions): P
 
     // lock 記載が無いなら、fetch する前に拒否する。
     if (!lockEntry) return { rejected: 'lock-missing' };
+    // lock はワールドの作者が書く。URL にする値（version・baseUrl・workerUrl）の形は、取得の前に確かめる
+    if (!ModLockEntrySchema.safeParse(lockEntry).success) return { rejected: 'lock-missing' };
+    if (lockEntry.baseUrl?.startsWith('http:') && !opts.allowUnsigned?.(lockEntry.baseUrl)) {
+        return { rejected: 'lock-missing' };
+    }
 
     // この mod だけ別ホストから配布されている場合、lock.baseUrl を既定より優先する。
     const baseUrl = lockEntry.baseUrl ?? opts.baseUrl;
