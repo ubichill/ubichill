@@ -1,5 +1,5 @@
 import { CORE_COMPONENT_TYPES, isCoreComponentType } from '@ubichill/core-components';
-import { isWorkerMod, useHold, useSocket, useWorld, WorkerModHost } from '@ubichill/react';
+import { useHold, useSocket, useWorld, WorkerModHost } from '@ubichill/react';
 import { EMPTY_ENTITY_TYPE, OVERLAY_FILL, resolveOverlayMode } from '@ubichill/shared';
 import type React from 'react';
 import { useEffect, useRef } from 'react';
@@ -52,7 +52,6 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
     if (entity.type === CORE_COMPONENT_TYPES.ui) return <CoreUiPanel entity={entity} />;
     if (isCoreComponentType(entity.type)) return null;
     if (!mod) return null;
-    if (!isWorkerMod(mod)) return null;
     // singleton は WorldStage 側で起動するためここではスキップ
     if (mod.singleton) return null;
 
@@ -74,7 +73,6 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
     // 途中の値は entity/mod が無くてもデフォルトを保つように書く。
     const entity = entities.get(entityId);
     const mod = entity ? modMap.get(entity.type) : null;
-    const isWorker = mod !== undefined && mod !== null && isWorkerMod(mod);
     // overlay Entity は transform が画面座標。掴み追従の座標変換で分岐に使う。
     const isOverlayEntity = resolveOverlayMode(entity?.overlay) !== null;
 
@@ -180,11 +178,10 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
     }, [isHeldByOther, holderId, entityId, entity?.transform.x, entity?.transform.y, isOverlayEntity]); // users は意図的に除外（初期値のみ使用）
 
     // null guard はすべての hook 呼び出しの後
-    if (!entity || !mod || !isWorker) return null;
+    if (!entity || !mod) return null;
 
     // ── スタイル計算 ──────────────────────────────────────────────────────
-    const workerMod = mod; // isWorkerMod チェック済み
-    const isCanvas = (workerMod.canvasTargets?.length ?? 0) > 0;
+    const isCanvas = (mod.canvasTargets?.length ?? 0) > 0;
     const { x, y, z, w, h, scale, rotation } = entity.transform;
 
     // hold 状態を wrapperStyle に直接反映する。命令的に div.style.zIndex を書き換えると、
@@ -231,7 +228,7 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
                 key を型に紐付けないと WorkerModHost が再利用され、前の worker が描画した
                 UI (vnodes) が残って「screen なのに controls の UI」になる。型が変われば
                 remount して worker と UI 状態をクリーンに作り直す。 */}
-            <WorkerModHost key={workerMod.id} entityId={entityId} entity={entity} definition={workerMod} />
+            <WorkerModHost key={mod.id} entityId={entityId} entity={entity} definition={mod} />
         </div>
     );
 };

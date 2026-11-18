@@ -1,7 +1,6 @@
 import type { WorkerModDefinition } from '@ubichill/react';
 import {
     HoldProvider,
-    isWorkerMod,
     RideProvider,
     useHold,
     useSocket,
@@ -53,7 +52,7 @@ const InstanceSurface: React.FC = () => {
     const singletonWorkerMods = useMemo(
         () =>
             Array.from(modMap.values()).filter((p) => {
-                if (!isWorkerMod(p) || !p.singleton) return false;
+                if (!p.singleton) return false;
                 const modId = p.id.split(':')[0];
                 return modId ? activeMods.includes(modId) : false;
             }),
