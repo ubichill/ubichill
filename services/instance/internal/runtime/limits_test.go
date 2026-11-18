@@ -196,3 +196,36 @@ func TestRoomCutoffIsNinetyPercentRoundedUp(t *testing.T) {
 		t.Fatal("thresholds of a limit of 10")
 	}
 }
+
+// 1 秒の窓ごとに件数とバイト数の両方を数える。大きなフレームは件数に余裕があってもバイト数で断る。
+func TestRateLimitCountsFramesAndBytes(t *testing.T) {
+	at := time.Unix(1_700_000_000, 0)
+	var small rateLimit
+	for i := range maxFramesPerSecond {
+		if !small.allow(at, 2) {
+			t.Fatalf("small frame %d was refused", i+1)
+		}
+	}
+	if small.allow(at, 0) {
+		t.Fatal("a frame over the count was allowed")
+	}
+
+	const big = 70 << 10
+	var large rateLimit
+	for i := range maxBytesPerSecond / big {
+		if !large.allow(at, big) {
+			t.Fatalf("large frame %d was refused", i+1)
+		}
+	}
+	if large.allow(at, big) || large.allow(at.Add(time.Second), 2) {
+		t.Fatal("frames over the bytes were allowed in the same window")
+	}
+	if !large.allow(at.Add(time.Second+time.Millisecond), big) {
+		t.Fatal("the next window did not start over")
+	}
+
+	var exact rateLimit
+	if !exact.allow(at, maxBytesPerSecond) || exact.allow(at, 1) {
+		t.Fatal("the byte budget is not inclusive of its exact size")
+	}
+}

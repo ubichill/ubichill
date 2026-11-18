@@ -93,20 +93,27 @@ func (p *peer) write() {
 }
 func (s *Server) serveSocket(w http.ResponseWriter, r *http.Request) { s.serve(w, r, false) }
 
-// rateLimit は 1 つのクライアントの接続から受けるフレームの上限（毎秒 240 件）。中継では接続を受けた Pod だけが数える。
+// rateLimit は 1 つのクライアントの接続から受けるフレームの上限（毎秒 240 件・1MiB）。中継では接続を受けた Pod だけが数える。
 // owner でも数えると、窓の区切りが中継元とずれ、中継元が通した分を owner が超過と数えることがある。
+// 件数だけだと、読み取りの上限に近いフレームを毎秒 240 件（約 16MiB）送れ、それが部屋の全員へ配られる。
 type rateLimit struct {
 	window time.Time
 	count  int
+	bytes  int
 }
 
-func (l *rateLimit) allow(now time.Time) bool {
+const (
+	maxFramesPerSecond = 240
+	maxBytesPerSecond  = 1 << 20
+)
+
+func (l *rateLimit) allow(now time.Time, size int) bool {
 	if now.Sub(l.window) > time.Second {
-		l.window = now
-		l.count = 0
+		l.window, l.count, l.bytes = now, 0, 0
 	}
 	l.count++
-	return l.count <= 240
+	l.bytes += size
+	return l.count <= maxFramesPerSecond && l.bytes <= maxBytesPerSecond
 }
 
 // serve は 1 つの WebSocket 接続。relayed は他の Pod から中継された接続で、Origin の確認とレート制限は中継元が済ませている。
@@ -174,7 +181,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, relayed bool) {
 		if json.Unmarshal(raw, &f) != nil {
 			return
 		}
-		if !relayed && !limit.allow(time.Now()) {
+		if !relayed && !limit.allow(time.Now(), len(raw)) {
 			p.reject(f.ID, "rate limit exceeded")
 			continue
 		}
