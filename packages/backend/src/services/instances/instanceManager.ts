@@ -186,7 +186,11 @@ class InstanceManager {
         dbInstance: Pick<InstanceRecord, 'id' | 'accessType' | 'leaderId' | 'maxUsers'>,
         viewerId: string | null,
     ): Promise<{ canSee: boolean; canJoin: boolean; full: boolean; overCapacity: boolean }> {
-        const [presence, friends] = await Promise.all([instanceRuntime.presence(), friendIdsOf(viewerId)]);
+        // パブリックの部屋はフレンドで決まらない（入室・詳細のたびにフレンドを引かない）
+        const [presence, friends] = await Promise.all([
+            instanceRuntime.presence(),
+            dbInstance.accessType === 'public' ? new Set<string>() : friendIdsOf(viewerId),
+        ]);
         const audience = this.audienceOf(dbInstance, presence);
         const canSee = canSeeInstance(audience, viewerId, friends);
         const capacity = {
