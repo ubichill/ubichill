@@ -56,30 +56,37 @@ export async function severDomain(domain: string): Promise<void> {
 
 export function createFederationMaintenance(deps: {
     identity: FederationIdentity;
-    actors: ActorDirectory;
-    friendships: RemoteFriendships;
-    friendshipCheck: FriendshipCheck;
+    actors: Pick<ActorDirectory, 'get'>;
+    friendships: Pick<RemoteFriendships, 'reconcile'>;
+    friendshipCheck: Pick<FriendshipCheck, 'relationOf'>;
     lacks(domain: string, feature: string): Promise<boolean>;
     log(message: string): void;
 }) {
-    /** つながらなければ確かめたことにしない（次の掃除でまた試す）。 */
+    /** 相手のホームに尋ねて、こちらの記録をそろえる（尋ねられなければ何もしない）。 */
+    const recheck = async (row: { userId: string; actorId: string }) => {
+        const actor = await deps.actors.get(row.actorId).catch(() => null);
+        if (!actor || actor.deletedAt) return;
+        if (await deps.lacks(actor.domain, FEDERATION_FEATURES.friends)) return;
+        const peer = await deps.friendshipCheck.relationOf(row.actorId, deps.identity.actorUrl(row.userId));
+        if (!peer) return;
+        const result = await deps.friendships.reconcile(row.userId, actor, peer);
+        if (result !== 'kept')
+            deps.log(`フレンドの関係を相手とそろえました（${result}）: ${row.userId} ⇔ ${row.actorId}`);
+    };
+
+    /**
+     * つながらなくても確かめたことにする（次は 1 日後）。確かめていないものから取るので、そのままにすると
+     * 落ちたサーバーとの関係が先頭に居座り、ほかの相手を確かめられなくなる。
+     */
     const recheckFriendships = async (at: Date) => {
         const due = await remoteFriendshipRepository.dueForCheck(
             new Date(at.getTime() - FEDERATION_LIMITS.FRIENDSHIP_RECHECK_MS),
             FEDERATION_LIMITS.FRIENDSHIP_RECHECK_BATCH,
         );
         for (const row of due) {
-            const actor = await deps.actors.get(row.actorId).catch(() => null);
-            if (!actor || actor.deletedAt) continue;
-            if (await deps.lacks(actor.domain, FEDERATION_FEATURES.friends)) {
-                await remoteFriendshipRepository.markChecked(row.userId, row.actorId, at);
-                continue;
-            }
-            const peer = await deps.friendshipCheck.relationOf(row.actorId, deps.identity.actorUrl(row.userId));
-            if (!peer) continue;
-            const result = await deps.friendships.reconcile(row.userId, actor, peer);
-            if (result !== 'kept')
-                deps.log(`フレンドの関係を相手とそろえました（${result}）: ${row.userId} ⇔ ${row.actorId}`);
+            await recheck(row).catch((error: unknown) =>
+                deps.log(`フレンドの関係を確かめられません: ${row.userId} ⇔ ${row.actorId}: ${String(error)}`),
+            );
             await remoteFriendshipRepository.markChecked(row.userId, row.actorId, at);
         }
     };
