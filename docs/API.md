@@ -329,17 +329,8 @@ Esc で何かを閉じる mod は、ランチパッドも同時に開くこと�
 // mod Worker を起動・管理
 const { sendEvent } = useModWorker<TPayloadMap>(options)
 
-// useModWorker + World エンティティ CRUD を自動配線
-const { sendEvent } = useWorldMod<TPayloadMap>(options)
-
-// カーソルオーバーレイを re-render ゼロで更新
-const { divRef, onCursorUpdate } = useCursorPosition({ hotspot?: { x, y } })
-
 // ワールドのエンティティ状態と CRUD
 const { entities, createEntity, patchEntity, deleteEntity } = useWorld()
-
-// 特定エンティティの状態変化を監視
-const entity = useEntity(entityId)
 ```
 
 ---

@@ -60,8 +60,6 @@ export interface PermissionContextValue {
      */
     /** signal を渡すと、待っている依頼がすべて取り消された時点で承認画面を取り下げる（記憶はしない）。 */
     authorizeExternalDomain(modId: string, domain: string, signal?: AbortSignal): boolean | Promise<boolean>;
-    /** @deprecated `authorizeExternalDomain` を使用してください。 */
-    authorizeFetchDomain(modId: string, domain: string): boolean | Promise<boolean>;
     /** 表示中の承認プロンプト（null = 無し）。UI が読む。 */
     pendingPrompt: PermissionPromptRequest | null;
     /** 表示中プロンプトへのユーザー応答。 */
@@ -70,16 +68,12 @@ export interface PermissionContextValue {
     grantCapability(modId: string, capability: string): void;
     /** 外部通信ドメインを許可として記録する（拒否トーストの「許可」ボタン等から）。 */
     grantExternalDomain(modId: string, domain: string): void;
-    /** @deprecated `grantExternalDomain` を使用してください。 */
-    grantFetchDomain(modId: string, domain: string): void;
     /** ティア既定モードをまとめて置き換える（設定画面のシールドレベル用）。 */
     setTierDefaults(defaults: Record<CapabilityRisk, TierMode>): void;
     /** 記憶済みの capability 判断を取り消す。capability 省略でmod全体。 */
     revokeGrant(modId: string, capability?: string): void;
     /** 記憶済みの外部通信ドメイン判断を取り消す。domain 省略でmod全体。 */
     revokeExternalGrant(modId: string, domain?: string): void;
-    /** @deprecated `revokeExternalGrant` を使用してください。 */
-    revokeFetchGrant(modId: string, domain?: string): void;
 }
 
 type PromptItem = PermissionPromptRequest & { resolve(outcome: PromptOutcome): void };
@@ -305,16 +299,13 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
             authorizeCapability,
             authorizeMod,
             authorizeExternalDomain,
-            authorizeFetchDomain: authorizeExternalDomain,
             pendingPrompt,
             resolvePrompt,
             grantCapability,
             grantExternalDomain,
-            grantFetchDomain: grantExternalDomain,
             setTierDefaults,
             revokeGrant,
             revokeExternalGrant,
-            revokeFetchGrant: revokeExternalGrant,
         }),
         [
             policy,
