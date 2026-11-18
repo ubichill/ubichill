@@ -321,7 +321,8 @@ func profile(user Object, t ticket) Object {
 	if t.Name != "" {
 		name = t.Name
 	}
-	return Object{"name": name, "status": user["status"], "position": user["position"]}
+	pos, _ := position(user["position"])
+	return Object{"name": name, "status": user["status"], "position": pos}
 }
 func returnAfterSend(p *peer) {
 	select {
