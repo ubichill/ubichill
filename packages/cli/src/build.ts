@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFile
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import {
+    compareVersions,
     type DataFieldsLike,
     detectCapabilities,
     frameMediaTargets,
@@ -16,6 +17,7 @@ import {
     type ModLockEntry,
     PackageIdSchema,
     PackagePrefabsSchema,
+    PackageVersionSchema,
     type PrefabFields,
     previewImageProblems,
     previewImageRefs,
@@ -422,6 +424,14 @@ export function readModDescription(value: unknown): string | undefined {
     return description || undefined;
 }
 
+/** `version` を読む。Host が受け付ける x.y.z だけを通す（`v<version>/` を出力のパスに使うので `../` なども弾く）。 */
+export function readModVersion(value: unknown): string {
+    const parsed = PackageVersionSchema.safeParse(value);
+    if (!parsed.success)
+        throw new Error(`package.json の version は x.y.z の形で書いてください（${JSON.stringify(value) ?? '無し'}）`);
+    return parsed.data;
+}
+
 function readPackageJson(modDir: string): {
     id: string;
     name: string;
@@ -438,14 +448,10 @@ function readPackageJson(modDir: string): {
     const id = pkg.ubichill?.id ?? pkg.name?.replace(/^@ubichill\/(?:mod-)?/, '') ?? basename(modDir);
     PackageIdSchema.parse(id);
     const name = pkg.ubichill?.name ?? pkg.description ?? id;
-    const version = pkg.version;
-    if (!version) {
-        throw new Error(`package.json に version が必要です: ${path}`);
-    }
     return {
         id,
         name,
-        version,
+        version: readModVersion(pkg.version),
         homepage: typeof pkg.homepage === 'string' ? pkg.homepage : undefined,
         // mod のサムネイル（assets/ 内の画像の相対パス）
         thumbnail: typeof pkg.ubichill?.thumbnail === 'string' ? pkg.ubichill.thumbnail : undefined,
@@ -470,16 +476,6 @@ export interface ModIndexEntry {
     versions: ModVersionSummary[];
 }
 
-/** semver (x.y.z) の降順比較。 */
-function compareSemVerDesc(a: string, b: string): number {
-    const pa = a.split('.').map(Number);
-    const pb = b.split('.').map(Number);
-    for (let i = 0; i < 3; i++) {
-        if (pa[i] !== pb[i]) return pb[i] - pa[i];
-    }
-    return 0;
-}
-
 /**
  * 既存の `index.json`（あれば）から対象 mod のバージョン履歴を読み出す。
  * `versions` フィールドが無い旧形式のファイルは、その1件を履歴の起点として扱う
@@ -501,7 +497,7 @@ function readExistingVersions(indexPath: string, id: string): ModVersionSummary[
 /** 既存のバージョン履歴に今回の版をマージする（同一版は上書き、新しい順にソート）。 */
 function mergeVersionHistory(existing: ModVersionSummary[], next: ModVersionSummary): ModVersionSummary[] {
     const withoutNext = existing.filter((v) => v.version !== next.version);
-    return [...withoutNext, next].sort((a, b) => compareSemVerDesc(a.version, b.version));
+    return [...withoutNext, next].sort((a, b) => compareVersions(b.version, a.version));
 }
 
 /** 2つのバージョン履歴配列を統合する（同一版は後者を優先、新しい順にソート）。 */
@@ -509,7 +505,7 @@ function mergeVersionArrays(a: ModVersionSummary[], b: ModVersionSummary[]): Mod
     const byVersion = new Map<string, ModVersionSummary>();
     for (const v of a) byVersion.set(v.version, v);
     for (const v of b) byVersion.set(v.version, v);
-    return [...byVersion.values()].sort((x, y) => compareSemVerDesc(x.version, y.version));
+    return [...byVersion.values()].sort((x, y) => compareVersions(y.version, x.version));
 }
 
 /**
