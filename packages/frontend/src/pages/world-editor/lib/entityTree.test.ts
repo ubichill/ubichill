@@ -66,6 +66,50 @@ describe('cloneEntitySubtree: 参照の付け替え', () => {
     });
 });
 
+describe('cloneEntitySubtree: Component の項目を落とさない', () => {
+    const hud = entity(
+        'hud',
+        [
+            {
+                id: 'score',
+                type: 'other:score',
+                data: { nested: { n: 1 } },
+                overlay: 'bottom-left',
+                transform: { x: 24, y: 24 },
+            },
+            { id: 'timer', type: 'other:timer', data: {}, overlay: false },
+            { type: 'other:plain', data: {} },
+        ],
+        [entity('hud-child', [{ id: 'label', type: 'other:label', data: {}, overlay: true }])],
+    );
+
+    it('id と overlay が複製にも残る（画面固定の HUD がワールド座標に落ちない）', () => {
+        const cloned = cloneEntitySubtree(hud, ['hud'], fieldsOf);
+        expect(cloned.components.map((c) => c.id)).toEqual(['score', 'timer', undefined]);
+        expect(cloned.components.map((c) => c.overlay)).toEqual(['bottom-left', false, undefined]);
+        expect(cloned.children[0]?.components[0]).toMatchObject({ id: 'label', overlay: true });
+    });
+
+    it('overlay: false は「画面固定にしない」という指定なので落とさない', () => {
+        expect(cloneEntitySubtree(hud, ['hud'], fieldsOf).components[1]).toHaveProperty('overlay', false);
+    });
+
+    it('data と transform は元と共有しない', () => {
+        const cloned = cloneEntitySubtree(hud, ['hud'], fieldsOf);
+        const [first] = cloned.components;
+        expect(first?.data).toEqual({ nested: { n: 1 } });
+        expect(first?.data.nested).not.toBe(hud.components[0]?.data.nested);
+        expect(first?.transform).toEqual({ x: 24, y: 24 });
+        expect(first?.transform).not.toBe(hud.components[0]?.transform);
+    });
+
+    it('Component の id は複製先の Entity の中で一意のまま', () => {
+        const cloned = cloneEntitySubtree(hud, ['hud'], fieldsOf);
+        const ids = cloned.components.flatMap((c) => (c.id ? [c.id] : []));
+        expect(new Set(ids).size).toBe(ids.length);
+    });
+});
+
 describe('renameEntity', () => {
     const world = [
         player,
