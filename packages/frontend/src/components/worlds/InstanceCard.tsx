@@ -74,6 +74,8 @@ export function InstanceCard({ instance, isCurrent = false, onOpenDetail }: Inst
                         <img
                             src={instance.world.thumbnail}
                             alt={instance.world.displayName}
+                            loading="lazy"
+                            decoding="async"
                             className={css({ width: '100%', height: '100%', objectFit: 'cover' })}
                         />
                     ) : (
