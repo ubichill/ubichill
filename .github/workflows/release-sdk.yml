@@ -50,11 +50,13 @@ permissions:
   # npm trusted publishing (OIDC) が GitHub Actions の ID トークンを要求するために必須。
   id-token: write
 
+# npm への公開権限（id-token: write）を持つので、Action はタグではなく commit で固定する（タグを書き換えられると権限を奪われる）。
+# 更新は dependabot（github-actions）が出す
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
 
@@ -81,7 +83,7 @@ jobs:
 
       - name: Create Release Pull Request or Publish
         id: changesets
-        uses: changesets/action@v1
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
         with:
           # Version Packages PR が既に無い状態（＝マージ済み）のときだけ実行される。
           # instance を cli より先に出す（cli の optionalDependencies が同じ版の instance を指す。逆だと、公開の間 cli を入れても Go が入らない）
