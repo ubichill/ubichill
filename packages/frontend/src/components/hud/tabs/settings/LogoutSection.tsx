@@ -3,10 +3,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { HudIcon } from '@/components/hud/HudIcon';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import { signOut } from '@/lib/auth-client';
-import { resetHome } from '@/lib/home/homeStore';
-import { resetBlocks } from '@/lib/social/blocks';
 import { css } from '@/styled-system/css';
+import { signOutAndReset } from './signOut';
 
 /** ログアウト（設定の「アカウント」）。部屋から抜けてからサインアウトする。 */
 export function LogoutSection() {
@@ -19,9 +17,7 @@ export function LogoutSection() {
         if (!(await confirm('ログアウトしますか？'))) return;
         setBusy(true);
         await leaveWorld();
-        await signOut();
-        resetHome();
-        resetBlocks();
+        await signOutAndReset();
         navigate('/auth');
     };
 

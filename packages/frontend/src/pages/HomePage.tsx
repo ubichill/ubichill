@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { signOut } from '@/lib/auth-client';
+import { signOutAndReset } from '@/components/hud/tabs/settings/signOut';
 import {
     canAutoHome,
     homeInstanceEntry,
@@ -9,8 +9,6 @@ import {
     recordEntryOutcome,
 } from '@/lib/home/home';
 import { ensureHomeInstance } from '@/lib/home/homeApi';
-import { resetHome } from '@/lib/home/homeStore';
-import { resetBlocks } from '@/lib/social/blocks';
 import { css, cva } from '@/styled-system/css';
 import { InstanceLoadingScreen } from '@/world/InstanceLoadingScreen';
 
@@ -66,9 +64,7 @@ export function HomePage() {
     }, [attempt, navigate, retryPath]);
 
     const handleLogout = useCallback(async () => {
-        await signOut();
-        resetHome();
-        resetBlocks();
+        await signOutAndReset();
         navigate('/auth', { replace: true });
     }, [navigate]);
 
