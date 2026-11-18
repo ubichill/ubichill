@@ -1,10 +1,6 @@
 import type { FavoritesVisibility, WorldListItem } from '@ubichill/shared';
 import { API_BASE } from '@/lib/api';
-
-async function errorMessage(res: Response): Promise<string> {
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
-    return data.error ?? `HTTP ${res.status}`;
-}
+import { errorMessage } from '@/lib/apiError';
 
 /** 自分のお気に入り（作者まで確認できたワールド）と、取得できない・公開ルール外のお気に入りの URL。 */
 export async function fetchMyFavoriteWorlds(): Promise<{ worlds: WorldListItem[]; unavailable: string[] }> {

@@ -1,10 +1,6 @@
 import type { HomeInstanceResponse, HomeSettingsUpdate, HomeView } from '@ubichill/shared';
 import { API_BASE } from '@/lib/api';
-
-async function errorMessage(res: Response): Promise<string> {
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
-    return data.error ?? `HTTP ${res.status}`;
-}
+import { errorMessage } from '@/lib/apiError';
 
 /** 自分のホームの設定とホームのワールド。 */
 export async function fetchHome(): Promise<HomeView> {

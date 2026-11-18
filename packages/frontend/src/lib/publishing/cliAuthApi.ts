@@ -1,4 +1,5 @@
 import { API_BASE } from '@/lib/api';
+import { errorMessage } from '@/lib/apiError';
 
 /** 承認画面に見せる CLI・CI の認可の要求（秘密は含まない）。 */
 export interface CliAuthRequestView {
@@ -11,11 +12,6 @@ export interface CliAuthRequestView {
     userCode: string | null;
     status: string;
     expiresAt: string;
-}
-
-async function errorMessage(res: Response): Promise<string> {
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
-    return data.error ?? `HTTP ${res.status}`;
 }
 
 export async function fetchCliAuthRequest(

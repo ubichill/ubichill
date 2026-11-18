@@ -9,6 +9,7 @@ import {
     type WorldSigningKey,
 } from '@ubichill/shared';
 import { API_BASE } from '@/lib/api';
+import { errorMessage } from '@/lib/apiError';
 
 /** ログイン中のアカウント（`GET /api/v1/users/me`）。公開プロフィールの項目に、本人だけが見る項目を足したもの。 */
 export interface MyAccount extends UserProfile {
@@ -24,11 +25,6 @@ export interface MyAccount extends UserProfile {
     isAdmin: boolean;
     /** 取り消されていない公開環境の鍵（このブラウザの鍵が登録済みかの判定に使う）。 */
     signingKeys: string[];
-}
-
-async function errorMessage(res: Response): Promise<string> {
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
-    return data.error ?? `HTTP ${res.status}`;
 }
 
 export async function fetchMyAccount(): Promise<MyAccount> {
