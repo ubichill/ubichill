@@ -412,14 +412,6 @@ tolerations: []
 # Node selector (optional)
 nodeSelector: {}
 
-# Monitoring and observability
-monitoring:
-  enabled: false
-  serviceMonitor:
-    enabled: false
-    interval: 30s
-    scrapeTimeout: 10s
-
 # 独立したGoインスタンス実行サーバー。既定は 1 replica（複数にするときは directory: redis）。
 instanceRuntime:
   enabled: true
