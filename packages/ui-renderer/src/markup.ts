@@ -200,7 +200,7 @@ const isHttpsUrl = (value: string): boolean => {
 };
 
 /**
- * core:ui で残す URL。mod の UI（http・相対 URL も通す）より狭く、https だけにする。
+ * core:ui で残す URL。mod の UI（相対 URL も通す）より狭く、https だけにする。
  * 画像は data:image/ も通す（取得を起こさない）。SVG の href は文書内の `#id` だけ（描画側も同じ検査をする）。
  */
 function allowedUrl(tag: string, name: 'src' | 'href', value: string, inSvg: boolean): boolean {

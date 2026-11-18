@@ -168,6 +168,9 @@ function _patchProps(el: Element, newProps: Record<string, unknown>, sendAction:
     // style は毎回リセットして再適用（削除されたプロパティを確実に消す）
     (el as HTMLElement).style.cssText = '';
 
+    // 画像の取得でページの URL（部屋の ID）を送らない。取得より先に効くよう src より前に付ける
+    if (el instanceof HTMLImageElement) applyAttr('referrerpolicy', 'no-referrer');
+
     for (const key of Object.keys(newProps)) {
         const val = newProps[key];
         if (val === null || val === undefined) continue;

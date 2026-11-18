@@ -159,6 +159,24 @@ describe('VNodeRenderer: mod から届いた値で Host を操作させない', 
         expect(a?.getAttribute('rel')).toBe('noopener noreferrer');
     });
 
+    it('画像は参照元を送らない（mod の referrerpolicy は使わず、src より前に no-referrer を付ける）', () => {
+        const setAttribute = vi.spyOn(Element.prototype, 'setAttribute');
+        const { container } = render(el('img', { src: 'https://e.x/a.png', referrerpolicy: 'unsafe-url' }));
+        const img = container.querySelector('img');
+        expect(img?.getAttribute('referrerpolicy')).toBe('no-referrer');
+        expect(img?.getAttribute('src')).toBe('https://e.x/a.png');
+        const order = setAttribute.mock.calls
+            .map(([name]) => name)
+            .filter((n) => n === 'src' || n === 'referrerpolicy');
+        expect(order).toEqual(['referrerpolicy', 'src']);
+        setAttribute.mockRestore();
+    });
+
+    it('外部の http の画像は読ませない', () => {
+        const { container } = render(el('img', { src: 'http://attacker.example/?d=secret' }));
+        expect(container.querySelector('img')?.hasAttribute('src')).toBe(false);
+    });
+
     it('javascript: のリンクは付けない', () => {
         const { container } = render(el('a', { href: 'javascript:alert(1)' }, ['x']));
         expect(container.querySelector('a')?.hasAttribute('href')).toBe(false);
