@@ -758,13 +758,13 @@ class WorldRegistry {
         // 同じ名前のワールドがあればその更新、無くて編集中のワールドがあればその名前の変更（URL も変わり、以前の URL からもたどれる）
         const target = existing ?? editing;
         const { maxWorlds } = limitsFor({ id: authorId });
-        if (!target && (await worldRepository.countByAuthorId(authorId)) >= maxWorlds) {
-            return {
-                ok: false,
-                reason: 'limit',
-                message: `1ユーザーが作成できるワールドは ${maxWorlds} 個までです`,
-            };
-        }
+        const limitReached: SaveBundleResult = {
+            ok: false,
+            reason: 'limit',
+            message: `1ユーザーが作成できるワールドは ${maxWorlds} 個までです`,
+        };
+        // 署名の検証の前に断る（確定は保存のトランザクションの中で数え直す）
+        if (!target && (await worldRepository.countByAuthorId(authorId)) >= maxWorlds) return limitReached;
         const url = this.selfWorldUrl(handle, worldName);
 
         const verified =
@@ -791,7 +791,7 @@ class WorldRegistry {
 
         const published = target ? await this.getWorld(target.id) : undefined;
         const keepPublished = !verified && published?.identity?.status === 'verified';
-        const saved = await this._store(authorId, target, worldName, {
+        const saved = await this._store(authorId, target, worldName, maxWorlds, {
             definition: bundle.definition,
             lock: lock as ModLock | null,
             version: parsed.data.metadata.version,
@@ -807,6 +807,7 @@ class WorldRegistry {
         });
         if (saved === 'retry') return this.saveBundle(authorId, bundle, { ...options, retried: true });
         if (saved === 'taken') return nameTaken('あなたの別のワールド');
+        if (saved.status === 'limit') return limitReached;
         if (saved.status === 'version-conflict') {
             return {
                 ok: false,
@@ -836,6 +837,7 @@ class WorldRegistry {
         authorId: string,
         target: WorldRecord | undefined,
         worldName: string,
+        maxWorlds: number,
         input: {
             definition: unknown;
             lock: ModLock | null;
@@ -846,7 +848,7 @@ class WorldRegistry {
     ): Promise<PublishOutcome | { status: 'draft'; worldId: string }> {
         if (input.signature) {
             return worldRepository.publish(
-                { authorId, worldName, worldId: target?.id },
+                { authorId, worldName, worldId: target?.id, maxWorlds },
                 {
                     version: input.version,
                     definition: input.definition,
@@ -856,15 +858,15 @@ class WorldRegistry {
                 },
             );
         }
-        const worldId = await worldRepository.saveDraft(
+        return worldRepository.saveDraft(
             {
                 authorId,
                 worldName: input.keepPublished && target ? target.worldName : worldName,
                 worldId: target?.id,
+                maxWorlds,
             },
             { definition: input.definition, lock: input.lock, unpublish: !input.keepPublished },
         );
-        return { status: 'draft', worldId };
     }
 
     /** 残す数を超えた古い版を消す。消せなくても公開は止めない（インスタンスが指す版は、次の公開か定期処理で消し直す）。 */

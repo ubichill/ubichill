@@ -3,6 +3,7 @@ import { LIMITS, ModLockSchema } from '@ubichill/shared';
 import type { NextFunction, Request, Response } from 'express';
 import { Router } from 'express';
 import yaml from 'yaml';
+import { perUserLimiter } from '../lib/rateLimit';
 import { optionalAuth, requireAdmin, requireAuth, requirePublisher } from '../middleware/auth';
 import { bearerToken } from '../services/auth/cliAuth';
 import { selfAccount } from '../services/authors/authorKeys';
@@ -259,7 +260,15 @@ router.get('/:worldId/versions', optionalAuth, async (req, res) => {
  * 自分の別のワールドと同じ名前なら上書きせず 409。同じ metadata.version で中身の違う公開も 409（version-conflict）。
  * 返り値: `{ id, url, saved, identity }`
  */
-router.put('/', requireSaver, async (req, res) => {
+// 保存は署名の検証と作者の鍵の確認を起こすので、利用者ごとに回数を抑える
+const saveLimiter = perUserLimiter(
+    'worlds-save',
+    60 * 1000,
+    30,
+    'ワールドの保存が多すぎます。少し待ってから試してください',
+);
+
+router.put('/', requireSaver, saveLimiter, async (req, res) => {
     try {
         if (!req.user) {
             res.status(401).json({ error: 'Unauthorized' });

@@ -2,7 +2,7 @@
  * 自分の作品（`/api/v1/users/me` の下）: 作ったワールド（編集用）・外部の作品の登録。ほかの人に見せる一覧は public.ts。
  */
 import { userRepository } from '@ubichill/db';
-import { ExternalWorkRegistrationSchema } from '@ubichill/shared';
+import { ExternalWorkRegistrationSchema, MAX_EXTERNAL_WORKS_PER_USER } from '@ubichill/shared';
 import { Router } from 'express';
 import { perUserLimiter } from '../../lib/rateLimit';
 import { requireAuth, requirePublisher } from '../../middleware/auth';
@@ -19,8 +19,16 @@ router.get('/me/worlds', requirePublisher, async (req, res) => {
     return res.json(await myWorldsOf(req.user));
 });
 
+// 登録は公開先の取得を起こす。`ubichill publish` は作品ごとに一度に送るので、上限の数までは 1 回で通す
+const registerLimiter = perUserLimiter(
+    'external-works-register',
+    10 * 60 * 1000,
+    MAX_EXTERNAL_WORKS_PER_USER,
+    '作品の登録が多すぎます。少し待ってから試してください',
+);
+
 // 外部の作品の登録（`ubichill publish` が署名したときに送る）
-router.put('/me/external-works', requirePublisher, async (req, res) => {
+router.put('/me/external-works', requirePublisher, registerLimiter, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const parsed = ExternalWorkRegistrationSchema.safeParse(req.body);
     if (!parsed.success) {
