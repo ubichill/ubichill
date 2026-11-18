@@ -37,27 +37,29 @@ interface RawIndexEntry {
 
 const cache = new Map<string, Promise<AvailableMod[]>>();
 
-async function fetchRegistry(url: string, sourceLabel: string): Promise<AvailableMod[]> {
-    let p = cache.get(url);
-    if (!p) {
-        p = (async () => {
-            const res = await fetch(url, { cache: 'no-store' });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = (await res.json()) as RawIndexEntry[];
-            const baseUrl = url.slice(0, url.lastIndexOf('/'));
-            return data.map((e) => ({
-                id: e.id,
-                name: e.name ?? e.id,
-                version: e.version,
-                components: e.components ?? [],
-                versions: e.versions,
-                // リモートエントリ baseUrl が無い場合は registry URL のディレクトリを採用
-                baseUrl: e.baseUrl ?? (sourceLabel === 'local' ? undefined : baseUrl),
-                sourceLabel,
-            }));
-        })().catch(() => [] as AvailableMod[]);
-        cache.set(url, p);
-    }
+export async function fetchRegistry(url: string, sourceLabel: string): Promise<AvailableMod[]> {
+    const cached = cache.get(url);
+    if (cached) return cached;
+    const p = (async () => {
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as RawIndexEntry[];
+        const baseUrl = url.slice(0, url.lastIndexOf('/'));
+        return data.map((e) => ({
+            id: e.id,
+            name: e.name ?? e.id,
+            version: e.version,
+            components: e.components ?? [],
+            versions: e.versions,
+            // リモートエントリ baseUrl が無い場合は registry URL のディレクトリを採用
+            baseUrl: e.baseUrl ?? (sourceLabel === 'local' ? undefined : baseUrl),
+            sourceLabel,
+        }));
+    })().catch(() => {
+        cache.delete(url);
+        return [] as AvailableMod[];
+    });
+    cache.set(url, p);
     return p;
 }
 
