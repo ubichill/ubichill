@@ -7,7 +7,9 @@ on:
     paths:
       - 'charts/**'
 
-permissions: write-all
+# ジョブ側で必要な権限だけを付ける
+permissions:
+  contents: read
 
 # gh-pages には mods-pages も push する。同じ group で 1 つずつ動かし、途中で取り消さない
 concurrency:

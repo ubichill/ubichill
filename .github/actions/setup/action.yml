@@ -11,14 +11,15 @@ runs:
   using: composite
   steps:
     # mise.lock があると --locked 付きで入るため、ツールのバイナリもチェックサム検証される。
-    - uses: jdx/mise-action@v4
+    # npm に公開する release-sdk でも使うので commit で固定する
+    - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
 
     - name: Resolve pnpm store path
       id: pnpm-store
       shell: bash
       run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
-    - uses: actions/cache@v6
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.pnpm-store.outputs.path }}
         key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
