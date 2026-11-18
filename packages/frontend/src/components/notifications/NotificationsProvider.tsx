@@ -28,7 +28,10 @@ import { pushToast } from '@/lib/toast';
 const FALLBACK_POLL_MS = 60_000;
 
 function useNotificationFeed(enabled: boolean) {
+    // navigate は画面を移るたびに変わる。effect の deps に入れると移るたびに SSE を張り直すので ref で持つ
     const navigate = useNavigate();
+    const navigateRef = useRef(navigate);
+    navigateRef.current = navigate;
     const [feed, setFeed] = useState<FeedState>(EMPTY_FEED);
     const [incomingIds, setIncomingIds] = useState<ReadonlySet<string>>(new Set());
     const [error, setError] = useState<string | null>(null);
@@ -75,7 +78,7 @@ function useNotificationFeed(enabled: boolean) {
                     const n = event.notification;
                     // 招待はトーストからそのまま入れる（部屋を移ると前の部屋からは抜ける）。リクエストはそのまま招待で答えられる
                     const action = toastActionOf(n, {
-                        enter: (to, state) => navigate(to, { state }),
+                        enter: (to, state) => navigateRef.current(to, { state }),
                         acceptRequest: (userId) =>
                             acceptInviteRequest(userId).then(
                                 () => pushToast('招待を送りました'),
@@ -95,7 +98,7 @@ function useNotificationFeed(enabled: boolean) {
             clearInterval(state.poll);
             window.removeEventListener('focus', onFocus);
         };
-    }, [enabled, reload, refreshFriends, navigate]);
+    }, [enabled, reload, refreshFriends]);
 
     const loadMore = useCallback(async () => {
         if (!feed.nextCursor || loadingMore.current) return;
