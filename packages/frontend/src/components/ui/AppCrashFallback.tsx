@@ -25,7 +25,7 @@ export function AppCrashFallback() {
                     borderRadius: '8px',
                     border: 'none',
                     backgroundColor: 'primary',
-                    color: 'white',
+                    color: 'textOnPrimary',
                     fontSize: '14px',
                     fontWeight: '500',
                     cursor: 'pointer',
