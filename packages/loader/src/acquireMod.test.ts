@@ -6,6 +6,7 @@ import {
     acquireMod,
     assetIntegrityOf,
     MOD_AUTHOR_CACHE_TTL_MS,
+    MOD_FETCH_LIMITS,
     resetAcquireCaches,
 } from './acquireMod';
 import type { FetchLike, FetchLikeResponse } from './types';
@@ -577,5 +578,116 @@ describe('作者署名', () => {
         await Promise.all([acquireMod(TYPE, options), acquireMod(TYPE, options)]);
         await acquireMod(TYPE, options);
         expect(calls).toEqual([AUTHOR]);
+    });
+});
+
+describe('取得の上限（lock の baseUrl は他人が決める）', () => {
+    const sigUrlAbs = `${BASE}/${MOD}/v${VER}/lock.sig.json`;
+    const CHUNK = 64 * 1024;
+
+    /** 64KiB ずつ際限なく返すストリーム。読んだ量を数える。 */
+    function endlessBody(): { body: ReadableStream<Uint8Array>; pulled: () => number } {
+        const counter = { bytes: 0 };
+        const chunk = new Uint8Array(CHUNK).fill(0x61);
+        const body = new ReadableStream<Uint8Array>({
+            pull(controller) {
+                counter.bytes += chunk.byteLength;
+                controller.enqueue(chunk);
+            },
+        });
+        return { body, pulled: () => counter.bytes };
+    }
+
+    /** url だけ応答を差し替え、ほかは正規ルートを返す fetch。 */
+    function overriding(url: string, response: Partial<FetchLikeResponse>): FetchLike {
+        const good = fakeFetch(goodRoutes());
+        return async (input, init) => {
+            const base = await good(input, init);
+            return input === url ? { ...base, ok: true, status: 200, ...response } : base;
+        };
+    }
+
+    const failIfRead: Partial<FetchLikeResponse> = {
+        arrayBuffer: async () => {
+            throw new Error('上限を超える本文を全部読んだ');
+        },
+        text: async () => {
+            throw new Error('上限を超える本文を全部読んだ');
+        },
+    };
+
+    const declared = (bytes: number): Partial<FetchLikeResponse> => ({
+        headers: { get: (name) => (name.toLowerCase() === 'content-length' ? String(bytes) : null) },
+    });
+
+    it('どの取得にも時間の上限（AbortSignal）を付ける', async () => {
+        const signals: Array<[string, unknown]> = [];
+        const good = fakeFetch(goodRoutes());
+        const fetchImpl: FetchLike = (url, init) => {
+            signals.push([url, init?.signal]);
+            return good(url, init);
+        };
+        await acquireMod(TYPE, { baseUrl: BASE, lock: lock(), ...unsignedDev, fetchImpl });
+        expect(signals.map(([url]) => url)).toEqual([manifestUrlAbs, workerUrlAbs, sigUrlAbs]);
+        for (const [url, signal] of signals) expect(signal, url).toBeInstanceOf(AbortSignal);
+    });
+
+    it.each([
+        ['worker', workerUrlAbs, MOD_FETCH_LIMITS.worker.maxBytes],
+        ['manifest', manifestUrlAbs, MOD_FETCH_LIMITS.manifest.maxBytes],
+    ])('終わらない %s の応答は上限で読むのをやめる（全部読んでから検証しない）', async (_, url, max) => {
+        const { body, pulled } = endlessBody();
+        const r = await acquireMod(TYPE, {
+            baseUrl: BASE,
+            lock: lock(),
+            ...unsignedDev,
+            fetchImpl: overriding(url, { body, ...failIfRead }),
+        });
+        expect(r).toBe('not-found');
+        expect(pulled()).toBeLessThanOrEqual(max + 2 * CHUNK);
+    });
+
+    it.each([
+        ['manifest', manifestUrlAbs, MOD_FETCH_LIMITS.manifest.maxBytes],
+        ['worker', workerUrlAbs, MOD_FETCH_LIMITS.worker.maxBytes],
+    ])('%s の content-length が上限を超えていれば本文を読まない', async (_, url, max) => {
+        const r = await acquireMod(TYPE, {
+            baseUrl: BASE,
+            lock: lock(),
+            ...unsignedDev,
+            fetchImpl: overriding(url, { ...declared(max + 1), ...failIfRead }),
+        });
+        expect(r).toBe('not-found');
+    });
+
+    it('本文のストリームが無い fetch でも大きさを確かめる（上限ちょうどは読み、1 バイト超えると読まない）', async () => {
+        const padded = manifestJson.padEnd(MOD_FETCH_LIMITS.manifest.maxBytes, ' ');
+        const paddedLock = lock();
+        paddedLock.mods[MOD].manifestIntegrity = sri(padded);
+        const at = { ...goodRoutes(), [manifestUrlAbs]: { body: padded } };
+        expect(
+            await acquireMod(TYPE, { baseUrl: BASE, lock: paddedLock, ...unsignedDev, fetchImpl: fakeFetch(at) }),
+        ).toMatchObject({ id: TYPE });
+        resetAcquireCaches();
+        const over = { ...goodRoutes(), [manifestUrlAbs]: { body: `${padded} ` } };
+        expect(
+            await acquireMod(TYPE, { baseUrl: BASE, lock: paddedLock, ...unsignedDev, fetchImpl: fakeFetch(over) }),
+        ).toBe('not-found');
+    });
+
+    it('上限を超える署名ファイルは読まずに壊れた署名として扱う（未署名の開発の例外にしない）', async () => {
+        const seen: unknown[] = [];
+        const r = await acquireMod(TYPE, {
+            baseUrl: BASE,
+            lock: lock(),
+            allowUnsigned: () => true,
+            verifySignature: async (_entry, signature) => {
+                seen.push(signature);
+                return { status: 'rejected', reason: 'signature-malformed' };
+            },
+            fetchImpl: overriding(sigUrlAbs, { ...declared(MOD_FETCH_LIMITS.signature.maxBytes + 1), ...failIfRead }),
+        });
+        expect(r).toEqual({ rejected: 'signature-malformed' });
+        expect(seen).toEqual([{}]);
     });
 });
