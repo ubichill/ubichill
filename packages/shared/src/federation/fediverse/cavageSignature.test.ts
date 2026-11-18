@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    CAVAGE_MAX_SIGNATURE_CHARS,
     type CavageMessage,
     cavageSigningString,
     digestHeader,
@@ -76,6 +77,44 @@ describe('draft-cavage の署名', () => {
         expect(parseCavageSignature('keyId="k"')).toBeNull();
         expect(parseCavageSignature('keyId="k",signature="!!"')).toBeNull();
         expect(parseCavageSignature('keyId="k",signature="AAEC",junk')).toBeNull();
+    });
+
+    it('末尾のカンマ・名前の重複（後のものが勝つ）・空の headers は今までどおり読む', () => {
+        expect(parseCavageSignature('keyId="a",keyId="b",signature="AAEC",')).toMatchObject({ keyId: 'b' });
+        expect(parseCavageSignature('keyId="k",signature="AAEC",headers=""')).toMatchObject({ headers: [] });
+        expect(parseCavageSignature('')).toBeNull();
+        expect(parseCavageSignature(' keyId="k" , signature="AAEC" ')).toMatchObject({ keyId: 'k' });
+    });
+
+    it('未認証の POST で来る長い Signature は、読み直しで時間を食わせずに断る', () => {
+        const timed = (header: string) => {
+            const start = performance.now();
+            const parsed = parseCavageSignature(header);
+            return { parsed, ms: performance.now() - start };
+        };
+        // 英字だけの並び（matchAll なら二次以上に読み直す入力）。上限ちょうどと、Node の既定のヘッダー上限（16KB）まで
+        for (const header of [
+            'a'.repeat(CAVAGE_MAX_SIGNATURE_CHARS),
+            `${'a="",'.repeat(400)}${'a'.repeat(CAVAGE_MAX_SIGNATURE_CHARS - 2001)}`,
+            'a'.repeat(16_000),
+            `${'a'.repeat(8_000)}=`,
+            `${'a="",'.repeat(4_000)}a`,
+            ' '.repeat(16_000),
+        ]) {
+            const { parsed, ms } = timed(header);
+            expect(parsed).toBeNull();
+            expect(ms).toBeLessThan(50);
+        }
+    });
+
+    it('正規の Signature（RSA 4096 の署名）は上限の内側で読める。上限を超えたら、中身が正しくても断る', () => {
+        // RSA 4096 の署名は 512 バイト（base64 で 684 字）
+        const signature = 'AAAA'.repeat(171);
+        const long = `keyId="https://mastodon.example/users/bob#main-key",algorithm="rsa-sha256",headers="(request-target) host date digest content-type",signature="${signature}"`;
+        expect(long.length).toBeLessThan(CAVAGE_MAX_SIGNATURE_CHARS);
+        expect(parseCavageSignature(long)).not.toBeNull();
+        const padded = `${long},extra="${'x'.repeat(CAVAGE_MAX_SIGNATURE_CHARS)}"`;
+        expect(parseCavageSignature(padded)).toBeNull();
     });
 
     it('rsa-sha256 と hs2019 だけを受ける', () => {
