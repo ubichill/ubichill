@@ -1,5 +1,8 @@
 {{- if .Values.podDisruptionBudget.enabled }}
-{{- if .Values.backend.enabled }}
+{{- /* 実効の台数が 1 だと minAvailable: 1 で許容停止が 0 になり、drain やノード更新がそのノードで止まる。2 台以上のときだけ作る */}}
+{{- $backendReplicas := ternary .Values.backend.autoscaling.minReplicas .Values.backend.replicaCount .Values.backend.autoscaling.enabled | int }}
+{{- $frontendReplicas := ternary .Values.frontend.autoscaling.minReplicas .Values.frontend.replicaCount .Values.frontend.autoscaling.enabled | int }}
+{{- if and .Values.backend.enabled (ge $backendReplicas 2) }}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -15,7 +18,7 @@ spec:
       component: backend
 ---
 {{- end }}
-{{- if .Values.frontend.enabled }}
+{{- if and .Values.frontend.enabled (ge $frontendReplicas 2) }}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
