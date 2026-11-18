@@ -41,6 +41,78 @@ export function withRpcTimeout<T>(promise: Promise<T>, timeoutMs: number, cmdTyp
     return Promise.race([promise, timeout.promise]).finally(() => clearTimeout(timer));
 }
 
+/**
+ * 1 tick に受け付ける Worker → Host のコマンドの数。正規の mod は 1 tick に数件〜数十件
+ * （起動時にまとめて Entity を作っても数百件）。超えた分は捨てる。
+ */
+export const MAX_COMMANDS_PER_TICK = 512;
+
+export interface CommandBudget {
+    /** 1 件を数える。超えた最初の 1 件だけ `drop-first`（診断を 1 回にするため）。 */
+    take(): 'accept' | 'drop-first' | 'drop';
+    reset(): void;
+}
+
+export function createCommandBudget(limit: number): CommandBudget {
+    const state = { used: 0 };
+    return {
+        take() {
+            state.used += 1;
+            if (state.used <= limit) return 'accept';
+            return state.used === limit + 1 ? 'drop-first' : 'drop';
+        },
+        reset() {
+            state.used = 0;
+        },
+    };
+}
+
+/**
+ * EVENT_EMIT の data のおおよその大きさの上限（文字数・バイト数）。Host は data を配送先の Worker の数だけ
+ * 複製するので、大きな data を毎フレーム送らせない。ワールド内のイベントは座標・ID などの小さな値を想定する。
+ */
+export const MAX_EMIT_DATA_BYTES = 64 * 1024;
+
+function* childrenOf(item: object): Generator<unknown> {
+    if (item instanceof Map) {
+        for (const [key, value] of item) yield* [key, value];
+    } else if (item instanceof Set || Array.isArray(item)) {
+        yield* item;
+    } else {
+        for (const key of Object.keys(item)) yield* [key, (item as Record<string, unknown>)[key]];
+    }
+}
+
+/** 値のおおよその大きさが max を超えるか。超えた時点で数えるのをやめる（巨大な値でも max の分しか辿らない）。 */
+export function exceedsApproxSize(value: unknown, max: number): boolean {
+    const pending: unknown[] = [value];
+    const seen = new Set<object>();
+    const size = { total: 0 };
+    const add = (bytes: number): boolean => {
+        size.total += bytes;
+        return size.total > max;
+    };
+    while (pending.length > 0) {
+        const item = pending.pop();
+        if (typeof item === 'string') {
+            if (add(item.length)) return true;
+        } else if (typeof item !== 'object' || item === null) {
+            if (add(8)) return true;
+        } else if (!seen.has(item)) {
+            seen.add(item);
+            if (item instanceof ArrayBuffer || ArrayBuffer.isView(item)) {
+                if (add(item.byteLength)) return true;
+            } else {
+                for (const child of childrenOf(item)) {
+                    pending.push(child);
+                    if (add(1)) return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
 /** dispatchCommand が必要とする Manager 側のコンテキスト。 */
 export interface CommandContext<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> {
     handlers: HostHandlers<TPayloadMap>;

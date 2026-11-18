@@ -12,7 +12,6 @@
  */
 import {
     buildAllowedCommands,
-    COMMAND_TO_CAPABILITY,
     CommandType,
     checkProtocolCompatibility,
     HostEventType,
@@ -30,8 +29,18 @@ import {
     setSharedScrollElement,
 } from '@ubichill/ui-renderer';
 import { loadModAsset } from './assetLoader';
-import { type CapabilityGate, createCapabilityGate } from './capabilityGate';
-import { type CommandContext, dispatchCommand, RpcTimeoutError, withRpcTimeout } from './commandDispatch';
+import { type CapabilityGate, createCapabilityGate, describeDenial } from './capabilityGate';
+import {
+    type CommandBudget,
+    type CommandContext,
+    createCommandBudget,
+    dispatchCommand,
+    exceedsApproxSize,
+    MAX_COMMANDS_PER_TICK,
+    MAX_EMIT_DATA_BYTES,
+    RpcTimeoutError,
+    withRpcTimeout,
+} from './commandDispatch';
 import { CMD_TO_HANDLER } from './commandHandlers';
 import { createHostRequests, type HostRequests, transferablesOf } from './hostRequests';
 import { getActiveWorkerCount, getWorker, registerWorker, unregisterWorker } from './ModRegistry';
@@ -74,6 +83,8 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
     private readonly _instanceKey: string;
     /** 現Tickにホスト側でコマンド処理に要した累積時間 (ms) */
     private _currentTickCommandMs = 0;
+    /** 1 tick に受け付けるコマンドの数（tick を回さない Manager は数えない）。 */
+    private readonly _budget: CommandBudget;
     /** 実行中の fetch・アセット読み込み（取り消しと破棄時の後片付け用）。 */
     private readonly _requests: HostRequests = createHostRequests();
 
@@ -100,6 +111,7 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
             this.handlers.onTickComplete?.(metric);
         }
         this._currentTickCommandMs = 0;
+        this._budget.reset();
         this._sendTick(deltaTime);
     }
 
@@ -149,6 +161,7 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
         // SimulationLoop が持つので、Worker ごとに間隔を変えることはできない。
         const fps = options.tickFps ?? 60;
         this.tickEnabled = !options.disableAutoTick && fps > 0;
+        this._budget = createCommandBudget(this.tickEnabled ? MAX_COMMANDS_PER_TICK : Number.POSITIVE_INFINITY);
         this._autoInputEnabled = this.tickEnabled && !options.disableAutoInput;
         this._filterInputEvents = options.filterInputEvents;
 
@@ -275,25 +288,46 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
         const { type } = command;
         const id = 'id' in command ? (command as { id?: string }).id : undefined;
 
+        const budget = this._budget.take();
+        if (budget !== 'accept') {
+            const message = `1 tick に送れるコマンドの上限 (${MAX_COMMANDS_PER_TICK}) を超えた分を捨てました`;
+            if (budget === 'drop-first') {
+                reportDiagnostic({
+                    level: 'warn',
+                    modId: this._modId,
+                    code: UbiErrorCode.RESOURCE_LIMIT_EXCEEDED,
+                    message,
+                });
+            }
+            this._failRpc(id, message, UbiErrorCode.RESOURCE_LIMIT_EXCEEDED);
+            return;
+        }
+
         const allowed = this._gate.authorize(type); // 同期・即時（高頻度コマンドでも await なし）
         if (!allowed) {
-            // on-demand モードはユーザー拒否、静的モードは未宣言。エラーコードで区別する。
-            const errorCode = this._onDemand ? UbiErrorCode.CAPABILITY_DENIED : UbiErrorCode.CAPABILITY_NOT_DECLARED;
-            const message = this._onDemand
-                ? `権限が許可されていません: ${type}`
-                : `未宣言の capability コマンド: ${type}`;
-            // 拒否をクリックで許可に変えられるよう、コマンドが属する capability を retry に載せる。
-            const capability = COMMAND_TO_CAPABILITY[type];
+            const { code, message, capability } = describeDenial(type, this._onDemand);
             reportDiagnostic({
                 level: 'warn',
                 modId: this._modId,
-                code: errorCode,
+                code,
                 message,
+                // 拒否をクリックで許可に変えられるよう、コマンドが属する capability を retry に載せる。
                 ...(this._onDemand && capability ? { retry: { subject: this._permissionSubject, capability } } : {}),
             });
-            if (id) {
-                this.sendEvent({ type: HostEventType.EVT_RPC_RESPONSE, id, success: false, error: message, errorCode });
-            }
+            this._failRpc(id, message, code);
+            return;
+        }
+
+        // 配送先の Worker の数だけ複製するので、大きな data は送らせない
+        if (command.type === CommandType.EVENT_EMIT && exceedsApproxSize(command.payload.data, MAX_EMIT_DATA_BYTES)) {
+            const message = `イベントの data が上限 (${MAX_EMIT_DATA_BYTES} bytes) を超えたので送りませんでした`;
+            reportDiagnostic({
+                level: 'warn',
+                modId: this._modId,
+                code: UbiErrorCode.RESOURCE_LIMIT_EXCEEDED,
+                message,
+            });
+            this._failRpc(id, message, UbiErrorCode.RESOURCE_LIMIT_EXCEEDED);
             return;
         }
 
@@ -336,6 +370,10 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
                 this._currentTickCommandMs += performance.now() - _cmdStart;
             }
         }
+    }
+
+    private _failRpc(id: string | undefined, error: string, errorCode: UbiErrorCode): void {
+        if (id) this.sendEvent({ type: HostEventType.EVT_RPC_RESPONSE, id, success: false, error, errorCode });
     }
 
     /** 初期化後に限り transfer 付きで送る（RPC 応答は初期化後にしか発生しない）。 */
