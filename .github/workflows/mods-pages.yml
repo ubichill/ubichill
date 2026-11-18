@@ -25,9 +25,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v5.1.0
 
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         with:
           install-args: --ignore-scripts
 
