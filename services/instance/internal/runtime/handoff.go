@@ -257,7 +257,8 @@ func (s *Server) migrate(ctx context.Context, r *Room) error {
 		}
 		gen, _, token := r.lease()
 		a, moved, err := s.dir.Transfer(ctx, id, token, to.node, prepared.Token, gen, s.fencing.TTL)
-		if err != nil {
+		// 応答だけが消えて go-redis が送り直すと、適用済みでも token の不一致（moved=false）に見える
+		if err != nil || !moved {
 			a, moved, err = s.transferOutcome(ctx, id, prepared.Token)
 		}
 		if err != nil {
@@ -315,6 +316,9 @@ func (s *Server) reclaim(ctx context.Context, r *Room, at coord.Assignment) bool
 	token := coord.NewToken()
 	sent := s.now()
 	a, ok, err := s.dir.Transfer(ctx, r.definition.ID, at.Token, s.node, token, at.Gen, s.fencing.TTL)
+	if err != nil || !ok {
+		a, ok, err = s.transferOutcome(ctx, r.definition.ID, token)
+	}
 	if err != nil || !ok {
 		return false
 	}
