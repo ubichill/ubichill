@@ -21,7 +21,7 @@ import {
     resolveLockedMod,
 } from '@ubichill/shared';
 import { sriOf } from './integrity.ts';
-import type { AcquireResult, FetchLike, LoadedMod } from './types.ts';
+import type { AcquireResult, FetchLike, FetchLikeResponse, LoadedMod } from './types.ts';
 
 /** versioned manifest の Component 定義（build 時の src は含まない）。 */
 interface WorkerMetaObject {
@@ -83,6 +83,50 @@ export interface AcquireModOptions {
 
 const defaultFetch: FetchLike = (input, init) => fetch(input, init as RequestInit) as unknown as ReturnType<FetchLike>;
 
+/**
+ * 取得の上限。lock の baseUrl はワールドの作者が決めるので、終わらない応答・巨大な応答で訪問者のタブを止めさせない。
+ * 時間は本文を読み終えるまでにかかる時間（fetch の signal は本文の読み込みも止める）。
+ */
+export const MOD_FETCH_LIMITS = {
+    manifest: { maxBytes: 1024 * 1024, timeoutMs: 15_000 },
+    signature: { maxBytes: 64 * 1024, timeoutMs: 15_000 },
+    worker: { maxBytes: 32 * 1024 * 1024, timeoutMs: 60_000 },
+} as const;
+
+/** 本文を上限まで読む。超えたら読むのをやめて null（content-length が無い・偽りでもストリームで数える）。 */
+async function readBodyWithLimit(res: FetchLikeResponse, maxBytes: number): Promise<ArrayBuffer | null> {
+    const declared = Number(res.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > maxBytes) {
+        await res.body?.cancel();
+        return null;
+    }
+    if (!res.body) {
+        const bytes = await res.arrayBuffer();
+        return bytes.byteLength > maxBytes ? null : bytes;
+    }
+    const reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    const read = async (total: number): Promise<number | null> => {
+        const { done, value } = await reader.read();
+        if (done) return total;
+        const next = total + value.byteLength;
+        if (next > maxBytes) {
+            await reader.cancel();
+            return null;
+        }
+        chunks.push(value);
+        return read(next);
+    };
+    const total = await read(0);
+    if (total === null) return null;
+    const bytes = new Uint8Array(total);
+    chunks.reduce((offset, chunk) => {
+        bytes.set(chunk, offset);
+        return offset + chunk.byteLength;
+    }, 0);
+    return bytes.buffer;
+}
+
 // ── module スコープのキャッシュ（baseUrl+mod で分離）─────────────
 // インスタンス跨ぎで意図的に共有する（同じ mod を複数ワールドで使い回すため）。TTL は持たない:
 //  - manifest は `baseUrl::mod@version` キー。version が変われば別キー＝新規取得になる。
@@ -103,10 +147,14 @@ function fetchManifest(
     if (cached) return cached;
     // no-store: workerUrl のハッシュがビルド毎に変わるため古い参照を掴まない。
     // 生バイト列を hash する必要があるため arrayBuffer で取得してから decode/parse する。
-    const p = f(`${baseUrl}/${modName}/v${version}/manifest.json`, { cache: 'no-store' })
+    const p = f(`${baseUrl}/${modName}/v${version}/manifest.json`, {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(MOD_FETCH_LIMITS.manifest.timeoutMs),
+    })
         .then(async (r): Promise<FetchedManifest | null> => {
             if (!r.ok) return null;
-            const bytes = await r.arrayBuffer();
+            const bytes = await readBodyWithLimit(r, MOD_FETCH_LIMITS.manifest.maxBytes);
+            if (!bytes) return null;
             const integrity = await sriOf(bytes);
             const manifest = JSON.parse(new TextDecoder().decode(bytes)) as VersionedModJson;
             return { manifest, integrity };
@@ -128,7 +176,7 @@ interface FetchedWorker {
 /** worker の生バイト列を取得し integrity を計算する。非 JS content-type は拒否。 */
 async function fetchWorkerBytes(workerUrl: string, entityType: string, f: FetchLike): Promise<FetchedWorker | null> {
     try {
-        const res = await f(workerUrl);
+        const res = await f(workerUrl, { signal: AbortSignal.timeout(MOD_FETCH_LIMITS.worker.timeoutMs) });
         if (!res.ok) return null;
         // 許可するのは javascript / text-plain / 空 のみ。それ以外（SPA fallback の text/html や
         // 誤って返る application/json 等）は拒否する。HTML/JSON が worker コードに混ざると
@@ -145,7 +193,11 @@ async function fetchWorkerBytes(workerUrl: string, entityType: string, f: FetchL
             );
             return null;
         }
-        const bytes = await res.arrayBuffer();
+        const bytes = await readBodyWithLimit(res, MOD_FETCH_LIMITS.worker.maxBytes);
+        if (!bytes) {
+            console.warn(`[loader] worker が上限 (${MOD_FETCH_LIMITS.worker.maxBytes} bytes) を超えた: ${entityType}`);
+            return null;
+        }
         return { bytes, integrity: await sriOf(bytes) };
     } catch {
         return null;
@@ -158,17 +210,23 @@ async function fetchWorkerBytes(workerUrl: string, entityType: string, f: FetchL
  * 署名なしの mod を動かしてよいかは allowUnsigned が決める）。
  */
 async function fetchSignature(versionedBase: string, f: FetchLike): Promise<unknown> {
-    const res = await f(`${versionedBase}/${MOD_SIGNATURE_FILE}`, { cache: 'no-store' });
+    const res = await f(`${versionedBase}/${MOD_SIGNATURE_FILE}`, {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(MOD_FETCH_LIMITS.signature.timeoutMs),
+    });
     if (res.status === 204) return undefined;
     if (!res.ok) {
         if (res.status === 404 || res.status === undefined) return undefined;
         throw new Error(`署名ファイルを取得できません (${res.status})`);
     }
     if (res.headers.get('content-type')?.includes('text/html')) return undefined;
+    // ファイルはあるが大きすぎる・壊れている。開発環境でも署名なしにはしない。
+    const bytes = await readBodyWithLimit(res, MOD_FETCH_LIMITS.signature.maxBytes);
+    if (!bytes) return {};
     try {
-        return JSON.parse(await res.text()) as unknown;
+        return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
     } catch {
-        return {}; // ファイルはあるが壊れている。開発環境でも署名なしにはしない。
+        return {};
     }
 }
 

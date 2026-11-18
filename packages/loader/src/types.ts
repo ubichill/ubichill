@@ -56,13 +56,18 @@ export type AcquireResult =
     | { rejected: LockRejectReason | ModSignatureRejectReason };
 
 /** DOM/Node 共通の最小 fetch シグネチャ（注入用）。 */
-export type FetchLike = (input: string, init?: { cache?: 'no-store' }) => Promise<FetchLikeResponse>;
+export type FetchLike = (
+    input: string,
+    init?: { cache?: 'no-store'; signal?: AbortSignal },
+) => Promise<FetchLikeResponse>;
 
 export interface FetchLikeResponse {
     ok: boolean;
     /** HTTP status。古い注入 fetch では省略可。 */
     status?: number;
     headers: { get(name: string): string | null };
+    /** 本文のストリーム。あれば上限を超えた時点で読むのをやめる（無い注入 fetch は arrayBuffer で読んでから確かめる）。 */
+    body?: ReadableStream<Uint8Array> | null;
     json(): Promise<unknown>;
     text(): Promise<string>;
     arrayBuffer(): Promise<ArrayBuffer>;
