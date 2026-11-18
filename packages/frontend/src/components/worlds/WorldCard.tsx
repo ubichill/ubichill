@@ -21,7 +21,7 @@ export function WorldCard({ world, onSelect }: WorldCardProps) {
             <button type="button" onClick={() => onSelect(world)} className={card}>
                 <span className={thumb}>
                     {world.thumbnail ? (
-                        <img src={world.thumbnail} alt="" className={thumbImage} />
+                        <img src={world.thumbnail} alt="" loading="lazy" decoding="async" className={thumbImage} />
                     ) : (
                         <HudIcon name="globe" size={30} />
                     )}
