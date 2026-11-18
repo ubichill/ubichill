@@ -7,6 +7,7 @@ import {
     type RefFieldsOf,
     remapEntityRefs,
     renameEntity,
+    toRenamedEntityId,
 } from './entityTree';
 
 const entity = (
@@ -139,6 +140,53 @@ describe('renameEntity', () => {
     it('同じ id への改名・存在しない path は何も変えない', () => {
         expect(renameEntity(world, [0, 0], 'tv', fieldsOf)).toBe(world);
         expect(renameEntity(world, [9], 'x', fieldsOf)).toBe(world);
+    });
+});
+
+describe('toRenamedEntityId: 改名の入力を保存できる id にそろえる', () => {
+    const KEBAB = /^[a-z0-9-]{1,50}$/;
+
+    it('大文字・空白・記号は kebab-case にそろえる', () => {
+        expect(toRenamedEntityId('Player', [])).toBe('player');
+        expect(toRenamedEntityId('  My Big_Tv!! ', [])).toBe('my-big-tv');
+    });
+
+    it('使える文字が無い入力（日本語だけ・記号だけ・空）は改名しない', () => {
+        expect(toRenamedEntityId('プレイヤー', [])).toBeNull();
+        expect(toRenamedEntityId('---', [])).toBeNull();
+        expect(toRenamedEntityId('', [])).toBeNull();
+    });
+
+    it('日本語の混じった入力は使える部分だけ残す', () => {
+        expect(toRenamedEntityId('tv テレビ 2', [])).toBe('tv-2');
+    });
+
+    it('重なれば末尾の数字を進める', () => {
+        expect(toRenamedEntityId('hoge', ['hoge'])).toBe('hoge2');
+        expect(toRenamedEntityId('hoge', ['hoge', 'hoge2'])).toBe('hoge3');
+        expect(toRenamedEntityId('hoge2', ['hoge2'])).toBe('hoge3');
+        expect(toRenamedEntityId('Hoge', ['hoge'])).toBe('hoge2');
+    });
+
+    it('長い入力も、重なって数字を足しても 50 文字を超えない', () => {
+        const long = 'a'.repeat(80);
+        const first = toRenamedEntityId(long, []);
+        expect(first).toBe('a'.repeat(50));
+        const next = toRenamedEntityId(long, [first ?? '']);
+        expect(next).toMatch(KEBAB);
+        expect(next).not.toBe(first);
+    });
+
+    it('末尾の長い数字列を進めても指数表記にならない', () => {
+        const digits = `a${'9'.repeat(49)}`;
+        const next = toRenamedEntityId(digits, [digits]);
+        expect(next).toMatch(KEBAB);
+        expect(next).not.toBe(digits);
+    });
+
+    it('同じ名前が大量にあっても一意な id を返す', () => {
+        const taken = ['tv', ...Array.from({ length: 5000 }, (_, i) => `tv${i + 2}`)];
+        expect(toRenamedEntityId('tv', taken)).toBe('tv5002');
     });
 });
 

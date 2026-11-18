@@ -16,7 +16,6 @@ import {
     collectEntityIds,
     deleteEntityAt,
     type EntityPath,
-    ensureUniqueName,
     getEntityAt,
     insertEntity,
     insertEntityAfter,
@@ -24,6 +23,7 @@ import {
     nextRootZ,
     pathKey,
     renameEntity,
+    toRenamedEntityId,
     updateEntityAt,
 } from '../lib/entityTree';
 import { fieldsOfKinds } from '../lib/referenceProblems';
@@ -165,8 +165,8 @@ export function useEntityOps({
             const taken = new Set(collectEntityIds(definition.spec.initialEntities));
             const self = getEntityAt(definition.spec.initialEntities, path);
             if (self) taken.delete(self.id);
-            const uniqueId = ensureUniqueName(newId, taken);
-            updateEntities((prev) => renameEntity(prev, path, uniqueId, fieldsOf));
+            const uniqueId = toRenamedEntityId(newId, taken);
+            if (uniqueId) updateEntities((prev) => renameEntity(prev, path, uniqueId, fieldsOf));
         },
         [updateEntities, definition.spec.initialEntities, fieldsOf],
     );
