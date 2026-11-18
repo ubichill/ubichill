@@ -34,22 +34,33 @@ export function isUnauthorized(error: SessionState['error']): boolean {
     return status === 401;
 }
 
+/**
+ * 直近で確立できたセッション。サーバーが未認証と明示したら（ログアウト後など）忘れる。
+ * 忘れないと、その後の一過性の失敗で前の人のセッションを配ってしまう。
+ */
+export function nextLastGoodSession(raw: SessionState, prev: SessionState['data']): SessionState['data'] {
+    if (raw.data) return raw.data;
+    if (!raw.isPending && (!raw.error || isUnauthorized(raw.error))) return null;
+    return prev;
+}
+
+/** 一過性失敗（401 以外の error）の間は直近セッションを維持してログアウトを防ぐ。 */
+export function resilientSession(raw: SessionState, lastGood: SessionState['data']): SessionState {
+    if (raw.data) return raw;
+    if (raw.error && !isUnauthorized(raw.error) && lastGood) {
+        return { ...raw, data: lastGood, error: null };
+    }
+    return raw;
+}
+
 export function SessionProvider({ children }: { children: ReactNode }) {
     // アプリ内で唯一の useSession 購読。これにより get-session は 1 回に集約される。
     const raw = useBetterAuthSession();
 
-    // 直近で確立できた session データを保持する。
     const lastGoodRef = useRef<SessionState['data']>(null);
-    if (raw.data) lastGoodRef.current = raw.data;
+    lastGoodRef.current = nextLastGoodSession(raw, lastGoodRef.current);
 
-    // 一過性失敗（401 以外の error）の間は直近セッションを維持してログアウトを防ぐ。
-    const resilient = useMemo<SessionState>(() => {
-        if (raw.data) return raw;
-        if (raw.error && !isUnauthorized(raw.error) && lastGoodRef.current) {
-            return { ...raw, data: lastGoodRef.current, error: null };
-        }
-        return raw;
-    }, [raw]);
+    const resilient = useMemo<SessionState>(() => resilientSession(raw, lastGoodRef.current), [raw]);
 
     // 一過性失敗中はバックオフで再取得を試みる（復帰したら本物の session に戻る）。
     const attemptRef = useRef(0);
