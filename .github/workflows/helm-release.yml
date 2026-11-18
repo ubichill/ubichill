@@ -9,6 +9,11 @@ on:
 
 permissions: write-all
 
+# gh-pages には mods-pages も push する。同じ group で 1 つずつ動かし、途中で取り消さない
+concurrency:
+  group: gh-pages
+  cancel-in-progress: false
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
