@@ -88,8 +88,14 @@ export function selectEmitTargets<T extends EmitCandidate>(
             return others.filter((w) => !!senderParentId && w.entityId === senderParentId);
         case 'children':
             return others.filter((w) => !!senderEntityId && w.parentEntityId === senderEntityId);
-        case 'subtree':
-            return senderEntityId ? others.filter((w) => isInSubtree(w, senderEntityId, all)) : [];
+        case 'subtree': {
+            if (!senderEntityId) return [];
+            const subtree = subtreeEntityIds(senderEntityId, all);
+            return others.filter(
+                (w) =>
+                    (!!w.entityId && subtree.has(w.entityId)) || (!!w.parentEntityId && subtree.has(w.parentEntityId)),
+            );
+        }
         case 'referrers':
             return senderEntityId
                 ? others.filter((w) =>
@@ -140,19 +146,23 @@ export function deliverToEntity(entityId: string, eventType: string, data: unkno
     }
 }
 
-/** w が rootEntityId をルートとする subtree (root + 子孫) に含まれるか。 */
-function isInSubtree(w: EmitCandidate, rootEntityId: string, all: readonly EmitCandidate[]): boolean {
-    if (w.entityId === rootEntityId) return true;
-    const parentOf = new Map<string, string | undefined>();
+/** rootEntityId と、その子孫の Entity の id（emit 1 回につき 1 度だけ、Worker の数に比例する手間で作る）。 */
+function subtreeEntityIds(rootEntityId: string, all: readonly EmitCandidate[]): ReadonlySet<string> {
+    const childrenOf = new Map<string, string[]>();
     for (const info of all) {
-        if (info.entityId) parentOf.set(info.entityId, info.parentEntityId);
+        if (!info.entityId || !info.parentEntityId) continue;
+        const siblings = childrenOf.get(info.parentEntityId);
+        if (siblings) siblings.push(info.entityId);
+        else childrenOf.set(info.parentEntityId, [info.entityId]);
     }
-    let cur: string | undefined = w.parentEntityId;
-    const seen = new Set<string>();
-    while (cur && !seen.has(cur)) {
-        if (cur === rootEntityId) return true;
-        seen.add(cur);
-        cur = parentOf.get(cur);
+    const subtree = new Set<string>([rootEntityId]);
+    const pending = [rootEntityId];
+    while (pending.length > 0) {
+        for (const child of childrenOf.get(pending.pop() ?? '') ?? []) {
+            if (subtree.has(child)) continue;
+            subtree.add(child);
+            pending.push(child);
+        }
     }
-    return false;
+    return subtree;
 }
