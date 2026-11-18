@@ -60,17 +60,6 @@ const draw = Ubi.state.define({
 });
 
 // ────────────────────────────────────────────────────────────────
-// リモートで保持されているペン (userId → 表示用情報)
-// presence の worldX/Y と合成してペンカーソルを描画する。
-// ────────────────────────────────────────────────────────────────
-interface RemotePenInfo {
-    penId: string;
-    color: string;
-    strokeWidth: number;
-}
-const remoteHeld = new Map<string, RemotePenInfo>();
-
-// ────────────────────────────────────────────────────────────────
 // 確定したストローク
 // ────────────────────────────────────────────────────────────────
 
@@ -123,20 +112,6 @@ PenEvents.on('entity:pen:pen', (pen) => {
             draw.local.heldPenEntityId = null;
             draw.local.isDrawing = false;
             draw.local.currentStroke = [];
-        });
-    }
-
-    // ── リモート保持の追跡 ─────────────────────────────────
-    // この pen が以前どのリモートユーザーに紐付いていたら一旦消す
-    remoteHeld.forEach((info, userId) => {
-        if (info.penId === pen.id) remoteHeld.delete(userId);
-    });
-    // 現在リモートユーザーが持っているなら登録
-    if (pen.lockedBy && pen.lockedBy !== Ubi.myUserId) {
-        remoteHeld.set(pen.lockedBy, {
-            penId: pen.id,
-            color: pen.data.color ?? '#000000',
-            strokeWidth: pen.data.strokeWidth ?? 4,
         });
     }
 });
