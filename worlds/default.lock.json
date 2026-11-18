@@ -3,12 +3,12 @@
   "mods": {
     "pen": {
       "id": "pen",
-      "version": "2.3.2",
-      "manifestIntegrity": "sha256-p9th4PhTDIW+gbOn4mtZbW8qzchix7H3VwHHDLfkIDo=",
+      "version": "2.3.1",
+      "manifestIntegrity": "sha256-KJnK8VgQwJLhGJuncd+KXcF7HQe6OP5jhNBF5KiZSh8=",
       "components": {
         "pen:canvas": {
-          "workerUrl": "./canvas/index.7201b6eb.js",
-          "integrity": "sha256-cgG261Aq+Lm6zBbup98zb9hBLB6GqCTaaUpM+WFdWM8=",
+          "workerUrl": "./canvas/index.de409401.js",
+          "integrity": "sha256-3kCUAWMiGPRcnLCYxLis+/lhKmLkLec5gJCzE4q08po=",
           "capabilities": [
             "canvas:draw",
             "event:emit",
