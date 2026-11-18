@@ -17,6 +17,9 @@ import type {
 import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { HOST_MOD_SOURCE, MOD_CDN_URL } from '@/lib/mods/modCdn';
+import { useSession } from '@/lib/session';
+import { useBlocks } from '@/lib/social/blocks';
+import { blockedAuthorsOf } from '@/lib/social/blocksState';
 import { css } from '@/styled-system/css';
 import { buildWorldLock, EntityRenderer, ModRegistryProvider, useModRegistry } from '@/world';
 
@@ -176,6 +179,13 @@ export function EditorPreview({
             cancelled = true;
         };
     }, [dependencies]);
+    // ModRegistryProvider は一度読み込んだ mod を lock が変わっても読み直さないので、lock の内容が変われば作り直す
+    const lockKey = useMemo(() => (previewLock ? JSON.stringify(previewLock) : ''), [previewLock]);
+
+    // ワールドの表示と同じく、ブロックした人の一覧を読むまで mod を読み込まない（読めなければ止めずに読み込む）
+    const { data: session } = useSession();
+    const blockState = useBlocks(session?.user.id);
+    const blocksPending = !!session && blockState.blocks === null && blockState.error === null;
 
     const worldValue: WorldContextType = useMemo(
         () => ({
@@ -241,8 +251,13 @@ export function EditorPreview({
             <SocketContext.Provider value={socketValue}>
                 <WorldContext.Provider value={worldValue}>
                     {/* lock に固定されていない mod は実行しないので、試し用の lock ができてから mod を読み込む */}
-                    {previewLock && (
-                        <ModRegistryProvider lock={previewLock} source={HOST_MOD_SOURCE}>
+                    {previewLock && !blocksPending && (
+                        <ModRegistryProvider
+                            key={lockKey}
+                            lock={previewLock}
+                            source={HOST_MOD_SOURCE}
+                            blockedAuthors={blockedAuthorsOf(blockState)}
+                        >
                             {/* ワールド座標系のスクロール領域。overlay: true の Entity はここに置かない
                             （実行時の InstanceRenderer と同様、スクロールの影響を受けない別レイヤーにする）。 */}
                             <div
