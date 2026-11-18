@@ -60,20 +60,29 @@ export function runApiSmoke({
                 throw new Error(`参加情報に token・url がありません: ${preview(joined)}`);
             }
             const socket = await connectInstance(socketUrl(target.apiOrigin, joined.url));
-            const reply = expectSuccess(
-                await socket.request('world:join', {
-                    instanceId,
-                    token: joined.token,
-                    user: { name: session.account.displayName, status: 'online', position: { x: 0, y: 0 } },
-                }),
-                'world:join',
-            );
-            const snapshot = await socket.waitFor('world:snapshot');
-            if (!isRecord(snapshot) || !Array.isArray(snapshot.entities)) {
-                throw new Error(`world:snapshot に entities がありません: ${preview(snapshot)}`);
+            // context に入れる前に失敗すると後片付けの step から閉じられず、開いた接続でプロセスが終わらない
+            try {
+                const reply = expectSuccess(
+                    await socket.request('world:join', {
+                        instanceId,
+                        token: joined.token,
+                        user: { name: session.account.displayName, status: 'online', position: { x: 0, y: 0 } },
+                    }),
+                    'world:join',
+                );
+                const snapshot = await socket.waitFor('world:snapshot');
+                if (!isRecord(snapshot) || !Array.isArray(snapshot.entities)) {
+                    throw new Error(`world:snapshot に entities がありません: ${preview(snapshot)}`);
+                }
+                const userId = typeof reply.userId === 'string' ? reply.userId : undefined;
+                return {
+                    ...context,
+                    [role]: { ...context[role], socket, userId: need(userId, 'world:join の userId') },
+                };
+            } catch (error) {
+                socket.close();
+                throw error;
             }
-            const userId = typeof reply.userId === 'string' ? reply.userId : undefined;
-            return { ...context, [role]: { ...context[role], socket, userId: need(userId, 'world:join の userId') } };
         };
 
     const cursorReaches = async (from: Participant, to: Participant, position: { x: number; y: number }) => {
