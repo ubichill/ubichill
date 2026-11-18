@@ -12,6 +12,7 @@
  */
 import { type CapabilityRisk, describeCapability, type TierMode, useUbiPermissions } from '@ubichill/react';
 import { displayAuthorAccount, parsePermissionSubject } from '@ubichill/shared';
+import { RiskBadge } from '@/components/permissions/RiskBadge';
 import { css } from '@/styled-system/css';
 import { sectionHeading, tabSection } from '../shared';
 
@@ -60,33 +61,7 @@ function matchShieldLevel(tiers: Record<CapabilityRisk, TierMode>): ShieldLevelI
     );
 }
 
-const RISK_BADGE: Record<CapabilityRisk, { label: string; color: string; bg: string }> = {
-    safe: { label: '安全', color: 'successText', bg: 'successBg' },
-    sensitive: { label: '注意', color: 'text', bg: 'warning' },
-    dangerous: { label: '危険', color: 'errorText', bg: 'errorBg' },
-};
-
 const DECISION_LABEL = { allow: '許可中', deny: '拒否中' } as const;
-
-function RiskBadge({ risk }: { risk: CapabilityRisk }) {
-    const meta = RISK_BADGE[risk];
-    return (
-        <span
-            className={css({
-                px: '2',
-                py: '0.5',
-                borderRadius: '999px',
-                fontSize: '10px',
-                fontWeight: '700',
-                flexShrink: 0,
-                bg: meta.bg,
-                color: meta.color,
-            })}
-        >
-            {meta.label}
-        </span>
-    );
-}
 
 /** 許可の対象（作者＋mod の ID）。作者の無い項目は、署名が必須になる前の記録か、開発用の Host での未署名 mod。 */
 function SubjectLabel({ subject }: { subject: string }) {
