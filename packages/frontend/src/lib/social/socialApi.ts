@@ -8,8 +8,7 @@ import type {
     UserSearchResponse,
     UserSummary,
 } from '@ubichill/shared';
-import { API_BASE } from '../api';
-import { errorMessage } from '../apiError';
+import { requestApi } from '../api';
 import type { FriendAction } from './friendActions';
 
 export interface FriendLocationsResponse {
@@ -27,18 +26,7 @@ export interface UnreachableFriend {
     lastKnown?: { at: string; status: 'offline' | 'online' | 'private' | 'in_room'; place?: string };
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${API_BASE}/api/v1/social${path}`, {
-        credentials: 'include',
-        cache: 'no-store',
-        ...init,
-        headers: { ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...init?.headers },
-    });
-    if (!res.ok) {
-        throw new Error(await errorMessage(res));
-    }
-    return (res.status === 204 ? undefined : await res.json()) as T;
-}
+const request = <T>(path: string, init?: RequestInit) => requestApi<T>(`/social${path}`, init);
 
 export const searchUsers = (q: string, signal?: AbortSignal) =>
     request<UserSearchResponse>(`/users?q=${encodeURIComponent(q)}`, { signal });
