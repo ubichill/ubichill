@@ -10,6 +10,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { css } from '@/styled-system/css';
 import type { DataFields } from '../../hooks/useAvailableEntityKinds';
+import { parseComponentDataJson } from '../../lib/componentData';
 import { uiMarkupNotices } from '../../lib/uiMarkupNotices';
 import { CloseIcon } from '../hierarchy/hierarchyIcons';
 import { ColliderDataFields } from './ColliderDataFields';
@@ -339,18 +340,18 @@ function ComponentDataEditor({
                     error={jsonError}
                     onChange={(text) => {
                         setJsonText(text);
-                        try {
-                            const parsed = JSON.parse(text || '{}') as Record<string, unknown>;
-                            onChange((prev) => ({
-                                ...prev,
-                                components: prev.components.map((c, i) =>
-                                    i === componentIndex ? { ...c, data: parsed } : c,
-                                ),
-                            }));
-                            setJsonError('');
-                        } catch (err) {
-                            setJsonError(err instanceof Error ? err.message : 'JSON parse error');
+                        const parsed = parseComponentDataJson(text);
+                        if (!parsed.ok) {
+                            setJsonError(parsed.error);
+                            return;
                         }
+                        onChange((prev) => ({
+                            ...prev,
+                            components: prev.components.map((c, i) =>
+                                i === componentIndex ? { ...c, data: parsed.data } : c,
+                            ),
+                        }));
+                        setJsonError('');
                     }}
                 />
             )}
