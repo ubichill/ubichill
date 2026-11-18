@@ -140,6 +140,14 @@ function _makeListener(idx: number, eventType: string, sendAction: SendAction): 
 // プロパティのパッチ適用
 // ============================================================
 
+type FormField = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+
+const isFormField = (el: Element): el is FormField =>
+    el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement;
+
+/** Shadow DOM の中では document.activeElement は host を指すので、要素の根から見る。 */
+const isFocused = (el: Element): boolean => (el.getRootNode() as Document | ShadowRoot).activeElement === el;
+
 function _patchProps(el: Element, newProps: Record<string, unknown>, sendAction: SendAction, inSvg: boolean): void {
     const prevAttrs = _prevAttrs.get(el) ?? new Map<string, string>();
     const nextAttrs = new Map<string, string>();
@@ -203,10 +211,11 @@ function _patchProps(el: Element, newProps: Record<string, unknown>, sendAction:
         }
         const safe = sanitizeHtmlAttr(el.tagName.toLowerCase(), key, text);
         if (safe === null) continue;
-        if (key === 'value' && el instanceof HTMLInputElement) {
-            // フォーカス中の <input> は value 属性を上書きしない（入力中の文字を保護）
-            if (document.activeElement !== el && prevAttrs.get('value') !== safe) {
-                el.setAttribute('value', safe);
+        if (key === 'value' && isFormField(el)) {
+            // フォーカス中の入力欄は上書きしない（入力中の文字・IME の変換を保護）。
+            // textarea・select は value 属性では値が変わらないので、プロパティで入れる
+            if (!isFocused(el) && prevAttrs.get('value') !== safe) {
+                if (el instanceof HTMLInputElement) el.setAttribute('value', safe);
                 el.value = safe;
             }
             nextAttrs.set('value', safe);
@@ -339,8 +348,8 @@ function _patchNode(
     if (oldNode?.nodeType === Node.ELEMENT_NODE) {
         const oldEl = oldNode as Element;
         if (oldEl.tagName.toLowerCase() === vnode.type) {
-            _patchProps(oldEl, propsOf(vnode), sendAction, inSvg);
             _patchChildren(oldEl, childrenOf(vnode), sendAction, inSvg, depth);
+            _patchProps(oldEl, propsOf(vnode), sendAction, inSvg);
             return oldEl;
         }
     }
@@ -349,8 +358,9 @@ function _patchNode(
     const newEl: Element = inSvg ? document.createElementNS(SVG_NS, vnode.type) : document.createElement(vnode.type);
     // 送信先を持たないフォームでも、送信すると Host のページが入力値付きの URL へ遷移する
     if (newEl instanceof HTMLFormElement) newEl.addEventListener('submit', preventSubmit);
-    _patchProps(newEl, propsOf(vnode), sendAction, inSvg);
+    // 子を先に揃える（<select> の value は選択肢が無いと選べない）
     _patchChildren(newEl, childrenOf(vnode), sendAction, inSvg, depth);
+    _patchProps(newEl, propsOf(vnode), sendAction, inSvg);
     if (oldNode) parent.replaceChild(newEl, oldNode);
     else parent.appendChild(newEl);
     return newEl;
