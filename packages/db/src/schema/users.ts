@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm';
-import { boolean, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { boolean, index, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, varchar } from 'drizzle-orm/pg-core';
 import { instanceAccessTypeEnum } from './instanceAccessType';
 import { worlds } from './worlds';
 
@@ -38,37 +38,45 @@ export const users = pgTable('users', {
 });
 
 // Better Auth session table
-export const sessions = pgTable('sessions', {
-    id: text('id').primaryKey(),
-    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-    token: text('token').notNull().unique(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-    ipAddress: text('ip_address'),
-    userAgent: text('user_agent'),
-    userId: text('user_id')
-        .notNull()
-        .references(() => users.id, { onDelete: 'cascade' }),
-});
+export const sessions = pgTable(
+    'sessions',
+    {
+        id: text('id').primaryKey(),
+        expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+        token: text('token').notNull().unique(),
+        createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+        updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+        ipAddress: text('ip_address'),
+        userAgent: text('user_agent'),
+        userId: text('user_id')
+            .notNull()
+            .references(() => users.id, { onDelete: 'cascade' }),
+    },
+    (table) => [index('sessions_user_id_idx').on(table.userId)],
+);
 
 // Better Auth account table (for password/oauth)
-export const accounts = pgTable('accounts', {
-    id: text('id').primaryKey(),
-    accountId: text('account_id').notNull(),
-    providerId: text('provider_id').notNull(),
-    userId: text('user_id')
-        .notNull()
-        .references(() => users.id, { onDelete: 'cascade' }),
-    accessToken: text('access_token'),
-    refreshToken: text('refresh_token'),
-    idToken: text('id_token'),
-    accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }),
-    refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
-    scope: text('scope'),
-    password: text('password'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+export const accounts = pgTable(
+    'accounts',
+    {
+        id: text('id').primaryKey(),
+        accountId: text('account_id').notNull(),
+        providerId: text('provider_id').notNull(),
+        userId: text('user_id')
+            .notNull()
+            .references(() => users.id, { onDelete: 'cascade' }),
+        accessToken: text('access_token'),
+        refreshToken: text('refresh_token'),
+        idToken: text('id_token'),
+        accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }),
+        refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
+        scope: text('scope'),
+        password: text('password'),
+        createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+        updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    },
+    (table) => [index('accounts_user_id_idx').on(table.userId)],
+);
 
 // Better Auth verification table (for email verification)
 export const verifications = pgTable('verifications', {
@@ -132,7 +140,11 @@ export const userFriends = pgTable(
         status: friendStatusEnum('status').default('pending').notNull(),
         createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     },
-    (table) => [primaryKey({ columns: [table.userId, table.friendId] })],
+    // 主キーは (user_id, friend_id)。相手側（friend_id）で引くときの索引
+    (table) => [
+        primaryKey({ columns: [table.userId, table.friendId] }),
+        index('user_friends_friend_id_idx').on(table.friendId),
+    ],
 );
 
 export const userFavorites = pgTable(
