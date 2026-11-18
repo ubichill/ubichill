@@ -90,6 +90,32 @@ jobs:
     permissions:
       contents: read
 
+    # 統合テスト（*.integration.test.ts）の DB・Redis。DATABASE_URL・REDIS_URL が無いと黙って skip するので、ここで渡す。
+    # Postgres は packages/db/docker-compose.yml、Redis は chart の同梱（charts/ubichill の redis.image）と同じイメージ
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: ubichill
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: ubichill
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ubichill -d ubichill"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+      redis:
+        image: valkey/valkey:8.1.11-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+
     steps:
       - uses: actions/checkout@v5
 
@@ -101,8 +127,30 @@ jobs:
       - name: Build shared
         run: pnpm turbo build --filter=@ubichill/shared
 
+      # 統合テストは次のステップで分けて走らせる。リース・reaper のテストは 200〜300ms の期限を実際に待つので、
+      # 単体テストと同時に走らせると CPU の取り合いで落ちることがある
       - name: Test
-        run: pnpm exec vitest run
+        run: pnpm exec vitest run --exclude '**/*.integration.test.ts'
+
+      # 本番の initContainer と同じ dist/migrate.js で当てる。使い捨ての DB なので書き込みの永続化（fsync）を省く
+      # （マイグレーションのテストは DB を作っては全部当て直すので、これで数倍速くなる）
+      - name: Migrate test database
+        env:
+          DATABASE_URL: postgresql://ubichill:password@localhost:5432/ubichill
+        run: |
+          docker exec "${{ job.services.postgres.id }}" psql -U ubichill -d ubichill \
+            -c "ALTER SYSTEM SET fsync = off" \
+            -c "ALTER SYSTEM SET synchronous_commit = off" \
+            -c "ALTER SYSTEM SET full_page_writes = off" \
+            -c "SELECT pg_reload_conf()"
+          pnpm turbo build --filter=@ubichill/db
+          pnpm --filter @ubichill/db migrate
+
+      - name: Integration tests
+        env:
+          DATABASE_URL: postgresql://ubichill:password@localhost:5432/ubichill
+          REDIS_URL: redis://localhost:6379
+        run: pnpm exec vitest run .integration.test
 
   typecheck:
     name: Typecheck
