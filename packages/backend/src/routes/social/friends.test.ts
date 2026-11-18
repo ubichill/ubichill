@@ -24,7 +24,7 @@ const limiter: RequestHandler = (_req, res, next) => {
     next();
 };
 
-const state = { base: '', close: () => undefined as void };
+const state: { base: string; close: () => void } = { base: '', close: () => undefined };
 
 beforeAll(async () => {
     const app = express();

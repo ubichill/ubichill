@@ -185,6 +185,20 @@ export function createInstanceRuntime(options: InstanceRuntimeOptions) {
             const data = (await response.json()) as { instances: RuntimePresence[] };
             return new Map(data.instances.map((instance) => [instance.id, instance]));
         },
+        /** 1 部屋の在席（入室・詳細の判定）。全部屋は読まない。無ければ空（{@link presence} と同じ形で判定に渡せる）。 */
+        async roomPresence(id: string): Promise<Map<string, RoomPresence>> {
+            const found = await (async (): Promise<RoomPresence | null> => {
+                if (options.directory === 'redis' && options.redis) {
+                    const value = await options.redis.sendCommand(['GET', `${DIRECTORY_PREFIX}presence:${id}`]);
+                    return parsePresence(id, typeof value === 'string' ? value : null);
+                }
+                const response = await call(options.url, `/instances/${encodeURIComponent(id)}`);
+                if (response.status === 404) return null;
+                if (!response.ok) throw new Error(`Instance runtime: ${response.status}`);
+                return (await response.json()) as RuntimePresence;
+            })();
+            return new Map(found ? [[id, found]] : []);
+        },
         /** 部屋を割り当てて作り、続く管理 API の宛先（owner）を返す。別の Pod が持っていればその Pod を返す。 */
         async provision(id: string, maxUsers: number, world: ResolvedWorld): Promise<RuntimeOwner> {
             const body = JSON.stringify(toInstanceDefinition(world, { id, maxUsers }));
