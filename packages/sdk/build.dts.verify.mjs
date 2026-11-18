@@ -22,11 +22,21 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { projectFiles } from '../cli/src/packages.ts';
 import { buildDts, buildJs, buildPackageJson, ENTRIES } from './build.mjs';
 
 const INDEX_ENTRY = ENTRIES.find((e) => e.name === 'index');
+
+/** `dir` の tsconfig で tsc を走らせる。エラーがあれば throw（stdio 'pipe' でエラー本文を拾う）。 */
+function typecheck(dir) {
+    // .bin/tsc は Windows では .CMD シムになり直接 spawn できないため、
+    // typescript パッケージの bin エントリを node で起動する。
+    const tsDir = join(process.cwd(), 'node_modules', 'typescript');
+    const tscEntry = join(tsDir, JSON.parse(readFileSync(join(tsDir, 'package.json'), 'utf-8')).bin.tsc);
+    execFileSync(process.execPath, [tscEntry, '--noEmit', '-p', '.'], { cwd: dir, stdio: 'pipe' });
+}
 
 let indexJs;
 let indexDts;
@@ -101,18 +111,47 @@ describe('統合検証: @ubichill/ecs・@ubichill/shared が存在しない環�
                     'utf-8',
                 );
 
-                // .bin/tsc は Windows では .CMD シムになり直接 spawn できないため、
-                // typescript パッケージの bin エントリを node で起動する。
-                const tsDir = join(process.cwd(), 'node_modules', 'typescript');
-                const tscEntry = join(tsDir, JSON.parse(readFileSync(join(tsDir, 'package.json'), 'utf-8')).bin.tsc);
-                // 失敗時は execFileSync が非ゼロ終了で throw する。stdio 'pipe' でエラー本文を拾う。
-                expect(() =>
-                    execFileSync(process.execPath, [tscEntry, '--noEmit', '-p', '.'], { cwd: tmp, stdio: 'pipe' }),
-                ).not.toThrow();
+                expect(() => typecheck(tmp)).not.toThrow();
             } finally {
                 rmSync(tmp, { recursive: true, force: true });
             }
         },
         60000,
     );
+});
+
+describe('ubichill init mod の雛形が、公開する型で型チェックを通る', () => {
+    /** 雛形を置き、npm に出す形の `ubichill` を入れる。JSX の型はここでは作らないので .tsx は置かない。 */
+    function scaffold(useUbi) {
+        const tmp = mkdtempSync(join(tmpdir(), 'ubichill-init-mod-'));
+        const pkgDir = join(tmp, 'node_modules', 'ubichill');
+        mkdirSync(pkgDir, { recursive: true });
+        writeFileSync(join(pkgDir, 'index.js'), indexJs, 'utf-8');
+        writeFileSync(join(pkgDir, 'index.d.ts'), indexDts, 'utf-8');
+        writeFileSync(join(pkgDir, 'package.json'), buildPackageJson(), 'utf-8');
+        const files = Object.entries(projectFiles('mod', 'hello')).filter(([path]) => !path.endsWith('.tsx'));
+        for (const [path, text] of [...files, ['src/use.ts', useUbi]]) {
+            mkdirSync(dirname(join(tmp, path)), { recursive: true });
+            writeFileSync(join(tmp, path), text, 'utf-8');
+        }
+        return tmp;
+    }
+
+    it('Worker のグローバルの Ubi を宣言なしで使える', () => {
+        const tmp = scaffold('export const counter = Ubi.state.define({ n: 0 });\n');
+        try {
+            expect(() => typecheck(tmp)).not.toThrow();
+        } finally {
+            rmSync(tmp, { recursive: true, force: true });
+        }
+    }, 60000);
+
+    it('Ubi の使い方を間違えれば落ちる（宣言が any で素通りしていない）', () => {
+        const tmp = scaffold('export const counter: string = Ubi.state.define({ n: 0 });\n');
+        try {
+            expect(() => typecheck(tmp)).toThrow();
+        } finally {
+            rmSync(tmp, { recursive: true, force: true });
+        }
+    }, 60000);
 });
