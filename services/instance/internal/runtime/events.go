@@ -202,7 +202,8 @@ func (r *Room) handle(p *peer, f Frame) {
 			p.reject(f.ID, "不正な一時データです")
 			return
 		}
-		r.broadcast(f.Event, Object{"entityId": data["entityId"], "data": data["data"]}, p, true)
+		// 送信者はサーバーが付ける（data の中の userId は送り手が自由に書ける）
+		r.broadcast(f.Event, Object{"entityId": data["entityId"], "data": data["data"], "senderId": p.userID}, p, true)
 	case "entity:delete":
 		var id string
 		if json.Unmarshal(f.Data, &id) != nil {

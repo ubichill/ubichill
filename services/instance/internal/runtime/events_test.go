@@ -237,6 +237,36 @@ func TestEntityDeleteRules(t *testing.T) {
 	}
 }
 
+// entity:ephemeral の送信者はサーバーが付ける（senderId）。中身の userId や、送り手が付けた senderId では偽れない。
+// 別の Pod から中継されてきた接続でも、owner がチケットで確かめた userId を付ける。
+func TestEphemeralCarriesTheSenderSetByTheServer(t *testing.T) {
+	c := newCluster()
+	owner, edge := c.pod(t, "node-a"), c.pod(t, "node-b")
+	provision(t, owner, "room")
+	owner.maintain()
+	edge.maintain()
+	alice, out := joinWith(t, edge.http, "room", memberGrant(t, owner, "room", "alice"))
+	joined(t, out)
+	bob, out := joinWith(t, owner.http, "room", memberGrant(t, owner, "room", "bob"))
+	joined(t, out)
+	id := createEntity(t, alice, Object{})
+	receive(t, bob, "entity:created")
+
+	for name, sent := range map[string]Object{
+		"spoofed userId in data": {"entityId": id, "data": Object{"type": "chat", "userId": "bob", "data": "hi"}},
+		"spoofed senderId":       {"entityId": id, "data": Object{"type": "chat", "userId": "bob"}, "senderId": "bob"},
+		"data without an object": {"entityId": id, "data": "raw"},
+	} {
+		if err := alice.WriteJSON(Frame{Event: "entity:ephemeral", Data: encoded(sent)}); err != nil {
+			t.Fatal(err)
+		}
+		got, _ := object(receive(t, bob, "entity:ephemeral").Data)
+		if got["senderId"] != "alice" || got["entityId"] != id || string(encoded(got["data"])) != string(encoded(sent["data"])) {
+			t.Fatalf("%s: relayed %v", name, got)
+		}
+	}
+}
+
 func TestEphemeralCursorAndStatus(t *testing.T) {
 	s, h := start(t, false)
 	alice := connect(t, s, h, "a", "alice")
