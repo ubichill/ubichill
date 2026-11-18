@@ -201,30 +201,43 @@ export function detectCapabilities(code: string): string[] {
         .sort();
 }
 
+/**
+ * 派生ビューは prototype を持たない辞書にする。`capabilities: ["constructor"]` のような名前で
+ * `Object.prototype` の関数を引いてしまうと、allowlist の構築が例外になり権限名の検査も崩れる。
+ */
+const dictionaryOf = <T>(entries: Iterable<readonly [string, T]>): Readonly<Record<string, T>> =>
+    Object.assign(Object.create(null) as Record<string, T>, Object.fromEntries(entries));
+
 /** capability → 許可コマンド一覧（カタログ由来の派生ビュー）。 */
-export const CAPABILITY_COMMANDS: Readonly<Record<string, readonly string[]>> = Object.fromEntries(
-    Object.entries(CAPABILITY_CATALOG).map(([cap, spec]) => [cap, spec.commands]),
+export const CAPABILITY_COMMANDS: Readonly<Record<string, readonly string[]>> = dictionaryOf(
+    Object.entries(CAPABILITY_CATALOG).map(([cap, spec]) => [cap, spec.commands] as const),
 );
 
 /** capability → 危険度（カタログ由来の派生ビュー）。 */
-export const CAPABILITY_RISK: Readonly<Record<string, CapabilityRisk>> = Object.fromEntries(
-    Object.entries(CAPABILITY_CATALOG).map(([cap, spec]) => [cap, spec.risk]),
+export const CAPABILITY_RISK: Readonly<Record<string, CapabilityRisk>> = dictionaryOf(
+    Object.entries(CAPABILITY_CATALOG).map(([cap, spec]) => [cap, spec.risk] as const),
 );
 
 /**
  * コマンド → それを許可する capability の逆引き（カタログ由来の派生ビュー）。
  * on-demand 認可ゲートが「このコマンドはどの権限に属するか」を引くのに使う。
  */
-export const COMMAND_TO_CAPABILITY: Readonly<Record<string, string>> = Object.fromEntries(
+export const COMMAND_TO_CAPABILITY: Readonly<Record<string, string>> = dictionaryOf(
     Object.entries(CAPABILITY_CATALOG).flatMap(([cap, spec]) => spec.commands.map((cmd) => [cmd, cap] as const)),
 );
+
+/** カタログに自前のキーとして定義された capability だけを返す（`constructor` などの継承された名前は未知）。 */
+const specOf = (capability: string): CapabilitySpec | undefined =>
+    Object.hasOwn(CAPABILITY_CATALOG, capability)
+        ? (CAPABILITY_CATALOG as Record<string, CapabilitySpec>)[capability]
+        : undefined;
 
 /**
  * capability の危険度を返す。未知の capability は最も危険な dangerous として扱い、
  * 「知らない権限は既定で承認を要求する」フェイルセーフを保証する。
  */
 export function getCapabilityRisk(capability: string): CapabilityRisk {
-    return (CAPABILITY_CATALOG as Record<string, CapabilitySpec>)[capability]?.risk ?? 'dangerous';
+    return specOf(capability)?.risk ?? 'dangerous';
 }
 
 /** capability を人間に説明するための情報（見える化）。 */
@@ -242,7 +255,7 @@ export interface CapabilityInfo {
  * 未知の capability も安全側 (dangerous) の説明として必ず値を返す。
  */
 export function describeCapability(capability: string): CapabilityInfo {
-    const spec = (CAPABILITY_CATALOG as Record<string, CapabilitySpec>)[capability];
+    const spec = specOf(capability);
     if (spec) {
         return { capability, risk: spec.risk, label: spec.label, description: spec.description, known: true };
     }
