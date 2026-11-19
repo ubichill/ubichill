@@ -55,14 +55,15 @@ describe('ModLockEntrySchema: URL にする値は取得の前に形を確かめ�
         'https://mods.example.com/?q=1',
         'https://mods.example.com/a#f',
         'https://mods.example.com\\@attacker.example',
+        'http://[::broken]:5173',
+        'http://[::1]:99999',
         'not a url',
     ])('baseUrl "%s" は通さない', (baseUrl) => {
         expect(ModLockEntrySchema.safeParse(entry({ baseUrl })).success).toBe(false);
     });
 
-    it('http の baseUrl は形としては通す（開発用の Host が自分のオリジンだけ使う。取得の可否は loader が決める）', () => {
-        expect(
-            ModLockEntrySchema.safeParse(entry({ baseUrl: 'http://127.0.0.1:5173/__ubichill/g/1/mods' })).success,
-        ).toBe(true);
+    it.each(['127.0.0.1', '[::1]'])('開発用の http の baseUrl (%s) を検証できる', (host) => {
+        const baseUrl = `http://${host}:5173/__ubichill/g/1/mods`;
+        expect(ModLockEntrySchema.safeParse(entry({ baseUrl })).success).toBe(true);
     });
 });
