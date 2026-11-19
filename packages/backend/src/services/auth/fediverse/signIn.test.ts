@@ -91,7 +91,12 @@ function setup(overrides: { routes?: Record<string, Route>; config?: Partial<Fed
     const links: Array<{ userId: string; identity: ExternalIdentity }> = [];
     const clock = { now: new Date('2026-11-19T00:00:00Z') };
     const counter = { n: 0 };
-    const state = { blocked: new Set<string>(), registrationOpen: true, warnings: [] as string[] };
+    const state = {
+        blocked: new Set<string>(),
+        registrationOpen: true,
+        warnings: [] as string[],
+        notified: [] as string[],
+    };
     const key = (i: ExternalIdentity) => `${i.providerId} ${i.accountId}`;
 
     const routes: Record<string, Route> = {
@@ -158,10 +163,13 @@ function setup(overrides: { routes?: Record<string, Route>; config?: Partial<Fed
             },
         },
         accounts: {
-            findUserByIdentity: async (identity) => identities.get(key(identity)),
+            findUserByIdentity: async (identity) => {
+                const userId = identities.get(key(identity));
+                return userId ? { userId, accountRowId: `acc-${userId}` } : undefined;
+            },
             createUser: async (input) => {
                 const owner = identities.get(key(input.identity));
-                if (owner) return { status: 'identity-taken', userId: owner };
+                if (owner) return { status: 'identity-taken', userId: owner, accountRowId: `acc-${owner}` };
                 if ([...users.values()].some((u) => u.handle === input.handle)) return { status: 'handle-taken' };
                 users.set(input.userId, { email: input.email, handle: input.handle, name: input.name });
                 identities.set(key(input.identity), input.userId);
@@ -176,6 +184,9 @@ function setup(overrides: { routes?: Record<string, Route>; config?: Partial<Fed
             },
         },
         registrationOpen: () => state.registrationOpen,
+        notifyLinked: async (userId, account) => {
+            state.notified.push(`${userId} ${account}`);
+        },
         validate: { handle: HandleSchema, displayName: DisplayNameSchema },
         newId: (model) => `${model}-${++counter.n}`,
         random: () => `rnd${++counter.n}`.padEnd(43, 'x'),
@@ -312,7 +323,12 @@ describe('応答', () => {
             browserToken,
             sessionId: null,
         });
-        expect(outcome).toEqual({ kind: 'signed-in', userId: 'user-bob', redirectTo: 'https://ubi.example/@bob/room' });
+        expect(outcome).toEqual({
+            kind: 'signed-in',
+            userId: 'user-bob',
+            accountRowId: 'acc-user-bob',
+            redirectTo: 'https://ubi.example/@bob/room',
+        });
         const token = t.calls.find((c) => c.url.endsWith('/oauth/token'));
         expect(new URLSearchParams(token?.body).get('client_secret')).toBe('secret');
         expect(new URLSearchParams(token?.body).get('code_verifier')).toHaveLength(43);
@@ -530,6 +546,9 @@ describe('初回登録', () => {
             username: 'alice',
             handle: 'alice',
             displayName: 'Alice',
+            // ログインを押して来た（まだ登録していなかった）
+            notRegistered: true,
+            registrationOpen: true,
         });
         const created = await t.signIn.signUp({ ticket, handle: 'alice', displayName: 'Alice' });
         expect(created).toMatchObject({ ok: true, returnTo: '/@bob/room' });
@@ -641,5 +660,204 @@ describe('連携', () => {
         t.identities.set('fediverse:https://mastodon.example 109', 'user-dave');
         expect(await linkFlow(t, 'sess-1')).toMatchObject({ kind: 'error', error: 'linked-to-other' });
         expect(t.identities.get('fediverse:https://mastodon.example 109')).toBe('user-dave');
+    });
+});
+
+describe('開始の後に設定が変わったとき', () => {
+    it('無効にしたら、開始済みの応答でもログインさせない', async () => {
+        const t = setup();
+        t.identities.set('fediverse:https://mastodon.example 109', 'user-bob');
+        const { state, browserToken } = await t.begin('mastodon.example');
+        t.deps.config.enabled = false;
+        expect(
+            await t.signIn.callback({
+                server: 'mastodon.example',
+                query: { code: 'c', state },
+                browserToken,
+                sessionId: null,
+            }),
+        ).toMatchObject({ kind: 'error', error: 'disabled' });
+        expect(t.calls.some((c) => c.url.endsWith('/oauth/token'))).toBe(false);
+    });
+
+    const arriveSignUp = async (t: ReturnType<typeof setup>) => {
+        const { state, browserToken } = await t.begin('mastodon.example');
+        const outcome = await t.signIn.callback({
+            server: 'mastodon.example',
+            query: { code: 'c', state },
+            browserToken,
+            sessionId: null,
+        });
+        if (outcome.kind !== 'sign-up') throw new Error(outcome.kind);
+        return outcome.ticket;
+    };
+
+    it('無効にしたら、登録の途中からも確定できず、候補も出さない', async () => {
+        const t = setup();
+        const ticket = await arriveSignUp(t);
+        t.deps.config.enabled = false;
+        expect(await t.signIn.signUpCandidate(ticket)).toBeNull();
+        expect(await t.signIn.signUp({ ticket, handle: 'alice', displayName: 'Alice' })).toMatchObject({ ok: false });
+        expect(t.users.size).toBe(0);
+    });
+
+    it('登録の途中で block されたら、別の画面で同じ外部アカウントが登録済みになっていてもログインさせない', async () => {
+        const t = setup();
+        const ticket = await arriveSignUp(t);
+        // 別のタブで登録が済んだ（既存ユーザーを返す分岐に入る状態）
+        t.identities.set('fediverse:https://mastodon.example 109', 'user-bob');
+        t.state.blocked.add('mastodon.example');
+        expect(await t.signIn.signUp({ ticket, handle: 'alice', displayName: 'Alice' })).toMatchObject({
+            ok: false,
+            status: 400,
+        });
+    });
+});
+
+describe('ログインと新規登録の押し分け', () => {
+    it('新規登録を押したが登録済みなら、ログインして登録済みだったと知らせる', async () => {
+        const t = setup();
+        t.identities.set('fediverse:https://mastodon.example 109', 'user-bob');
+        const { state, browserToken } = await t.begin('mastodon.example', { prefer: 'sign-up' });
+        expect(
+            await t.signIn.callback({
+                server: 'mastodon.example',
+                query: { code: 'c', state },
+                browserToken,
+                sessionId: null,
+            }),
+        ).toMatchObject({
+            kind: 'signed-in',
+            redirectTo: 'https://ubi.example/@bob/room?fediverse=already-registered',
+        });
+    });
+
+    it('新規登録を押して未登録なら、登録画面で「未登録だった」とは言わない', async () => {
+        const t = setup();
+        const { state, browserToken } = await t.begin('mastodon.example', { prefer: 'sign-up' });
+        const outcome = await t.signIn.callback({
+            server: 'mastodon.example',
+            query: { code: 'c', state },
+            browserToken,
+            sessionId: null,
+        });
+        const ticket = outcome.kind === 'sign-up' ? outcome.ticket : null;
+        expect((await t.signIn.signUpCandidate(ticket))?.notRegistered).toBe(false);
+    });
+});
+
+describe('登録をやめる', () => {
+    it('やめたら同じ鍵では続きから登録できない（共用の端末で別の人に使わせない）', async () => {
+        const t = setup();
+        const { state, browserToken } = await t.begin('mastodon.example');
+        const outcome = await t.signIn.callback({
+            server: 'mastodon.example',
+            query: { code: 'c', state },
+            browserToken,
+            sessionId: null,
+        });
+        const ticket = outcome.kind === 'sign-up' ? outcome.ticket : null;
+        await t.signIn.cancelSignUp(ticket);
+        expect(await t.signIn.signUpCandidate(ticket)).toBeNull();
+        expect(await t.signIn.signUp({ ticket, handle: 'alice', displayName: 'Alice' })).toMatchObject({ status: 404 });
+    });
+});
+
+describe('連携の知らせ', () => {
+    it('新しく追加したときだけ本人に知らせる', async () => {
+        const t = setup();
+        const link = async () => {
+            const { state, browserToken } = await t.begin('mastodon.example', {
+                intent: 'link',
+                session: { userId: 'user-carol', sessionId: 'sess-1' },
+            });
+            return t.signIn.callback({
+                server: 'mastodon.example',
+                query: { code: 'c', state },
+                browserToken,
+                sessionId: 'sess-1',
+            });
+        };
+        await link();
+        await link();
+        expect(t.state.notified).toEqual(['user-carol @alice@mastodon.example']);
+    });
+});
+
+describe('lookup', () => {
+    const webfinger = (actor: string) => () => ({
+        subject: 'acct:alice@example.com',
+        links: [{ rel: 'self', type: 'application/activity+json', href: actor }],
+    });
+
+    it('WebFinger で認証サーバーを引き（委任したドメインも）、サーバーとアカウントの公開情報を返す', async () => {
+        const t = setup({
+            routes: {
+                'GET https://example.com/.well-known/webfinger?resource=acct%3Aalice%40example.com': webfinger(
+                    'https://mastodon.example/users/alice',
+                ),
+                'GET https://mastodon.example/api/v2/instance': () => ({
+                    title: 'Example :party:',
+                    icon: [
+                        { src: 'https://mastodon.example/icon-48.png', size: '48x48' },
+                        { src: 'https://mastodon.example/icon-192.png', size: '192x192' },
+                    ],
+                }),
+                'GET https://mastodon.example/api/v1/accounts/lookup?acct=alice': () => ({
+                    username: 'alice',
+                    display_name: 'Alice :blobcat:',
+                    avatar: 'https://mastodon.example/a.png',
+                }),
+            },
+        });
+        expect(await t.signIn.lookup('@alice@example.com')).toEqual({
+            ok: true,
+            preview: {
+                server: {
+                    host: 'mastodon.example',
+                    software: 'mastodon',
+                    name: 'Example',
+                    iconUrl: 'https://mastodon.example/icon-192.png',
+                },
+                account: { username: 'alice', displayName: 'Alice', avatarUrl: 'https://mastodon.example/a.png' },
+            },
+        });
+    });
+
+    it('Misskey は公開 API で引き、http の画像は使わない。公開 API が閉じていてもユーザー名で続ける', async () => {
+        const t = setup({
+            routes: {
+                'GET https://mi.example/.well-known/webfinger?resource=acct%3Aalice%40mi.example': webfinger(
+                    'https://mi.example/users/9abc',
+                ),
+                'POST https://mi.example/api/meta': () => ({ name: 'みすきー', iconUrl: 'http://mi.example/i.png' }),
+            },
+        });
+        expect(await t.signIn.lookup('alice@mi.example')).toMatchObject({
+            ok: true,
+            preview: {
+                server: { host: 'mi.example', software: 'misskey', name: 'みすきー', iconUrl: null },
+                account: { username: 'alice', displayName: null, avatarUrl: null },
+            },
+        });
+    });
+
+    it('いないユーザー・未対応・block・無効はそれぞれの理由で返し、登録済みかは返さない', async () => {
+        const t = setup();
+        t.identities.set('fediverse:https://mi.example 9abc', 'user-bob');
+        expect(await t.signIn.lookup('@nobody@mi.example')).toEqual({ ok: false, error: 'account-not-found' });
+        expect(await t.signIn.lookup('old.example')).toEqual({ ok: false, error: 'unsupported-server' });
+        t.state.blocked.add('mi.example');
+        expect(await t.signIn.lookup('mi.example')).toEqual({ ok: false, error: 'server-not-allowed' });
+        t.deps.config.enabled = false;
+        expect(await t.signIn.lookup('mastodon.example')).toEqual({ ok: false, error: 'disabled' });
+    });
+
+    it('同じ入力は覚えた結果を返す（入力のたびに相手へ送らない）', async () => {
+        const t = setup();
+        await t.signIn.lookup('mi.example');
+        const sent = t.calls.length;
+        await t.signIn.lookup(' MI.example ');
+        expect(t.calls.length).toBe(sent);
     });
 });

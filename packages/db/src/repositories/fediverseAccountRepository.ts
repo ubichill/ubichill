@@ -1,6 +1,6 @@
-import { and, asc, eq, like, sql } from 'drizzle-orm';
+import { and, asc, eq, like, lt, sql } from 'drizzle-orm';
 import { db } from '../index';
-import { accounts, externalAccountProfiles, fediverseOauthClients, users, verifications } from '../schema';
+import { accounts, externalAccountProfiles, fediverseOauthClients, sessions, users, verifications } from '../schema';
 
 const FEDIVERSE_PROVIDER_PATTERN = 'fediverse:%';
 
@@ -27,7 +27,7 @@ export interface NewFediverseUser {
 
 export type CreateFediverseUserOutcome =
     | { status: 'created' }
-    | { status: 'identity-taken'; userId: string }
+    | { status: 'identity-taken'; userId: string; accountRowId: string }
     | { status: 'handle-taken' }
     | { status: 'name-taken' };
 
@@ -65,8 +65,11 @@ const profileValues = (accountRowId: string, identity: ExternalIdentity, now: Da
 
 /** フェディバースのアカウントでのログイン（外部アカウントと Ubichill のユーザーの結び付け・認証の途中の状態）。 */
 export const fediverseAccountRepository = {
-    /** 外部アカウントに結び付いたユーザー。見つかれば表示用の情報も更新する（改名に追従）。 */
-    async findUserByIdentity(identity: ExternalIdentity, now: Date): Promise<string | undefined> {
+    /** 外部アカウントに結び付いたユーザーと accounts の行。見つかれば表示用の情報も更新する（改名に追従）。 */
+    async findUserByIdentity(
+        identity: ExternalIdentity,
+        now: Date,
+    ): Promise<{ userId: string; accountRowId: string } | undefined> {
         const [row] = await db
             .select({ id: accounts.id, userId: accounts.userId })
             .from(accounts)
@@ -79,7 +82,7 @@ export const fediverseAccountRepository = {
                 target: externalAccountProfiles.accountId,
                 set: { software: identity.software, username: identity.username, updatedAt: now },
             });
-        return row.userId;
+        return { userId: row.userId, accountRowId: row.id };
     },
 
     /**
@@ -117,8 +120,8 @@ export const fediverseAccountRepository = {
             const constraint = uniqueViolationOf(error);
             if (constraint === null) throw error;
             // 同じ外部アカウントの同時登録は、ID が同じなら handle の違反が先に出るので、どの違反でも先に確かめる
-            const userId = await this.findUserByIdentity(input.identity, input.now);
-            if (userId) return { status: 'identity-taken', userId };
+            const owner = await this.findUserByIdentity(input.identity, input.now);
+            if (owner) return { status: 'identity-taken', ...owner };
             if (constraint === 'users_handle_unique') return { status: 'handle-taken' };
             if (constraint === 'users_display_name_key_unique') return { status: 'name-taken' };
             throw error;
@@ -150,15 +153,22 @@ export const fediverseAccountRepository = {
         } catch (error) {
             if (uniqueViolationOf(error) !== 'accounts_provider_account_unique') throw error;
             const owner = await this.findUserByIdentity(input.identity, input.now);
-            return owner === input.userId ? { status: 'already-linked' } : { status: 'linked-to-other' };
+            return owner?.userId === input.userId ? { status: 'already-linked' } : { status: 'linked-to-other' };
         }
     },
 
     /**
-     * 外部アカウントの結び付けを外す。ほかにログイン手段（パスワードか別の外部アカウント）が残るときだけ。
-     * ユーザーの行を押さえて数えるので、同時に複数外しても最後の 1 つは残る。
+     * 外部アカウントの結び付けを外す。外した後も、今の設定で使えるログイン手段（`isUsable`）が残るときだけ。
+     * ユーザーの行を押さえて数えるので、同時に複数外しても最後の 1 つは残る。`isUsable` は DB を引かない関数にする
+     * （ロック中に別の接続を使わない）。外部アカウントを消すと、そのアカウントで作ったセッションも消える（FK）。
+     * ただし外す操作をしている今のセッション（直近に本人確認済み）は残し、外部アカウントとの結び付きだけ外す。
      */
-    async unlink(userId: string, accountRowId: string): Promise<UnlinkOutcome> {
+    async unlink(
+        userId: string,
+        accountRowId: string,
+        isUsable: (providerId: string) => boolean,
+        currentSessionId: string | null = null,
+    ): Promise<UnlinkOutcome> {
         return db.transaction(async (tx) => {
             await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for('update');
             const methods = await tx
@@ -167,7 +177,14 @@ export const fediverseAccountRepository = {
                 .where(eq(accounts.userId, userId));
             const target = methods.find((m) => m.id === accountRowId && m.providerId.startsWith('fediverse:'));
             if (!target) return { status: 'not-found' as const };
-            if (methods.length <= 1) return { status: 'last-method' as const };
+            const remaining = methods.filter((m) => m.id !== accountRowId);
+            if (!remaining.some((m) => isUsable(m.providerId))) return { status: 'last-method' as const };
+            if (currentSessionId) {
+                await tx
+                    .update(sessions)
+                    .set({ authAccountId: null })
+                    .where(and(eq(sessions.id, currentSessionId), eq(sessions.authAccountId, accountRowId)));
+            }
             await tx.delete(accounts).where(eq(accounts.id, accountRowId));
             return { status: 'unlinked' as const };
         });
@@ -262,6 +279,6 @@ export const authFlowRepository = {
     async deleteExpired(prefix: string, now: Date): Promise<void> {
         await db
             .delete(verifications)
-            .where(and(like(verifications.identifier, `${prefix}%`), sql`${verifications.expiresAt} < ${now}`));
+            .where(and(like(verifications.identifier, `${prefix}%`), lt(verifications.expiresAt, now)));
     },
 };

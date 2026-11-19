@@ -17,6 +17,7 @@ const PUBLIC_AUTH_PATHS: ReadonlySet<string> = new Set([
     '/fediverse/options',
     '/fediverse/start',
     '/fediverse/sign-up',
+    '/fediverse/lookup',
 ]);
 
 /** 最後の 1 段がサーバーのホスト（`/fediverse/callback/mi.example`）のもの。ホストの形でなければ通さない。 */

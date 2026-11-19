@@ -3,14 +3,37 @@ import { memoryAdapter } from 'better-auth/adapters/memory';
 import { describe, expect, it } from 'vitest';
 import type { CallbackOutcome, FediverseSignIn } from '../services/auth/fediverse/signIn';
 import { fediverseSignInPlugin } from './fediverseSignInPlugin';
+import { sessionAssuranceFields, sessionAssuranceHooks } from './sessionAssuranceOptions';
 
 const BASE = 'https://ubi.example';
 
 function setup(callbackOutcome: CallbackOutcome) {
-    const seen: { browserToken?: string | null; ticket?: string | null; sessionId?: string | null } = {};
+    const seen: {
+        browserToken?: string | null;
+        ticket?: string | null;
+        sessionId?: string | null;
+        cancelled?: string | null;
+        started?: number;
+    } = { started: 0 };
     const signIn: FediverseSignIn = {
+        lookup: async (input) =>
+            input === '@alice@mi.example'
+                ? {
+                      ok: true,
+                      preview: {
+                          server: { host: 'mi.example', software: 'misskey', name: 'Mi', iconUrl: null },
+                          account: { username: 'alice', displayName: 'Alice', avatarUrl: null },
+                      },
+                  }
+                : { ok: false, error: 'account-not-found' },
+        cancelSignUp: async (ticket) => {
+            seen.cancelled = ticket;
+        },
         clientDocument: (host) => (host === 'mi.example' ? '<!doctype html><link rel="redirect_uri" href="x">' : null),
-        start: async () => ({ ok: true, authorizationUrl: 'https://mi.example/oauth/authorize?x', browserToken: 'B1' }),
+        start: async () => {
+            seen.started = (seen.started ?? 0) + 1;
+            return { ok: true, authorizationUrl: 'https://mi.example/oauth/authorize?x', browserToken: 'B1' };
+        },
         callback: async (input) => {
             seen.browserToken = input.browserToken;
             seen.sessionId = input.sessionId;
@@ -18,11 +41,20 @@ function setup(callbackOutcome: CallbackOutcome) {
         },
         signUpCandidate: async (ticket) => {
             seen.ticket = ticket;
-            return ticket ? { server: 'mi.example', username: 'alice', handle: 'alice', displayName: 'Alice' } : null;
+            return ticket
+                ? {
+                      server: 'mi.example',
+                      username: 'alice',
+                      handle: 'alice',
+                      displayName: 'Alice',
+                      notRegistered: false,
+                      registrationOpen: true,
+                  }
+                : null;
         },
         signUp: async ({ ticket }) =>
             ticket === 'T1'
-                ? { ok: true, userId: 'u1', returnTo: '/@bob/room' }
+                ? { ok: true, userId: 'u1', accountRowId: 'acc-1', returnTo: '/@bob/room' }
                 : { ok: false, status: 404, error: 'expired' },
     };
     const db = {
@@ -37,14 +69,17 @@ function setup(callbackOutcome: CallbackOutcome) {
             },
         ],
         session: [] as Array<Record<string, unknown>>,
-        account: [],
-        verification: [],
+        account: [] as Array<Record<string, unknown>>,
+        verification: [] as Array<Record<string, unknown>>,
     };
     const auth = betterAuth({
         baseURL: BASE,
         secret: 'test-secret-test-secret-test-secret-32',
         database: memoryAdapter(db),
         trustedOrigins: [BASE],
+        emailAndPassword: { enabled: true },
+        session: { additionalFields: sessionAssuranceFields },
+        databaseHooks: sessionAssuranceHooks,
         // テスト環境では better-auth が origin の確認を既定で止めるので、本番と同じく有効にする
         advanced: { disableOriginCheck: false, disableCSRFCheck: false },
         plugins: [
@@ -86,7 +121,7 @@ describe('fediverseSignInPlugin', () => {
     });
 
     it('応答では署名を確かめた印を渡し、連携済みならセッションを発行して戻す', async () => {
-        const t = setup({ kind: 'signed-in', userId: 'u1', redirectTo: `${BASE}/@bob/room` });
+        const t = setup({ kind: 'signed-in', userId: 'u1', accountRowId: 'acc-1', redirectTo: `${BASE}/@bob/room` });
         const started = await start(t);
         const res = await t.request('/fediverse/callback/mi.example?code=c&state=s', {
             headers: { Cookie: cookiesOf(started).join('; ') },
@@ -158,5 +193,80 @@ describe('fediverseSignInPlugin', () => {
         expect(ok.headers.get('content-type')).toMatch(/text\/html/);
         expect(await ok.text()).toContain('redirect_uri');
         expect((await t.request('/fediverse/client/other.example')).status).toBe(404);
+    });
+
+    it('SSO で作ったセッションは外部アカウントを覚え、パスワードの印は付かない', async () => {
+        const t = setup({ kind: 'signed-in', userId: 'u1', accountRowId: 'acc-1', redirectTo: `${BASE}/` });
+        const started = await start(t);
+        await t.request('/fediverse/callback/mi.example?code=c&state=s', {
+            headers: { Cookie: cookiesOf(started).join('; ') },
+        });
+        expect(t.db.session).toHaveLength(1);
+        expect(t.db.session[0]?.authAccountId).toBe('acc-1');
+        expect(t.db.session[0]?.passwordVerifiedAt ?? null).toBeNull();
+    });
+
+    const passwordUser = async (t: ReturnType<typeof setup>) => {
+        const json = { 'Content-Type': 'application/json', Origin: BASE };
+        await t.request('/sign-up/email', {
+            method: 'POST',
+            headers: json,
+            body: JSON.stringify({ email: 'pw@example.com', password: 'password-123', name: 'Pw' }),
+        });
+        t.db.session.length = 0;
+        const signIn = await t.request('/sign-in/email', {
+            method: 'POST',
+            headers: json,
+            body: JSON.stringify({ email: 'pw@example.com', password: 'password-123' }),
+        });
+        return cookiesOf(signIn).join('; ');
+    };
+
+    it('パスワードでログインしたセッションには印が付く', async () => {
+        const t = setup({ kind: 'error', error: 'expired', redirectTo: BASE });
+        await passwordUser(t);
+        expect(t.db.session).toHaveLength(1);
+        expect(t.db.session[0]?.passwordVerifiedAt).toBeInstanceOf(Date);
+        expect(t.db.session[0]?.authAccountId ?? null).toBeNull();
+    });
+
+    it('連携の開始は、直近にログインか再認証をしたセッションだけ', async () => {
+        const t = setup({ kind: 'error', error: 'expired', redirectTo: BASE });
+        const cookie = await passwordUser(t);
+        const link = () =>
+            t.request('/fediverse/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Origin: BASE, Cookie: cookie },
+                body: JSON.stringify({ server: 'mi.example', intent: 'link' }),
+            });
+        expect((await link()).status).toBe(200);
+        // 11 分前のログイン（奪われた古いセッション）では始められない
+        const old = new Date(Date.now() - 11 * 60 * 1000);
+        Object.assign(t.db.session[0] ?? {}, { createdAt: old, passwordVerifiedAt: old });
+        const res = await link();
+        expect(res.status).toBe(403);
+        expect(await res.json()).toMatchObject({ code: 'reauth-required' });
+        expect(t.seen.started).toBe(1);
+    });
+
+    it('登録をやめると鍵を消し、クッキーも消す', async () => {
+        const t = setup({ kind: 'sign-up', ticket: 'T1', redirectTo: `${BASE}/auth?fediverse=sign-up` });
+        const callback = await t.request('/fediverse/callback/mi.example?code=c&state=s');
+        const res = await t.request('/fediverse/sign-up', {
+            method: 'DELETE',
+            headers: { Origin: BASE, Cookie: cookiesOf(callback).join('; ') },
+        });
+        expect(res.status).toBe(200);
+        expect(t.seen.cancelled).toBe('T1');
+        expect(findCookie(res, 'fediverse_sign_up')).toMatch(/Max-Age=0/);
+    });
+
+    it('lookup は公開情報か、理由のコードを返す', async () => {
+        const t = setup({ kind: 'error', error: 'expired', redirectTo: BASE });
+        const ok = await t.request(`/fediverse/lookup?account=${encodeURIComponent('@alice@mi.example')}`);
+        expect(await ok.json()).toMatchObject({ server: { host: 'mi.example' }, account: { username: 'alice' } });
+        const ng = await t.request(`/fediverse/lookup?account=${encodeURIComponent('@bob@mi.example')}`);
+        expect(ng.status).toBe(400);
+        expect(await ng.json()).toMatchObject({ code: 'account-not-found' });
     });
 });

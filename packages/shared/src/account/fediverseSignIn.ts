@@ -75,6 +75,29 @@ export function parseFediverseServer(input: string): { ok: true; host: string } 
     return { ok: true, host: url.host };
 }
 
+const FEDIVERSE_USERNAME_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$/;
+
+/**
+ * ユーザー ID の入力（`@you@misskey.io`・`you@misskey.io`）からユーザー名とホストを取り出す。
+ * ホストだけ（`misskey.io`）なら username は null（サーバーだけを確かめる）。
+ */
+export function parseFediverseAccount(
+    input: string,
+): { ok: true; username: string | null; host: string } | { ok: false; error: string } {
+    const raw = input.trim().replace(/^@/, '');
+    const at = raw.indexOf('@');
+    if (at < 0 || /^https?:\/\//i.test(raw)) {
+        const server = parseFediverseServer(raw);
+        return server.ok ? { ok: true, username: null, host: server.host } : server;
+    }
+    const username = raw.slice(0, at);
+    const server = parseFediverseServer(raw.slice(at + 1));
+    if (!FEDIVERSE_USERNAME_PATTERN.test(username) || !server.ok || raw.slice(at + 1).includes('@')) {
+        return { ok: false, error: 'ユーザー ID の形式が正しくありません（例: @you@misskey.io）' };
+    }
+    return { ok: true, username, host: server.host };
+}
+
 /** 外部のユーザー名から Ubichill の ID の候補を作る。作れなければ空文字（画面で入力してもらう）。 */
 export function handleCandidateOf(username: string): string {
     const candidate = username
@@ -121,6 +144,8 @@ export const FEDIVERSE_SIGN_IN_ERRORS = {
     mismatch: 'ログインの応答を確かめられませんでした。もう一度お試しください',
     'linked-to-other': 'このアカウントは別のユーザーに追加されています',
     'session-changed': 'ログインの状態が変わったため追加できませんでした。もう一度お試しください',
+    'reauth-required': 'ログイン方法を変えるには、もう一度本人確認が必要です',
+    'account-not-found': 'このユーザーが見つかりませんでした',
     failed: 'ログインに失敗しました。もう一度お試しください',
 } as const;
 export type FediverseSignInError = keyof typeof FEDIVERSE_SIGN_IN_ERRORS;
@@ -138,16 +163,39 @@ export interface FediverseSignUpCandidate {
     username: string;
     handle: string;
     displayName: string;
+    /** ログインを押したが、まだ登録していなかった */
+    notRegistered: boolean;
+    registrationOpen: boolean;
+}
+
+/** ログインの前に、入力したアカウントとサーバーを見た目で確かめるための情報（公開されているものだけ）。 */
+export interface FediversePreview {
+    server: {
+        /** ログインに使う認証サーバー（WebFinger で別のホストを指していればそちら） */
+        host: string;
+        software: FediverseSoftware;
+        name: string | null;
+        iconUrl: string | null;
+    };
+    account: {
+        username: string;
+        displayName: string | null;
+        avatarUrl: string | null;
+    } | null;
 }
 
 /** 設定の「ログイン方法」。 */
 export interface LoginMethods {
     password: boolean;
+    /** 直近にログインか再認証をした（ログイン方法の追加・解除ができる） */
+    recentlyAuthenticated: boolean;
     fediverse: Array<{
         id: string;
         server: string;
         username: string | null;
         software: FediverseSoftware | null;
         linkedAt: string;
+        /** 今の設定（無効化・許可するサーバー・block）でログインに使えるか */
+        usable: boolean;
     }>;
 }

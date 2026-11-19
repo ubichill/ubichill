@@ -24,6 +24,7 @@ import {
 } from '@ubichill/shared';
 import { z } from 'zod';
 import { type AuthorizationServer, readAuthorizationServer } from './discovery';
+import { createLookupCache, type LookupOutcome, lookupFediverse } from './lookup';
 import {
     authorizationUrl,
     type ClientCredentials,
@@ -36,7 +37,7 @@ import {
 } from './protocol';
 
 export const STATE_TTL_MS = 10 * 60 * 1000;
-export const SIGN_UP_TTL_MS = 30 * 60 * 1000;
+export const SIGN_UP_TTL_MS = 15 * 60 * 1000;
 const STATE_PREFIX = 'fediverse-state:';
 const SIGN_UP_PREFIX = 'fediverse-sign-up:';
 
@@ -81,7 +82,10 @@ export interface FediverseSignInDeps {
         remove(identifier: string): Promise<void>;
     };
     accounts: {
-        findUserByIdentity(identity: ExternalIdentity, now: Date): Promise<string | undefined>;
+        findUserByIdentity(
+            identity: ExternalIdentity,
+            now: Date,
+        ): Promise<{ userId: string; accountRowId: string } | undefined>;
         createUser(input: {
             userId: string;
             accountRowId: string;
@@ -93,7 +97,7 @@ export interface FediverseSignInDeps {
             now: Date;
         }): Promise<
             | { status: 'created' }
-            | { status: 'identity-taken'; userId: string }
+            | { status: 'identity-taken'; userId: string; accountRowId: string }
             | { status: 'handle-taken' }
             | { status: 'name-taken' }
         >;
@@ -106,6 +110,8 @@ export interface FediverseSignInDeps {
     };
     /** 新規登録を受け付けるか（閉じても既存ユーザーのログインと連携はできる） */
     registrationOpen(): boolean;
+    /** ログイン方法を足したことを本人に知らせる（乗っ取りに気付けるように。連絡先が無ければ何もしない） */
+    notifyLinked(userId: string, account: string): Promise<void>;
     validate: { handle: typeof HandleSchema; displayName: typeof DisplayNameSchema };
     newId(model: 'user' | 'account'): string;
     /** 推測できない 32 バイト以上の乱数（base64url） */
@@ -134,6 +140,8 @@ const StateSchema = z.object({
     codeVerifier: z.string(),
     browserHash: z.string(),
     intent: z.enum(['sign-in', 'link']),
+    /** 画面で押したのがログインか新規登録か（結果の知らせ方だけに使う。登録済みかは認証の前に明かさない） */
+    prefer: z.enum(['sign-in', 'sign-up']),
     returnTo: z.string(),
     appOrigin: z.string(),
     link: z.object({ userId: z.string(), sessionId: z.string() }).nullable(),
@@ -150,6 +158,8 @@ const SignUpSchema = z.object({
     host: z.string(),
     displayName: z.string().nullable(),
     returnTo: z.string(),
+    /** ログインを押したが、まだ登録していなかった */
+    notRegistered: z.boolean(),
 });
 type SignUpTicket = z.infer<typeof SignUpSchema>;
 
@@ -176,13 +186,13 @@ export type StartOutcome =
     | { ok: false; error: FediverseSignInError };
 
 export type CallbackOutcome =
-    | { kind: 'signed-in'; userId: string; redirectTo: string }
+    | { kind: 'signed-in'; userId: string; accountRowId: string; redirectTo: string }
     | { kind: 'sign-up'; ticket: string; redirectTo: string }
     | { kind: 'linked'; redirectTo: string }
     | { kind: 'error'; error: FediverseSignInError; redirectTo: string };
 
 export type SignUpOutcome =
-    | { ok: true; userId: string; returnTo: string }
+    | { ok: true; userId: string; accountRowId: string; returnTo: string }
     | { ok: false; status: 400 | 404 | 409; error: string };
 
 export function createFediverseSignIn(deps: FediverseSignInDeps) {
@@ -204,8 +214,8 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
             const result = readAuthorizationServer(host, metadata);
             return result.ok ? result.server : 'unsupported';
         } catch (error) {
-            // 404 などはメタデータを出さない（古い・別の）サーバー
-            if (error instanceof HttpStatusError && error.status >= 400 && error.status < 500) return 'unsupported';
+            // 404 などはメタデータを出さない（古い・別の）サーバー。リダイレクトは追わないので 3xx も同じ扱い
+            if (error instanceof HttpStatusError && error.status >= 300 && error.status < 500) return 'unsupported';
             deps.warn(`フェディバースのサーバーに接続できません: ${host}`, error);
             return 'unreachable';
         }
@@ -232,7 +242,16 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
     const appOriginOf = (origin: string | null): string =>
         origin && deps.isAppOrigin(origin) ? origin : deps.config.defaultAppOrigin;
 
+    const lookupCache = createLookupCache({ ttlMs: 5 * 60 * 1000, max: 500, now: () => deps.now().getTime() });
+
     return {
+        /** 入力したユーザー ID のサーバーとアカウントの公開情報（登録済みかは返さない）。 */
+        lookup(input: string): Promise<LookupOutcome> {
+            return lookupCache(input, () =>
+                lookupFediverse(input, { http: deps.http, discover, serverAllowed, enabled: deps.config.enabled }),
+            );
+        },
+
         /** Misskey の client_id の URL が返す文書（戻り先 URL とアプリ名）。読めないホストは null。 */
         clientDocument(rawHost: string): string | null {
             const parsed = parseFediverseServer(rawHost);
@@ -254,6 +273,7 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
         async start(input: {
             server: string;
             intent: FediverseSignInIntent;
+            prefer?: 'sign-in' | 'sign-up';
             returnTo: unknown;
             origin: string | null;
             /** link のときのログイン中のユーザーとセッション */
@@ -284,6 +304,7 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
                 codeVerifier,
                 browserHash: hash(browserToken),
                 intent: input.intent,
+                prefer: input.prefer ?? 'sign-in',
                 returnTo: safeReturnTo(input.returnTo),
                 appOrigin: appOriginOf(input.origin),
                 link: input.intent === 'link' ? input.session : null,
@@ -328,6 +349,8 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
                 await deps.flows.take(`${STATE_PREFIX}${hash(input.query.state)}`, now),
             );
             if (!state) return fail('expired');
+            // 開始の後に止められたら、応答が来ても続けない
+            if (!deps.config.enabled) return fail('disabled', state);
             if (!input.browserToken || hash(input.browserToken) !== state.browserHash) return fail('mismatch', state);
             if (input.server !== state.server.host) return fail('mismatch', state);
             if (input.query.error) return fail(input.query.error === 'access_denied' ? 'denied' : 'failed', state);
@@ -384,14 +407,26 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
                     now,
                 });
                 if (linked.status === 'linked-to-other') return fail('linked-to-other', state);
+                if (linked.status === 'linked') {
+                    await deps
+                        .notifyLinked(state.link.userId, `@${identity.username}@${server.host}`)
+                        .catch((error: unknown) => deps.warn('ログイン方法の追加を知らせられませんでした', error));
+                }
                 return {
                     kind: 'linked',
                     redirectTo: `${state.appOrigin}${withQuery(state.returnTo, 'fediverse', 'linked')}`,
                 };
             }
 
-            const userId = await deps.accounts.findUserByIdentity(identity, now);
-            if (userId) return { kind: 'signed-in', userId, redirectTo: back };
+            const existing = await deps.accounts.findUserByIdentity(identity, now);
+            if (existing) {
+                // 新規登録を押したが登録済みだった。そのままログインし、画面で知らせる
+                const redirectTo =
+                    state.prefer === 'sign-up'
+                        ? `${state.appOrigin}${withQuery(state.returnTo, 'fediverse', 'already-registered')}`
+                        : back;
+                return { kind: 'signed-in', ...existing, redirectTo };
+            }
 
             const ticket = deps.random();
             const pending: SignUpTicket = {
@@ -399,6 +434,7 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
                 host: server.host,
                 displayName: account.displayName,
                 returnTo: state.returnTo,
+                notRegistered: state.prefer === 'sign-in',
             };
             await deps.flows.put(
                 `${SIGN_UP_PREFIX}${hash(ticket)}`,
@@ -414,7 +450,7 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
         },
 
         async signUpCandidate(ticket: string | null): Promise<FediverseSignUpCandidate | null> {
-            if (!ticket) return null;
+            if (!ticket || !deps.config.enabled) return null;
             const pending = readJson(
                 SignUpSchema,
                 await deps.flows.peek(`${SIGN_UP_PREFIX}${hash(ticket)}`, deps.now()),
@@ -425,7 +461,14 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
                 username: pending.identity.username,
                 handle: handleCandidateOf(pending.identity.username),
                 displayName: displayNameCandidateOf(pending.displayName, pending.identity.username),
+                notRegistered: pending.notRegistered,
+                registrationOpen: deps.registrationOpen(),
             };
+        },
+
+        /** 登録をやめる（共用の端末で、別の人が続きから登録できないように消す）。 */
+        async cancelSignUp(ticket: string | null): Promise<void> {
+            if (ticket) await deps.flows.remove(`${SIGN_UP_PREFIX}${hash(ticket)}`);
         },
 
         async signUp(input: { ticket: string | null; handle: unknown; displayName: unknown }): Promise<SignUpOutcome> {
@@ -435,16 +478,19 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
             if (!pending) {
                 return { ok: false, status: 404, error: '登録の期限が切れました。もう一度ログインしてください' };
             }
+            // 停止・接続先の許可は、既存ユーザーとしてログインさせる分岐より前に確かめる（確定の時点の設定で判定する）
+            if (!deps.config.enabled)
+                return { ok: false, status: 400, error: 'フェディバースでのログインは無効になっています' };
+            if (!(await serverAllowed(pending.host))) {
+                return { ok: false, status: 400, error: 'このサーバーのアカウントでは登録できません' };
+            }
             const existing = await deps.accounts.findUserByIdentity(pending.identity, now);
             if (existing) {
                 await deps.flows.remove(identifier);
-                return { ok: true, userId: existing, returnTo: pending.returnTo };
+                return { ok: true, ...existing, returnTo: pending.returnTo };
             }
             if (!deps.registrationOpen()) {
                 return { ok: false, status: 400, error: '現在、新規登録を受け付けていません' };
-            }
-            if (!(await serverAllowed(pending.host))) {
-                return { ok: false, status: 400, error: 'このサーバーのアカウントでは登録できません' };
             }
             const handle = deps.validate.handle.safeParse(typeof input.handle === 'string' ? input.handle.trim() : '');
             if (!handle.success)
@@ -454,9 +500,10 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
                 return { ok: false, status: 400, error: name.error.issues[0]?.message ?? '表示名が不正です' };
             }
             const userId = deps.newId('user');
+            const accountRowId = deps.newId('account');
             const created = await deps.accounts.createUser({
                 userId,
-                accountRowId: deps.newId('account'),
+                accountRowId,
                 email: placeholderEmail(deps.random().replace(/[^a-zA-Z0-9]/g, '')),
                 name: name.data,
                 handle: handle.data,
@@ -467,10 +514,15 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
             switch (created.status) {
                 case 'created':
                     await deps.flows.remove(identifier);
-                    return { ok: true, userId, returnTo: pending.returnTo };
+                    return { ok: true, userId, accountRowId, returnTo: pending.returnTo };
                 case 'identity-taken':
                     await deps.flows.remove(identifier);
-                    return { ok: true, userId: created.userId, returnTo: pending.returnTo };
+                    return {
+                        ok: true,
+                        userId: created.userId,
+                        accountRowId: created.accountRowId,
+                        returnTo: pending.returnTo,
+                    };
                 case 'handle-taken':
                     return { ok: false, status: 409, error: 'この ID は既に使用されています' };
                 case 'name-taken':

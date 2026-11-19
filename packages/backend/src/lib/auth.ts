@@ -27,6 +27,7 @@ import { logger } from '../utils/logger';
 import { createAuthRateLimitStorage } from './authRateLimit';
 import { fediverseSignInPlugin } from './fediverseSignInPlugin';
 import { redis } from './redis';
+import { sessionAssuranceFields, sessionAssuranceHooks } from './sessionAssuranceOptions';
 
 // SKIP_EMAIL_VERIFICATION=true の場合はAPIキー不要なので遅延初期化
 let _resend: Resend | null = null;
@@ -201,6 +202,8 @@ export async function verifyAndRegister(
     registrationId: string,
     otp: string,
 ): Promise<{ success: boolean; error?: string }> {
+    // 確認コードを送った後に新規登録を止めたら、本登録もさせない（コードは消費しない）
+    if (!appConfig.registrationOpen) return { success: false, error: '現在、新規登録を受け付けていません' };
     const outcome = await (await getPendingRegistrations()).verify(registrationId, otp);
     if (outcome.status === 'register-failed') logger.error('Registration error:', outcome.error);
     if (outcome.status !== 'verified') {
@@ -212,6 +215,7 @@ export async function verifyAndRegister(
 
 // OTPを再送信
 export async function resendOTP(registrationId: string): Promise<{ success: boolean; error?: string }> {
+    if (!appConfig.registrationOpen) return { success: false, error: '現在、新規登録を受け付けていません' };
     const pending = await (await getPendingRegistrations()).reissue(registrationId);
 
     if (!pending) {
@@ -282,7 +286,10 @@ export const auth = betterAuth({
             enabled: true,
             maxAge: 60 * 5, // 5 minutes
         },
+        // どこまで本人を確かめたセッションか（services/auth/sessionAssurance.ts）。書くのはサーバーだけ
+        additionalFields: sessionAssuranceFields,
     },
+    databaseHooks: sessionAssuranceHooks,
     rateLimit: {
         // better-auth の既定と同じ（本番だけ）。ログインを Redis 障害で止めるか（index.ts）もこれに合わせる
         enabled: authRateLimitEnabled,
@@ -342,7 +349,7 @@ const getFediverseSignIn = (() => {
     const cache: { ready?: Promise<FediverseSignIn> } = {};
     return (): Promise<FediverseSignIn> => {
         cache.ready ??= auth.$context.then((ctx) =>
-            createProductionFediverseSignIn((model) => newBetterAuthId(ctx, model)),
+            createProductionFediverseSignIn((model) => newBetterAuthId(ctx, model), sendAccountNotice),
         );
         return cache.ready;
     };

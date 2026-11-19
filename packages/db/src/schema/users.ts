@@ -1,5 +1,6 @@
 import { relations } from 'drizzle-orm';
 import {
+    type AnyPgColumn,
     boolean,
     index,
     jsonb,
@@ -62,8 +63,18 @@ export const sessions = pgTable(
         userId: text('user_id')
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
+        /**
+         * このセッションでパスワードを確かめた時刻（パスワードでのログイン・変更・再認証）。null は外部の SSO だけで入った。
+         * 管理者の操作は、これがあるセッションだけに許す（外部サーバーが乗っ取られても管理者の権限は渡さない）。
+         */
+        passwordVerifiedAt: timestamp('password_verified_at', { withTimezone: true }),
+        /** SSO で入ったときの外部アカウント（accounts.id）。外部アカウントを外すと、そのアカウントで作ったセッションも消える */
+        authAccountId: text('auth_account_id').references((): AnyPgColumn => accounts.id, { onDelete: 'cascade' }),
     },
-    (table) => [index('sessions_user_id_idx').on(table.userId)],
+    (table) => [
+        index('sessions_user_id_idx').on(table.userId),
+        index('sessions_auth_account_id_idx').on(table.authAccountId),
+    ],
 );
 
 // Better Auth account table (for password/oauth)

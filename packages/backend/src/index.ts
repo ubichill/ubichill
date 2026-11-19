@@ -1,6 +1,7 @@
 import http from 'node:http';
 import {
     announcementRepository,
+    authFlowRepository,
     cliAuthRequestRepository,
     directMessageRepository,
     inviteRepository,
@@ -37,6 +38,7 @@ import { router as socialRouter } from './routes/social';
 import { router as usersRouter } from './routes/users';
 import { router as webfingerRouter } from './routes/webfinger';
 import { router as worldsRouter } from './routes/worlds';
+import { FEDIVERSE_FLOW_PREFIX } from './services/auth/fediverse';
 import { bootstrapOfficialAccount } from './services/authors/officialAccountService';
 import { backendEvents, createRedisBackendBus } from './services/cluster/backendEvents';
 import { maintenanceGate } from './services/cluster/maintenance';
@@ -223,7 +225,7 @@ async function startServer() {
         );
     };
 
-    // 期限切れの CLI 認可の要求と仮登録を消す（どちらも認証なしで作れるので溜めない）。reaper と同じリースを持つ 1 台だけが行う
+    // 期限切れの CLI 認可の要求・仮登録・フェディバースのログインの途中の状態を消す（どれも認証なしで作れるので溜めない）。reaper と同じリースを持つ 1 台だけが行う
     const cleanExpiredRequests = async () => {
         await maintenanceGate.run(async (checkpoint) => {
             if (!(await checkpoint())) return;
@@ -234,6 +236,9 @@ async function startServer() {
                 pendingRegistrationRepository
                     .deleteExpired()
                     .catch((err: unknown) => logger.error('仮登録の掃除に失敗:', err)),
+                authFlowRepository
+                    .deleteExpired(FEDIVERSE_FLOW_PREFIX, new Date())
+                    .catch((err: unknown) => logger.error('フェディバースのログインの途中の状態の掃除に失敗:', err)),
                 // インスタンスが消えて消せるようになった古い版を消し直す
                 worldRegistry
                     .pruneAllVersions()

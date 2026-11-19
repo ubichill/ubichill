@@ -12,6 +12,7 @@ import { setSessionCookie } from 'better-auth/cookies';
 import { z } from 'zod';
 import type { FediverseSignIn } from '../services/auth/fediverse/signIn';
 import { SIGN_UP_TTL_MS, STATE_TTL_MS } from '../services/auth/fediverse/signIn';
+import { isRecentlyAuthenticated, toDateOrNull } from '../services/auth/sessionAssurance';
 
 const STATUS = { 400: 'BAD_REQUEST', 404: 'NOT_FOUND', 409: 'CONFLICT' } as const;
 
@@ -40,10 +41,11 @@ function clearCookie(ctx: EndpointContext, name: string) {
     ctx.setCookie(cookieName, '', { ...attributes, maxAge: 0 });
 }
 
-async function signInAs(ctx: EndpointContext, userId: string): Promise<void> {
+/** SSO でのログイン。どの外部アカウントで入ったかをセッションに残す（外部アカウントを外すとこのセッションも消える）。 */
+async function signInAs(ctx: EndpointContext, userId: string, accountRowId: string): Promise<void> {
     const user = await ctx.context.internalAdapter.findUserById(userId);
     if (!user) throw new Error('ユーザーが見つかりません');
-    const session = await ctx.context.internalAdapter.createSession(userId);
+    const session = await ctx.context.internalAdapter.createSession(userId, false, { authAccountId: accountRowId });
     await setSessionCookie(ctx, { session, user });
 }
 
@@ -68,6 +70,7 @@ export function fediverseSignInPlugin({ getSignIn, options }: FediverseSignInPlu
                     body: z.object({
                         server: z.string().max(300),
                         intent: z.enum(['sign-in', 'link']).default('sign-in'),
+                        prefer: z.enum(['sign-in', 'sign-up']).optional(),
                         returnTo: z.string().max(2000).optional(),
                     }),
                 },
@@ -76,9 +79,23 @@ export function fediverseSignInPlugin({ getSignIn, options }: FediverseSignInPlu
                         ctx.body.intent === 'link'
                             ? await getSessionFromCtx(ctx, { disableCookieCache: true, disableRefresh: true })
                             : null;
+                    // 奪われたセッションでログイン方法を足されないよう、直近にログインか再認証をしたセッションに限る
+                    if (
+                        current &&
+                        !isRecentlyAuthenticated(
+                            {
+                                createdAt: toDateOrNull(current.session.createdAt) ?? new Date(0),
+                                passwordVerifiedAt: toDateOrNull(current.session.passwordVerifiedAt),
+                            },
+                            new Date(),
+                        )
+                    ) {
+                        throw APIError.fromStatus('FORBIDDEN', { code: 'reauth-required', message: 'reauth-required' });
+                    }
                     const started = await (await getSignIn()).start({
                         server: ctx.body.server,
                         intent: ctx.body.intent,
+                        prefer: ctx.body.prefer,
                         returnTo: ctx.body.returnTo,
                         origin: ctx.request?.headers.get('origin') ?? ctx.headers?.get('origin') ?? null,
                         session: current ? { userId: current.user.id, sessionId: current.session.id } : null,
@@ -112,7 +129,7 @@ export function fediverseSignInPlugin({ getSignIn, options }: FediverseSignInPlu
                         sessionId: current?.session.id ?? null,
                     });
                     clearCookie(ctx, FLOW_COOKIE);
-                    if (outcome.kind === 'signed-in') await signInAs(ctx, outcome.userId);
+                    if (outcome.kind === 'signed-in') await signInAs(ctx, outcome.userId, outcome.accountRowId);
                     if (outcome.kind === 'sign-up') {
                         const { name, attributes } = cookie(ctx, SIGN_UP_COOKIE, SIGN_UP_TTL_MS);
                         await ctx.setSignedCookie(name, outcome.ticket, ctx.context.secret, attributes);
@@ -143,8 +160,26 @@ export function fediverseSignInPlugin({ getSignIn, options }: FediverseSignInPlu
                     });
                     if (!outcome.ok) throw APIError.fromStatus(STATUS[outcome.status], { message: outcome.error });
                     clearCookie(ctx, SIGN_UP_COOKIE);
-                    await signInAs(ctx, outcome.userId);
+                    await signInAs(ctx, outcome.userId, outcome.accountRowId);
                     return ctx.json({ returnTo: outcome.returnTo });
+                },
+            ),
+
+            fediverseCancelSignUp: createAuthEndpoint('/fediverse/sign-up', { method: 'DELETE' }, async (ctx) => {
+                await (await getSignIn()).cancelSignUp(await readCookie(ctx, SIGN_UP_COOKIE, SIGN_UP_TTL_MS));
+                clearCookie(ctx, SIGN_UP_COOKIE);
+                return ctx.json({ ok: true });
+            }),
+
+            fediverseLookup: createAuthEndpoint(
+                '/fediverse/lookup',
+                { method: 'GET', query: z.object({ account: z.string().max(300) }) },
+                async (ctx) => {
+                    const outcome = await (await getSignIn()).lookup(ctx.query.account);
+                    if (!outcome.ok) {
+                        throw APIError.fromStatus('BAD_REQUEST', { code: outcome.error, message: outcome.error });
+                    }
+                    return ctx.json(outcome.preview);
                 },
             ),
 
@@ -160,6 +195,8 @@ export function fediverseSignInPlugin({ getSignIn, options }: FediverseSignInPlu
             // 開始は相手のサーバーへ要求を送る（アプリ登録・メタデータ）ので、IP ごとに強く絞る
             { pathMatcher: (path: string) => path === '/fediverse/start', window: 60, max: 10 },
             { pathMatcher: (path: string) => path === '/fediverse/sign-up', window: 60, max: 20 },
+            // 入力のたびに呼ばれ、相手のサーバーへ要求を送る（結果は backend が 5 分覚える）
+            { pathMatcher: (path: string) => path === '/fediverse/lookup', window: 60, max: 30 },
         ],
     } satisfies BetterAuthPlugin;
 }

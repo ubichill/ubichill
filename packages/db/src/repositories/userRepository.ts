@@ -264,6 +264,16 @@ export const userRepository = {
         return removed.length;
     },
 
+    /** このセッションでパスワードを確かめたことを記録する（再認証）。そのユーザーのセッションでなければ何もしない。 */
+    async markSessionPasswordVerified(userId: string, sessionId: string, at: Date): Promise<boolean> {
+        const updated = await db
+            .update(sessions)
+            .set({ passwordVerifiedAt: at })
+            .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId)))
+            .returning({ id: sessions.id });
+        return updated.length > 0;
+    },
+
     /** そのユーザーのログインをすべて無効にする。 */
     async revokeSessions(userId: string): Promise<void> {
         await db.delete(sessions).where(eq(sessions.userId, userId));
