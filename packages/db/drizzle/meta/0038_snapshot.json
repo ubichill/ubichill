@@ -1,5 +1,5 @@
 {
-  "id": "fa1bf6b7-0268-49f9-b7b9-60c149d202ab",
+  "id": "ffaf8aca-a05a-4d4e-b433-d36c37f5e0d4",
   "prevId": "c9a16285-e460-4bf3-85d6-0241c1197679",
   "version": "7",
   "dialect": "postgresql",
@@ -3181,18 +3181,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "password_verified_at": {
-          "name": "password_verified_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "auth_account_id": {
-          "name": "auth_account_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -3201,21 +3189,6 @@
           "columns": [
             {
               "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "sessions_auth_account_id_idx": {
-          "name": "sessions_auth_account_id_idx",
-          "columns": [
-            {
-              "expression": "auth_account_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -3234,19 +3207,6 @@
           "tableTo": "users",
           "columnsFrom": [
             "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "sessions_auth_account_id_accounts_id_fk": {
-          "name": "sessions_auth_account_id_accounts_id_fk",
-          "tableFrom": "sessions",
-          "tableTo": "accounts",
-          "columnsFrom": [
-            "auth_account_id"
           ],
           "columnsTo": [
             "id"
