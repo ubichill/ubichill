@@ -1,0 +1,483 @@
+/**
+ * フェディバースのアカウントでのログイン・登録・連携の流れ（docs/design/fediverse-sign-in.md）。HTTP・DB・乱数・時刻は
+ * 注入し、セッションの発行とクッキーは呼ぶ側（lib/fediverseSignInPlugin.ts の better-auth のエンドポイント）が持つ。
+ *
+ * - 開始で一度だけ使える state と PKCE verifier を作り、ブラウザーに渡した値のハッシュと一緒に保存する
+ *   （他人の認証応答を踏ませてログインさせる攻撃を防ぐ）。
+ * - 応答は、開始時のサーバーと戻り先 URL（サーバーごとに違う）・Misskey は `iss` も照合してから code を使う。
+ * - 初回は外部アカウントを指す登録の途中の状態を作り、ID と表示名を決めてもらってからユーザーを作る。
+ */
+import { createHash } from 'node:crypto';
+import {
+    type DisplayNameSchema,
+    displayNameCandidateOf,
+    displayNameKey,
+    type FediverseSignInError,
+    type FediverseSignInIntent,
+    type FediverseSignUpCandidate,
+    fediverseProviderId,
+    type HandleSchema,
+    handleCandidateOf,
+    parseFediverseServer,
+    placeholderEmail,
+    safeReturnTo,
+} from '@ubichill/shared';
+import { z } from 'zod';
+import { type AuthorizationServer, readAuthorizationServer } from './discovery';
+import {
+    authorizationUrl,
+    type ClientCredentials,
+    exchangeCode,
+    type FediverseHttp,
+    fetchAccount,
+    HttpStatusError,
+    registerMastodonApp,
+    revokeToken,
+} from './protocol';
+
+export const STATE_TTL_MS = 10 * 60 * 1000;
+export const SIGN_UP_TTL_MS = 30 * 60 * 1000;
+const STATE_PREFIX = 'fediverse-state:';
+const SIGN_UP_PREFIX = 'fediverse-sign-up:';
+
+export interface ExternalIdentity {
+    providerId: string;
+    accountId: string;
+    software: string;
+    username: string;
+}
+
+export interface FediverseSignInDeps {
+    config: {
+        enabled: boolean;
+        /** 空ならすべてのサーバー */
+        allowedServers: ReadonlySet<string>;
+        /** better-auth の baseURL（`https://example.com/api/auth`）。戻り先と Misskey の client_id を作る */
+        authBaseUrl: string;
+        /** Mastodon のアプリ登録に載せる Ubichill の URL */
+        website: string;
+        /** 開始時の Origin が使えないときに戻す画面の origin */
+        defaultAppOrigin: string;
+    };
+    /** 画面の origin として受け付けるか（CORS の許可と同じ） */
+    isAppOrigin(origin: string): boolean;
+    /** 管理者が連合で block にしたドメインか */
+    isBlocked(host: string): Promise<boolean>;
+    http: FediverseHttp;
+    clients: {
+        find(origin: string, redirectUri: string): Promise<{ clientId: string; clientSecret: string } | undefined>;
+        save(input: {
+            origin: string;
+            redirectUri: string;
+            clientId: string;
+            clientSecret: string;
+        }): Promise<{ clientId: string; clientSecret: string }>;
+        forget(origin: string, redirectUri: string): Promise<void>;
+    };
+    flows: {
+        put(identifier: string, value: string, expiresAt: Date, id: string): Promise<void>;
+        peek(identifier: string, now: Date): Promise<string | undefined>;
+        take(identifier: string, now: Date): Promise<string | undefined>;
+        remove(identifier: string): Promise<void>;
+    };
+    accounts: {
+        findUserByIdentity(identity: ExternalIdentity, now: Date): Promise<string | undefined>;
+        createUser(input: {
+            userId: string;
+            accountRowId: string;
+            email: string;
+            name: string;
+            handle: string;
+            displayNameKey: string;
+            identity: ExternalIdentity;
+            now: Date;
+        }): Promise<
+            | { status: 'created' }
+            | { status: 'identity-taken'; userId: string }
+            | { status: 'handle-taken' }
+            | { status: 'name-taken' }
+        >;
+        link(input: {
+            userId: string;
+            accountRowId: string;
+            identity: ExternalIdentity;
+            now: Date;
+        }): Promise<{ status: 'linked' | 'already-linked' | 'linked-to-other' }>;
+    };
+    /** 新規登録を受け付けるか（閉じても既存ユーザーのログインと連携はできる） */
+    registrationOpen(): boolean;
+    validate: { handle: typeof HandleSchema; displayName: typeof DisplayNameSchema };
+    newId(model: 'user' | 'account'): string;
+    /** 推測できない 32 バイト以上の乱数（base64url） */
+    random(): string;
+    now(): Date;
+    warn(message: string, error?: unknown): void;
+}
+
+const hash = (value: string) => createHash('sha256').update(value).digest('base64url');
+
+const StoredServerSchema = z.object({
+    software: z.enum(['mastodon', 'misskey']),
+    host: z.string(),
+    origin: z.string(),
+    issuer: z.string(),
+    authorizationEndpoint: z.string(),
+    tokenEndpoint: z.string(),
+    revocationEndpoint: z.string().nullable(),
+    registrationEndpoint: z.string().nullable(),
+});
+
+const StateSchema = z.object({
+    server: StoredServerSchema,
+    clientId: z.string(),
+    redirectUri: z.string(),
+    codeVerifier: z.string(),
+    browserHash: z.string(),
+    intent: z.enum(['sign-in', 'link']),
+    returnTo: z.string(),
+    appOrigin: z.string(),
+    link: z.object({ userId: z.string(), sessionId: z.string() }).nullable(),
+});
+type FlowState = z.infer<typeof StateSchema>;
+
+const SignUpSchema = z.object({
+    identity: z.object({
+        providerId: z.string(),
+        accountId: z.string(),
+        software: z.string(),
+        username: z.string(),
+    }),
+    host: z.string(),
+    displayName: z.string().nullable(),
+    returnTo: z.string(),
+});
+type SignUpTicket = z.infer<typeof SignUpSchema>;
+
+const readJson = <T>(schema: z.ZodType<T>, raw: string | undefined): T | undefined => {
+    if (raw === undefined) return undefined;
+    try {
+        const parsed = schema.safeParse(JSON.parse(raw));
+        return parsed.success ? parsed.data : undefined;
+    } catch {
+        return undefined;
+    }
+};
+
+/** 相対 URL にクエリを 1 つ足す（# より前に入れる）。 */
+export function withQuery(path: string, key: string, value: string): string {
+    const [beforeHash, ...hashParts] = path.split('#');
+    const separator = (beforeHash ?? '').includes('?') ? '&' : '?';
+    const hashPart = hashParts.length ? `#${hashParts.join('#')}` : '';
+    return `${beforeHash}${separator}${encodeURIComponent(key)}=${encodeURIComponent(value)}${hashPart}`;
+}
+
+export type StartOutcome =
+    | { ok: true; authorizationUrl: string; browserToken: string }
+    | { ok: false; error: FediverseSignInError };
+
+export type CallbackOutcome =
+    | { kind: 'signed-in'; userId: string; redirectTo: string }
+    | { kind: 'sign-up'; ticket: string; redirectTo: string }
+    | { kind: 'linked'; redirectTo: string }
+    | { kind: 'error'; error: FediverseSignInError; redirectTo: string };
+
+export type SignUpOutcome =
+    | { ok: true; userId: string; returnTo: string }
+    | { ok: false; status: 400 | 404 | 409; error: string };
+
+export function createFediverseSignIn(deps: FediverseSignInDeps) {
+    // host は parseFediverseServer を通した小文字のホスト（英数字・`.`・`-`・ポートの `:`）なので、そのままパスに入れる。
+    // エンコードすると `:` が `%3A` になり、戻り先の照合（authEndpoints）と URL の完全一致が崩れる
+    const callbackUrlFor = (host: string) => `${deps.config.authBaseUrl}/fediverse/callback/${host}`;
+    const clientIdFor = (host: string) => `${deps.config.authBaseUrl}/fediverse/client/${host}`;
+
+    const serverAllowed = async (host: string): Promise<boolean> =>
+        (deps.config.allowedServers.size === 0 || deps.config.allowedServers.has(host)) &&
+        !(await deps.isBlocked(host));
+
+    const discover = async (host: string): Promise<AuthorizationServer | 'unsupported' | 'unreachable'> => {
+        try {
+            const metadata = await deps.http.json(`https://${host}/.well-known/oauth-authorization-server`, {
+                method: 'GET',
+                headers: { Accept: 'application/json' },
+            });
+            const result = readAuthorizationServer(host, metadata);
+            return result.ok ? result.server : 'unsupported';
+        } catch (error) {
+            // 404 などはメタデータを出さない（古い・別の）サーバー
+            if (error instanceof HttpStatusError && error.status >= 400 && error.status < 500) return 'unsupported';
+            deps.warn(`フェディバースのサーバーに接続できません: ${host}`, error);
+            return 'unreachable';
+        }
+    };
+
+    const clientFor = async (server: AuthorizationServer, redirectUri: string): Promise<ClientCredentials> => {
+        if (server.software === 'misskey') return { clientId: clientIdFor(server.host), clientSecret: null };
+        const saved = await deps.clients.find(server.origin, redirectUri);
+        if (saved) return saved;
+        const registered = await registerMastodonApp(deps.http, server, {
+            redirectUri,
+            clientName: `Ubichill (${new URL(deps.config.website).host})`,
+            website: deps.config.website,
+        });
+        return deps.clients.save({ origin: server.origin, redirectUri, ...registered });
+    };
+
+    const storedClient = async (state: FlowState): Promise<ClientCredentials | undefined> => {
+        if (state.server.software === 'misskey') return { clientId: state.clientId, clientSecret: null };
+        const saved = await deps.clients.find(state.server.origin, state.redirectUri);
+        return saved?.clientId === state.clientId ? saved : undefined;
+    };
+
+    const appOriginOf = (origin: string | null): string =>
+        origin && deps.isAppOrigin(origin) ? origin : deps.config.defaultAppOrigin;
+
+    return {
+        /** Misskey の client_id の URL が返す文書（戻り先 URL とアプリ名）。読めないホストは null。 */
+        clientDocument(rawHost: string): string | null {
+            const parsed = parseFediverseServer(rawHost);
+            if (!parsed.ok || parsed.host !== rawHost) return null;
+            const clientId = clientIdFor(parsed.host);
+            const redirectUri = callbackUrlFor(parsed.host);
+            const escapeHtml = (s: string) =>
+                s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return [
+                '<!doctype html>',
+                '<html><head><meta charset="utf-8"><title>Ubichill</title>',
+                `<link rel="redirect_uri" href="${escapeHtml(redirectUri)}">`,
+                '</head><body>',
+                `<div class="h-app"><a href="${escapeHtml(clientId)}" class="u-url p-name">Ubichill</a></div>`,
+                '</body></html>',
+            ].join('');
+        },
+
+        async start(input: {
+            server: string;
+            intent: FediverseSignInIntent;
+            returnTo: unknown;
+            origin: string | null;
+            /** link のときのログイン中のユーザーとセッション */
+            session: { userId: string; sessionId: string } | null;
+        }): Promise<StartOutcome> {
+            if (!deps.config.enabled) return { ok: false, error: 'disabled' };
+            const parsed = parseFediverseServer(input.server);
+            if (!parsed.ok) return { ok: false, error: 'unsupported-server' };
+            if (!(await serverAllowed(parsed.host))) return { ok: false, error: 'server-not-allowed' };
+            if (input.intent === 'link' && !input.session) return { ok: false, error: 'session-changed' };
+            const server = await discover(parsed.host);
+            if (server === 'unsupported') return { ok: false, error: 'unsupported-server' };
+            if (server === 'unreachable') return { ok: false, error: 'server-unreachable' };
+            const redirectUri = callbackUrlFor(server.host);
+            const client = await clientFor(server, redirectUri).catch((error: unknown) => {
+                deps.warn(`アプリを登録できません: ${server.host}`, error);
+                return null;
+            });
+            if (!client) return { ok: false, error: 'server-unreachable' };
+
+            const state = deps.random();
+            const codeVerifier = deps.random();
+            const browserToken = deps.random();
+            const stored: FlowState = {
+                server,
+                clientId: client.clientId,
+                redirectUri,
+                codeVerifier,
+                browserHash: hash(browserToken),
+                intent: input.intent,
+                returnTo: safeReturnTo(input.returnTo),
+                appOrigin: appOriginOf(input.origin),
+                link: input.intent === 'link' ? input.session : null,
+            };
+            const now = deps.now();
+            await deps.flows.put(
+                `${STATE_PREFIX}${hash(state)}`,
+                JSON.stringify(stored),
+                new Date(now.getTime() + STATE_TTL_MS),
+                deps.random(),
+            );
+            return {
+                ok: true,
+                browserToken,
+                authorizationUrl: authorizationUrl(server, {
+                    clientId: client.clientId,
+                    redirectUri,
+                    state,
+                    codeChallenge: hash(codeVerifier),
+                }),
+            };
+        },
+
+        async callback(input: {
+            /** 戻り先 URL のパスに入れたホスト */
+            server: string;
+            query: { code?: string; state?: string; iss?: string; error?: string };
+            /** 開始時にブラウザーへ渡した値（クッキー） */
+            browserToken: string | null;
+            /** いまのセッション（link のときに開始時と同じか確かめる） */
+            sessionId: string | null;
+        }): Promise<CallbackOutcome> {
+            const now = deps.now();
+            const fail = (error: FediverseSignInError, state?: FlowState): CallbackOutcome => {
+                const appOrigin = state?.appOrigin ?? deps.config.defaultAppOrigin;
+                const path = state?.intent === 'link' ? state.returnTo : '/auth';
+                return { kind: 'error', error, redirectTo: `${appOrigin}${withQuery(path, 'fediverse_error', error)}` };
+            };
+            if (!input.query.state) return fail('mismatch');
+            const state = readJson(
+                StateSchema,
+                await deps.flows.take(`${STATE_PREFIX}${hash(input.query.state)}`, now),
+            );
+            if (!state) return fail('expired');
+            if (!input.browserToken || hash(input.browserToken) !== state.browserHash) return fail('mismatch', state);
+            if (input.server !== state.server.host) return fail('mismatch', state);
+            if (input.query.error) return fail(input.query.error === 'access_denied' ? 'denied' : 'failed', state);
+            // Misskey は応答に発行元を付ける（RFC 9207）。付けるサーバーでは必ず照合する
+            const issRequired = state.server.software === 'misskey';
+            if ((issRequired || input.query.iss !== undefined) && input.query.iss !== state.server.issuer) {
+                return fail('mismatch', state);
+            }
+            if (!input.query.code) return fail('failed', state);
+            if (!(await serverAllowed(state.server.host))) return fail('server-not-allowed', state);
+            if (state.intent === 'link' && state.link?.sessionId !== input.sessionId)
+                return fail('session-changed', state);
+
+            const client = await storedClient(state);
+            if (!client) return fail('failed', state);
+            const server: AuthorizationServer = state.server;
+            const account = await (async () => {
+                try {
+                    const token = await exchangeCode(deps.http, server, {
+                        client,
+                        code: input.query.code ?? '',
+                        redirectUri: state.redirectUri,
+                        codeVerifier: state.codeVerifier,
+                    });
+                    const fetched = await fetchAccount(deps.http, server, token);
+                    await revokeToken(deps.http, server, { client, token }).catch((error: unknown) =>
+                        deps.warn(`トークンを失効できませんでした: ${server.host}`, error),
+                    );
+                    return fetched;
+                } catch (error) {
+                    deps.warn(`フェディバースのログインに失敗しました: ${server.host}`, error);
+                    // 相手のサーバーでアプリが消されたら、次は登録し直す
+                    if (server.software === 'mastodon' && error instanceof HttpStatusError && error.status === 401) {
+                        await deps.clients.forget(server.origin, state.redirectUri);
+                    }
+                    return null;
+                }
+            })();
+            if (!account) return fail('failed', state);
+
+            const identity: ExternalIdentity = {
+                providerId: fediverseProviderId(server.origin),
+                accountId: account.id,
+                software: server.software,
+                username: account.username,
+            };
+            const back = `${state.appOrigin}${state.returnTo}`;
+
+            if (state.intent === 'link' && state.link) {
+                const linked = await deps.accounts.link({
+                    userId: state.link.userId,
+                    accountRowId: deps.newId('account'),
+                    identity,
+                    now,
+                });
+                if (linked.status === 'linked-to-other') return fail('linked-to-other', state);
+                return {
+                    kind: 'linked',
+                    redirectTo: `${state.appOrigin}${withQuery(state.returnTo, 'fediverse', 'linked')}`,
+                };
+            }
+
+            const userId = await deps.accounts.findUserByIdentity(identity, now);
+            if (userId) return { kind: 'signed-in', userId, redirectTo: back };
+
+            const ticket = deps.random();
+            const pending: SignUpTicket = {
+                identity,
+                host: server.host,
+                displayName: account.displayName,
+                returnTo: state.returnTo,
+            };
+            await deps.flows.put(
+                `${SIGN_UP_PREFIX}${hash(ticket)}`,
+                JSON.stringify(pending),
+                new Date(now.getTime() + SIGN_UP_TTL_MS),
+                deps.random(),
+            );
+            return {
+                kind: 'sign-up',
+                ticket,
+                redirectTo: `${state.appOrigin}${withQuery('/auth', 'fediverse', 'sign-up')}`,
+            };
+        },
+
+        async signUpCandidate(ticket: string | null): Promise<FediverseSignUpCandidate | null> {
+            if (!ticket) return null;
+            const pending = readJson(
+                SignUpSchema,
+                await deps.flows.peek(`${SIGN_UP_PREFIX}${hash(ticket)}`, deps.now()),
+            );
+            if (!pending) return null;
+            return {
+                server: pending.host,
+                username: pending.identity.username,
+                handle: handleCandidateOf(pending.identity.username),
+                displayName: displayNameCandidateOf(pending.displayName, pending.identity.username),
+            };
+        },
+
+        async signUp(input: { ticket: string | null; handle: unknown; displayName: unknown }): Promise<SignUpOutcome> {
+            const now = deps.now();
+            const identifier = `${SIGN_UP_PREFIX}${hash(input.ticket ?? '')}`;
+            const pending = input.ticket ? readJson(SignUpSchema, await deps.flows.peek(identifier, now)) : undefined;
+            if (!pending) {
+                return { ok: false, status: 404, error: '登録の期限が切れました。もう一度ログインしてください' };
+            }
+            const existing = await deps.accounts.findUserByIdentity(pending.identity, now);
+            if (existing) {
+                await deps.flows.remove(identifier);
+                return { ok: true, userId: existing, returnTo: pending.returnTo };
+            }
+            if (!deps.registrationOpen()) {
+                return { ok: false, status: 400, error: '現在、新規登録を受け付けていません' };
+            }
+            if (!(await serverAllowed(pending.host))) {
+                return { ok: false, status: 400, error: 'このサーバーのアカウントでは登録できません' };
+            }
+            const handle = deps.validate.handle.safeParse(typeof input.handle === 'string' ? input.handle.trim() : '');
+            if (!handle.success)
+                return { ok: false, status: 400, error: handle.error.issues[0]?.message ?? 'ID が不正です' };
+            const name = deps.validate.displayName.safeParse(input.displayName);
+            if (!name.success) {
+                return { ok: false, status: 400, error: name.error.issues[0]?.message ?? '表示名が不正です' };
+            }
+            const userId = deps.newId('user');
+            const created = await deps.accounts.createUser({
+                userId,
+                accountRowId: deps.newId('account'),
+                email: placeholderEmail(deps.random().replace(/[^a-zA-Z0-9]/g, '')),
+                name: name.data,
+                handle: handle.data,
+                displayNameKey: displayNameKey(name.data),
+                identity: pending.identity,
+                now,
+            });
+            switch (created.status) {
+                case 'created':
+                    await deps.flows.remove(identifier);
+                    return { ok: true, userId, returnTo: pending.returnTo };
+                case 'identity-taken':
+                    await deps.flows.remove(identifier);
+                    return { ok: true, userId: created.userId, returnTo: pending.returnTo };
+                case 'handle-taken':
+                    return { ok: false, status: 409, error: 'この ID は既に使用されています' };
+                case 'name-taken':
+                    return { ok: false, status: 409, error: 'この表示名は既に使用されています' };
+            }
+        },
+    };
+}
+
+export type FediverseSignIn = ReturnType<typeof createFediverseSignIn>;

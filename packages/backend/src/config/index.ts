@@ -52,6 +52,12 @@ const envSchema = z
             .string()
             .default('false')
             .transform((val) => val === 'true'),
+        // フェディバース（Mastodon・Misskey）のアカウントでのログイン。off で止める（連携の記録は残る）
+        FEDIVERSE_SIGN_IN: z.preprocess(emptyToUndefined, z.enum(['on', 'off']).default('on')),
+        // ログインに使えるサーバー（カンマ区切りのホスト）。空ならすべて（連合で block にしたドメインは除く）
+        FEDIVERSE_SIGN_IN_SERVERS: z.preprocess(emptyToUndefined, z.string().default('')),
+        // 新規登録を受け付けるか。closed でも既存ユーザーのログインと連携はできる
+        REGISTRATION: z.preprocess(emptyToUndefined, z.enum(['open', 'closed']).default('open')),
         TRUST_PROXY: z
             .string()
             .default('false')
@@ -134,6 +140,15 @@ export const appConfig = {
         resendApiKey: parsedEnv.data.RESEND_API_KEY,
         skipVerification: parsedEnv.data.SKIP_EMAIL_VERIFICATION,
     },
+    fediverseSignIn: {
+        enabled: parsedEnv.data.FEDIVERSE_SIGN_IN === 'on',
+        allowedServers: new Set(
+            parsedEnv.data.FEDIVERSE_SIGN_IN_SERVERS.split(',')
+                .map((host) => host.trim().toLowerCase())
+                .filter(Boolean),
+        ) as ReadonlySet<string>,
+    },
+    registrationOpen: parsedEnv.data.REGISTRATION === 'open',
     trustProxy: parsedEnv.data.TRUST_PROXY,
 } as const;
 
@@ -176,6 +191,12 @@ log.info(
     summary('認証', {
         BETTER_AUTH_URL: appConfig.auth.url,
         BETTER_AUTH_SECRET: appConfig.auth.secret ? '設定済み' : '未設定',
+        新規登録: appConfig.registrationOpen ? '受付中' : '停止',
+        フェディバースでのログイン: appConfig.fediverseSignIn.enabled
+            ? appConfig.fediverseSignIn.allowedServers.size > 0
+                ? [...appConfig.fediverseSignIn.allowedServers].join(',')
+                : '全サーバー'
+            : '無効',
     }),
 );
 log.info(

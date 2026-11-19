@@ -24,6 +24,28 @@ describe('isPublicAuthPath', () => {
         }
     });
 
+    it('フェディバースのログインの口は通し、ホストの形でない最後の段は通さない', () => {
+        for (const path of [
+            '/fediverse/start',
+            '/fediverse/sign-up',
+            '/fediverse/options',
+            '/fediverse/callback/mi.example',
+            '/fediverse/client/mastodon.example:8443',
+        ]) {
+            expect(isPublicAuthPath(path), path).toBe(true);
+        }
+        for (const path of [
+            '/fediverse/callback/',
+            '/fediverse/callback/mi.example/extra',
+            '/fediverse/callback/MI.example',
+            '/fediverse/callback/a%2Fb',
+            '/fediverse/client/..',
+            '/fediverse/unknown',
+        ]) {
+            expect(isPublicAuthPath(path), path).toBe(false);
+        }
+    });
+
     it('大文字・二重スラッシュ・エンコードなどの書き換えでは通さない', () => {
         for (const path of [
             '/SIGN-UP/email',

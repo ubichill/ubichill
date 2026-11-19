@@ -158,7 +158,7 @@ router.post('/token', async (req, res) => {
         siteUrl: new URL('/', publicBaseUrl()).href,
         at: environment.createdAt,
     });
-    void sendAccountNotice(user.email, notice.subject, notice.text);
+    void sendAccountNotice(user, notice.subject, notice.text);
     return res.json({
         token,
         account: selfAccount(user.handle),

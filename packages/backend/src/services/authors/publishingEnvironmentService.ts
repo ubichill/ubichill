@@ -28,7 +28,7 @@ export const publishingEnvironmentService = {
 
     /** このブラウザを公開環境として登録する（ログインできる = 公開できる）。秘密鍵の所有を署名で証明させる。 */
     async registerBrowser(
-        user: { id: string; name: string; email: string },
+        user: { id: string; name: string; email: string; emailVerified: boolean },
         proof: { publicKey: string; at: string; signature: string },
         userAgent: string | undefined,
     ): Promise<RegisterEnvironmentOutcome> {
@@ -63,7 +63,7 @@ export const publishingEnvironmentService = {
                 siteUrl: new URL('/', process.env[ENV_KEYS.PUBLIC_BASE_URL] || SERVER_CONFIG.DEV_URL).href,
                 at: created.createdAt,
             });
-            void sendAccountNotice(user.email, notice.subject, notice.text);
+            void sendAccountNotice(user, notice.subject, notice.text);
             return { ok: true, created: true, environment: publishingEnvironmentView(created) };
         } catch {
             return taken;

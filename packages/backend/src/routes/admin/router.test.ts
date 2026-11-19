@@ -54,7 +54,17 @@ const service = createRoleService({
     roles,
     users: {
         findById: async (id) =>
-            id === 'alice' ? { id, name: 'Alice', handle: 'alice', image: null, createdAt: new Date(0) } : undefined,
+            id === 'alice'
+                ? {
+                      id,
+                      name: 'Alice',
+                      handle: 'alice',
+                      image: null,
+                      createdAt: new Date(0),
+                      email: 'alice@example.com',
+                      emailVerified: true,
+                  }
+                : undefined,
         findByHandle: async () => undefined,
         search: async () => [],
         listRecent: async () => [],

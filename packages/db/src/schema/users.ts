@@ -1,5 +1,16 @@
 import { relations } from 'drizzle-orm';
-import { boolean, index, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, varchar } from 'drizzle-orm/pg-core';
+import {
+    boolean,
+    index,
+    jsonb,
+    pgEnum,
+    pgTable,
+    primaryKey,
+    text,
+    timestamp,
+    uniqueIndex,
+    varchar,
+} from 'drizzle-orm/pg-core';
 import { instanceAccessTypeEnum } from './instanceAccessType';
 import { worlds } from './worlds';
 
@@ -75,7 +86,11 @@ export const accounts = pgTable(
         createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
         updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     },
-    (table) => [index('accounts_user_id_idx').on(table.userId)],
+    (table) => [
+        index('accounts_user_id_idx').on(table.userId),
+        // 外部アカウント（providerId = 方式と認証サーバー、accountId = そのサーバー内の ID）は 1 人にだけ結び付く
+        uniqueIndex('accounts_provider_account_unique').on(table.providerId, table.accountId),
+    ],
 );
 
 // Better Auth verification table (for email verification)

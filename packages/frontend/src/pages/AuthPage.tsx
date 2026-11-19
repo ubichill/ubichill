@@ -1,10 +1,40 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
+import {
+    buttonStyle,
+    cardStyle,
+    containerStyle,
+    dividerStyle,
+    errorStyle,
+    fieldErrorStyle,
+    fieldStyle,
+    fieldSuccessStyle,
+    formStyle,
+    hintStyle,
+    iconStyle,
+    inputErrorStyle,
+    inputStyle,
+    labelStyle,
+    linkButtonStyle,
+    otpInputStyle,
+    passwordToggleStyle,
+    subtitleStyle,
+    successStyle,
+    tabActiveStyle,
+    tabContainerStyle,
+    tabStyle,
+    titleStyle,
+    verifyInfoStyle,
+    verifyListStyle,
+} from '@/components/auth/authStyles';
+import { FediverseSignInForm } from '@/components/auth/FediverseSignInForm';
+import { FediverseSignUpForm } from '@/components/auth/FediverseSignUpForm';
+import { readFediverseReturn } from '@/lib/account/fediverseReturn';
+import { fetchFediverseSignInOptions } from '@/lib/account/fediverseSignIn';
 import { useDisplayNameAvailability, useHandleAvailability } from '@/lib/account/useHandleAvailability';
 import { registerWithOTP, resendOTP, signIn, verifyOTPAndRegister } from '@/lib/auth-client';
 import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
-import { flex, vstack } from '@/styled-system/patterns';
 
 type AuthMode = 'login' | 'register' | 'verify';
 
@@ -13,13 +43,16 @@ export function AuthPage() {
     const location = useLocation();
     const from = (location.state as { from?: string } | null)?.from ?? '/';
     const { data: session, isPending } = useSession();
+    const fediverseReturn = readFediverseReturn(location.search);
+    const [fediverseEnabled, setFediverseEnabled] = useState(false);
     const [mode, setMode] = useState<AuthMode>('login');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [displayName, setDisplayName] = useState('');
     const [handle, setHandle] = useState('');
-    const [error, setError] = useState('');
+    // フェディバースの認証から失敗して戻ったときは、その理由を最初から出す
+    const [error, setError] = useState(fediverseReturn.error ?? '');
     const [success, setSuccess] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [resendCooldown, setResendCooldown] = useState(0);
@@ -27,6 +60,12 @@ export function AuthPage() {
     const [registrationId, setRegistrationId] = useState('');
     const handleStatus = useHandleAvailability(handle, mode === 'register');
     const displayNameStatus = useDisplayNameAvailability(displayName, mode === 'register');
+
+    useEffect(() => {
+        fetchFediverseSignInOptions()
+            .then((options) => setFediverseEnabled(options.enabled))
+            .catch(() => setFediverseEnabled(false));
+    }, []);
 
     // クールダウンタイマー
     useEffect(() => {
@@ -162,6 +201,10 @@ export function AuthPage() {
                 </div>
             </main>
         );
+    }
+
+    if (fediverseReturn.signUp) {
+        return <FediverseSignUpForm onCancel={() => navigate('/auth', { replace: true })} />;
     }
 
     const handleBackToRegister = () => {
@@ -430,258 +473,16 @@ export function AuthPage() {
                         {isLoading ? '処理中...' : mode === 'login' ? 'ログイン' : '登録'}
                     </button>
                 </form>
+
+                {fediverseEnabled && (
+                    <>
+                        <div className={dividerStyle} role="separator">
+                            または
+                        </div>
+                        <FediverseSignInForm intent="sign-in" returnTo={from} />
+                    </>
+                )}
             </div>
         </main>
     );
 }
-
-// Styles — Beige/Navy palette (from pencil-new.pen mockup)
-const containerStyle = flex({
-    minH: '100dvh',
-    px: { base: '4', sm: '6' },
-    py: '6',
-    alignItems: 'center',
-    justifyContent: 'center',
-    bg: 'background',
-});
-
-const cardStyle = vstack({
-    gap: '6',
-    p: { base: '6', sm: '8' },
-    bg: 'white',
-    rounded: 'lg',
-    border: '1px solid',
-    borderColor: 'border',
-    w: 'full',
-    maxW: '400px',
-});
-
-const iconStyle = css({
-    borderRadius: '14px',
-});
-
-const titleStyle = css({
-    fontSize: { base: '2xl', sm: '3xl' },
-    fontWeight: 'bold',
-    color: 'text',
-    wordBreak: 'auto-phrase',
-});
-
-const subtitleStyle = css({
-    fontSize: 'sm',
-    color: 'textMuted',
-    textAlign: 'center',
-    lineHeight: '1.7',
-    wordBreak: 'auto-phrase',
-    overflowWrap: 'anywhere',
-});
-
-const tabContainerStyle = flex({
-    w: 'full',
-    gap: '2',
-    bg: 'surfaceHover',
-    p: '1',
-    rounded: 'lg',
-});
-
-const tabStyle = css({
-    flex: 1,
-    whiteSpace: 'nowrap',
-    minH: '44px',
-    py: '2',
-    px: '4',
-    fontSize: 'sm',
-    fontWeight: 'medium',
-    color: 'textMuted',
-    rounded: 'md',
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-    _hover: { color: 'text' },
-});
-
-const tabActiveStyle = css({
-    flex: 1,
-    whiteSpace: 'nowrap',
-    minH: '44px',
-    py: '2',
-    px: '4',
-    fontSize: 'sm',
-    fontWeight: 'medium',
-    color: 'textOnPrimary',
-    bg: 'primaryHover',
-    rounded: 'md',
-    cursor: 'pointer',
-});
-
-const formStyle = vstack({
-    gap: '4',
-    w: 'full',
-});
-
-const fieldStyle = vstack({
-    gap: '1',
-    w: 'full',
-    alignItems: 'flex-start',
-});
-
-const labelStyle = css({
-    fontSize: 'sm',
-    fontWeight: 'medium',
-    color: 'textMuted',
-});
-
-const inputStyle = css({
-    w: 'full',
-    minH: '44px',
-    py: '2.5',
-    px: '3',
-    fontSize: 'md',
-    color: 'text',
-    bg: 'surfaceHover',
-    borderWidth: '1px',
-    borderColor: 'border',
-    rounded: 'lg',
-    outline: 'none',
-    transition: 'all 0.2s',
-    _placeholder: { color: 'textSubtle' },
-    _focus: { borderColor: 'primaryHover', ring: '2', ringColor: 'primarySubtle' },
-    '&[data-password]': { pr: '16' },
-});
-
-const inputErrorStyle = css({
-    w: 'full',
-    minH: '44px',
-    py: '2.5',
-    px: '3',
-    fontSize: 'md',
-    color: 'text',
-    bg: 'surfaceHover',
-    borderWidth: '1px',
-    borderColor: 'error',
-    rounded: 'lg',
-    outline: 'none',
-    transition: 'all 0.2s',
-    _placeholder: { color: 'textSubtle' },
-    _focus: { borderColor: 'error', ring: '2', ringColor: 'errorSubtle' },
-});
-
-const fieldErrorStyle = css({
-    fontSize: 'xs',
-    color: 'error',
-});
-
-const fieldSuccessStyle = css({
-    fontSize: 'xs',
-    color: 'successText',
-});
-
-const hintStyle = css({
-    fontSize: 'xs',
-    color: 'textSubtle',
-    lineHeight: '1.6',
-    wordBreak: 'auto-phrase',
-    overflowWrap: 'anywhere',
-});
-
-const otpInputStyle = css({
-    w: 'full',
-    py: '4',
-    px: '4',
-    fontSize: '2xl',
-    fontWeight: 'bold',
-    color: 'text',
-    textAlign: 'center',
-    letterSpacing: '0.5em',
-    bg: 'surfaceHover',
-    borderWidth: '2px',
-    borderColor: 'border',
-    rounded: 'lg',
-    outline: 'none',
-    transition: 'all 0.2s',
-    _focus: { borderColor: 'primaryHover', ring: '2', ringColor: 'primarySubtle' },
-});
-
-const buttonStyle = css({
-    w: 'full',
-    minH: '44px',
-    py: '2.5',
-    px: '4',
-    fontSize: 'sm',
-    fontWeight: 'medium',
-    color: 'textOnPrimary',
-    bg: 'primaryHover',
-    rounded: 'lg',
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-    _hover: { bg: 'primaryActive' },
-    _disabled: { opacity: 0.6, cursor: 'not-allowed' },
-});
-
-const linkButtonStyle = css({
-    minH: '44px',
-    py: '2',
-    fontSize: 'sm',
-    color: 'textMuted',
-    bg: 'transparent',
-    border: 'none',
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-    _hover: { color: 'text' },
-});
-
-const passwordToggleStyle = css({
-    position: 'absolute',
-    right: '1',
-    top: '0',
-    bottom: '0',
-    minW: '48px',
-    px: '2',
-    color: 'text',
-    fontSize: 'sm',
-    fontWeight: 'medium',
-    cursor: 'pointer',
-    rounded: 'md',
-    _hover: { bg: 'surfaceAccent' },
-    _focusVisible: { outline: '2px solid token(colors.primary)', outlineOffset: '2px' },
-});
-
-const errorStyle = css({
-    w: 'full',
-    py: '2',
-    px: '3',
-    fontSize: 'sm',
-    color: 'errorText',
-    bg: 'errorBg',
-    rounded: 'lg',
-});
-
-const successStyle = css({
-    w: 'full',
-    py: '2',
-    px: '3',
-    fontSize: 'sm',
-    color: 'successText',
-    bg: 'successBg',
-    rounded: 'lg',
-});
-
-const verifyInfoStyle = css({
-    w: 'full',
-    py: '4',
-    px: '4',
-    fontSize: 'sm',
-    color: 'textMuted',
-    bg: 'surfaceHover',
-    rounded: 'lg',
-});
-
-const verifyListStyle = css({
-    mt: '2',
-    ml: '4',
-    listStyleType: 'disc',
-    fontSize: 'xs',
-    color: 'textMuted',
-    '& li': {
-        mt: '1',
-    },
-});

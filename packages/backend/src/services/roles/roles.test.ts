@@ -90,12 +90,14 @@ function memoryRoles(users: Map<string, RoleUser>): RoleStore & { rows: Row[]; r
     };
 }
 
-const user = (id: string, handle = id): RoleUser => ({
+const user = (id: string, handle = id, email = `${id}@example.com`, emailVerified = true): RoleUser => ({
     id,
     name: id.toUpperCase(),
     handle,
     image: null,
     createdAt: NOW,
+    email,
+    emailVerified,
 });
 
 function memoryUsers(list: RoleUser[]): RoleUserStore & { map: Map<string, RoleUser> } {
@@ -115,7 +117,15 @@ function memoryUsers(list: RoleUser[]): RoleUserStore & { map: Map<string, RoleU
 }
 
 function setup() {
-    const users = memoryUsers([user('root', 'ubichill'), user('alice'), user('bob'), user(SYSTEM, 'system')]);
+    const users = memoryUsers([
+        user('root', 'ubichill'),
+        user('alice'),
+        user('bob'),
+        user(SYSTEM, 'system'),
+        // フェディバースで登録したメールなしのユーザーと、メール未確認のユーザー
+        user('fedi', 'fedi', 'x1@sso.invalid', false),
+        user('unverified', 'unverified', 'u@example.com', false),
+    ]);
     const roles = memoryRoles(users.map);
     const clock = { now: NOW };
     const service = createRoleService({
@@ -178,6 +188,24 @@ describe('管理者の判定', () => {
         expect(await service.isAdmin('alice')).toBe(true);
         await service.updateRole(staff.id, input({ isAdministrator: false }));
         expect(await service.isAdmin('alice')).toBe(false);
+    });
+
+    it('確認済みのメールが無いユーザーは管理者のロールを付けられず、付いていても管理者でない', async () => {
+        const { service, roles } = setup();
+        const admin = await createRole(service, { isAdministrator: true });
+        const staff = await createRole(service);
+        for (const id of ['fedi', 'unverified']) {
+            expect(await service.assign(admin.id, id, { expiresAt: null })).toMatchObject({ ok: false, status: 400 });
+            // 管理者でないロールは付けられる
+            expect((await service.assign(staff.id, id, { expiresAt: null })).ok).toBe(true);
+        }
+        // 後からロールを管理者にしても、メールの無い人は管理者にならない
+        await service.updateRole(staff.id, input({ isAdministrator: true }));
+        roles.rows.push({ roleId: admin.id, userId: 'fedi', createdAt: NOW, expiresAt: null });
+        expect(await service.isAdmin('fedi')).toBe(false);
+        expect(await service.isAdmin('unverified')).toBe(false);
+        const listed = await service.searchUsers('');
+        expect(listed.ok && listed.value.find((u) => u.id === 'fedi')?.isAdmin).toBe(false);
     });
 
     it('いないユーザー・システムユーザーは管理者でない', async () => {
@@ -286,7 +314,7 @@ describe('ユーザーの一覧', () => {
         const { service } = setup();
         const result = await service.searchUsers('');
         const users = result.ok ? result.value : [];
-        expect(users.map((u) => u.id)).toEqual(['root', 'alice', 'bob']);
+        expect(users.map((u) => u.id)).toEqual(['root', 'alice', 'bob', 'fedi', 'unverified']);
         expect(users.find((u) => u.id === 'root')).toMatchObject({ isRoot: true, isAdmin: true, roles: [] });
         expect(users.find((u) => u.id === 'alice')).toMatchObject({ isRoot: false, isAdmin: false });
     });

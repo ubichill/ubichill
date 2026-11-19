@@ -230,6 +230,7 @@ export const SERVER_CONFIG = {
 
 export * from './account/displayNameChange';
 export * from './account/favoritesVisibility';
+export * from './account/fediverseSignIn';
 export * from './account/handle';
 export * from './account/home';
 export * from './account/limits';

@@ -1,0 +1,27 @@
+import { useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router';
+import { readFediverseReturn, withoutFediverseReturn } from '@/lib/account/fediverseReturn';
+import { pushToast } from '@/lib/toast';
+
+/**
+ * 設定からフェディバースのアカウントを追加して戻ったとき、結果を知らせてクエリを外す。
+ * ログイン画面（/auth）は自分で表示するので、ここでは扱わない。
+ */
+export function FediverseReturnNotice() {
+    const location = useLocation();
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        if (location.pathname === '/auth') return;
+        const returned = readFediverseReturn(location.search);
+        if (!returned.linked && !returned.error) return;
+        if (returned.linked) pushToast('フェディバースのアカウントを追加しました', 'info');
+        if (returned.error) pushToast(returned.error, 'error');
+        navigate(
+            { pathname: location.pathname, search: withoutFediverseReturn(location.search), hash: location.hash },
+            { replace: true },
+        );
+    }, [location.pathname, location.search, location.hash, navigate]);
+
+    return null;
+}

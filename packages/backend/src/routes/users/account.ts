@@ -1,8 +1,15 @@
 /**
  * 自分のアカウント（`/api/v1/users/me` の下）: 自分のプロフィール・管理者か・パスワード・表示名・ほかのログインの無効化。
  */
-import { authorKeyRepository, userRepository } from '@ubichill/db';
-import { DISPLAY_NAME_CHANGE_COOLDOWN_DAYS, OFFICIAL_HANDLE } from '@ubichill/shared';
+import { authorKeyRepository, fediverseAccountRepository, userRepository } from '@ubichill/db';
+import {
+    DISPLAY_NAME_CHANGE_COOLDOWN_DAYS,
+    FEDIVERSE_SOFTWARE,
+    type FediverseSoftware,
+    fediverseHostOf,
+    type LoginMethods,
+    OFFICIAL_HANDLE,
+} from '@ubichill/shared';
 import { Router } from 'express';
 import { auth } from '../../lib/auth';
 import { requireAuth, requireFreshAuth, requirePublisher, toWebHeaders } from '../../middleware/auth';
@@ -101,6 +108,42 @@ router.put('/me/display-name', requireAuth, async (req, res) => {
                 error: `表示名を別の名前に変えられるのは ${DISPLAY_NAME_CHANGE_COOLDOWN_DAYS} 日に 1 回までです`,
                 availableAt: outcome.availableAt.toISOString(),
             });
+    }
+});
+
+// ログイン方法（パスワードの有無と、追加したフェディバースのアカウント）
+router.get('/me/login-methods', requireAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const [password, linked] = await Promise.all([
+        fediverseAccountRepository.hasPassword(req.user.id),
+        fediverseAccountRepository.listLinked(req.user.id),
+    ]);
+    const isSoftware = (s: string | null): s is FediverseSoftware =>
+        s !== null && (FEDIVERSE_SOFTWARE as readonly string[]).includes(s);
+    const body: LoginMethods = {
+        password,
+        fediverse: linked.map((a) => ({
+            id: a.id,
+            server: fediverseHostOf(a.providerId) ?? a.providerId,
+            username: a.username,
+            software: isSoftware(a.software) ? a.software : null,
+            linkedAt: a.createdAt.toISOString(),
+        })),
+    };
+    return res.json(body);
+});
+
+// フェディバースのアカウントを外す。最後のログイン手段は外せない
+router.delete('/me/login-methods/:id', requireFreshAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const outcome = await fediverseAccountRepository.unlink(req.user.id, String(req.params.id));
+    switch (outcome.status) {
+        case 'unlinked':
+            return res.status(204).send();
+        case 'not-found':
+            return res.status(404).json({ error: 'ログイン方法が見つかりません' });
+        case 'last-method':
+            return res.status(409).json({ error: 'ほかにログインする方法が無いため外せません' });
     }
 });
 
