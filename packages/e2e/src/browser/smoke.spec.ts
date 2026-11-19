@@ -1,6 +1,7 @@
 import { writeFile } from 'node:fs/promises';
 import { expect, type Page, test } from '@playwright/test';
-import { smokeAccount } from '../account.ts';
+import { type SmokeAccount, smokeAccount } from '../account.ts';
+import { register } from '../http.ts';
 import { type ConsoleEntry, fatalConsoleEntries, formatConsole } from './consoleRules.ts';
 
 /**
@@ -42,11 +43,7 @@ test('登録・ログインし、ホームに入って pen の Worker が動く'
         });
 
         await test.step('ログイン', async () => {
-            const submit = page.locator('form').getByRole('button', { name: 'ログイン', exact: true });
-            await expect(submit).toBeVisible();
-            await page.getByLabel('メールアドレス').fill(account.email);
-            await page.getByLabel('パスワード', { exact: true }).fill(account.password);
-            await submit.click();
+            await login(page, account);
         });
 
         await test.step('ロビーを通らず、ホームの部屋へ自動で入る', async () => {
@@ -103,6 +100,50 @@ test('登録・ログインし、ホームに入って pen の Worker が動く'
         }
     }
 });
+
+test('セッション取得が一時的に失敗しても、CLI 承認画面で別のアカウントに切り替えられる', async ({ page }) => {
+    const target = { origin, apiOrigin };
+    const first = smokeAccount(runId, 'first');
+    const second = smokeAccount(runId, 'second');
+    await test.step('プレビューにテスト用のアカウントを 2 件作る', async () => {
+        await register(fetch, target, first);
+        await register(fetch, target, second);
+    });
+
+    const approvePath = '/cli/authorize';
+    const switchAccount = page.getByRole('button', { name: '別のアカウントで承認する' });
+    await test.step('1 人目で承認画面を開く', async () => {
+        await page.goto(approvePath);
+        await expect(page).toHaveURL(/\/auth$/);
+        await login(page, first);
+        await expect(page).toHaveURL(/\/cli\/authorize$/);
+        await expect(page.getByText(first.displayName, { exact: true })).toBeVisible();
+    });
+
+    await test.step('ログアウト直後の get-session を 503 にする', async () => {
+        const sessionRoute = '**/api/auth/get-session**';
+        await page.route(sessionRoute, (route) => route.fulfill({ status: 503, json: { message: '一時的な障害' } }));
+        await switchAccount.click();
+        await expect(page).toHaveURL(/\/auth$/);
+        await expect(page.locator('form').getByRole('button', { name: 'ログイン', exact: true })).toBeVisible();
+        await page.unroute(sessionRoute);
+    });
+
+    await test.step('2 人目で同じ承認画面に戻る', async () => {
+        await login(page, second);
+        await expect(page).toHaveURL(/\/cli\/authorize$/);
+        await expect(page.getByText(second.displayName, { exact: true })).toBeVisible();
+        await expect(page.getByText(first.displayName, { exact: true })).toHaveCount(0);
+    });
+});
+
+async function login(page: Page, account: SmokeAccount): Promise<void> {
+    const submit = page.locator('form').getByRole('button', { name: 'ログイン', exact: true });
+    await expect(submit).toBeVisible();
+    await page.getByLabel('メールアドレス').fill(account.email);
+    await page.getByLabel('パスワード', { exact: true }).fill(account.password);
+    await submit.click();
+}
 
 function penHost(page: Page) {
     return page.locator('[data-entity-type="pen:pen"]').first();

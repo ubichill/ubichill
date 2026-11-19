@@ -1,21 +1,38 @@
 #!/usr/bin/env bash
-# プレビュー（https://pr-<番号>.ubichill.com）が PR の head のコミットで応答するまで待ち、GITHUB_OUTPUT に deployed=true|false を書く。
-# Argo CD が新しい sha のイメージで入れ替えるのを、backend の /api/version の commitHash で確かめる。
+# プレビューのフロントエンド・バックエンドが対象のコミットで応答するまで待つ。
 set -euo pipefail
 
-url="https://pr-${PR_NUMBER}.ubichill.com"
-short_sha="${HEAD_SHA:0:7}"
+pr_number="${1:-${PR_NUMBER:-}}"
+head_sha="${2:-${HEAD_SHA:-}}"
+if [[ ! "$pr_number" =~ ^[1-9][0-9]*$ || ! "$head_sha" =~ ^[0-9a-f]{7,40}$ ]]; then
+  echo "使い方: $0 <PR 番号> <コミット SHA>" >&2
+  exit 2
+fi
+
+url="https://pr-${pr_number}.ubichill.com"
+short_sha="${head_sha:0:7}"
 deadline=$(( $(date +%s) + ${WAIT_MINUTES:-15} * 60 ))
 
+commit_at() {
+  curl -fsS --max-time 10 "${url}$1?t=$(date +%s)" 2>/dev/null     | jq -er '.commitHash | select(type == "string")' 2>/dev/null || true
+}
+
 deployed=false
+frontend=
+backend=
 while [ "$(date +%s)" -lt "$deadline" ]; do
-  current=$(curl -fsS --max-time 10 "${url}/api/version" 2>/dev/null | sed -n 's/.*"commitHash":"\([0-9a-f]*\)".*/\1/p' || true)
-  if [ "$current" = "$short_sha" ]; then
+  frontend=$(commit_at /version.json)
+  backend=$(commit_at /api/version)
+  if [ "$frontend" = "$short_sha" ] && [ "$backend" = "$short_sha" ]; then
     deployed=true
     break
   fi
   sleep 20
 done
 
-echo "deployed=${deployed}" >> "$GITHUB_OUTPUT"
-echo "プレビュー ${url} は ${short_sha} で応答: ${deployed}"
+echo "プレビュー ${url} (${short_sha}): frontend=${frontend:-未応答} backend=${backend:-未応答}"
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  echo "deployed=${deployed}" >> "$GITHUB_OUTPUT"
+else
+  [ "$deployed" = true ]
+fi
