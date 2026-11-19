@@ -29,7 +29,7 @@ import {
 } from '@/components/auth/authStyles';
 import { FediverseSignInButton, FediverseSignInPanel } from '@/components/auth/FediverseSignInPanel';
 import { FediverseSignUpForm } from '@/components/auth/FediverseSignUpForm';
-import { readFediverseReturn } from '@/lib/account/fediverseReturn';
+import { readFediverseReturn, returnPathOf } from '@/lib/account/fediverseReturn';
 import { type FediverseSignInOptions, fetchFediverseSignInOptions } from '@/lib/account/fediverseSignIn';
 import { useDisplayNameAvailability, useHandleAvailability } from '@/lib/account/useHandleAvailability';
 import { registerWithOTP, resendOTP, signIn, verifyOTPAndRegister } from '@/lib/auth-client';
@@ -41,7 +41,7 @@ type AuthMode = 'login' | 'register' | 'verify';
 export function AuthPage() {
     const navigate = useNavigate();
     const location = useLocation();
-    const from = (location.state as { from?: string } | null)?.from ?? '/';
+    const from = returnPathOf(location.state);
     const { data: session, isPending } = useSession();
     const fediverseReturn = readFediverseReturn(location.search);
     const [fediverseOptions, setFediverseOptions] = useState<FediverseSignInOptions>({

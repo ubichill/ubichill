@@ -100,8 +100,12 @@ export function fediverseSignInPlugin({ getSignIn, options }: FediverseSignInPlu
                         origin: ctx.request?.headers.get('origin') ?? ctx.headers?.get('origin') ?? null,
                         session: current ? { userId: current.user.id, sessionId: current.session.id } : null,
                     });
-                    if (!started.ok)
+                    if (!started.ok) {
+                        ctx.context.logger.warn(
+                            `フェディバースのログインを始められません: ${ctx.body.server} (${started.error})`,
+                        );
                         throw APIError.fromStatus('BAD_REQUEST', { code: started.error, message: started.error });
+                    }
                     const { name, attributes } = cookie(ctx, FLOW_COOKIE, STATE_TTL_MS);
                     await ctx.setSignedCookie(name, started.browserToken, ctx.context.secret, attributes);
                     return ctx.json({ url: started.authorizationUrl });

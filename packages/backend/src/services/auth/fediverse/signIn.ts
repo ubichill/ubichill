@@ -270,7 +270,8 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
                 '<html><head><meta charset="utf-8"><title>Ubichill</title>',
                 `<link rel="redirect_uri" href="${escapeHtml(redirectUri)}">`,
                 '</head><body>',
-                `<div class="h-app"><a href="${escapeHtml(clientId)}" class="u-url p-name">Ubichill</a></div>`,
+                // Misskey は h-app の名前とロゴを同意画面に出す
+                `<div class="h-app"><img src="${escapeHtml(`${deps.config.website.replace(/\/+$/, '')}/icon.png`)}" class="u-logo" alt=""><a href="${escapeHtml(clientId)}" class="u-url p-name">Ubichill</a></div>`,
                 '</body></html>',
             ].join('');
         },

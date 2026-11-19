@@ -127,6 +127,11 @@ export const FEDIVERSE_SIGN_IN_ERRORS = {
 } as const;
 export type FediverseSignInError = keyof typeof FEDIVERSE_SIGN_IN_ERRORS;
 
+/** 理由のコードが shared で知っているものか（知らないコードを「ログインに失敗」と言い換えず、そのまま扱うため）。 */
+export function isFediverseSignInError(code: string | null): code is FediverseSignInError {
+    return code !== null && Object.hasOwn(FEDIVERSE_SIGN_IN_ERRORS, code);
+}
+
 export function fediverseSignInErrorMessage(code: string | null): string | null {
     if (!code) return null;
     return code in FEDIVERSE_SIGN_IN_ERRORS
@@ -161,9 +166,7 @@ export const FEATURED_FEDIVERSE_SERVERS: readonly string[] = [
     'misskey.io',
     'mstdn.jp',
     'mastodon.social',
-    'misskey.design',
-    'nijimiss.moe',
-    'mastodon.cloud',
+    'misskey.niri.la',
 ];
 
 /** 設定の「ログイン方法」。 */

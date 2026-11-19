@@ -1,5 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { readFediverseReturn, withoutFediverseReturn } from './fediverseReturn';
+import { readFediverseReturn, returnPathOf, withoutFediverseReturn } from './fediverseReturn';
+
+describe('returnPathOf', () => {
+    it('ProtectedRoute の Location のオブジェクトも、ほかの画面の文字列も相対 URL の文字列にする', () => {
+        expect(
+            returnPathOf({ from: { pathname: '/instance/abc', search: '?x=1', hash: '#h', state: null, key: 'k' } }),
+        ).toBe('/instance/abc?x=1#h');
+        expect(returnPathOf({ from: '/@bob/room' })).toBe('/@bob/room');
+    });
+
+    it('無い・外への URL・おかしな形は / にする', () => {
+        for (const state of [
+            null,
+            undefined,
+            {},
+            { from: 'https://evil.example' },
+            { from: { pathname: '//evil' } },
+            { from: 1 },
+        ]) {
+            expect(returnPathOf(state)).toBe('/');
+        }
+    });
+});
 
 describe('readFediverseReturn', () => {
     it('登録・連携・失敗を読み分け、知らないエラーは一般的な文にする', () => {

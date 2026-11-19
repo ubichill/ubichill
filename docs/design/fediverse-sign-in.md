@@ -88,10 +88,10 @@ Sharkey など Misskey の派生も、上の条件を満たせば同じ扱いに
 
 並べるサーバーは shared の `FEATURED_FEDIVERSE_SERVERS`。下の判定に通ることを 2026-11 に実測したものに限る。
 
-- 並べるもの: misskey.io・mstdn.jp・mastodon.social・misskey.design・nijimiss.moe・mastodon.cloud
+- 並べるもの: misskey.io・mstdn.jp・mastodon.social・misskey.niri.la（ほかにも misskey.design・nijimiss.moe・mastodon.cloud が判定に通るが並べない）
 - 並べないもの: fedibird.com・pawoo.net・sushi.ski は OAuth のメタデータを出していないので対象外
 
-`FEDIVERSE_SIGN_IN_SERVERS` で使えるサーバーを限っているときは、そちらを並べる（`GET /api/auth/fediverse/options` の `featuredServers`）。
+`FEDIVERSE_SIGN_IN_SERVERS` で使えるサーバーを限っているときは、そちらを並べる（`GET /api/auth/fediverse/options` の `featuredServers`）。並べるサーバーを管理者が変えられるようにするのは B（コントロールパネルの「認証」）で行う。
 
 `GET /api/auth/fediverse/lookup?server=<ドメイン>` は、認証の前にサーバーの公開情報だけを返す。
 
@@ -186,6 +186,7 @@ Mastodon でアプリが無効（トークン交換が 401）なら、保存し�
 | --- | --- |
 | ログイン方法 | メール・パスワード、フェディバースを個別に有効化。フェディバースは全サーバーか指定ドメインか |
 | 新規登録 | 開く・閉じる |
+| 並べるサーバー | ログイン画面に並べるサーバーの追加・削除・並び順（追加時に判定に通るか確かめる） |
 | メール確認 | SSO 登録では任意、新規登録に必須、新規登録と次回ログインに必須 |
 
 - 全方式の無効化は受け付けない。保存前に、ログイン手段を失うユーザーの数を出す。

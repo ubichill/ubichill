@@ -1,4 +1,19 @@
-import { fediverseSignInErrorMessage } from '@ubichill/shared';
+import { fediverseSignInErrorMessage, safeReturnTo } from '@ubichill/shared';
+
+/**
+ * ログイン画面に渡された戻り先（`location.state.from`）を Ubichill 内の相対 URL の文字列にする。
+ * ProtectedRoute は Location のオブジェクトを、ほかの画面は文字列を渡す。
+ */
+export function returnPathOf(state: unknown): string {
+    const from = (state as { from?: unknown } | null)?.from;
+    if (typeof from === 'string') return safeReturnTo(from);
+    if (from && typeof from === 'object') {
+        const { pathname, search, hash } = from as { pathname?: unknown; search?: unknown; hash?: unknown };
+        const part = (v: unknown) => (typeof v === 'string' ? v : '');
+        return safeReturnTo(`${part(pathname)}${part(search)}${part(hash)}`);
+    }
+    return '/';
+}
 
 /** 認証から戻ったときの URL のクエリ（`fediverse`・`fediverse_error`）を読む。 */
 export function readFediverseReturn(search: string): {

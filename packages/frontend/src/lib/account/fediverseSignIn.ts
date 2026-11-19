@@ -1,8 +1,9 @@
 import {
+    FEDIVERSE_SIGN_IN_ERRORS,
     type FediverseServerInfo,
     type FediverseSignInIntent,
     type FediverseSignUpCandidate,
-    fediverseSignInErrorMessage,
+    isFediverseSignInError,
     type LoginMethods,
 } from '@ubichill/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -32,9 +33,10 @@ async function authRequest<T>(path: string, init?: RequestInit): Promise<T> {
     if (!res.ok) {
         const code = body.code ?? null;
         // 理由のコードが無い失敗（古い backend・中継の不調など）は、状態の番号を添えて出す
-        const known = fediverseSignInErrorMessage(code);
         throw new FediverseRequestError(
-            code && known ? known : `うまくいきませんでした。時間をおいてもう一度お試しください（HTTP ${res.status}）`,
+            isFediverseSignInError(code)
+                ? FEDIVERSE_SIGN_IN_ERRORS[code]
+                : `うまくいきませんでした。時間をおいてもう一度お試しください（HTTP ${res.status}${code ? ` ${code}` : ''}）`,
             code,
         );
     }
