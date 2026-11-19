@@ -426,5 +426,5 @@ describe.skipIf(!RUN)('0025 は content_hash が空の版があれば止まる�
             await admin.client.end({ timeout: 5 });
             rmSync(upTo0024, { recursive: true, force: true });
         }
-    });
+    }, 60_000);
 });

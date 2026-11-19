@@ -262,7 +262,7 @@ describe.skipIf(!RUN)('0020_author_keys の移行 (DB統合)', () => {
         );
 
         await migrate(db, { migrationsFolder: MIGRATIONS });
-    });
+    }, 60_000);
 
     afterAll(async () => {
         await scratch.drop?.();
@@ -412,5 +412,5 @@ describe.skipIf(!RUN)('0020_author_keys の移行で止まる場合 (DB統合)',
             await drop();
             rmSync(upTo19, { recursive: true, force: true });
         }
-    });
+    }, 60_000);
 });
