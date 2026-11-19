@@ -23,13 +23,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v5.1.0
 
       # check:chart（描画結果の検査）が yaml を使う
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
 
       - name: Install Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v4.3.1
         with:
           version: "v3.14.0"
 

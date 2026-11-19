@@ -9,9 +9,10 @@ on:
       - '.github/workflows/mods-pages.yml'
   workflow_dispatch:
 
+# gh-pages には helm-release（chart-releaser の index.yaml）も push する。同じ group で 1 つずつ動かし、途中で取り消さない
 concurrency:
-  group: gh-pages-mods
-  cancel-in-progress: true
+  group: gh-pages
+  cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -24,9 +25,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v5.1.0
 
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         with:
           install-args: --ignore-scripts
 
@@ -44,15 +45,28 @@ jobs:
       - name: Verify mod locks
         run: pnpm verify:mod-locks
 
+      # 取得に失敗したまま空のツリーで進むと、公開済みの版の検査が素通りし、既存の mod の版と helm の index.yaml を消してしまう。
+      # 空から作るのは gh-pages が無いと確かめられたとき（初回）だけ
       - name: Checkout gh-pages branch (worktree)
         run: |
-          git fetch origin gh-pages --depth=1 2>/dev/null || true
-          git worktree add /tmp/gh-pages gh-pages 2>/dev/null || {
-            git worktree add --detach /tmp/gh-pages
-            cd /tmp/gh-pages
-            git checkout --orphan gh-pages
-            git rm -rf . 2>/dev/null || true
-          }
+          status=0
+          git ls-remote --exit-code --heads origin gh-pages > /dev/null || status=$?
+          case "$status" in
+            0)
+              git fetch --depth=1 origin gh-pages:refs/remotes/origin/gh-pages
+              git worktree add -b gh-pages /tmp/gh-pages refs/remotes/origin/gh-pages
+              ;;
+            2)
+              git worktree add --detach /tmp/gh-pages
+              cd /tmp/gh-pages
+              git checkout --orphan gh-pages
+              git rm -rf . 2>/dev/null || true
+              ;;
+            *)
+              echo "::error::gh-pages があるか確かめられませんでした（git ls-remote の終了コード $status）"
+              exit 1
+              ;;
+          esac
 
       # 公開済みの版を、同じ版のまま別の中身で上書きしない（その版を固定しているワールドが動かなくなる）
       - name: Refuse to overwrite published versions
@@ -94,7 +108,7 @@ jobs:
             echo "No changes to mods, skipping commit"
           else
             git commit -m "chore(mods): modバンドルを更新 (${GITHUB_SHA::7})"
-            git push origin HEAD:gh-pages --force
+            git push origin HEAD:gh-pages
             echo "✅ Mods published to GitHub Pages"
           fi
 

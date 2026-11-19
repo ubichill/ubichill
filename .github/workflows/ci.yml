@@ -17,9 +17,10 @@ on:
       - ".vscode/**"
       - ".gitignore"
 
+# main への push は取り消さない。取り消された run のイメージは作られず、途中まで push した :vX.Y.Z を次の run が同じ版で上書きする
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Node 20 は GitHub Actions runner 上で deprecate された (2026-09-16 削除予定)。
 # 各 actions は Node 24 対応版へ更新済み (docker/* は v4/v7、mise-action は v4 等)。
@@ -35,7 +36,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v5.1.0
         with:
           # changeset status が「main からどこで分岐したか」を見るのに履歴が必要
           # （既定のshallow checkoutだとPRブランチの単一commitしか無く
@@ -49,7 +50,7 @@ jobs:
       - name: Fetch main for changeset diff base
         run: git fetch origin main:refs/remotes/origin/main
 
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
 
       - name: Lint
         run: pnpm lint
@@ -61,6 +62,14 @@ jobs:
       # drizzle は最後に当てたものより when が新しいものしか当てない。並行した PR で順が逆になると黙って飛ばされる
       - name: Check migration order
         run: pnpm check:migrations
+
+      # 実行時も GitHub が lockfile に無い参照を断るが、Action を足したのに lockfile を更新し忘れたことを PR の時点で分かるようにする
+      - name: Verify actions lockfile
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh extension install github/gh-actions-lock --pin v0.4.1
+          gh actions-lock --verify
 
       # .changeset/*.md のフロントマターが実ワークスペースのpackage.json名と一致するかを
       # PR時点で検証する。ここを飛ばすと不一致は push to main 後の changeset-release/main
@@ -89,10 +98,36 @@ jobs:
     permissions:
       contents: read
 
-    steps:
-      - uses: actions/checkout@v5
+    # 統合テスト（*.integration.test.ts）の DB・Redis。DATABASE_URL・REDIS_URL が無いと黙って skip するので、ここで渡す。
+    # Postgres は packages/db/docker-compose.yml、Redis は chart の同梱（charts/ubichill の redis.image）と同じイメージ
+    services:
+      postgres:
+        image: postgres:15-alpine@sha256:83b923ed7ae2f5a9d128da35c25a084df4e86875fbb59888659eb476e2621a33
+        env:
+          POSTGRES_USER: ubichill
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: ubichill
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ubichill -d ubichill"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+      redis:
+        image: valkey/valkey:8.1.11-alpine@sha256:2602ace2be6569bc2bbb06f873776516ab9089821525be34f4305c67eb9db02a
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
 
-      - uses: ./.github/actions/setup
+    steps:
+      - uses: actions/checkout@v5.1.0
+
+      - uses: $/.github/actions/setup
 
       # vitest 自体は resolve.alias で shared/ecs/sdk/ui-renderer/loader をソースへ直結するため
       # 通常は build 不要。ただし SDK のビルド系テスト（build.test.mjs 等）は esbuild 経由で
@@ -100,8 +135,30 @@ jobs:
       - name: Build shared
         run: pnpm turbo build --filter=@ubichill/shared
 
+      # 統合テストは次のステップで分けて走らせる。リース・reaper のテストは 200〜300ms の期限を実際に待つので、
+      # 単体テストと同時に走らせると CPU の取り合いで落ちることがある
       - name: Test
-        run: pnpm exec vitest run
+        run: pnpm exec vitest run --exclude '**/*.integration.test.ts'
+
+      # 本番の initContainer と同じ dist/migrate.js で当てる。使い捨ての DB なので書き込みの永続化（fsync）を省く
+      # （マイグレーションのテストは DB を作っては全部当て直すので、これで数倍速くなる）
+      - name: Migrate test database
+        env:
+          DATABASE_URL: postgresql://ubichill:password@localhost:5432/ubichill
+        run: |
+          docker exec "${{ job.services.postgres.id }}" psql -U ubichill -d ubichill \
+            -c "ALTER SYSTEM SET fsync = off" \
+            -c "ALTER SYSTEM SET synchronous_commit = off" \
+            -c "ALTER SYSTEM SET full_page_writes = off" \
+            -c "SELECT pg_reload_conf()"
+          pnpm turbo build --filter=@ubichill/db
+          pnpm --filter @ubichill/db migrate
+
+      - name: Integration tests
+        env:
+          DATABASE_URL: postgresql://ubichill:password@localhost:5432/ubichill
+          REDIS_URL: redis://localhost:6379
+        run: pnpm exec vitest run .integration.test
 
   typecheck:
     name: Typecheck
@@ -110,9 +167,9 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5.1.0
 
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
 
       # パッケージ間参照は dist 経由のため、turbo の typecheck タスクが ^build で依存先を先にビルドする。
       - name: Typecheck
@@ -125,14 +182,17 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5.1.0
 
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
 
       # build:workers / build:sdk は CLI を plain node で実行し @ubichill/shared を
       # dist 経由で import するため、shared を先にビルドする。
       - name: Build shared
         run: pnpm turbo build --filter=@ubichill/shared
+
+      - name: Verify capability docs are generated
+        run: pnpm docs:capabilities --check
 
       # 実際に mod をビルドし、lock.json の integrity が生成バイト列と一致するか検証する。
       # worlds/*.lock.json（mod 完全性ロック、pnpm-lock.yaml と同じくコミット対象）もここで
@@ -200,14 +260,14 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5.1.0
         with:
           # check-npm-drift.mjs が直近publishタグ(ubichill@*、@ubichill/cli@*)をworktreeでビルド・比較するため、
           # タグと履歴が必要（デフォルトのshallow checkoutでは見えない）。
           fetch-depth: 0
           fetch-tags: true
 
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
 
       # buildDts は @ubichill/shared を dist 経由で解決するため shared を先にビルド。
       - name: Build shared
@@ -234,9 +294,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5.1.0
 
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         with:
           install-args: --ignore-scripts
 
@@ -276,7 +336,7 @@ jobs:
       instance: ${{ steps.filter.outputs.instance }}
       next-version: ${{ steps.next-version.outputs.tag }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5.1.0
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -293,6 +353,11 @@ jobs:
             NEXT="v${major}.${minor}.$((patch + 1))"
           fi
           echo "tag=${NEXT}" >> "$GITHUB_OUTPUT"
+          # 変更の検出は前のリリースのコミットから取る。push 前の HEAD からだと、待機中に取り消された run の変更が漏れる
+          # （同じ concurrency で待てる run は 1 つだけで、次の push が来ると待機中の run は取り消される）
+          if [ -n "$LATEST" ]; then
+            echo "base=$(git rev-list -n 1 "$LATEST")" >> "$GITHUB_OUTPUT"
+          fi
 
       # ── 変更検知 ───────────────────────────────────────────────
       # 実装は .github/scripts/detect-changed-paths.sh を参照。
@@ -302,7 +367,7 @@ jobs:
         env:
           PR_ACTION: ${{ github.event_name == 'push' && 'synchronize' || github.event.action }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          PR_BEFORE_SHA: ${{ github.event.before }}
+          PR_BEFORE_SHA: ${{ github.event_name == 'push' && steps.next-version.outputs.base || github.event.before }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: .github/scripts/detect-changed-paths.sh
 
@@ -315,10 +380,10 @@ jobs:
   #   いずれも immutable な :sha-<sha> を付与。共有の可変 :dev タグは廃止し、
   #   デプロイ（PR ごとの環境など）は GitOps 側がこれらのタグを参照する。
 
-  # 本番は品質検査の完了を待つ。プレビューは typecheck と変更検出だけを待つ。
+  # 本番は品質検査（mod・SDK の検証も）の完了を待つ。プレビューは typecheck と変更検出だけを待つ。
   build-backend:
     name: Build and push Backend image
-    needs: [lint, test, typecheck, detect-changes]
+    needs: [lint, test, typecheck, verify-mods, verify-sdk, detect-changes]
     if: github.event_name == 'push' && needs.detect-changes.outputs.backend == 'true'
     permissions:
       contents: read
@@ -343,10 +408,10 @@ jobs:
     with:
       next-version: ${{ needs.detect-changes.outputs.next-version }}
 
-  # 本番は品質検査の完了を待つ。プレビューは typecheck と変更検出だけを待つ。
+  # 本番は品質検査（mod・SDK の検証も）の完了を待つ。プレビューは typecheck と変更検出だけを待つ。
   build-frontend:
     name: Build and push Frontend image
-    needs: [lint, test, typecheck, detect-changes]
+    needs: [lint, test, typecheck, verify-mods, verify-sdk, detect-changes]
     if: github.event_name == 'push' && needs.detect-changes.outputs.frontend == 'true'
     permissions:
       contents: read
@@ -371,10 +436,10 @@ jobs:
     with:
       next-version: ${{ needs.detect-changes.outputs.next-version }}
 
-  # 本番は品質検査の完了を待つ。プレビューは typecheck と変更検出だけを待つ。
+  # 本番は品質検査（mod・SDK の検証も）の完了を待つ。プレビューは typecheck と変更検出だけを待つ。
   build-instance:
     name: Build and push Instance image
-    needs: [lint, test, typecheck, detect-changes]
+    needs: [lint, test, typecheck, verify-mods, verify-sdk, detect-changes]
     if: github.event_name == 'push' && needs.detect-changes.outputs.instance == 'true'
     permissions:
       contents: read
@@ -429,7 +494,7 @@ jobs:
       BUILD_FRONTEND: ${{ needs.preview-frontend.result }}
       BUILD_INSTANCE: ${{ needs.preview-instance.result }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5.1.0
 
       - name: Wait for preview
         id: wait
@@ -447,14 +512,14 @@ jobs:
         run: .github/scripts/preview-status.sh
 
       # e2e の依存（Playwright）だけを入れる
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         if: steps.wait.outputs.deployed == 'true'
         with:
           install-args: --filter @ubichill/e2e
 
       - name: Cache Playwright browsers
         if: steps.wait.outputs.deployed == 'true'
-        uses: actions/cache@v6
+        uses: actions/cache@v6.1.0
         with:
           path: ~/.cache/ms-playwright
           # Playwright の版は packages/e2e/package.json で固定している
@@ -485,7 +550,7 @@ jobs:
 
       - name: Upload smoke artifacts
         if: always() && steps.smoke.outcome == 'failure'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: smoke-results
           path: ${{ runner.temp }}/smoke-results
@@ -523,7 +588,7 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5.1.0
 
       - name: Create and push git tag
         run: |

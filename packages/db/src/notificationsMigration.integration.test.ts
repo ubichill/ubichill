@@ -62,7 +62,7 @@ describe.skipIf(!RUN)('0026_notifications（DB 統合）', () => {
                 sql`SELECT recipient_id, actor_user_id, type, object, created_at FROM notifications ORDER BY recipient_id`,
             )),
         ];
-    });
+    }, 60_000);
 
     afterAll(async () => {
         await state.scratch?.client.end();
