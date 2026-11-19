@@ -51,3 +51,32 @@ updates:
     commit-message:
       prefix: "chore(deps):"
       include: "scope"
+
+  # release-sdk・setup の Action は commit で固定しているので、更新はここから出す
+  - package-ecosystem: "github-actions"
+    directories:
+      - "/"
+      - "/.github/actions/setup"
+    schedule:
+      interval: "weekly"
+      day: "saturday"
+      time: "03:00"
+      timezone: "Asia/Tokyo"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "chore(deps):"
+      include: "scope"
+
+  - package-ecosystem: "gomod"
+    directory: "/services/instance"
+    schedule:
+      interval: "weekly"
+      day: "saturday"
+      time: "03:00"
+      timezone: "Asia/Tokyo"
+    commit-message:
+      prefix: "chore(deps):"
+      include: "scope"

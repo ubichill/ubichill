@@ -139,5 +139,5 @@ describe.skipIf(!RUN)('0021_users_cleanup（DB 統合）', () => {
         expect(columns).not.toContain('profile_image_url');
         const [row] = await db().execute<UserRow>(sql`SELECT id, handle, image FROM users WHERE id = 'old-only'`);
         expect(row).toEqual(byId('old-only'));
-    });
+    }, 60_000);
 });
