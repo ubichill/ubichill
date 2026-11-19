@@ -1,6 +1,10 @@
 import type { FediverseSignUpCandidate } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
-import { completeFediverseSignUp, fetchFediverseSignUpCandidate } from '@/lib/account/fediverseSignIn';
+import {
+    cancelFediverseSignUp,
+    completeFediverseSignUp,
+    fetchFediverseSignUpCandidate,
+} from '@/lib/account/fediverseSignIn';
 import { useDisplayNameAvailability, useHandleAvailability } from '@/lib/account/useHandleAvailability';
 import {
     buttonStyle,
@@ -82,12 +86,35 @@ export function FediverseSignUpForm({ onCancel }: { onCancel: () => void }) {
     }
 
     const { candidate } = loaded;
+    const account = `@${candidate.username}@${candidate.server}`;
+    // やめたら途中の状態を消す（共用の端末で、別の人が続きから登録できないように）
+    const cancel = () => {
+        void cancelFediverseSignUp().finally(onCancel);
+    };
+
+    if (!candidate.registrationOpen) {
+        return (
+            <main className={containerStyle}>
+                <div className={cardStyle}>
+                    <p className={subtitleStyle}>
+                        {account} はまだ登録されていません。現在、新規登録は受け付けていません。
+                    </p>
+                    <button type="button" className={linkButtonStyle} onClick={cancel}>
+                        ログイン画面に戻る
+                    </button>
+                </div>
+            </main>
+        );
+    }
+
     return (
         <main className={containerStyle}>
             <div className={cardStyle}>
                 <h1 className={titleStyle}>はじめまして</h1>
                 <p className={subtitleStyle}>
-                    @{candidate.username}@{candidate.server} で登録します。Ubichill での ID と表示名を決めてください。
+                    {candidate.notRegistered
+                        ? `${account} はまだ登録されていません。Ubichill での ID と表示名を決めて登録します。`
+                        : `${account} で登録します。Ubichill での ID と表示名を決めてください。`}
                 </p>
                 <form onSubmit={submit} className={formStyle} aria-busy={busy}>
                     <div className={fieldStyle}>
@@ -157,7 +184,7 @@ export function FediverseSignUpForm({ onCancel }: { onCancel: () => void }) {
                         {busy ? '登録中...' : '登録して入る'}
                     </button>
                 </form>
-                <button type="button" className={linkButtonStyle} onClick={onCancel}>
+                <button type="button" className={linkButtonStyle} onClick={cancel}>
                     やめる
                 </button>
             </div>

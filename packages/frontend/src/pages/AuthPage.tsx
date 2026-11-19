@@ -27,7 +27,7 @@ import {
     verifyInfoStyle,
     verifyListStyle,
 } from '@/components/auth/authStyles';
-import { FediverseSignInForm } from '@/components/auth/FediverseSignInForm';
+import { FediverseSignInButton, FediverseSignInPanel } from '@/components/auth/FediverseSignInPanel';
 import { FediverseSignUpForm } from '@/components/auth/FediverseSignUpForm';
 import { readFediverseReturn } from '@/lib/account/fediverseReturn';
 import { fetchFediverseSignInOptions } from '@/lib/account/fediverseSignIn';
@@ -44,7 +44,8 @@ export function AuthPage() {
     const from = (location.state as { from?: string } | null)?.from ?? '/';
     const { data: session, isPending } = useSession();
     const fediverseReturn = readFediverseReturn(location.search);
-    const [fediverseEnabled, setFediverseEnabled] = useState(false);
+    const [fediverseOptions, setFediverseOptions] = useState({ enabled: false, registrationOpen: false });
+    const [fediverseOpen, setFediverseOpen] = useState(false);
     const [mode, setMode] = useState<AuthMode>('login');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -63,8 +64,8 @@ export function AuthPage() {
 
     useEffect(() => {
         fetchFediverseSignInOptions()
-            .then((options) => setFediverseEnabled(options.enabled))
-            .catch(() => setFediverseEnabled(false));
+            .then(setFediverseOptions)
+            .catch(() => setFediverseOptions({ enabled: false, registrationOpen: false }));
     }, []);
 
     // クールダウンタイマー
@@ -205,6 +206,20 @@ export function AuthPage() {
 
     if (fediverseReturn.signUp) {
         return <FediverseSignUpForm onCancel={() => navigate('/auth', { replace: true })} />;
+    }
+
+    if (fediverseOpen) {
+        return (
+            <main className={containerStyle}>
+                <div className={cardStyle}>
+                    <FediverseSignInPanel
+                        returnTo={from}
+                        registrationOpen={fediverseOptions.registrationOpen}
+                        onBack={() => setFediverseOpen(false)}
+                    />
+                </div>
+            </main>
+        );
     }
 
     const handleBackToRegister = () => {
@@ -474,12 +489,18 @@ export function AuthPage() {
                     </button>
                 </form>
 
-                {fediverseEnabled && (
+                {fediverseOptions.enabled && (
                     <>
                         <div className={dividerStyle} role="separator">
                             または
                         </div>
-                        <FediverseSignInForm intent="sign-in" returnTo={from} />
+                        <FediverseSignInButton
+                            onClick={() => {
+                                setError('');
+                                setSuccess('');
+                                setFediverseOpen(true);
+                            }}
+                        />
                     </>
                 )}
             </div>

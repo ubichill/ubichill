@@ -1,16 +1,25 @@
 import {
+    type FediversePreview,
     type FediverseSignInIntent,
     type FediverseSignUpCandidate,
     fediverseSignInErrorMessage,
     type LoginMethods,
 } from '@ubichill/shared';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { API_BASE, requestApi } from '@/lib/api';
 
-const authUrl = (path: string) => `${API_BASE}/api/auth${path}`;
+/** 認証の API の失敗。`code` は shared の FEDIVERSE_SIGN_IN_ERRORS のキー（本人確認が要るかの判定などに使う）。 */
+export class FediverseRequestError extends Error {
+    constructor(
+        message: string,
+        readonly code: string | null,
+    ) {
+        super(message);
+    }
+}
 
 async function authRequest<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(authUrl(path), {
+    const res = await fetch(`${API_BASE}/api/auth${path}`, {
         credentials: 'include',
         cache: 'no-store',
         ...init,
@@ -18,7 +27,11 @@ async function authRequest<T>(path: string, init?: RequestInit): Promise<T> {
     });
     const body = (await res.json().catch(() => ({}))) as { code?: string; message?: string };
     if (!res.ok) {
-        throw new Error(fediverseSignInErrorMessage(body.code ?? null) ?? body.message ?? '通信に失敗しました');
+        const code = body.code ?? null;
+        throw new FediverseRequestError(
+            fediverseSignInErrorMessage(code) ?? body.message ?? '通信に失敗しました',
+            code,
+        );
     }
     return body as T;
 }
@@ -27,6 +40,7 @@ async function authRequest<T>(path: string, init?: RequestInit): Promise<T> {
 export async function startFediverseSignIn(input: {
     server: string;
     intent: FediverseSignInIntent;
+    prefer?: 'sign-in' | 'sign-up';
     returnTo: string;
 }): Promise<void> {
     const { url } = await authRequest<{ url: string }>('/fediverse/start', {
@@ -34,6 +48,10 @@ export async function startFediverseSignIn(input: {
         body: JSON.stringify(input),
     });
     window.location.assign(url);
+}
+
+export async function lookupFediverseAccount(account: string, signal?: AbortSignal): Promise<FediversePreview> {
+    return authRequest(`/fediverse/lookup?account=${encodeURIComponent(account)}`, { signal });
 }
 
 export async function fetchFediverseSignInOptions(): Promise<{ enabled: boolean; registrationOpen: boolean }> {
@@ -52,12 +70,22 @@ export async function completeFediverseSignUp(input: { handle: string; displayNa
     return returnTo;
 }
 
+/** 登録をやめる（途中の状態を消す。共用の端末で別の人が続きから登録できないように）。 */
+export async function cancelFediverseSignUp(): Promise<void> {
+    await authRequest('/fediverse/sign-up', { method: 'DELETE' }).catch(() => undefined);
+}
+
 export async function fetchLoginMethods(): Promise<LoginMethods> {
     return requestApi('/users/me/login-methods');
 }
 
 export async function removeLoginMethod(id: string): Promise<void> {
     await requestApi(`/users/me/login-methods/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** パスワードで本人確認をし直す（ログイン方法の変更・管理者の操作の前に）。 */
+export async function reauthenticate(password: string): Promise<void> {
+    await requestApi('/users/me/reauthenticate', { method: 'POST', body: JSON.stringify({ password }) });
 }
 
 /** 自分のログイン方法。読み込めなければ null のまま（パスワードの欄は出す）。 */
@@ -72,4 +100,47 @@ export function useLoginMethods(enabled: boolean): { methods: LoginMethods | nul
         if (enabled) reload();
     }, [enabled, reload]);
     return { methods, reload };
+}
+
+export type FediverseLookupState =
+    | { state: 'idle' }
+    | { state: 'checking' }
+    | { state: 'found'; preview: FediversePreview }
+    | { state: 'error'; error: string };
+
+/**
+ * 入力したユーザー ID を、打ち終わってから（500ms）サーバーに問い合わせる。前の問い合わせは取り消し、
+ * 遅れて返った古い結果で上書きしない。
+ */
+export function useFediverseLookup(input: string): FediverseLookupState {
+    const [result, setResult] = useState<FediverseLookupState>({ state: 'idle' });
+    const latest = useRef(0);
+    useEffect(() => {
+        const query = input.trim();
+        const id = ++latest.current;
+        if (query.replace(/^@/, '').length < 3) {
+            setResult({ state: 'idle' });
+            return;
+        }
+        setResult({ state: 'checking' });
+        const controller = new AbortController();
+        const timer = setTimeout(() => {
+            lookupFediverseAccount(query, controller.signal)
+                .then((preview) => {
+                    if (id === latest.current) setResult({ state: 'found', preview });
+                })
+                .catch((error: unknown) => {
+                    if (id !== latest.current || controller.signal.aborted) return;
+                    setResult({
+                        state: 'error',
+                        error: error instanceof Error ? error.message : '見つかりませんでした',
+                    });
+                });
+        }, 500);
+        return () => {
+            clearTimeout(timer);
+            controller.abort();
+        };
+    }, [input]);
+    return result;
 }

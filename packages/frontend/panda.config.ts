@@ -115,6 +115,10 @@ export default defineConfig({
                     hudBackdrop: { value: 'rgba(0, 0, 0, 0.6)' },
                     // ランチパッドの現在地バナー（サムネイルの上に文字を載せる影）
                     bannerShade: { value: 'rgba(27, 42, 68, 0.85)' },
+
+                    // フェディバースのログインのロゴ（各プロジェクトのブランドの色）
+                    brandMastodon: { value: '#6364ff' },
+                    brandMisskey: { value: '#86b300' },
                 },
                 fonts: {
                     body: { value: 'var(--font-inter), system-ui, sans-serif' },

@@ -1,11 +1,17 @@
 import { fediverseSignInErrorMessage } from '@ubichill/shared';
 
 /** 認証から戻ったときの URL のクエリ（`fediverse`・`fediverse_error`）を読む。 */
-export function readFediverseReturn(search: string): { signUp: boolean; linked: boolean; error: string | null } {
+export function readFediverseReturn(search: string): {
+    signUp: boolean;
+    linked: boolean;
+    alreadyRegistered: boolean;
+    error: string | null;
+} {
     const params = new URLSearchParams(search);
     return {
         signUp: params.get('fediverse') === 'sign-up',
         linked: params.get('fediverse') === 'linked',
+        alreadyRegistered: params.get('fediverse') === 'already-registered',
         error: fediverseSignInErrorMessage(params.get('fediverse_error')),
     };
 }

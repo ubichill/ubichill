@@ -77,7 +77,14 @@ export function SettingsTab({
                     />
                 )}
                 {current === 'account' && (
-                    <LoginMethodsSection methods={loginMethods.methods} onChanged={loginMethods.reload} />
+                    <LoginMethodsSection
+                        methods={loginMethods.methods}
+                        adminRequiresPassword={!!profile?.adminRequiresPassword}
+                        onChanged={() => {
+                            loginMethods.reload();
+                            void account.reloadProfile();
+                        }}
+                    />
                 )}
                 {current === 'account' && profile && loginMethods.methods?.password !== false && (
                     <PasswordSection
