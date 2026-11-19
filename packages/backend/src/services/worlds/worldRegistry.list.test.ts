@@ -74,11 +74,19 @@ describe('本体のワールドの解決キャッシュ', () => {
         expect(db.worldRepository.findState).toHaveBeenCalledTimes(1);
     });
 
-    it('解決している途中で変更の知らせが来たら、あとから来た解決は待たずに引き直す', async () => {
-        const first = worldRegistry.resolveLocal('changing');
+    it.each([false, true])('無効化前の結果をキャッシュに戻さない（新しい解決が先に完了: %s）', async (newFirst) => {
+        const id = 'changing';
+        const slow = Promise.withResolvers<ReturnType<typeof stateOf>>();
+        db.worldRepository.findState.mockReturnValueOnce(slow.promise).mockResolvedValue(undefined);
+        const first = worldRegistry.resolveLocal(id);
         worldRegistry.invalidateResolvedWorlds();
-        await Promise.all([first, worldRegistry.resolveLocal('changing')]);
-        expect(db.worldRepository.findState).toHaveBeenCalledTimes(2);
+        const afterInvalidation = newFirst ? await worldRegistry.resolveLocal(id) : undefined;
+        slow.resolve(stateOf(id));
+        const old = await first;
+        const current = await worldRegistry.resolveLocal(id);
+        expect(current).not.toEqual(old);
+        if (afterInvalidation) expect(current).toEqual(afterInvalidation);
+        expect(db.worldRepository.findState).toHaveBeenCalledTimes(newFirst ? 3 : 2);
     });
 
     it('件数に上限がある（古いものから捨てる）', async () => {

@@ -451,23 +451,33 @@ class WorldRegistry {
         }
         const inFlight = this._resolving.get(worldId);
         if (inFlight) return inFlight;
-        const resolving = this._resolveLocalFresh(worldId).finally(() => {
-            if (this._resolving.get(worldId) === resolving) this._resolving.delete(worldId);
-        });
+        const resolving = this._resolveLocalFresh(worldId)
+            .then((resolution) => {
+                if (!resolution) return NOT_FOUND;
+                // 無効化や、無効化後に始まった解決を古い結果で上書きしない。
+                if (this._resolving.get(worldId) === resolving) {
+                    setBounded(
+                        this._resolvedCache,
+                        worldId,
+                        { resolution, at: Date.now() },
+                        WorldRegistry.LOCAL_CACHE_MAX,
+                    );
+                }
+                return resolution;
+            })
+            .finally(() => {
+                if (this._resolving.get(worldId) === resolving) this._resolving.delete(worldId);
+            });
         this._resolving.set(worldId, resolving);
         return resolving;
     }
 
-    private async _resolveLocalFresh(worldId: string): Promise<WorldResolution> {
+    private async _resolveLocalFresh(worldId: string): Promise<WorldResolution | undefined> {
         const repository = this._repository.get(worldId);
-        const state = repository ? undefined : await worldRepository.findState(worldId);
+        if (repository) return this._resolveRepositoryWorld(worldId, repository.hosted);
+        const state = await worldRepository.findState(worldId);
         // 存在しない id は覚えない（任意の id で問い合わせてキャッシュを膨らませられないように）
-        if (!repository && !state) return NOT_FOUND;
-        const resolution = repository
-            ? await this._resolveRepositoryWorld(worldId, repository.hosted)
-            : await this._resolveWorld(state as WorldState);
-        setBounded(this._resolvedCache, worldId, { resolution, at: Date.now() }, WorldRegistry.LOCAL_CACHE_MAX);
-        return resolution;
+        return state ? this._resolveWorld(state) : undefined;
     }
 
     /** 解決の結果と、解決している途中のものを捨てる（途中のものは変更の前の値を返し得るので、あとから来た人に渡さない）。 */
