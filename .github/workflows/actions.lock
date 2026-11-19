@@ -5,59 +5,59 @@ version: 'v0.0.3'
 workflows:
     '.github/workflows/build-backend.yml':
         - 'actions/cache@v6.1.0'
-        - 'actions/checkout@v5.1.0'
+        - 'actions/checkout@v7.0.1'
         - 'docker/build-push-action@v7.4.0'
         - 'docker/login-action@v4.8.0'
         - 'docker/setup-buildx-action@v4.4.1'
-        - 'jdx/mise-action@v4.3.0'
+        - 'jdx/mise-action@v5.2.9'
     '.github/workflows/build-frontend.yml':
         - 'actions/cache@v6.1.0'
-        - 'actions/checkout@v5.1.0'
+        - 'actions/checkout@v7.0.1'
         - 'docker/build-push-action@v7.4.0'
         - 'docker/login-action@v4.8.0'
         - 'docker/setup-buildx-action@v4.4.1'
-        - 'jdx/mise-action@v4.3.0'
+        - 'jdx/mise-action@v5.2.9'
     '.github/workflows/build-instance.yml':
-        - 'actions/checkout@v5.1.0'
+        - 'actions/checkout@v7.0.1'
         - 'docker/build-push-action@v7.4.0'
         - 'docker/login-action@v4.8.0'
         - 'docker/setup-buildx-action@v4.4.1'
     '.github/workflows/ci.yml':
         - 'actions/cache@v6.1.0'
-        - 'actions/checkout@v5.1.0'
+        - 'actions/checkout@v7.0.1'
         - 'actions/upload-artifact@v7.0.2'
-        - 'jdx/mise-action@v4.3.0'
+        - 'jdx/mise-action@v5.2.9'
     '.github/workflows/helm-ci.yml':
         - 'actions/cache@v6.1.0'
-        - 'actions/checkout@v5.1.0'
-        - 'azure/setup-helm@v4.3.1'
-        - 'jdx/mise-action@v4.3.0'
-    '.github/workflows/helm-release.yml':
-        - 'actions/checkout@v5.1.0'
+        - 'actions/checkout@v7.0.1'
         - 'azure/setup-helm@v5.1.0'
-        - 'helm/chart-releaser-action@v1.7.0'
+        - 'jdx/mise-action@v5.2.9'
+    '.github/workflows/helm-release.yml':
+        - 'actions/checkout@v7.0.1'
+        - 'azure/setup-helm@v5.1.0'
+        - 'helm/chart-releaser-action@v1.9.0'
     '.github/workflows/instance.yml':
         - 'actions/cache@v6.1.0'
-        - 'actions/checkout@v5.1.0'
-        - 'jdx/mise-action@v4.3.0'
+        - 'actions/checkout@v7.0.1'
+        - 'jdx/mise-action@v5.2.9'
     '.github/workflows/mods-pages.yml':
         - 'actions/cache@v6.1.0'
-        - 'actions/checkout@v5.1.0'
-        - 'jdx/mise-action@v4.3.0'
+        - 'actions/checkout@v7.0.1'
+        - 'jdx/mise-action@v5.2.9'
     '.github/workflows/release-sdk.yml':
         - 'actions/cache@v6.1.0'
-        - 'actions/checkout@v5.1.0'
+        - 'actions/checkout@v7.0.1'
         - 'changesets/action@v1.9.0'
-        - 'jdx/mise-action@v4.3.0'
+        - 'jdx/mise-action@v5.2.9'
 dependencies:
     'actions/cache@v6.1.0':
         ref: 'v6.1.0'
         commit: 'sha1-55cc8345863c7cc4c66a329aec7e433d2d1c52a9'
         owner_id: 44036562
         repo_id: 215566462
-    'actions/checkout@v5.1.0':
-        ref: 'v5.1.0'
-        commit: 'sha1-fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09'
+    'actions/checkout@v7.0.1':
+        ref: 'v7.0.1'
+        commit: 'sha1-3d3c42e5aac5ba805825da76410c181273ba90b1'
         owner_id: 44036562
         repo_id: 197814629
     'actions/upload-artifact@v7.0.2':
@@ -65,11 +65,6 @@ dependencies:
         commit: 'sha1-cf430e030ddbb5b0abf93d22962f4752f3646cd9'
         owner_id: 44036562
         repo_id: 192625955
-    'azure/setup-helm@v4.3.1':
-        ref: 'v4.3.1'
-        commit: 'sha1-1a275c3b69536ee54be43f2070a358922e12c8d4'
-        owner_id: 6844498
-        repo_id: 210310251
     'azure/setup-helm@v5.1.0':
         ref: 'v5.1.0'
         commit: 'sha1-2f5e7bc67f1f9972ab16657bb795f36d8f04de0e'
@@ -95,13 +90,13 @@ dependencies:
         commit: 'sha1-f87e5991a6d7451dcb8d9637bfbc97413f497069'
         owner_id: 5429470
         repo_id: 288485773
-    'helm/chart-releaser-action@v1.7.0':
-        ref: 'v1.7.0'
-        commit: 'sha1-cae68fefc6b5f367a0275617c9f83181ba54714f'
+    'helm/chart-releaser-action@v1.9.0':
+        ref: 'v1.9.0'
+        commit: 'sha1-92c6b97fa9f664492a2592e0d1d80bc6bf378957'
         owner_id: 15859888
         repo_id: 223775198
-    'jdx/mise-action@v4.3.0':
-        ref: 'v4.3.0'
-        commit: 'sha1-c2a87611a18de5b3828c5652fe268e992400cb5c'
+    'jdx/mise-action@v5.2.9':
+        ref: 'v5.2.9'
+        commit: 'sha1-236a21c3b91f5db6d4e174b348674a0f0caac06d'
         owner_id: 216188
         repo_id: 738284564

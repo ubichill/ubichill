@@ -27,7 +27,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v5.1.0
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
@@ -52,7 +52,7 @@ jobs:
           helm package charts/ubichill --destination .cr-release-packages
 
       - name: Upload charts
-        uses: helm/chart-releaser-action@v1.7.0
+        uses: helm/chart-releaser-action@v1.9.0
         env:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
         with:
