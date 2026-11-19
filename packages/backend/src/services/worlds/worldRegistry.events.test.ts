@@ -2,7 +2,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const db = vi.hoisted(() => ({
-    worldRepository: { findState: vi.fn(), delete: vi.fn(), findAll: vi.fn() },
+    worldRepository: { findState: vi.fn(), delete: vi.fn(), findPublished: vi.fn() },
     userRepository: { findById: vi.fn(), findByHandle: vi.fn() },
     federationPeerRepository: { findAll: vi.fn(), delete: vi.fn() },
 }));

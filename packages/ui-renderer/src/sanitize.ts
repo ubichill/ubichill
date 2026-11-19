@@ -3,15 +3,18 @@
  *
  * HTML と SVG で同じ規則を使う（SVG だけ素通しにすると `onclick` などのイベント属性が Host の window で実行される）。
  * 外部への取得を起こす値（`url()` やリンク先）は、mod の通信をドメイン承認に通すため、描画では許さないか同じ文書内の参照に限る。
+ * 例外は `<img>` の https で、参照元は送らないがドメイン承認は通らない。
  */
 
-/** http(s) と Host が生成した data:image だけを通す。相対 URL はページのオリジンを指すので通す。 */
-export function sanitizeUrl(url: string): string | null {
+/**
+ * https だけを通す。相対 URL はページのオリジンを指すので通す。http はページと同じオリジン
+ * （`ubichill dev` の http://localhost で `Ubi.modBase` から作った URL）に限る。
+ */
+export function sanitizeUrl(url: string, pageOrigin: string | undefined = globalThis.location?.origin): string | null {
     if (url.startsWith('//')) return null;
-    if (url.startsWith('data:image/')) return url;
     try {
-        const { protocol } = new URL(url);
-        return protocol === 'https:' || protocol === 'http:' ? url : null;
+        const { protocol, origin } = new URL(url);
+        return protocol === 'https:' || (protocol === 'http:' && origin === pageOrigin) ? url : null;
     } catch {
         // 相対 URL。`\` や制御文字でスキームを紛れ込ませる書き方は通さない
         return /^[\w\-./?#=&%~+]*$/.test(url) ? url : null;
@@ -36,7 +39,6 @@ const HTML_ATTRS: ReadonlySet<string> = new Set([
     'decoding',
     'width',
     'height',
-    'referrerpolicy',
     'colspan',
     'rowspan',
     'for',
@@ -165,7 +167,9 @@ function referencesOutside(value: string): boolean {
 /** HTML 要素の属性。通さないものは null。`tag` は小文字のタグ名。 */
 export function sanitizeHtmlAttr(tag: string, key: string, value: string): string | null {
     if (!HTML_ATTRS.has(key) && !isDataOrAria(key)) return null;
-    if (key === 'href' || key === 'src') return sanitizeUrl(value);
+    if (key === 'href') return sanitizeUrl(value);
+    // src で取得を起こすのは画像だけにする（<input type="image"> も読みに行く）。data:image/ は取得を起こさない
+    if (key === 'src') return tag !== 'img' ? null : value.startsWith('data:image/') ? value : sanitizeUrl(value);
     // パスワード欄を描かせない（保存済みのパスワードが自動入力され、入力値として mod に渡るため）
     if (key === 'type' && tag === 'input' && value.trim().toLowerCase() === 'password') return null;
     return value;

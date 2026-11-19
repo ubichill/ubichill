@@ -7,6 +7,10 @@
  * 4. actor の文書から鍵を取り、shared の verifySignature で確かめる（通らず、文書が 5 分より古ければ 1 度だけ取り直す）
  * 5. nonce の要る RPC は (keyid, nonce) を 6 分覚えて、2 度目を断る
  *
+ * 署名は actor の文書の鍵で確かめるので、知らない actor は確かめる前に取りに行く（誰でも起こせる）。
+ * そのため、通らなかった要求を IP ごとに数えて上限を超えた IP は確かめずに断り（429）、知らない actor の取得は全体で数える
+ * （ホスト名を変えればホストごとの上限を避けられ、自分のホストの actor なら正規に署名できるので、確かめた後の保存では防げない）。
+ *
  * inbox だけは Mastodon・Misskey などの draft-cavage（RSA）も受ける（Digest と RSA の鍵で同じ手順を踏む）。
  */
 import { createHash } from 'node:crypto';
@@ -28,6 +32,7 @@ import {
     type WorldCrypto,
 } from '@ubichill/shared';
 import type { FederationIdentity } from '../identity';
+import type { WindowCounter } from './windowCounter';
 
 /** actor の鍵（Ed25519 の Multikey か、ほかの実装の RSA の PEM）。 */
 export type VerifiableKey = { id: string; publicKeyMultibase: string } | { id: string; publicKeyPem: string };
@@ -45,19 +50,27 @@ export interface InboundRequest {
     originalUrl: string;
     header(name: string): string | undefined;
     rawBody: Uint8Array | undefined;
+    /** 送り手の IP（署名が通らなかった数を数える単位） */
+    ip: string;
 }
 
 export type Verified<A> = { ok: true; actor: A; keyId: string; host: string };
-export type VerifyFailure = { ok: false; status: 401 | 403; reason: string };
+export type VerifyFailure = { ok: false; status: 401 | 403 | 429; reason: string };
 
 export interface VerifierDeps<A extends VerifiableActor> {
     identity: FederationIdentity;
     allowHttp: boolean;
     policyOf(domain: string): DomainPolicy;
-    actors: { get(actorId: string, options?: { refresh?: boolean }): Promise<A | null> };
+    actors: {
+        get(actorId: string, options?: { refresh?: boolean; admitUnknown?: () => Promise<boolean> }): Promise<A | null>;
+    };
     seen: { remember(key: string, expiresAt: Date, now: Date): Promise<boolean> };
     /** Ed25519・RSA の照合（照合の手順は shared の verifySignature・verifyCavageSignature） */
     crypto: Pick<WorldCrypto, 'verifyEd25519'> & RsaVerifier;
+    /** 署名が通らなかった数（IP ごと） */
+    failures: WindowCounter;
+    /** 知らない actor を取りに行った数（サーバー全体。キーは 1 つ） */
+    unknownActors: WindowCounter;
     /** UNIX ミリ秒 */
     now(): number;
 }
@@ -66,7 +79,7 @@ const ed25519Keys = (keys: readonly VerifiableKey[]) => keys.flatMap((k) => ('pu
 const rsaKeys = (keys: readonly VerifiableKey[]) => keys.flatMap((k) => ('publicKeyPem' in k ? [k] : []));
 
 export function createVerifier<A extends VerifiableActor>(deps: VerifierDeps<A>) {
-    const fail = (status: 401 | 403, reason: string): VerifyFailure => ({ ok: false, status, reason });
+    const fail = (status: VerifyFailure['status'], reason: string): VerifyFailure => ({ ok: false, status, reason });
 
     /** keyid → 署名した actor（方針・自分のサーバー・消えた actor を断り、通らなければ鍵を 1 度だけ取り直す）。 */
     const signerOf = async (
@@ -81,7 +94,7 @@ export function createVerifier<A extends VerifiableActor>(deps: VerifierDeps<A>)
         if (host === deps.identity.domain) return fail(401, 'self-signed');
 
         const actorId = actorIdOfKey(keyUrl.href);
-        const cached = await deps.actors.get(actorId);
+        const cached = await deps.actors.get(actorId, { admitUnknown: () => deps.unknownActors.take('all') });
         if (!cached || cached.deletedAt) return fail(401, 'actor');
         // 通らなければ鍵を取り直す（取り直しすぎない。知らない keyid なら鍵が変わったので早めに）
         const knownKey = cached.keys.some((k) => k.id === keyUrl.href);
@@ -182,12 +195,15 @@ export function createVerifier<A extends VerifiableActor>(deps: VerifierDeps<A>)
             request: InboundRequest,
             options: { requireNonce?: boolean; allowCavage?: boolean } = {},
         ): Promise<Verified<A> | VerifyFailure> {
+            if (await deps.failures.exceeded(request.ip)) return fail(429, 'too-many-failures');
             const method = request.method.toUpperCase();
             const now = deps.now();
-            if (request.header('signature-input') || !options.allowCavage || options.requireNonce) {
-                return verifyRfc9421(request, method, now, options);
-            }
-            return verifyCavage(request, method, now);
+            const result =
+                request.header('signature-input') || !options.allowCavage || options.requireNonce
+                    ? await verifyRfc9421(request, method, now, options)
+                    : await verifyCavage(request, method, now);
+            if (!result.ok) await deps.failures.take(request.ip);
+            return result;
         },
     };
 }

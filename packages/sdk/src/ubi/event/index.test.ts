@@ -119,6 +119,79 @@ describe('createEventModule', () => {
         expect(handler).toHaveBeenCalledWith(1);
     });
 
+    it('define: handler の中で自分を解除しても、次の handler が飛ばされない', () => {
+        const { deps, dispatch } = makeDeps();
+        const reg = createEventModule(deps).define<{ hit: number }>();
+        const calls: string[] = [];
+        const off = reg.on('hit', () => {
+            calls.push('A');
+            off();
+        });
+        reg.on('hit', () => calls.push('B'));
+        reg.on('hit', () => calls.push('C'));
+        dispatch([{ type: 'hit', payload: 1 }]);
+        expect(calls).toEqual(['A', 'B', 'C']);
+        dispatch([{ type: 'hit', payload: 2 }]);
+        expect(calls).toEqual(['A', 'B', 'C', 'B', 'C']);
+    });
+
+    it('define: handler の中で追加した handler は、その dispatch では呼ばれず次から呼ばれる', () => {
+        const { deps, dispatch } = makeDeps();
+        const reg = createEventModule(deps).define<{ hit: number }>();
+        const calls: string[] = [];
+        const late = (): void => {
+            calls.push('late');
+        };
+        reg.on('hit', () => {
+            calls.push('A');
+            if (!calls.includes('late')) reg.on('hit', late);
+        });
+        dispatch([{ type: 'hit', payload: 1 }]);
+        expect(calls).toEqual(['A']);
+        dispatch([{ type: 'hit', payload: 2 }]);
+        expect(calls).toEqual(['A', 'A', 'late']);
+    });
+
+    it('define: 同じ tick に複数のイベントがあっても、handler 内の解除は次のイベントから効く', () => {
+        const { deps, dispatch } = makeDeps();
+        const reg = createEventModule(deps).define<{ hit: number }>();
+        const seen: number[] = [];
+        const off = reg.on('hit', (n) => {
+            seen.push(n);
+            off();
+        });
+        dispatch([
+            { type: 'hit', payload: 1 },
+            { type: 'hit', payload: 2 },
+        ]);
+        expect(seen).toEqual([1]);
+    });
+
+    it('define: onBroadcast の handler の中で解除しても、次の handler が飛ばされない', () => {
+        const { deps, dispatch } = makeDeps();
+        const reg = createEventModule(deps).define<{ msg: string }>();
+        const calls: string[] = [];
+        const off = reg.onBroadcast('msg', (userId) => {
+            calls.push(`A:${userId}`);
+            off();
+        });
+        reg.onBroadcast('msg', (userId) => calls.push(`B:${userId}`));
+        dispatch([{ type: 'msg', payload: { userId: 'u1', data: 'x' } }]);
+        expect(calls).toEqual(['A:u1', 'B:u1']);
+    });
+
+    it('define: 同じ handler を 2 回登録したとき、解除を 2 回呼んでももう 1 つの登録は残る', () => {
+        const { deps, dispatch } = makeDeps();
+        const reg = createEventModule(deps).define<{ hit: number }>();
+        const handler = vi.fn();
+        const offFirst = reg.on('hit', handler);
+        reg.on('hit', handler);
+        offFirst();
+        offFirst();
+        dispatch([{ type: 'hit', payload: 1 }]);
+        expect(handler).toHaveBeenCalledTimes(1);
+    });
+
     it('define: onBroadcast は envelope を unwrap して (userId, data) で呼ぶ', () => {
         const { deps, dispatch } = makeDeps();
         const reg = createEventModule(deps).define<{ msg: string }>();

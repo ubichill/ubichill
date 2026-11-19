@@ -15,6 +15,7 @@ helm install ubichill ubichill/ubichill \
   --set redis.auth.password=<random-secret>
 ```
 
+- `BETTER_AUTH_SECRET` は 32 文字以上（Go インスタンスの管理トークンにも使う。短いと描画で失敗する。例: `openssl rand -hex 32`）。
 - `global.domain` から **Ingress ホスト / `CORS_ORIGIN` / `BETTER_AUTH_URL`** が導出される（必須）。
 - DB は同梱の PostgreSQL がパスワードを自動生成するため指定不要（自前 DB を使うなら
   `postgresql.auth.password` か `postgresql.auth.existingSecret`）。スキーマは backend Pod の

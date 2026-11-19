@@ -6,6 +6,7 @@ import {
     CAPABILITY_COMMANDS,
     CAPABILITY_DETECTORS,
     CAPABILITY_RISK,
+    COMMAND_TO_CAPABILITY,
     describeCapability,
     detectCapabilities,
     getCapabilityRisk,
@@ -196,5 +197,28 @@ describe('外部サービスへの身元証明', () => {
 
     it('Ubi.identity の利用から identity:token を検出する', () => {
         expect(detectCapabilities('await Ubi.identity.token("https://api.example.com")')).toContain('identity:token');
+    });
+});
+
+describe('Object.prototype 由来の名前を権限・コマンド名として扱わない', () => {
+    const PROTOTYPE_NAMES = ['constructor', '__proto__', 'toString', 'hasOwnProperty', 'valueOf', 'isPrototypeOf'];
+
+    it.each(PROTOTYPE_NAMES)('capability "%s" は未知（dangerous）で、コマンドを増やさず例外も出さない', (name) => {
+        expect(getCapabilityRisk(name)).toBe('dangerous');
+        expect(describeCapability(name)).toMatchObject({ capability: name, risk: 'dangerous', known: false });
+        expect(() => buildAllowedCommands([name])).not.toThrow();
+        expect([...buildAllowedCommands([name])].sort()).toEqual([...ALWAYS_ALLOWED_COMMANDS].sort());
+    });
+
+    it.each(PROTOTYPE_NAMES)('派生ビューを "%s" で引いても何も返さない', (name) => {
+        expect(CAPABILITY_COMMANDS[name]).toBeUndefined();
+        expect(CAPABILITY_RISK[name]).toBeUndefined();
+        expect(COMMAND_TO_CAPABILITY[name]).toBeUndefined();
+    });
+
+    it('実在する権限と混ぜても実在する権限の分だけ許可される', () => {
+        const allowed = buildAllowedCommands(['constructor', 'net:fetch', '__proto__']);
+        expect(allowed.has('NETWORK_FETCH')).toBe(true);
+        expect(allowed.size).toBe(ALWAYS_ALLOWED_COMMANDS.length + 1);
     });
 });

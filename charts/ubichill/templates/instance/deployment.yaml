@@ -140,10 +140,14 @@ spec:
             httpGet:
               path: /ready
               port: realtime
+          # CPU の上限に張り付いた Pod は応答が数秒遅れる（fencing.go）。既定の 1 秒・3 回で再起動すると、メモリ上の部屋が全部消えて
+          # 負荷が他の Pod に移り、連鎖して落ちる。生存の判定だけ緩める（約 1 分応答が無ければ再起動）
           livenessProbe:
             httpGet:
               path: /health
               port: realtime
+            timeoutSeconds: 5
+            failureThreshold: 6
           resources:
             {{- toYaml .Values.instanceRuntime.resources | nindent 12 }}
 ---

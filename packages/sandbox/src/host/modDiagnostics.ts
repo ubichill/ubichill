@@ -67,22 +67,31 @@ export function resetDiagnosticHandler(): void {
 }
 
 /**
- * 同一診断（modId+code+message）の連投を抑制する窓 (ms)。
+ * 同一診断の連投を抑制する窓 (ms)。
  * 拒否コマンドを毎フレーム送るmodで console/トーストが洪水になるのを防ぐ。
  */
 const DIAGNOSTIC_THROTTLE_MS = 3000;
-const _recentDiagnostics = new Map<string, number>();
+/** mod ごとに覚えておく診断の数。古いものから忘れる（1 つの mod の診断で、ほかの mod の抑制を解かない）。 */
+const MAX_RECENT_PER_MOD = 50;
+const _recentDiagnostics = new Map<string, Map<string, number>>();
+
+/** 許可に変えられる拒否は capability ごとに 1 つと数える。 */
+const throttleKey = ({ code, message, retry }: ModDiagnostic): string =>
+    retry && 'capability' in retry ? `${code}:capability:${retry.capability}` : `${code}:${message}`;
 
 /** ModHostManager 内部から呼ぶ診断レポート関数（同一診断はレート制限する）。 */
 export function reportDiagnostic(diagnostic: ModDiagnostic): void {
-    const key = `${diagnostic.modId}:${diagnostic.code}:${diagnostic.message}`;
+    const recent = _recentDiagnostics.get(diagnostic.modId) ?? new Map<string, number>();
+    const key = throttleKey(diagnostic);
     const now = Date.now();
-    const last = _recentDiagnostics.get(key);
+    const last = recent.get(key);
     if (last !== undefined && now - last < DIAGNOSTIC_THROTTLE_MS) return; // 直近に同一診断あり → 抑制
 
-    // Map の無制限成長を防ぐ（distinct メッセージ数は少ないが念のため）。
-    if (_recentDiagnostics.size > 200) _recentDiagnostics.clear();
-    _recentDiagnostics.set(key, now);
+    recent.delete(key);
+    recent.set(key, now);
+    const oldest = recent.size > MAX_RECENT_PER_MOD ? recent.keys().next().value : undefined;
+    if (oldest !== undefined) recent.delete(oldest);
+    _recentDiagnostics.set(diagnostic.modId, recent);
     _diagnosticHandler(diagnostic);
 }
 

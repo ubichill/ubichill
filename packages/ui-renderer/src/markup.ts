@@ -123,19 +123,14 @@ const SVG_ATTRIBUTES = byLowerCase(SVG_CAMEL_ATTRS);
 /** 描いても押して何かが起きることは無い要素（core:ui は操作を配送しない）。 */
 const INTERACTIVE_TAGS: ReadonlySet<string> = new Set(['button', 'input', 'select', 'textarea', 'form']);
 
-const NAMED_ENTITIES: Readonly<Record<string, string>> = {
-    amp: '&',
-    lt: '<',
-    gt: '>',
-    quot: '"',
-    apos: "'",
-    nbsp: ' ',
-};
+const NAMED_ENTITIES: ReadonlyMap<string, string> = new Map(
+    Object.entries({ amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' }),
+);
 
 /** 文字参照を戻す。知らない名前・範囲外の番号はそのまま残す。 */
 export function decodeEntities(text: string): string {
     return text.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (whole, body: string) => {
-        if (body[0] !== '#') return NAMED_ENTITIES[body.toLowerCase()] ?? whole;
+        if (body[0] !== '#') return NAMED_ENTITIES.get(body.toLowerCase()) ?? whole;
         const code = body[1] === 'x' || body[1] === 'X' ? Number.parseInt(body.slice(2), 16) : Number(body.slice(1));
         return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : whole;
     });
@@ -205,7 +200,7 @@ const isHttpsUrl = (value: string): boolean => {
 };
 
 /**
- * core:ui で残す URL。mod の UI（http・相対 URL も通す）より狭く、https だけにする。
+ * core:ui で残す URL。mod の UI（相対 URL も通す）より狭く、https だけにする。
  * 画像は data:image/ も通す（取得を起こさない）。SVG の href は文書内の `#id` だけ（描画側も同じ検査をする）。
  */
 function allowedUrl(tag: string, name: 'src' | 'href', value: string, inSvg: boolean): boolean {

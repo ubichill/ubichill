@@ -1,6 +1,7 @@
 /** 自分のお気に入り（`/api/v1/users/me/favorites`）。流れは services/worlds/favoriteService.ts。ほかの人のお気に入りは public.ts。 */
 import { FAVORITES_VISIBILITIES, FavoritesVisibilitySchema } from '@ubichill/shared';
 import { Router } from 'express';
+import { perUserLimiter } from '../../lib/rateLimit';
 import { requireAuth } from '../../middleware/auth';
 import { favoriteService } from '../../services/worlds/favoriteService';
 
@@ -20,7 +21,15 @@ router.get('/me/favorites/worlds', requireAuth, async (req, res) => {
     return res.json(result);
 });
 
-router.post('/me/favorites', requireAuth, async (req, res) => {
+// 追加は外部のワールドの取得を起こすので、利用者ごとに回数を抑える
+const addLimiter = perUserLimiter(
+    'favorites-add',
+    60 * 1000,
+    30,
+    'お気に入りの追加が多すぎます。少し待ってから試してください',
+);
+
+router.post('/me/favorites', requireAuth, addLimiter, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const outcome = await favoriteService.add(req.user.id, req.body?.worldRef);
     if (!outcome.ok) return res.status(outcome.status).json({ error: outcome.error });

@@ -16,6 +16,8 @@ const A = createFederationIdentity('https://a.example');
 const B = createFederationIdentity('https://b.example');
 const ALICE = A.actorUrl('alice');
 const T0 = Date.parse('2026-11-09T00:00:00Z');
+/** 数えない窓（署名の失敗・知らない actor の取得を絞らない） */
+const unlimited = { exceeded: async () => false, take: async () => true };
 
 const pair = (() => {
     const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -99,6 +101,7 @@ const received = (sent: Sent, change: { path?: string; body?: string; method?: s
         originalUrl: change.path ?? url.pathname + url.search,
         header: (name) => headers[name.toLowerCase()],
         rawBody: new TextEncoder().encode(change.body ?? sent.body ?? ''),
+        ip: '192.0.2.1',
     };
 };
 
@@ -124,6 +127,8 @@ async function verifierAt(now: number) {
         actors: { get: async (id) => (id === ALICE || id === A.appActorUrl ? actorOf(id) : null) },
         seen: { remember: async () => true },
         crypto: { verifyEd25519: nodeWorldCrypto.verifyEd25519, verifyRsaSha256 },
+        failures: unlimited,
+        unknownActors: unlimited,
         now: () => now,
     });
 }

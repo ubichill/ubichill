@@ -101,12 +101,6 @@ postgresql:
 # Worlds: official はバンドルした worlds/（main の内容）を使う。
 # 外部ワールドは実行時に URL で on-demand 参照する（連合）。起動時 seed は無し。
 
-# Enable monitoring in production
-monitoring:
-  enabled: true
-  serviceMonitor:
-    enabled: true
-
 # Enable node affinity for multi-AZ deployment
 nodeAffinity:
   enabled: true

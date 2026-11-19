@@ -125,7 +125,7 @@ backendのデプロイや設定変更ではGoを再起動しない（状態が�
   タイマーは動きのあった部屋にだけ張り、送ったら外す。
 - **draining**: SIGTERM を受けると、新しい部屋の作成を 503 で断り、heartbeat の `state` を `draining` に書き直し、`GET /ready` を 503 にする（`/health` は 200 のまま）。
   持っている部屋は入室・操作・延長とも続ける。作られてから `--migrate-after`（既定 3h）を過ぎても参加者の居る部屋は、下の「引っ越し」で別の Pod へ移す。
-  接続（参加者と中継）が無くなるか `--drain-timeout`（既定 0。chart は redis のとき 24h）を過ぎたら、残りの部屋を閉じて割り当てを解放する
+  接続（参加者と中継）と、引っ越し先として準備した部屋（確定か準備の期限を待つ）が無くなるか `--drain-timeout`（既定 0。chart は redis のとき 24h）を過ぎたら、残りの部屋を閉じて割り当てを解放する
   （`instance:closing` は送らない）。上限の `--disconnect-notice`（既定 10m）前に、直接繋いでいるクライアントへ
   `{"event":"server:notice","data":{"kind":"disconnect","at":<切る時刻の epoch ms>}}` を送る。
 - **引っ越し（handoff）**: 元の Pod が部屋を凍結し（変更系の要求は `code: "migrating"` の失敗。状態は変えないので送り直せる。カーソルなど応答の要らないものは捨てる）、
@@ -133,7 +133,8 @@ backendのデプロイや設定変更ではGoを再起動しない（状態が�
   `POST /realtime/v1/instances/{id}/handoff`（管理トークン。Pod 間だけ）に `prepare` で渡す。先は ready・空きあり・接続の少ない順に選ぶ。
   元の Pod は Directory の `Transfer`（token が一致すれば node を替え epoch+1。新しい token は先が準備で作ったもの）で付け替え、`commit` で先に確定させる。
   先は自分で延長してから owner になる。確定が届かなくても、先は準備の期限（10 秒）に Directory を引き、自分に付け替わっていれば引き取る（owner の居ない隙間を作らない）。
-  確定を断られたら元の Pod が取り戻して凍結を解く。付け替えたか分からないとき（Redis の応答が消えた）は、元の Pod は部屋を手放して接続を閉じる。
+  確定を断られたら元の Pod が取り戻して凍結を解く。付け替え・取り戻しの応答が消えたとき（go-redis が送り直すと、適用済みでも付け替わっていないように見える）は
+  Directory を引いて確かめ、それでも分からなければ元の Pod は部屋を手放して接続を閉じる。
   中継されてきた接続には元の Pod が `relay:migrate`（新しい owner の node・addr・gen・epoch）を送り、中継元が新しい owner へ繋ぎ直す。
   チケットは中継元が署名し直し（全 Pod で鍵が同じ）、入室の応答は飲み込み、繋ぎ直しの間にクライアントから来たフレームは 64 件まで持っておいて順に送る（溢れたら切る）。
   元の Pod に直接繋いでいるクライアントは、元の Pod 自身が中継に変わる。`relay:migrate` はクライアントには届かない。
@@ -144,6 +145,7 @@ backendのデプロイや設定変更ではGoを再起動しない（状態が�
   上限で断った入室の数（counter）を Prometheus の text 形式で出す。KEDA の scale-out に使う（chart の README の「Go インスタンスの自動スケール（KEDA）」）。
 - **閉じた部屋**: 終了した部屋は 2 分間どの Pod でも作り直せない（Directory の `ubi:retired:<id>`。memory なら Pod の中だけ）。割り当ての Lua の中で確かめ、
   閉じる側は token の照合・印の設定・割り当てと在席の削除を原子的に行う。owner が変わっていたら 409、Redis に届かなければ 503 を返し、DB の削除を止める。作成は 400。
+  印には閉じた token を持たせ、応答が消えて送り直された同じ token の閉鎖（go-redis の自動の送り直し・503 のあとの backend の送り直し）は成功にする。
 - **WS Router**: 各 Pod が Router を兼ねる。最初の `world:join` の部屋が手元に無ければ、Directory の owner の内部アドレス
   （heartbeat の `addr`）の `/realtime/v1/relay` へ WebSocket を張り、`world:join` から先を双方向に中継する。owner は Upgrade の後に1回だけ決め、
   owner が接続を閉じたら（自己停止・終了・退出）中継も閉じる。クライアントはチケットを取り直して繋ぎ直す。

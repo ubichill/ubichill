@@ -25,7 +25,7 @@ import {
     webWorldCrypto,
 } from '@ubichill/loader';
 import { type ModLockEntry, verifyModSignature } from '@ubichill/shared';
-import { silentLogger } from '@ubichill/terminal';
+import { recordingLogger, silentLogger } from '@ubichill/terminal';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
     buildMod,
@@ -34,6 +34,7 @@ import {
     MOD_DESCRIPTION_MAX_LENGTH,
     mediaTargetCollisions,
     readModDescription,
+    readModVersion,
 } from './build.ts';
 import { listDirsOnDisk } from './modLayout.ts';
 import { publishMods } from './publishMods.ts';
@@ -429,6 +430,52 @@ describe('リモート registry からのバージョン履歴マージ（CI ク
         expect(written[0].versions.map((v: { version: string }) => v.version)).toEqual([penVersion, '1.9.0']);
     });
 
+    it('履歴はプレリリースを含んでも SemVer の新しい順に並ぶ（入力の順のままにしない）', async () => {
+        const remoteIndex = [
+            {
+                id: 'pen',
+                name: 'pen',
+                version: '1.0.0',
+                components: [],
+                versions: ['1.0.0-beta.1', '0.9.0', '1.0.0', '1.0.0-beta.11', '1.0.0-beta.2', '1.10.0'].map(
+                    (version) => ({ version, components: [] }),
+                ),
+            },
+        ];
+        const entry = await buildMod(penModDir, {
+            distDir: join(distDir, 'pen'),
+            publicDir: join(publicDir, 'pen'),
+            registryUrl: 'https://example.com/registry',
+            fetchImpl: fakeRegistryFetch(remoteIndex),
+        });
+        expect(entry.versions.map((v) => v.version)).toEqual([
+            penVersion,
+            '1.10.0',
+            '1.0.0',
+            '1.0.0-beta.11',
+            '1.0.0-beta.2',
+            '1.0.0-beta.1',
+            '0.9.0',
+        ]);
+    });
+
+    it('package.json の version が x.y.z でなければ、何も書き出さずにビルドを止める', async () => {
+        const modDir = mkdtempSync(join(tmpdir(), 'ubichill-mod-bad-version-'));
+        try {
+            writeFileSync(
+                join(modDir, 'package.json'),
+                JSON.stringify({ name: 'escape', version: '../../../escaped' }),
+            );
+            const out = join(distDir, 'a', 'b');
+            await expect(buildMod(modDir, { distDir: out })).rejects.toThrow('version');
+            // `v../../../escaped` は <out>/v.. → <out> → <out>/.. で、出力先の 1 つ上に書き出していた
+            expect(existsSync(join(distDir, 'a', 'escaped'))).toBe(false);
+            expect(existsSync(out)).toBe(false);
+        } finally {
+            rmSync(modDir, { recursive: true, force: true });
+        }
+    });
+
     it('registryUrl への fetch が失敗しても（オフライン/404）ビルドは成功する', async () => {
         const failingFetch: typeof fetch = async () => {
             throw new Error('network down');
@@ -506,9 +553,59 @@ describe('dataOnlyEntryFromSource', () => {
         }
     });
 
-    it('dataOnly を書いていなければ、config を読めなくても従来どおり Worker（ビルドは止めない）', () => {
-        expect(dataOnlyEntryFromSource('m:x', source('{ description: `x` }'))).toBeNull();
-        expect(dataOnlyEntryFromSource('m:x', 'export const foo = 1;')).toBeNull();
+    it('dataOnly を書いていなければ、config を読めなくてもビルドは止めず、宣言を取り込めないことを警告する', () => {
+        const unreadable = [
+            '{ description: `x` }',
+            "{ capabilities: ['network:fetch'], watchScope: 'world', description: `説明` }",
+            '{ ...base, capabilities: [] }',
+            '{ capabilities: CAPS }',
+        ];
+        for (const config of unreadable) {
+            const { logger, entries } = recordingLogger();
+            expect(dataOnlyEntryFromSource('m:x', source(config), logger), config).toBeNull();
+            expect(entries, config).toEqual([
+                expect.objectContaining({
+                    level: 'warn',
+                    message: expect.stringContaining('[m:x] config を静的に読めなかったので宣言を取り込めません'),
+                }),
+            ]);
+        }
+    });
+
+    it('config を書いていない・読める config なら警告しない', () => {
+        const { logger, entries } = recordingLogger();
+        expect(dataOnlyEntryFromSource('m:x', 'export const foo = 1;', logger)).toBeNull();
+        expect(dataOnlyEntryFromSource('m:x', source("{ capabilities: ['ui:render'] }"), logger)).toBeNull();
+        expect(entries).toEqual([]);
+    });
+
+    it('文字列のエスケープは JS と同じ意味に読む', () => {
+        const config = String.raw`{ dataOnly: true, 'k\'ey': "\"", description: 'a\nb\tc\rd\'e\\f\/g\-h\`i\bj\fk\vl' }`;
+        expect(dataOnlyEntryFromSource('m:x', source(config))).toEqual({
+            dataOnly: true,
+            "k'ey": '"',
+            description: "a\nb\tc\rd'e\\f/g-h`i\bj\fk\vl",
+        });
+    });
+
+    it('読み替えられないエスケープ（\\x・\\u・数字・行の継続）は誤訳せず、config を読めないものとして扱う', () => {
+        const escapes = [
+            String.raw`\x41`,
+            String.raw`\u0041`,
+            String.raw`\u{1F600}`,
+            String.raw`\0`,
+            String.raw`\1`,
+            '\\\n',
+        ];
+        for (const sequence of escapes) {
+            const dataOnly = `{ dataOnly: true, description: 'a${sequence}b' }`;
+            expect(() => dataOnlyEntryFromSource('m:stroke', source(dataOnly)), dataOnly).toThrow(
+                /dataOnly を書いていますが、export const config をリテラルとして読めません/,
+            );
+            const { logger, entries } = recordingLogger();
+            expect(dataOnlyEntryFromSource('m:x', source(`{ description: 'a${sequence}b' }`), logger)).toBeNull();
+            expect(entries.map((e) => e.level)).toEqual(['warn']);
+        }
     });
 
     it('読める config で dataOnly が true 以外なら Worker のまま', () => {
@@ -565,5 +662,30 @@ describe('readModDescription', () => {
         for (const value of [null, 1, ['説明'], { ja: '説明' }]) {
             expect(() => readModDescription(value)).toThrow('文字列');
         }
+    });
+});
+
+describe('readModVersion', () => {
+    it.each(['1.0.0', '0.0.0', '10.20.30'])('%s は版として読む', (version) => {
+        expect(readModVersion(version)).toBe(version);
+    });
+
+    it.each([
+        ['プレリリース', '1.0.0-beta.1'],
+        ['ビルドメタデータ', '1.0.0+build.1'],
+        ['2 つだけ', '1.0'],
+        ['4 つ', '1.0.0.0'],
+        ['v 付き', 'v1.0.0'],
+        ['前後の空白', ' 1.0.0 '],
+        ['末尾の改行', '1.0.0\n'],
+        ['親のディレクトリ', '../../1.0.0'],
+        ['パスの区切り', '1.0.0/../../x'],
+        ['Windows のパス', '1.0.0\\..\\x'],
+        ['空', ''],
+        ['数値', 1],
+        ['無い', undefined],
+        ['null', null],
+    ])('%s（%j）はビルドを止める', (_label, version) => {
+        expect(() => readModVersion(version)).toThrow('version');
     });
 });

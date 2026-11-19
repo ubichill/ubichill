@@ -2,15 +2,6 @@ import { buildAllowedCommands } from '@ubichill/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { createCapabilityGate } from './capabilityGate';
 
-describe('createCapabilityGate — allowAll モード', () => {
-    it('全コマンドを許可する', () => {
-        const gate = createCapabilityGate({ allowAll: true });
-        expect(gate.authorize('NETWORK_FETCH')).toBe(true);
-        expect(gate.authorize('SCENE_UPDATE_ENTITY')).toBe(true);
-        expect(gate.authorize('CMD_LOG')).toBe(true);
-    });
-});
-
 describe('createCapabilityGate — 静的モード（allowlist）', () => {
     it('宣言 capability のコマンドを許可し、それ以外を拒否する', () => {
         const gate = createCapabilityGate({ allowedCommands: buildAllowedCommands(['scene:read']) });

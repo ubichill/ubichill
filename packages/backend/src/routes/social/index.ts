@@ -16,7 +16,13 @@ import { createPeopleRouter } from './people';
 export const router = Router();
 
 router.use(createPeopleRouter({ requireAuth, optionalAuth, people }));
-router.use(createFriendsRouter({ requireAuth, friendships: friendshipService }));
+router.use(
+    createFriendsRouter({
+        requireAuth,
+        limiter: perUserLimiter('social-friends', 60 * 1000, 30, '操作が多すぎます。少し待ってから試してください'),
+        friendships: friendshipService,
+    }),
+);
 router.use(
     createBlocksRouter({
         requireAuth,

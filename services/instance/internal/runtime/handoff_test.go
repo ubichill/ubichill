@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"slices"
 	"testing"
@@ -209,6 +210,75 @@ func TestRedisMigrationAcrossPods(t *testing.T) {
 	})
 }
 
+// lostReply は Transfer を Directory に適用したあとに応答だけが消える Directory。go-redis は応答の届かないコマンドを
+// 自動で送り直すので、resent なら送り直した結果（token が合わず、付け替わっていないように見える）を、そうでなければエラーを返す。
+type lostReply struct {
+	coord.Directory
+	resent bool
+}
+
+func (l *lostReply) Transfer(ctx context.Context, room, from, to, token, gen string, ttl time.Duration) (coord.Assignment, bool, error) {
+	if _, _, err := l.Directory.Transfer(ctx, room, from, to, token, gen, ttl); err != nil {
+		return coord.Assignment{}, false, err
+	}
+	if l.resent {
+		return l.Directory.Transfer(ctx, room, from, to, token, gen, ttl)
+	}
+	return coord.Assignment{}, false, errors.New("i/o timeout")
+}
+
+// 付け替えが Directory に適用されたあとに応答が消えても、部屋を捨てずに引っ越しを終える。
+func TestMigrationSurvivesALostTransferReply(t *testing.T) {
+	for _, resent := range []bool{true, false} {
+		t.Run(fmt.Sprintf("resent=%v", resent), func(t *testing.T) {
+			c := newCluster()
+			a, b, edge := c.pod(t, "node-a"), c.pod(t, "node-b"), c.pod(t, "node-c")
+			for _, n := range []*node{a, b, edge} {
+				n.maintain()
+			}
+			scene := setUpMigration(t, a, edge)
+			edge.maintain()
+			a.dir = &lostReply{Directory: a.dir, resent: resent}
+			checkMigration(t, a, b, edge, scene, func() {
+				if err := a.migrate(context.Background(), scene.room); err != nil {
+					t.Fatal(err)
+				}
+			})
+		})
+	}
+}
+
+// 引っ越しの前に別のノードが owner になっていたら、その owner を奪わずに部屋を手放し、先の準備も取りやめさせる。
+func TestMigrationGivesUpARoomOwnedByAnotherNode(t *testing.T) {
+	c := newCluster()
+	a, b := c.pod(t, "node-a"), c.pod(t, "node-b")
+	for _, n := range []*node{a, b} {
+		n.maintain()
+	}
+	r := provision(t, a, "room")
+	bob, out := joinWith(t, a.http, "room", memberGrant(t, a, "room", "bob"))
+	joined(t, out)
+	ctx := context.Background()
+	gen, _, token := r.lease()
+	if ok, err := c.dir.Release(ctx, "room", token); err != nil || !ok {
+		t.Fatalf("release: %v %v", ok, err)
+	}
+	thief, _, err := c.dir.Assign(ctx, "room", "node-x", gen, testFencing.TTL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.migrate(ctx, r); !errors.Is(err, errHandoffLost) {
+		t.Fatalf("migrate = %v", err)
+	}
+	if owner, _, _ := c.dir.Owner(ctx, "room"); owner != thief {
+		t.Fatalf("owner = %+v, want %+v", owner, thief)
+	}
+	if a.room("room") != nil || b.awaiting("room") || b.room("room") != nil {
+		t.Fatalf("a=%v b awaiting=%v b=%v", a.room("room"), b.awaiting("room"), b.room("room"))
+	}
+	expectClosed(t, bob, "instance:closing")
+}
+
 // Drain は 3 時間（MigrateAfter）未満の部屋を待ち、過ぎたら引っ越す。引っ越したあとも、直接繋いでいる bob を
 // 中継している間は終わらない。
 func TestDrainMovesOldRoomsAndWaitsForDirectClients(t *testing.T) {
@@ -260,6 +330,55 @@ func TestDrainMovesOldRoomsAndWaitsForDirectClients(t *testing.T) {
 	a.Close()
 	// 中継されてきた alice は edge から新しい owner へ繋がったまま
 	createEntity(t, scene.alice, Object{"after": "drain"})
+}
+
+// 引っ越し先として準備している部屋がある間は、接続も部屋も無くても Drain を終えない。準備のまま抜けると、
+// 付け替わっていた部屋は Directory の owner だけが残り、TTL のあと初期状態で作り直される。
+func TestDrainWaitsForAPreparedHandoff(t *testing.T) {
+	for _, transferred := range []bool{true, false} {
+		t.Run(fmt.Sprintf("transferred=%v", transferred), func(t *testing.T) {
+			c := newCluster()
+			a, b := c.pod(t, "node-a"), c.pod(t, "node-b")
+			b.handoffTimeout = 300 * time.Millisecond
+			for _, n := range []*node{a, b} {
+				n.maintain()
+			}
+			r := provision(t, a, "room")
+			_, out := joinWith(t, a.http, "room", memberGrant(t, a, "room", "alice"))
+			joined(t, out)
+			snapshot, _ := r.freeze()
+			var prepared struct {
+				Token string `json:"token"`
+			}
+			if code, err := a.sendHandoff(context.Background(), handoffTargets(a.node, mustNodes(t, a))[0], "room", handoffRequest{Phase: "prepare", From: a.node, Snapshot: snapshot}, &prepared); err != nil || code != 200 {
+				t.Fatalf("prepare: %d %v", code, err)
+			}
+			if transferred {
+				gen, _, from := r.lease()
+				if _, ok, err := a.dir.Transfer(context.Background(), "room", from, b.node, prepared.Token, gen, testFencing.TTL); err != nil || !ok {
+					t.Fatalf("transfer: %v %v", ok, err)
+				}
+			}
+			drained := make(chan struct{})
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				b.Drain(ctx)
+				close(drained)
+			}()
+			select {
+			case <-drained:
+			case <-time.After(3 * time.Second):
+				t.Fatal("drain did not end after the prepare was settled")
+			}
+			if b.awaiting("room") {
+				t.Fatal("drain ended while a handoff was prepared")
+			}
+			if took := b.owned("room") != nil; took != transferred {
+				t.Fatalf("took over the room = %v, want %v", took, transferred)
+			}
+		})
+	}
 }
 
 // 凍結の間、変更系の要求は再試行できるエラー（code: migrating）になり、状態は変わらない。取りやめれば元どおり動く。
@@ -388,45 +507,53 @@ func TestUnconfirmedHandoffIsDroppedOrTakenOver(t *testing.T) {
 }
 
 // 確定を断られたら（先が準備を捨てていた）、元の Pod が先の token で取り戻して凍結を解く。
+// 取り戻しの付け替えの応答が消えても、Directory で確かめて取り戻せたと分かる。
 func TestRefusedCommitTakesTheRoomBack(t *testing.T) {
-	c := newCluster()
-	a, b := c.pod(t, "node-a"), c.pod(t, "node-b")
-	for _, n := range []*node{a, b} {
-		n.maintain()
+	for _, reply := range []string{"delivered", "resent", "lost"} {
+		t.Run(reply, func(t *testing.T) {
+			c := newCluster()
+			a, b := c.pod(t, "node-a"), c.pod(t, "node-b")
+			for _, n := range []*node{a, b} {
+				n.maintain()
+			}
+			r := provision(t, a, "room")
+			bob, out := joinWith(t, a.http, "room", memberGrant(t, a, "room", "bob"))
+			joined(t, out)
+			to := handoffTargets(a.node, mustNodes(t, a))[0]
+			snapshot, _ := r.freeze()
+			var prepared struct {
+				Token string `json:"token"`
+			}
+			if code, err := a.sendHandoff(context.Background(), to, "room", handoffRequest{Phase: "prepare", From: a.node, Snapshot: snapshot}, &prepared); err != nil || code != 200 {
+				t.Fatalf("prepare: %d %v", code, err)
+			}
+			gen, _, from := r.lease()
+			at, ok, _ := a.dir.Transfer(context.Background(), "room", from, b.node, prepared.Token, gen, testFencing.TTL)
+			if !ok {
+				t.Fatal("transfer")
+			}
+			b.dropHandoff("room", nil)
+			if code, err := a.sendHandoff(context.Background(), to, "room", handoffRequest{Phase: "commit"}, nil); err != nil || code != 409 {
+				t.Fatalf("commit without a prepare: %d %v", code, err)
+			}
+			if reply != "delivered" {
+				a.dir = &lostReply{Directory: a.dir, resent: reply == "resent"}
+			}
+			if !a.reclaim(context.Background(), r, at) {
+				t.Fatal("reclaim")
+			}
+			r.thaw()
+			owner, _, _ := a.dir.Owner(context.Background(), "room")
+			if _, _, token := r.lease(); owner.Node != a.node || owner.Epoch != 3 || r.epochNow() != 3 || owner.Token != token {
+				t.Fatalf("owner after reclaim = %+v (room epoch %d, token %s)", owner, r.epochNow(), token)
+			}
+			a.maintain()
+			if a.owned("room") != r {
+				t.Fatal("the reclaimed room was not renewed")
+			}
+			createEntity(t, bob, Object{})
+		})
 	}
-	r := provision(t, a, "room")
-	bob, out := joinWith(t, a.http, "room", memberGrant(t, a, "room", "bob"))
-	joined(t, out)
-	to := handoffTargets(a.node, mustNodes(t, a))[0]
-	snapshot, _ := r.freeze()
-	var prepared struct {
-		Token string `json:"token"`
-	}
-	if code, err := a.sendHandoff(context.Background(), to, "room", handoffRequest{Phase: "prepare", From: a.node, Snapshot: snapshot}, &prepared); err != nil || code != 200 {
-		t.Fatalf("prepare: %d %v", code, err)
-	}
-	gen, _, from := r.lease()
-	at, ok, _ := a.dir.Transfer(context.Background(), "room", from, b.node, prepared.Token, gen, testFencing.TTL)
-	if !ok {
-		t.Fatal("transfer")
-	}
-	b.dropHandoff("room", nil)
-	if code, err := a.sendHandoff(context.Background(), to, "room", handoffRequest{Phase: "commit"}, nil); err != nil || code != 409 {
-		t.Fatalf("commit without a prepare: %d %v", code, err)
-	}
-	if !a.reclaim(context.Background(), r, at) {
-		t.Fatal("reclaim")
-	}
-	r.thaw()
-	owner, _, _ := a.dir.Owner(context.Background(), "room")
-	if owner.Node != a.node || owner.Epoch != 3 || r.epochNow() != 3 {
-		t.Fatalf("owner after reclaim = %+v (room epoch %d)", owner, r.epochNow())
-	}
-	a.maintain()
-	if a.owned("room") != r {
-		t.Fatal("the reclaimed room was not renewed")
-	}
-	createEntity(t, bob, Object{})
 }
 
 // 宛先の違う・管理トークンの無い・中身の壊れた準備は受け付けない。draining のノードは準備を断る。

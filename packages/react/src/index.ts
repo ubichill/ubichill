@@ -22,6 +22,7 @@ export {
     type PermissionPolicy,
     type TierMode,
 } from '@ubichill/shared';
+export { ErrorBoundary } from './components/ErrorBoundary';
 export type { HoldState } from './components/HoldContext';
 export { HoldProvider, useHold } from './components/HoldContext';
 export { ModUIMount } from './components/ModUIMount';

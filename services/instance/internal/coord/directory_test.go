@@ -77,7 +77,7 @@ func testRedis(t *testing.T) *redis.Client {
 
 func runDirectoryContract(t *testing.T, newDirectory func(t *testing.T) testDirectory) {
 	ctx := context.Background()
-	const ttl = contractTTL
+	const ttl = 200 * time.Millisecond
 	gen := func(t *testing.T, d Directory) string {
 		t.Helper()
 		g, err := d.ClusterGen(ctx)
@@ -323,6 +323,32 @@ func runDirectoryContract(t *testing.T, newDirectory func(t *testing.T) testDire
 		}
 		if _, err := d.Retire(ctx, "epoch:x", "", ttl); !errors.Is(err, ErrInvalidRoom) {
 			t.Fatalf("retire an invalid room: %v", err)
+		}
+	})
+
+	// go-redis は応答の届かない Retire を送り直す。同じ token の送り直しは、閉じ済みでも成功を返す（失敗に見えると DB の行が残る）
+	t.Run("a resent retirement with the same token succeeds while the room is retired", func(t *testing.T) {
+		d := newDirectory(t)
+		a, _ := assign(t, d, "room", "node-a")
+		for i := range 2 {
+			if ok, err := d.Retire(ctx, "room", a.Token, 2*ttl); err != nil || !ok {
+				t.Fatalf("retirement %d: %v %v", i+1, ok, err)
+			}
+		}
+		if ok, err := d.Retire(ctx, "room", "not-the-token", 2*ttl); err != nil || ok {
+			t.Fatalf("retirement with another token: %v %v", ok, err)
+		}
+		// 閉じ済みの印が切れたら、古い token では閉じられない（新しい owner を閉じない）
+		d.advance(2*ttl + 50*time.Millisecond)
+		next, created := assign(t, d, "room", "node-b")
+		if !created {
+			t.Fatal("not reassigned after the retirement")
+		}
+		if ok, err := d.Retire(ctx, "room", a.Token, ttl); err != nil || ok {
+			t.Fatalf("stale retirement after the expiry: %v %v", ok, err)
+		}
+		if owner, held, _ := d.Owner(ctx, "room"); !held || owner != next {
+			t.Fatalf("owner = %+v %v", owner, held)
 		}
 	})
 

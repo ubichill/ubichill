@@ -183,6 +183,33 @@ describe('こちらから申請する', () => {
         expect(notes).toEqual([`accepted ${BOB.id} → alice`]);
     });
 
+    it('相手の承認でフレンドになったあと相手の申請が届いたら、承認はこちらの id で返す（相手の Accept の id を使わない）', async () => {
+        const { friendships, sent, find } = setup();
+        await friendships.request('alice', BOB);
+        const theirAccept = 'https://c.example/ap/activities/acc';
+        await friendships.onAccept(BOB, {
+            id: theirAccept,
+            object: { id: String(sent[0]?.activity.id), type: 'Offer' },
+        });
+        // お互いの申請が行き違った（相手の申請が、相手の承認より後に届く）・相手の送り直し
+        for (const offer of ['https://c.example/ap/activities/o1', 'https://c.example/ap/activities/o2']) {
+            await friendships.onOffer(BOB, offerFrom(BOB, offer));
+            const accept = sent.at(-1)?.activity as { id: string; type: string; actor: string; object: { id: string } };
+            expect(accept).toMatchObject({ type: 'Accept', actor: ALICE_URL, object: { id: offer } });
+            expect(new URL(accept.id).origin).toBe(identity.origin);
+        }
+        expect(find('alice', BOB.id)).toMatchObject({ state: 'accepted', acceptId: theirAccept });
+    });
+
+    it('こちらが承認してフレンドになった相手が申請を送り直したら、前と同じ承認の id で返す', async () => {
+        const { friendships, sent, find } = setup();
+        await friendships.onOffer(BOB, offerFrom(BOB, 'https://c.example/ap/activities/o1'));
+        await friendships.accept('alice', BOB);
+        const ours = find('alice', BOB.id)?.acceptId;
+        await friendships.onOffer(BOB, offerFrom(BOB, 'https://c.example/ap/activities/o1'));
+        expect(sent.at(-1)?.activity).toMatchObject({ type: 'Accept', id: ours });
+    });
+
     it('フレンドに対応していないと分かっているサーバーの人には、申請を送らず unsupported（申請中のままにしない）', async () => {
         const { friendships, sent, rows } = setup({ lacking: [FEDERATION_FEATURES.friends] });
         expect(await friendships.request('alice', BOB)).toEqual({ ok: false, reason: 'unsupported' });

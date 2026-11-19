@@ -1,6 +1,15 @@
 import { CommandType, type ModGuestCommand } from '@ubichill/shared';
 import { describe, expect, it, vi } from 'vitest';
-import { type CommandContext, dispatchCommand, RpcTimeoutError } from './commandDispatch';
+import {
+    type CommandContext,
+    createCommandBudget,
+    dispatchCommand,
+    exceedsApproxSize,
+    MAX_COMMANDS_PER_TICK,
+    MAX_EMIT_DATA_BYTES,
+    RpcTimeoutError,
+    withRpcTimeout,
+} from './commandDispatch';
 import { createHostRequests } from './hostRequests';
 import type { HostHandlers } from './types';
 
@@ -219,5 +228,107 @@ describe('dispatchCommand: IDENTITY_TOKEN', () => {
         const pending = dispatchCommand(command('i3'), ctx);
         await dispatchCommand({ type: CommandType.CMD_ABORT, payload: { requestId: 'i3' } } as ModGuestCommand, ctx);
         await expect(pending).rejects.toMatchObject({ code: 'FETCH_ABORTED' });
+    });
+});
+
+describe('withRpcTimeout', () => {
+    it('解決した RPC の timer は残さない（秒に数千回送る mod でも timer が溜まらない）', async () => {
+        vi.useFakeTimers();
+        try {
+            await Promise.all(Array.from({ length: 5000 }, (_, i) => withRpcTimeout(Promise.resolve(i), 10_000, 'X')));
+            await withRpcTimeout(Promise.reject(new Error('boom')), 10_000, 'X').catch(() => {});
+            expect(vi.getTimerCount()).toBe(0);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('時間内に終わらなければ RpcTimeoutError で失敗する', async () => {
+        vi.useFakeTimers();
+        try {
+            const pending = withRpcTimeout(new Promise<never>(() => {}), 10_000, 'SCENE_UPDATE_ENTITY');
+            const assertion = expect(pending).rejects.toBeInstanceOf(RpcTimeoutError);
+            await vi.advanceTimersByTimeAsync(10_000);
+            await assertion;
+            await expect(pending).rejects.toThrow('SCENE_UPDATE_ENTITY');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('元の失敗はそのまま返す', async () => {
+        const error = new Error('handler');
+        await expect(withRpcTimeout(Promise.reject(error), 10_000, 'X')).rejects.toBe(error);
+    });
+});
+
+describe('createCommandBudget（1 tick に受け付けるコマンドの数）', () => {
+    const takeMany = (budget: ReturnType<typeof createCommandBudget>, count: number) =>
+        Array.from({ length: count }, () => budget.take());
+
+    it('上限までは受け付け、超えた最初の 1 件だけ drop-first にする（診断を 1 回にするため）', () => {
+        const budget = createCommandBudget(3);
+        expect(takeMany(budget, 6)).toEqual(['accept', 'accept', 'accept', 'drop-first', 'drop', 'drop']);
+    });
+
+    it('tick で数え直す', () => {
+        const budget = createCommandBudget(2);
+        takeMany(budget, 5);
+        budget.reset();
+        expect(takeMany(budget, 3)).toEqual(['accept', 'accept', 'drop-first']);
+    });
+
+    it('上限 0 は何も受け付けない・Infinity は数えない', () => {
+        expect(takeMany(createCommandBudget(0), 2)).toEqual(['drop-first', 'drop']);
+        expect(takeMany(createCommandBudget(Number.POSITIVE_INFINITY), 10_000).every((r) => r === 'accept')).toBe(true);
+    });
+
+    it('正規の mod の 1 tick 分（danmaku の自機・弾・壁と、起動時にまとめて作る Entity）は上限に届かない', () => {
+        // danmaku: 自機の移動（SCENE_UPDATE_ENTITY）・発射（EVENT_EMIT）・弾の描画（CANVAS_FRAME）・UI_RENDER・ログ
+        const danmakuTick = 5;
+        // 起動時の取得とまとめての生成（SCENE_GET_ENTITY・SCENE_QUERY_ENTITIES・SCENE_CREATE_ENTITY × 200）
+        const startupBurst = 2 + 200;
+        expect(danmakuTick + startupBurst).toBeLessThan(MAX_COMMANDS_PER_TICK);
+    });
+});
+
+describe('exceedsApproxSize（EVENT_EMIT の data のおおよその大きさ）', () => {
+    it('小さな値は超えない', () => {
+        expect(exceedsApproxSize({ x: 1, y: 2, speed: 320 }, MAX_EMIT_DATA_BYTES)).toBe(false);
+        expect(exceedsApproxSize(undefined, MAX_EMIT_DATA_BYTES)).toBe(false);
+        expect(exceedsApproxSize('x'.repeat(1024), 1024)).toBe(false);
+    });
+
+    it.each([
+        ['長い文字列', 'x'.repeat(1025)],
+        ['バイト列', new Uint8Array(1025)],
+        ['ArrayBuffer', new ArrayBuffer(1025)],
+        ['配列の要素の合計', Array.from({ length: 200 }, () => 'abcdef')],
+        ['深い入れ子', Array.from({ length: 2000 }).reduce<unknown>((inner) => ({ a: inner }), 'x')],
+        ['Map', new Map(Array.from({ length: 200 }, (_, i) => [`key-${i}`, i]))],
+        ['Set', new Set(Array.from({ length: 200 }, (_, i) => `value-${i}`))],
+    ])('%s は上限を超える', (_, value) => {
+        expect(exceedsApproxSize(value, 1024)).toBe(true);
+    });
+
+    it('巨大な値でも上限を超えた時点で数えるのをやめる（全部は辿らない）', () => {
+        const visited = { count: 0 };
+        const huge = new Proxy(
+            Array.from({ length: 1_000_000 }, () => 1),
+            {
+                get(target, key, receiver) {
+                    if (typeof key === 'string' && /^\d+$/.test(key)) visited.count += 1;
+                    return Reflect.get(target, key, receiver);
+                },
+            },
+        );
+        expect(exceedsApproxSize(huge, 1024)).toBe(true);
+        expect(visited.count).toBeLessThan(10_000);
+    });
+
+    it('循環した値でも止まる', () => {
+        const a: Record<string, unknown> = { name: 'a' };
+        a.self = a;
+        expect(exceedsApproxSize(a, 1024)).toBe(false);
     });
 });

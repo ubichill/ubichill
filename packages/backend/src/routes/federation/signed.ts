@@ -5,7 +5,7 @@
 import type { RemoteActorRecord } from '@ubichill/db';
 import { type FederationErrorCode, problemOf } from '@ubichill/shared';
 import type { Request, RequestHandler, Response } from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { redis } from '../../lib/redis';
 import { sharedRateLimit } from '../../lib/sharedRateLimit';
 import type { Federation } from '../../services/federation';
@@ -51,6 +51,7 @@ export function signed(
                     originalUrl: req.originalUrl,
                     header: (name) => req.get(name),
                     rawBody: Buffer.isBuffer(req.body) ? req.body : undefined,
+                    ip: ipKeyGenerator(req.ip ?? ''),
                 },
                 { requireNonce: options.requireNonce, allowCavage: options.allowCavage },
             )
@@ -60,6 +61,7 @@ export function signed(
             });
         if (!result.ok) {
             logger.debug(`[federation] 署名を受けません (${result.reason}): ${req.method} ${req.originalUrl}`);
+            if (result.status === 429) return sendProblem(res, 429, 'rate-limited', '要求が多すぎます');
             return sendProblem(
                 res,
                 result.status,

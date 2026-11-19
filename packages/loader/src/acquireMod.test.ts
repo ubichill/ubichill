@@ -1,11 +1,14 @@
 import { createHash } from 'node:crypto';
-import { type AuthorKeyCheck, type ModLock, signMod, verifyModSignature } from '@ubichill/shared';
+import { readdirSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { type AuthorKeyCheck, type ModLock, ModLockSchema, signMod, verifyModSignature } from '@ubichill/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
     type AcquireModOptions,
     acquireMod,
     assetIntegrityOf,
     MOD_AUTHOR_CACHE_TTL_MS,
+    MOD_FETCH_LIMITS,
     resetAcquireCaches,
 } from './acquireMod';
 import type { FetchLike, FetchLikeResponse } from './types';
@@ -577,5 +580,187 @@ describe('作者署名', () => {
         await Promise.all([acquireMod(TYPE, options), acquireMod(TYPE, options)]);
         await acquireMod(TYPE, options);
         expect(calls).toEqual([AUTHOR]);
+    });
+});
+
+describe('lock の値を URL にする前に確かめる（検証は取得の後なので、先に任意の場所へ GET させない）', () => {
+    const recording = (): { fetchImpl: FetchLike; urls: string[] } => {
+        const urls: string[] = [];
+        const good = fakeFetch(goodRoutes());
+        return {
+            urls,
+            fetchImpl: (url, init) => {
+                urls.push(url);
+                return good(url, init);
+            },
+        };
+    };
+
+    const withEntry = (patch: (entry: ModLock['mods'][string]) => void): ModLock => {
+        const l = lock();
+        patch(l.mods[MOD]);
+        return l;
+    };
+
+    it('リポジトリの worlds/*.lock.json は確かめを通る（形を絞っても今のワールドは動く）', () => {
+        const dir = resolve(process.cwd(), 'worlds');
+        const files = readdirSync(dir).filter((name) => name.endsWith('.lock.json'));
+        expect(files.length).toBeGreaterThan(0);
+        for (const name of files) {
+            const result = ModLockSchema.safeParse(JSON.parse(readFileSync(resolve(dir, name), 'utf8')));
+            expect(result.success, `${name}: ${result.error?.message}`).toBe(true);
+        }
+    });
+
+    it.each([
+        ['version にパスとクエリ', withEntry((e) => Object.assign(e, { version: '1/../../x?' }))],
+        [
+            'workerUrl が versioned ディレクトリの外',
+            withEntry((e) => Object.assign(e.components[TYPE], { workerUrl: '../../../api/v1/users/me' })),
+        ],
+        ['baseUrl にクエリ', withEntry((e) => Object.assign(e, { baseUrl: 'https://mods.example.com/?q=' }))],
+    ])('%s の lock は、どこにも取りに行かずに拒否する', async (_, badLock) => {
+        const { fetchImpl, urls } = recording();
+        expect(await acquireMod(TYPE, { baseUrl: BASE, lock: badLock, ...unsignedDev, fetchImpl })).toEqual({
+            rejected: 'lock-missing',
+        });
+        expect(urls).toEqual([]);
+    });
+
+    it('http の baseUrl は、開発用の Host が自分のオリジンとして許すときだけ取りに行く', async () => {
+        const local = 'http://127.0.0.1:8080';
+        const httpLock = withEntry((e) => Object.assign(e, { baseUrl: local }));
+        const denied = recording();
+        expect(
+            await acquireMod(TYPE, {
+                baseUrl: BASE,
+                lock: httpLock,
+                verifySignature: unsignedDev.verifySignature,
+                allowUnsigned: (base) => base === 'http://localhost:5173',
+                fetchImpl: denied.fetchImpl,
+            }),
+        ).toEqual({ rejected: 'lock-missing' });
+        expect(denied.urls).toEqual([]);
+
+        const allowed = recording();
+        await acquireMod(TYPE, {
+            baseUrl: BASE,
+            lock: httpLock,
+            verifySignature: unsignedDev.verifySignature,
+            allowUnsigned: (base) => base === local,
+            fetchImpl: allowed.fetchImpl,
+        });
+        expect(allowed.urls[0]).toBe(`${local}/${MOD}/v${VER}/manifest.json`);
+    });
+});
+
+describe('取得の上限（lock の baseUrl は他人が決める）', () => {
+    const sigUrlAbs = `${BASE}/${MOD}/v${VER}/lock.sig.json`;
+    const CHUNK = 64 * 1024;
+
+    /** 64KiB ずつ際限なく返すストリーム。読んだ量を数える。 */
+    function endlessBody(): { body: ReadableStream<Uint8Array>; pulled: () => number } {
+        const counter = { bytes: 0 };
+        const chunk = new Uint8Array(CHUNK).fill(0x61);
+        const body = new ReadableStream<Uint8Array>({
+            pull(controller) {
+                counter.bytes += chunk.byteLength;
+                controller.enqueue(chunk);
+            },
+        });
+        return { body, pulled: () => counter.bytes };
+    }
+
+    /** url だけ応答を差し替え、ほかは正規ルートを返す fetch。 */
+    function overriding(url: string, response: Partial<FetchLikeResponse>): FetchLike {
+        const good = fakeFetch(goodRoutes());
+        return async (input, init) => {
+            const base = await good(input, init);
+            return input === url ? { ...base, ok: true, status: 200, ...response } : base;
+        };
+    }
+
+    const failIfRead: Partial<FetchLikeResponse> = {
+        arrayBuffer: async () => {
+            throw new Error('上限を超える本文を全部読んだ');
+        },
+        text: async () => {
+            throw new Error('上限を超える本文を全部読んだ');
+        },
+    };
+
+    const declared = (bytes: number): Partial<FetchLikeResponse> => ({
+        headers: { get: (name) => (name.toLowerCase() === 'content-length' ? String(bytes) : null) },
+    });
+
+    it('どの取得にも時間の上限（AbortSignal）を付ける', async () => {
+        const signals: Array<[string, unknown]> = [];
+        const good = fakeFetch(goodRoutes());
+        const fetchImpl: FetchLike = (url, init) => {
+            signals.push([url, init?.signal]);
+            return good(url, init);
+        };
+        await acquireMod(TYPE, { baseUrl: BASE, lock: lock(), ...unsignedDev, fetchImpl });
+        expect(signals.map(([url]) => url)).toEqual([manifestUrlAbs, workerUrlAbs, sigUrlAbs]);
+        for (const [url, signal] of signals) expect(signal, url).toBeInstanceOf(AbortSignal);
+    });
+
+    it.each([
+        ['worker', workerUrlAbs, MOD_FETCH_LIMITS.worker.maxBytes],
+        ['manifest', manifestUrlAbs, MOD_FETCH_LIMITS.manifest.maxBytes],
+    ])('終わらない %s の応答は上限で読むのをやめる（全部読んでから検証しない）', async (_, url, max) => {
+        const { body, pulled } = endlessBody();
+        const r = await acquireMod(TYPE, {
+            baseUrl: BASE,
+            lock: lock(),
+            ...unsignedDev,
+            fetchImpl: overriding(url, { body, ...failIfRead }),
+        });
+        expect(r).toBe('not-found');
+        expect(pulled()).toBeLessThanOrEqual(max + 2 * CHUNK);
+    });
+
+    it.each([
+        ['manifest', manifestUrlAbs, MOD_FETCH_LIMITS.manifest.maxBytes],
+        ['worker', workerUrlAbs, MOD_FETCH_LIMITS.worker.maxBytes],
+    ])('%s の content-length が上限を超えていれば本文を読まない', async (_, url, max) => {
+        const r = await acquireMod(TYPE, {
+            baseUrl: BASE,
+            lock: lock(),
+            ...unsignedDev,
+            fetchImpl: overriding(url, { ...declared(max + 1), ...failIfRead }),
+        });
+        expect(r).toBe('not-found');
+    });
+
+    it('本文のストリームが無い fetch でも大きさを確かめる（上限ちょうどは読み、1 バイト超えると読まない）', async () => {
+        const padded = manifestJson.padEnd(MOD_FETCH_LIMITS.manifest.maxBytes, ' ');
+        const paddedLock = lock();
+        paddedLock.mods[MOD].manifestIntegrity = sri(padded);
+        const at = { ...goodRoutes(), [manifestUrlAbs]: { body: padded } };
+        expect(
+            await acquireMod(TYPE, { baseUrl: BASE, lock: paddedLock, ...unsignedDev, fetchImpl: fakeFetch(at) }),
+        ).toMatchObject({ id: TYPE });
+        resetAcquireCaches();
+        const over = { ...goodRoutes(), [manifestUrlAbs]: { body: `${padded} ` } };
+        expect(
+            await acquireMod(TYPE, { baseUrl: BASE, lock: paddedLock, ...unsignedDev, fetchImpl: fakeFetch(over) }),
+        ).toBe('not-found');
+    });
+
+    it('上限を超える署名ファイルは読まずに壊れた署名として扱う（未署名の開発の例外にしない）', async () => {
+        const seen: unknown[] = [];
+        const r = await acquireMod(TYPE, {
+            baseUrl: BASE,
+            lock: lock(),
+            allowUnsigned: () => true,
+            verifySignature: async (_entry, signature) => {
+                seen.push(signature);
+                return { status: 'rejected', reason: 'signature-malformed' };
+            },
+            fetchImpl: overriding(sigUrlAbs, { ...declared(MOD_FETCH_LIMITS.signature.maxBytes + 1), ...failIfRead }),
+        });
+        expect(r).toEqual({ rejected: 'signature-malformed' });
+        expect(seen).toEqual([{}]);
     });
 });

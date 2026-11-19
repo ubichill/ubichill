@@ -344,6 +344,44 @@ describe('instanceRuntime', () => {
         });
     });
 
+    describe('1 部屋の在席（入室・詳細）', () => {
+        it('redis: その部屋のキーだけを読み、全部屋の一覧（SMEMBERS・MGET）は読まない', async () => {
+            const sendCommand = vi.fn(async () => JSON.stringify({ members: ['alice'], emptySince: 0 }));
+            const none = fakeFetch();
+            const map = await runtime('redis', none.fetch, { sendCommand }).roomPresence('room');
+            expect([...map.entries()]).toEqual([['room', { id: 'room', memberIds: ['alice'], emptySince: 0 }]]);
+            expect(sendCommand.mock.calls).toEqual([[['GET', 'ubi:presence:room']]]);
+            expect(none.calls).toHaveLength(0);
+        });
+
+        it('redis: 期限の切れた・壊れた在席は居ないものとして扱う', async () => {
+            for (const value of [null, '{not json', JSON.stringify({ members: 'alice', emptySince: 0 })]) {
+                const sendCommand = vi.fn(async () => value);
+                expect((await runtime('redis', fakeFetch().fetch, { sendCommand }).roomPresence('room')).size).toBe(0);
+            }
+        });
+
+        it('redis が落ちていれば失敗にする（居ないとは言わない）', async () => {
+            const sendCommand = vi.fn(async () => {
+                throw new Error('The client is closed');
+            });
+            await expect(runtime('redis', fakeFetch().fetch, { sendCommand }).roomPresence('room')).rejects.toThrow();
+        });
+
+        it('memory: Service にその部屋だけを尋ねる（ID は URL に埋め込める形にする）', async () => {
+            const svc = fakeFetch({ status: 200, body: presence('h:1') });
+            const map = await runtime('memory', svc.fetch).roomPresence('room/../x');
+            expect(map.get('room/../x')?.memberIds).toEqual([]);
+            expect(svc.calls[0].url.pathname).toBe('/realtime/v1/instances/room%2F..%2Fx');
+            expect(svc.calls[0].method).toBe('GET');
+        });
+
+        it('memory: 404 は部屋が無い（空）。ほかの失敗は投げる', async () => {
+            expect((await runtime('memory', fakeFetch({ status: 404 }).fetch).roomPresence('room')).size).toBe(0);
+            await expect(runtime('memory', fakeFetch({ status: 500 }).fetch).roomPresence('room')).rejects.toThrow();
+        });
+    });
+
     it('redis が落ちていれば在席は失敗にする（reaper が空室と誤って消さない）', async () => {
         const sendCommand = vi.fn(async () => {
             throw new Error('The client is closed');

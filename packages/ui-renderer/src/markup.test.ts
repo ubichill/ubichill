@@ -63,6 +63,11 @@ describe('parseUiMarkup: 形', () => {
         ]);
     });
 
+    it('Object.prototype 由来の名前（&constructor; など）は実体参照として戻さない', () => {
+        const text = '&constructor; &__proto__; &toString; &hasOwnProperty; &valueOf;';
+        expect(decodeEntities(text)).toBe(text);
+    });
+
     it('style 属性を宣言のオブジェクトにする（値の中の : は値として残す）', () => {
         expect(parseStyleAttribute('Color: red; background:url(http://x/a.png) ; ;broken; :x')).toEqual({
             color: 'red',
