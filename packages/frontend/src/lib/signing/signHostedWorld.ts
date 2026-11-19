@@ -1,5 +1,6 @@
 import type { ModLock, WorldIdentity } from '@ubichill/shared';
-import { errorMessage, type SaveWorldDeps, saveWorldBundle } from './saveHostedWorld';
+import { errorMessage } from '../apiError';
+import { type SaveWorldDeps, saveWorldBundle } from './saveHostedWorld';
 import type { WorldSigner } from './signer';
 
 /**

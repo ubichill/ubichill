@@ -17,9 +17,20 @@ const base = [
 
 const render = (release, args) =>
     execFileSync('helm', ['template', release, chart, ...base, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+const parse = (manifests) => parseAllDocuments(manifests).map((d) => d.toJS()).filter(Boolean);
+const docsOf = (args) => parse(render('ubichill', ['--set', 'redis.auth.password=x', ...args]));
+const renderFails = (args, message) => {
+    try {
+        render('ubichill', args);
+        return false;
+    } catch (error) {
+        // ほかの理由で描画が失敗しても「拒否した」と数えない
+        return String(error.stderr).includes(message);
+    }
+};
 
 const containerEnv = (manifests, deploymentSuffix, container) => {
-    const docs = parseAllDocuments(manifests).map((d) => d.toJS()).filter(Boolean);
+    const docs = parse(manifests);
     const deployment = docs.find((d) => d.kind === 'Deployment' && d.metadata.name.endsWith(deploymentSuffix));
     if (!deployment) throw new Error(`Deployment *${deploymentSuffix} が描画されていない`);
     const found = deployment.spec.template.spec.containers.find((c) => c.name === container);
@@ -101,18 +112,13 @@ if (directoryOf([]) !== 'memory') failures.push(`INSTANCE_DIRECTORY の既定が
 if (directoryOf(['--set', 'instanceRuntime.directory=redis']) !== 'redis') failures.push('instanceRuntime.directory=redis が渡らない');
 
 // backend も同じ Directory の値を受け取る（redis なら owner の Pod へ管理 API を送り、在席を Redis から読む）
-const backendDirectoryOf = (args) => {
-    const docs = parseAllDocuments(render('ubichill', ['--set', 'redis.auth.password=x', ...args])).map((d) => d.toJS()).filter(Boolean);
-    return docs.find((d) => d.kind === 'ConfigMap' && d.metadata.name.endsWith('-backend-config'))?.data?.INSTANCE_DIRECTORY;
-};
+const backendDirectoryOf = (args) =>
+    docsOf(args).find((d) => d.kind === 'ConfigMap' && d.metadata.name.endsWith('-backend-config'))?.data?.INSTANCE_DIRECTORY;
 if (backendDirectoryOf([]) !== 'memory') failures.push(`backend の INSTANCE_DIRECTORY の既定が memory でない: ${backendDirectoryOf([])}`);
 if (backendDirectoryOf(['--set', 'instanceRuntime.directory=redis']) !== 'redis') failures.push('instanceRuntime.directory=redis が backend に渡らない');
 
 // Go の Pod の数。2 以上は Directory を Redis で共有するときだけ
-const instanceReplicasOf = (args) => {
-    const docs = parseAllDocuments(render('ubichill', ['--set', 'redis.auth.password=x', ...args])).map((d) => d.toJS()).filter(Boolean);
-    return docs.find((d) => d.kind === 'Deployment' && d.metadata.name.endsWith('-instance'))?.spec?.replicas;
-};
+const instanceReplicasOf = (args) => docsOf(args).find((d) => d.kind === 'Deployment' && d.metadata.name.endsWith('-instance'))?.spec?.replicas;
 if (instanceReplicasOf([]) !== 1) failures.push(`instance の replicas の既定が 1 でない: ${instanceReplicasOf([])}`);
 if (instanceReplicasOf(['--set', 'instanceRuntime.directory=redis', '--set', 'instanceRuntime.replicas=3']) !== 3) {
     failures.push('instanceRuntime.replicas=3（redis）が Deployment に渡らない');
@@ -121,8 +127,7 @@ if (instanceReplicasOf(['--set', 'instanceRuntime.directory=redis', '--set', 'in
 // 更新方式・drain・readiness。memory は新旧の Pod が並ぶと owner が 2 つになるので Recreate のまま、
 // redis は新しい Pod が ready になってから古い Pod を draining で止める
 const instanceDeploymentOf = (args) => {
-    const docs = parseAllDocuments(render('ubichill', ['--set', 'redis.auth.password=x', ...args])).map((d) => d.toJS()).filter(Boolean);
-    const deployment = docs.find((d) => d.kind === 'Deployment' && d.metadata.name.endsWith('-instance'));
+    const deployment = docsOf(args).find((d) => d.kind === 'Deployment' && d.metadata.name.endsWith('-instance'));
     const container = deployment.spec.template.spec.containers.find((c) => c.name === 'instance');
     const arg = (name) => container.args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
     return {
@@ -186,15 +191,6 @@ expectDeployment(
     { grace: 600 },
 );
 
-const renderFails = (args, message) => {
-    try {
-        render('ubichill', args);
-        return false;
-    } catch (error) {
-        // ほかの理由で描画が失敗しても「拒否した」と数えない
-        return String(error.stderr).includes(message);
-    }
-};
 if (!renderFails(['--set', 'redis.enabled=false', '--set', 'instanceRuntime.directory=redis'], 'Redis（redis.enabled か redis.external.url）が要ります')) {
     failures.push('Redis なしで instanceRuntime.directory=redis を指定しても描画が通ってしまう');
 }
@@ -212,7 +208,6 @@ if (!renderFails(['--set', 'redis.auth.password=x', '--set', 'instanceRuntime.re
 }
 
 // 指標の収集（ServiceMonitor）と KEDA の scale-out は既定で無効（CRD が無いクラスタでも描画・適用が落ちない）
-const docsOf = (args) => parseAllDocuments(render('ubichill', ['--set', 'redis.auth.password=x', ...args])).map((d) => d.toJS()).filter(Boolean);
 const instanceOf = (docs, kind) => docs.find((d) => d.kind === kind && d.metadata.name.endsWith('-instance'));
 const defaultDocs = docsOf([]);
 if (instanceOf(defaultDocs, 'ScaledObject') || instanceOf(defaultDocs, 'ServiceMonitor')) {
@@ -363,22 +358,12 @@ if (!renderFails([...autoscalingArgs, '--set', 'instanceRuntime.directory=redis'
     failures.push('maxReplicaCount=1 でも描画が通ってしまう');
 }
 
-const rejected = (() => {
-    try {
-        render('ubichill', ['--set', 'redis.external.url=redis://redis.shared:6379', '--set', 'redis.auth.password=x']);
-        return false;
-    } catch (error) {
-        // ほかの理由で描画が失敗しても「拒否した」と数えない
-        return String(error.stderr).includes('同時に指定できません');
-    }
-})();
-if (!rejected) failures.push('同梱の Redis と redis.external.url を同時に指定しても描画が通ってしまう');
+if (!renderFails(['--set', 'redis.external.url=redis://redis.shared:6379', '--set', 'redis.auth.password=x'], '同時に指定できません')) {
+    failures.push('同梱の Redis と redis.external.url を同時に指定しても描画が通ってしまう');
+}
 
 // backend の台数: 既定は 1。2 以上は Redis があるときだけ描画できる
-const backendReplicas = (manifests) => {
-    const docs = parseAllDocuments(manifests).map((d) => d.toJS()).filter(Boolean);
-    return docs.find((d) => d.kind === 'Deployment' && d.metadata.name.endsWith('-backend'))?.spec.replicas;
-};
+const backendReplicas = (manifests) => parse(manifests).find((d) => d.kind === 'Deployment' && d.metadata.name.endsWith('-backend'))?.spec.replicas;
 const replicaCases = [
     { name: '既定', args: ['--set', 'redis.auth.password=x'], want: 1 },
     { name: '同梱の Redis で 2 台', args: ['--set', 'redis.auth.password=x', '--set', 'backend.replicaCount=2'], want: 2 },
@@ -393,20 +378,14 @@ for (const c of replicaCases) {
     const got = backendReplicas(render('ubichill', c.args));
     if (got !== c.want) failures.push(`backend の台数（${c.name}）: ${got}（期待 ${c.want}）`);
 }
-const rejectedReplicas = (() => {
-    try {
-        render('ubichill', ['--set', 'redis.enabled=false', '--set', 'backend.replicaCount=2']);
-        return false;
-    } catch (error) {
-        return String(error.stderr).includes('Redis（redis.enabled または redis.external.url）が要ります');
-    }
-})();
-if (!rejectedReplicas) failures.push('Redis なしで backend.replicaCount=2 を指定しても描画が通ってしまう');
+if (!renderFails(['--set', 'redis.enabled=false', '--set', 'backend.replicaCount=2'], 'Redis（redis.enabled または redis.external.url）が要ります')) {
+    failures.push('Redis なしで backend.replicaCount=2 を指定しても描画が通ってしまう');
+}
 
 // 同梱の Redis（Valkey）。Service の名前とポートは Bitnami の subchart と同じにして、REDIS_URL を変えずに済ませる
 const redisArgs = ['--set', 'redis.auth.password=test-redis-password'];
 const redisOf = (args) => {
-    const docs = parseAllDocuments(render('ubichill', args)).map((d) => d.toJS()).filter(Boolean);
+    const docs = parse(render('ubichill', args));
     const sts = docs.find((d) => d.kind === 'StatefulSet' && d.metadata.labels?.component === 'redis');
     const pod = sts?.spec?.template?.spec;
     return {

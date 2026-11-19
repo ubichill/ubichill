@@ -5,21 +5,9 @@ import type {
     DirectMessage,
     MessageReactionsResponse,
 } from '@ubichill/shared';
-import { API_BASE } from '../api';
+import { requestApi } from '../api';
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${API_BASE}/api/v1/messages${path}`, {
-        credentials: 'include',
-        cache: 'no-store',
-        ...init,
-        headers: { ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...init?.headers },
-    });
-    if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(data.error ?? `HTTP ${res.status}`);
-    }
-    return (res.status === 204 ? undefined : await res.json()) as T;
-}
+const request = <T>(path: string, init?: RequestInit) => requestApi<T>(`/messages${path}`, init);
 
 const userPath = (userId: string) => `/${encodeURIComponent(userId)}`;
 

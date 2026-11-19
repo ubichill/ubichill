@@ -9,6 +9,7 @@ import {
 } from '@ubichill/shared';
 import { recheckIfForbidden } from '../account/adminStatus';
 import { API_BASE } from '../api';
+import { errorMessage } from '../apiError';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const res = await fetch(`${API_BASE}/api/v1/notifications${path}`, {
@@ -19,8 +20,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     });
     if (!res.ok) {
         recheckIfForbidden(res);
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(data.error ?? `HTTP ${res.status}`);
+        throw new Error(await errorMessage(res));
     }
     return (await res.json()) as T;
 }

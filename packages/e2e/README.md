@@ -32,12 +32,25 @@ mise exec -- pnpm smoke http://localhost:3200 --api=http://localhost:3201 --suit
 
 相手の環境に要るもの: `SKIP_EMAIL_VERIFICATION=true`（登録が即時）、`WORLDS_SERVE_UNSIGNED_REPOSITORY=true`（同梱ワールドに入れる）、`VITE_ENVIRONMENT=development`（未署名の自オリジンの mod を動かせる）。プレビューとローカルの `pnpm dev` はどれも満たす。
 
+## PR の修正を検証する
+
+バックエンドとフロントエンドの両方が PR の head に切り替わってから、スモークを走らせる。手元での確認には `gh`・`curl`・`jq` が必要。例は PR #372 の場合。
+
+```sh
+pr=372
+sha=$(gh pr view "$pr" --json headRefOid --jq .headRefOid)
+.github/scripts/wait-preview.sh "$pr" "$sha" &&
+  mise exec -- pnpm smoke "https://pr-$pr.ubichill.com" --report=/tmp/ubichill-smoke.json
+```
+
+ブラウザの段は、2 件のテスト用アカウントで CLI 承認画面からの切り替えも確かめる。ログアウト直後にセッション取得が一時的に失敗する場合を含む。失敗した操作は `smoke-results/playwright-report.json` と `smoke-results/browser/` のトレースで確認できる。
+
 ## 後片付け
 
 作ったインスタンス（ホームの部屋を含む）は最後に消す（途中で落ちても消す）。アカウントは消さない（プレビューは DB ごと消える）。ID・表示名・メールアドレスはどれも `smoke` で始まり、走りごとの ID（`smoke_<run>_a` など）が付く。
 
 ## CI
 
-`ci.yml` の `preview-status` が、プレビューが PR の head のコミットで応答するのを待ってから走らせ、結果をプレビューのコメントの「スモーク（API）」「スモーク（ブラウザ）」の行に載せる。今は情報だけで、落ちてもマージは止めない（`continue-on-error`）。落ちたときはスクリーンショット・トレース・コンソールのログを成果物 `smoke-results` に残す。
+`ci.yml` の `preview-status` が、プレビューのフロントエンドとバックエンドが PR の head のコミットで応答するのを待ってから走らせ、結果をプレビューのコメントの「スモーク（API）」「スモーク（ブラウザ）」の行に載せる。今は情報だけで、落ちてもマージは止めない（`continue-on-error`）。落ちたときはスクリーンショット・トレース・コンソールのログを成果物 `smoke-results` に残す。
 
 CI で増える時間の目安（プレビューの立ち上がりを待つ時間は別）: 依存の導入 30〜60 秒、chromium の headless shell と OS の依存の導入 30〜90 秒（ブラウザはキャッシュする）、スモーク本体 30 秒前後。合わせて 2〜4 分。

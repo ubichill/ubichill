@@ -10,15 +10,9 @@
 
 import { DefaultAvatar } from './DefaultAvatar';
 
-interface NameplateProps {
-    name: string;
-    /** プロフィール画像 URL。未指定時はデフォルト SVG。 */
-    avatarUrl?: string | null;
-}
-
 const AVATAR_SIZE = 22;
 
-export function Nameplate({ name, avatarUrl }: NameplateProps) {
+export function Nameplate({ name }: { name: string }) {
     return (
         <div
             style={{
@@ -56,16 +50,7 @@ export function Nameplate({ name, avatarUrl }: NameplateProps) {
                     flexShrink: 0,
                 }}
             >
-                {avatarUrl ? (
-                    <img
-                        src={avatarUrl}
-                        alt=""
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                        draggable={false}
-                    />
-                ) : (
-                    <DefaultAvatar size={AVATAR_SIZE - 4} color="#5b8def" />
-                )}
+                <DefaultAvatar size={AVATAR_SIZE - 4} color="#5b8def" />
             </span>
             {name}
         </div>

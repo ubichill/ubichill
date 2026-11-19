@@ -215,10 +215,8 @@ export const SocketProvider: React.FC<{ children: React.ReactNode; resolveInstan
                 ...(heldEntityId !== undefined && { heldEntityId }),
             });
 
-            // ローカルの currentUser も更新
-            const updated = { ...current, position };
-            setCurrentUser(updated);
-            currentUserRef.current = updated;
+            // currentUser の位置・状態を読む画面は無い。state にすると 20Hz で useSocket・useWorld を使う全体を描き直すので ref だけ
+            currentUserRef.current = { ...current, position };
         },
         [isConnected],
     );
@@ -231,9 +229,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode; resolveInstan
 
             socket.emit('status:update', status);
 
-            const updated = { ...current, status };
-            setCurrentUser(updated);
-            currentUserRef.current = updated;
+            currentUserRef.current = { ...current, status };
         },
         [isConnected],
     );

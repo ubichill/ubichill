@@ -56,7 +56,7 @@ Entity == GameObject、Worker 1 つ = Component インスタンス 1 つ。
 |---|---|---|
 | `@ubichill/ecs` | 純粋 ECS（Entity / Component / System / Query） | React・DOM・Worker・Network |
 | `@ubichill/sandbox` | Worker ライフサイクル・Tick ループ・入力収集 | React |
-| `@ubichill/react` | React Hooks 群（useModWorker / useEntity 等） | — |
+| `@ubichill/react` | React Hooks 群（useModWorker 等） | — |
 | `@ubichill/sdk` | mod開発者向け公開 API（Ubi） | `@ubichill/shared` などの内部パッケージ |
 | `@ubichill/shared` | 型定義・プロトコル定義 | — |
 | `mods/*` | 各mod実装 | `@ubichill/sdk` のみ |
@@ -185,8 +185,6 @@ WASM は禁止しない。WASM は `imports` で渡した関数しか呼べな�
 | InputCollector MOUSE_MOVE デデュプ | `packages/sandbox` | フレームあたり mousemove を 1 件に集約（O(1)） |
 | rAF バインドレス arrow field | `packages/sandbox` | 毎フレームの `bind()` アロケーション排除 |
 | ECS エンティティ配列 dirty flag キャッシュ | `packages/ecs` | エンティティ変化なし時の tick を O(1) に |
-| useCursorPosition DOM 直接書き込み | `packages/react` | カーソル 60fps 更新で React re-render ゼロ |
-| useEntity shallow equality | `packages/react` | `JSON.stringify` 比較を O(k) に置き換え |
 
 ---
 

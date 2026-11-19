@@ -1,5 +1,6 @@
 import { recheckIfForbidden } from '../account/adminStatus';
 import { API_BASE } from '../api';
+import { errorMessage } from '../apiError';
 
 /** 連合でフォローしているサーバー（ワールド一覧の「グローバル」に、そのサーバーの公開ワールドが出る）。 */
 export interface FederationPeer {
@@ -9,15 +10,15 @@ export interface FederationPeer {
     createdAt: string;
 }
 
-async function errorMessage(res: Response): Promise<string> {
+/** 403 なら管理者かを確かめ直してから、失敗の文言を返す。 */
+function adminErrorMessage(res: Response): Promise<string> {
     recheckIfForbidden(res);
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
-    return data.error ?? `HTTP ${res.status}`;
+    return errorMessage(res);
 }
 
 export async function fetchPeers(): Promise<FederationPeer[]> {
     const res = await fetch(`${API_BASE}/api/v1/federation/peers`, { credentials: 'include', cache: 'no-store' });
-    if (!res.ok) throw new Error(await errorMessage(res));
+    if (!res.ok) throw new Error(await adminErrorMessage(res));
     return ((await res.json()) as { peers: FederationPeer[] }).peers;
 }
 
@@ -28,7 +29,7 @@ export async function followPeer(baseUrl: string): Promise<FederationPeer> {
         credentials: 'include',
         body: JSON.stringify({ baseUrl }),
     });
-    if (!res.ok) throw new Error(await errorMessage(res));
+    if (!res.ok) throw new Error(await adminErrorMessage(res));
     return (await res.json()) as FederationPeer;
 }
 
@@ -37,7 +38,7 @@ export async function unfollowPeer(id: string): Promise<void> {
         method: 'DELETE',
         credentials: 'include',
     });
-    if (!res.ok) throw new Error(await errorMessage(res));
+    if (!res.ok) throw new Error(await adminErrorMessage(res));
 }
 
 // ── ほかのサーバーとの付き合い方（管理者） ──
@@ -67,13 +68,13 @@ export interface DomainPolicyRecord {
 
 export async function fetchFederationServers(): Promise<FederationServer[]> {
     const res = await fetch(`${API_BASE}/api/v1/federation/servers`, { credentials: 'include', cache: 'no-store' });
-    if (!res.ok) throw new Error(await errorMessage(res));
+    if (!res.ok) throw new Error(await adminErrorMessage(res));
     return ((await res.json()) as { servers: FederationServer[] }).servers;
 }
 
 export async function fetchDomainPolicies(): Promise<DomainPolicyRecord[]> {
     const res = await fetch(`${API_BASE}/api/v1/federation/policies`, { credentials: 'include', cache: 'no-store' });
-    if (!res.ok) throw new Error(await errorMessage(res));
+    if (!res.ok) throw new Error(await adminErrorMessage(res));
     return ((await res.json()) as { policies: DomainPolicyRecord[] }).policies;
 }
 
@@ -89,5 +90,5 @@ export async function setDomainPolicy(domain: string, policy: DomainPolicy): Pro
                   credentials: 'include',
                   body: JSON.stringify({ policy }),
               });
-    if (!res.ok && !(policy === 'allow' && res.status === 404)) throw new Error(await errorMessage(res));
+    if (!res.ok && !(policy === 'allow' && res.status === 404)) throw new Error(await adminErrorMessage(res));
 }

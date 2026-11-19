@@ -51,47 +51,29 @@ const RemoteCursor = memo(function RemoteCursor({ user }: { user: User }) {
                 willChange: 'transform',
             }}
         >
-            {/* カーソル本体: cursorUrl があれば img、無ければ default 矢印 SVG */}
-            {user.cursorUrl ? (
-                <img
-                    src={user.cursorUrl}
-                    alt=""
-                    style={{
-                        position: 'absolute',
-                        left: 0,
-                        top: 0,
-                        width: CURSOR_SIZE,
-                        height: CURSOR_SIZE,
-                        display: 'block',
-                        pointerEvents: 'none',
-                    }}
-                    draggable={false}
+            <svg
+                width={CURSOR_SIZE}
+                height={CURSOR_SIZE}
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    display: 'block',
+                    pointerEvents: 'none',
+                }}
+            >
+                <path
+                    d={ARROW_PATH}
+                    fill="white"
+                    stroke="rgba(0,0,0,0.85)"
+                    strokeWidth="1.4"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
                 />
-            ) : (
-                <svg
-                    width={CURSOR_SIZE}
-                    height={CURSOR_SIZE}
-                    viewBox="0 0 24 24"
-                    aria-hidden="true"
-                    style={{
-                        position: 'absolute',
-                        left: 0,
-                        top: 0,
-                        display: 'block',
-                        pointerEvents: 'none',
-                    }}
-                >
-                    <path
-                        d={ARROW_PATH}
-                        fill="white"
-                        stroke="rgba(0,0,0,0.85)"
-                        strokeWidth="1.4"
-                        strokeLinejoin="round"
-                        strokeLinecap="round"
-                    />
-                </svg>
-            )}
-            <Nameplate name={user.name} avatarUrl={user.avatarUrl} />
+            </svg>
+            <Nameplate name={user.name} />
         </div>
     );
 });

@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react';
-import { API_BASE } from '@/lib/api';
+import { API_BASE } from '../../lib/api';
 
 /**
  * お気に入りワールド（worldRef＝正規 URL の集合）のモジュール共有ストア。
@@ -8,9 +8,12 @@ import { API_BASE } from '@/lib/api';
  * fetch せずモジュール singleton で 1 回だけ取得し、全 consumer を同期する。
  * トグルは楽観的更新し、失敗時はサーバー状態へ戻す。
  */
-let favorites: ReadonlySet<string> = new Set();
-let loaded = false;
-let inflight: Promise<void> | null = null;
+const store: { favorites: ReadonlySet<string>; loaded: boolean; inflight: Promise<void> | null; generation: number } = {
+    favorites: new Set(),
+    loaded: false,
+    inflight: null,
+    generation: 0,
+};
 const listeners = new Set<() => void>();
 
 function emit(): void {
@@ -23,36 +26,46 @@ function subscribe(listener: () => void): () => void {
 }
 
 function getSnapshot(): ReadonlySet<string> {
-    return favorites;
+    return store.favorites;
 }
 
 function load(force = false): Promise<void> {
-    if (inflight) return inflight;
-    if (loaded && !force) return Promise.resolve();
-    inflight = fetch(`${API_BASE}/api/v1/users/me/favorites`, { credentials: 'include' })
+    if (store.inflight) return store.inflight;
+    if (store.loaded && !force) return Promise.resolve();
+    const promise: Promise<void> = fetch(`${API_BASE}/api/v1/users/me/favorites`, { credentials: 'include' })
         .then((r) => (r.ok ? (r.json() as Promise<{ worldRefs: string[] }>) : null))
         .then((data) => {
-            if (data) {
-                favorites = new Set(data.worldRefs);
-                loaded = true;
-                emit();
+            // 読んでいる間にログアウトしていたら（resetFavorites）、前の人の一覧を入れない
+            if (data && store.inflight === promise) {
+                store.loaded = true;
+                setFavorites(new Set(data.worldRefs));
             }
         })
         .catch(() => undefined)
         .finally(() => {
-            inflight = null;
+            if (store.inflight === promise) store.inflight = null;
         });
-    return inflight;
+    store.inflight = promise;
+    return promise;
 }
 
 function setFavorites(next: ReadonlySet<string>): void {
-    favorites = next;
+    store.favorites = next;
     emit();
 }
 
+/** ログアウトしたとき（次の人に前の人のお気に入りを使わない）。 */
+export function resetFavorites(): void {
+    store.generation += 1;
+    store.inflight = null;
+    store.loaded = false;
+    setFavorites(new Set());
+}
+
 async function toggle(worldRef: string): Promise<void> {
-    const willAdd = !favorites.has(worldRef);
-    const next = new Set(favorites);
+    const generation = store.generation;
+    const willAdd = !store.favorites.has(worldRef);
+    const next = new Set(store.favorites);
     if (willAdd) next.add(worldRef);
     else next.delete(worldRef);
     setFavorites(next); // 楽観的更新
@@ -66,9 +79,12 @@ async function toggle(worldRef: string): Promise<void> {
         if (!res.ok) throw new Error('failed');
         // サーバーは共有 URL を正規化して保存するので、保存された形も持つ（どちらの形でもお気に入り済みと表示する）
         const saved = willAdd ? ((await res.json().catch(() => ({}))) as { worldRef?: string }).worldRef : undefined;
-        if (saved && saved !== worldRef) setFavorites(new Set([...favorites, saved]));
+        if (generation === store.generation && saved && saved !== worldRef) {
+            setFavorites(new Set([...store.favorites, saved]));
+        }
     } catch {
-        const revert = new Set(favorites);
+        if (generation !== store.generation) return;
+        const revert = new Set(store.favorites);
         if (willAdd) revert.delete(worldRef);
         else revert.add(worldRef);
         setFavorites(revert);

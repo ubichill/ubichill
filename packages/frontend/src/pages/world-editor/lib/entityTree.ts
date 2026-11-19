@@ -1,4 +1,5 @@
 import { type DataFieldsLike, type InitialEntity, remapRefs } from '@ubichill/shared';
+import { WORLD_NAME_MAX_LENGTH as ENTITY_ID_MAX_LENGTH, toWorldName } from '../../../lib/worlds/worldName';
 
 /** Component 型 → その dataFields（参照フィールドを見分けるのに使う）。mod の取得前は undefined。 */
 export type RefFieldsOf = (componentType: string) => DataFieldsLike | undefined;
@@ -117,23 +118,26 @@ export function buildUniqueEntityId(seed: string, taken: Iterable<string>): stri
 }
 
 /**
- * 名前 (entity id) の重複時に末尾の数字をインクリメントする。
+ * 改名の入力を Entity の id（kebab-case・50 文字まで）にそろえ、重なれば末尾の数字を進める。
+ *   "Player"   → "player"
  *   "hoge"     + ["hoge"]         → "hoge2"
  *   "hoge2"    + ["hoge2"]        → "hoge3"
- *   "foo-bar"  + ["foo-bar"]      → "foo-bar2"
  *   "hoge"     + ["hoge","hoge2"] → "hoge3"
+ * 使える文字が残らなければ null（改名しない）。
  *
- * `buildUniqueEntityId` (`hoge-2` 形式) は mod から spawn される ECS Entity
- * 識別子向けで kebab を強制するため、ユーザー rename 用とは別。
+ * `buildUniqueEntityId` (`hoge-2` 形式) は新しく作る Entity の採番向けで、ユーザーの改名とは別。
  */
-export function ensureUniqueName(desired: string, taken: Iterable<string>): string {
+export function toRenamedEntityId(input: string, taken: Iterable<string>): string | null {
+    const desired = toWorldName(input).replace(/^-+|-+$/g, '');
+    if (!desired) return null;
     const used = new Set<string>(taken);
     if (!used.has(desired)) return desired;
-    const m = desired.match(/^(.+?)(\d+)$/);
+    // 長い数字列を Number にすると指数表記になるので、進める数字は末尾 6 桁まで
+    const m = desired.match(/^(.+?)(\d{1,6})$/);
     const base = m ? m[1] : desired;
-    let n = m ? Number(m[2]) + 1 : 2;
-    while (used.has(`${base}${n}`)) n += 1;
-    return `${base}${n}`;
+    const withSuffix = (n: number) => `${base.slice(0, ENTITY_ID_MAX_LENGTH - String(n).length)}${n}`;
+    const pick = (n: number): string => (used.has(withSuffix(n)) ? pick(n + 1) : withSuffix(n));
+    return pick(m ? Number(m[2]) + 1 : 2);
 }
 
 /**
@@ -209,8 +213,9 @@ export function cloneEntitySubtree(
         return {
             id: newId,
             transform: { ...e.transform },
+            // id・overlay も残す。Component の id は Entity の中で一意であればよいので、複製先でもそのまま使える
             components: e.components.map((c) => ({
-                type: c.type,
+                ...c,
                 data: structuredClone(c.data) as Record<string, unknown>,
                 ...(c.transform ? { transform: { ...c.transform } } : {}),
             })),

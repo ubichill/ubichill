@@ -1,12 +1,8 @@
 import type { ProfileImageKind, ProfileUpdateInput, UserProfile, WorldIdentity } from '@ubichill/shared';
 import { setMyDisplayName } from '@/lib/account/me';
 import { API_BASE } from '@/lib/api';
+import { errorMessage } from '@/lib/apiError';
 import type { ProfileSaveApi } from './saveProfileDraft';
-
-async function errorMessage(res: Response): Promise<string> {
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
-    return data.error ?? `HTTP ${res.status}`;
-}
 
 async function profileFrom(res: Response): Promise<UserProfile> {
     if (!res.ok) throw new Error(await errorMessage(res));

@@ -1,4 +1,4 @@
-import { createContext, type ReactNode, useContext, useEffect, useMemo, useRef } from 'react';
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useSession as useBetterAuthSession } from '@/lib/auth-client';
 
 /**
@@ -23,7 +23,8 @@ import { useSession as useBetterAuthSession } from '@/lib/auth-client';
 
 type SessionState = ReturnType<typeof useBetterAuthSession>;
 
-const SessionContext = createContext<SessionState | null>(null);
+type SessionContextValue = SessionState & { forgetSession: () => void };
+const SessionContext = createContext<SessionContextValue | null>(null);
 
 /** 一過性失敗時の refetch バックオフ（ms）。回数とともに伸ばす。 */
 const RETRY_BACKOFF_MS = [1000, 2000, 4000, 8000] as const;
@@ -34,22 +35,47 @@ export function isUnauthorized(error: SessionState['error']): boolean {
     return status === 401;
 }
 
+/**
+ * 直近で確立できたセッション。サーバーが未認証と明示したら（ログアウト後など）忘れる。
+ * 忘れないと、その後の一過性の失敗で前の人のセッションを配ってしまう。
+ */
+export function nextLastGoodSession(raw: SessionState, prev: SessionState['data']): SessionState['data'] {
+    if (isUnauthorized(raw.error)) return null;
+    if (raw.data) return raw.data;
+    if (!raw.isPending && !raw.error) return null;
+    return prev;
+}
+
+/** 一過性失敗（401 以外の error）の間は直近セッションを維持してログアウトを防ぐ。 */
+export function resilientSession(raw: SessionState, lastGood: SessionState['data']): SessionState {
+    if (isUnauthorized(raw.error)) return { ...raw, data: null };
+    if (raw.data) return raw;
+    if (raw.error && lastGood) {
+        return { ...raw, data: lastGood, error: null };
+    }
+    return raw;
+}
+
+/** Better Auth はサインアウト直後の取得に失敗すると、終了済みのセッションを返すことがある。 */
+export function withoutEndedSession(raw: SessionState, endedId: string | null): SessionState {
+    return endedId && raw.data?.session.id === endedId ? { ...raw, data: null, error: null, isPending: false } : raw;
+}
+
 export function SessionProvider({ children }: { children: ReactNode }) {
     // アプリ内で唯一の useSession 購読。これにより get-session は 1 回に集約される。
-    const raw = useBetterAuthSession();
+    const authSession = useBetterAuthSession();
+    const [endedId, setEndedId] = useState<string | null>(null);
+    const raw = useMemo(() => withoutEndedSession(authSession, endedId), [authSession, endedId]);
 
-    // 直近で確立できた session データを保持する。
     const lastGoodRef = useRef<SessionState['data']>(null);
-    if (raw.data) lastGoodRef.current = raw.data;
-
-    // 一過性失敗（401 以外の error）の間は直近セッションを維持してログアウトを防ぐ。
-    const resilient = useMemo<SessionState>(() => {
-        if (raw.data) return raw;
-        if (raw.error && !isUnauthorized(raw.error) && lastGoodRef.current) {
-            return { ...raw, data: lastGoodRef.current, error: null };
-        }
-        return raw;
-    }, [raw]);
+    lastGoodRef.current = nextLastGoodSession(raw, lastGoodRef.current);
+    const resilient = useMemo(() => resilientSession(raw, lastGoodRef.current), [raw]);
+    const sessionId = lastGoodRef.current?.session.id;
+    const forgetSession = useCallback(() => {
+        if (!sessionId) return;
+        if (lastGoodRef.current?.session.id === sessionId) lastGoodRef.current = null;
+        setEndedId(sessionId);
+    }, [sessionId]);
 
     // 一過性失敗中はバックオフで再取得を試みる（復帰したら本物の session に戻る）。
     const attemptRef = useRef(0);
@@ -65,14 +91,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return () => clearTimeout(timer);
     }, [raw]);
 
-    return <SessionContext.Provider value={resilient}>{children}</SessionContext.Provider>;
+    const value = useMemo(() => ({ ...resilient, forgetSession }), [resilient, forgetSession]);
+    return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
 
 /**
  * 集約されたセッション状態を取得する。
- * 返り値の形は better-auth の useSession と同一（{ data, isPending, error, refetch }）。
+ * Better Auth の状態と、サインアウト成功時に呼ぶ forgetSession を返す。
  */
-export function useSession(): SessionState {
+export function useSession(): SessionContextValue {
     const ctx = useContext(SessionContext);
     if (!ctx) {
         throw new Error('useSession は SessionProvider の内側で使用してください');

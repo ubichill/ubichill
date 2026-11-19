@@ -141,6 +141,8 @@ export function OwnedWorldCard({
                     <img
                         src={world.thumbnail}
                         alt={world.displayName}
+                        loading="lazy"
+                        decoding="async"
                         className={css({ width: '100%', height: '100%', objectFit: 'cover' })}
                     />
                 ) : (

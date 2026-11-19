@@ -3,26 +3,30 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { HudIcon } from '@/components/hud/HudIcon';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import { signOut } from '@/lib/auth-client';
-import { resetHome } from '@/lib/home/homeStore';
-import { resetBlocks } from '@/lib/social/blocks';
+import { useSession } from '@/lib/session';
+import { pushToast } from '@/lib/toast';
 import { css } from '@/styled-system/css';
+import { signOutAndReset } from './signOut';
 
 /** ログアウト（設定の「アカウント」）。部屋から抜けてからサインアウトする。 */
 export function LogoutSection() {
     const navigate = useNavigate();
     const confirm = useConfirm();
     const { leaveWorld } = useSocket();
+    const { forgetSession } = useSession();
     const [busy, setBusy] = useState(false);
 
     const logout = async () => {
         if (!(await confirm('ログアウトしますか？'))) return;
         setBusy(true);
-        await leaveWorld();
-        await signOut();
-        resetHome();
-        resetBlocks();
-        navigate('/auth');
+        try {
+            await leaveWorld();
+            await signOutAndReset(forgetSession);
+            navigate('/auth');
+        } catch (error) {
+            pushToast(error instanceof Error ? error.message : 'ログアウトに失敗しました', 'error');
+            setBusy(false);
+        }
     };
 
     return (

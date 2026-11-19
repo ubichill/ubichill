@@ -2,6 +2,7 @@ import { type InitialEntity, refTargets } from '@ubichill/shared';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { css } from '@/styled-system/css';
 import type { DataFieldSpec, DataFields } from '../../hooks/useAvailableEntityKinds';
+import { isPlainObject } from '../../lib/componentData';
 import { ENTITY_DRAG_MIME } from '../../lib/dnd';
 import { resolveEntityIdByPathKey } from '../../lib/entityTree';
 import { refTargetError } from '../../lib/referenceProblems';
@@ -496,7 +497,9 @@ function ArrayField({
     onChange: (v: unknown) => void;
     name?: string;
 }) {
-    const items = Array.isArray(value) ? (value as Record<string, unknown>[]) : [];
+    const items: unknown[] = Array.isArray(value) ? value : [];
+    // JSON タブで要素を数値や null にされても読めるように、オブジェクトでない要素は空として見せる
+    const rows = items.map((it) => (isPlainObject(it) ? it : {}));
     const itemEntries = Object.entries(spec.item);
 
     const makeNewItem = (): Record<string, unknown> => {
@@ -504,7 +507,7 @@ function ArrayField({
         for (const [k, s] of itemEntries) obj[k] = s.default ?? defaultForType(s);
         return obj;
     };
-    const replace = (next: Record<string, unknown>[]) => onChange(next);
+    const replace = (next: unknown[]) => onChange(next);
     const updateItem = (i: number, next: Record<string, unknown>) =>
         replace(items.map((it, idx) => (idx === i ? next : it)));
     const removeItem = (i: number) => replace(items.filter((_, idx) => idx !== i));
@@ -518,7 +521,7 @@ function ArrayField({
 
     return (
         <div className={css({ display: 'flex', flexDirection: 'column', gap: '6px' })}>
-            {items.map((item, i) => (
+            {rows.map((item, i) => (
                 <div
                     key={i}
                     className={css({

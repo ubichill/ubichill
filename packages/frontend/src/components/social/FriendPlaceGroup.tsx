@@ -82,7 +82,7 @@ function PlaceTile({
         <article className={tile} data-here={here || undefined}>
             <div className={thumb}>
                 {world.thumbnail ? (
-                    <img src={world.thumbnail} alt="" className={thumbImage} />
+                    <img src={world.thumbnail} alt="" loading="lazy" decoding="async" className={thumbImage} />
                 ) : (
                     <HudIcon name="globe" size={26} />
                 )}
