@@ -23,8 +23,11 @@ import {
     type FediverseSettingsUpdate,
     parseRoomAddress,
 } from '@ubichill/shared';
+import { MemoryStore } from 'express-rate-limit';
 import { appConfig } from '../../config';
+import { redis } from '../../lib/redis';
 import { safeFetch } from '../../lib/safeFetch';
+import { createSharedRateLimitStore } from '../../lib/sharedRateLimit';
 import { logger } from '../../utils/logger';
 import { backendEvents } from '../cluster/backendEvents';
 import { instanceManager } from '../instances/instanceManager';
@@ -53,6 +56,7 @@ import { createRsaKeyring, verifyRsaSha256 } from './transport/rsaKeys';
 import { createServerDirectory } from './transport/servers';
 import { createTransport } from './transport/transport';
 import { createVerifier } from './transport/verification';
+import { createWindowCounter } from './transport/windowCounter';
 import { createFriendshipCheck } from './ubichill/friendshipCheck';
 import { createRemoteFriendships } from './ubichill/friendships';
 import { createFederatedInvites } from './ubichill/invites';
@@ -61,6 +65,13 @@ import { createRooms } from './ubichill/rooms';
 import { createTravel } from './ubichill/travel';
 
 const log = (message: string) => logger.warn(`[federation] ${message}`);
+
+/** 1 分ごとの回数（Redis があれば backend 全体で合算する）。 */
+const perMinute = (name: string, limit: number) =>
+    createWindowCounter(redis ? createSharedRateLimitStore(`federation-${name}`, redis, logger) : new MemoryStore(), {
+        limit,
+        windowMs: 60_000,
+    });
 
 /** Go の WebSocket の絶対 URL（来訪者のブラウザがつなぐ）。 */
 function absoluteWsUrl(publicUrl: string, origin: string): string {
@@ -129,6 +140,10 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         actors,
         seen: federationSeenRepository,
         crypto: { verifyEd25519: nodeWorldCrypto.verifyEd25519, verifyRsaSha256 },
+        // 正規の連合先は署名が通るので数えられない。通らない要求を 1 分に 30 回送る IP は、確かめずに断る
+        failures: perMinute('signature-failures', 30),
+        // 知らない actor の取得（外への取得 2 回と保存）を、署名を確かめる前に起こせる数
+        unknownActors: perMinute('unknown-actors', 120),
         now,
     });
     const outbox = createOutbox({ identity, repo: deliveryRepository, policyOf, now });

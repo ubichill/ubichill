@@ -79,11 +79,30 @@ interface ParsedCavage {
     signature: Uint8Array;
 }
 
+/**
+ * 読む Signature ヘッダーの長さの上限。署名を確かめる前に誰でも送れる値なので、正規の長さ（RSA 4096 の署名でも 1KB 弱）を
+ * 大きく超えるものは中身を見ずに断る。
+ */
+export const CAVAGE_MAX_SIGNATURE_CHARS = 2048;
+
+/** `name="value"` を前から順に、すき間なく読む。読めないところがあれば null。 */
+function readCavageFields(header: string): Map<string, string> | null {
+    // sticky は読み終えた位置から先だけを読む（matchAll は英字だけの入力を各位置から読み直し、二次以上に遅くなる）
+    const pair = /\s*([A-Za-z]+)="([^"]*)"\s*(?:,|$)/y;
+    const fields = new Map<string, string>();
+    while (pair.lastIndex < header.length) {
+        const m = pair.exec(header);
+        if (!m) return null;
+        fields.set(m[1] ?? '', m[2] ?? '');
+    }
+    return fields;
+}
+
 /** Signature ヘッダーを読む（`name="value"` をカンマでつないだもの）。崩れていれば null。 */
 export function parseCavageSignature(header: string): ParsedCavage | null {
-    const pairs = [...header.matchAll(/\s*([A-Za-z]+)="([^"]*)"\s*(?:,|$)/g)];
-    if (pairs.map((m) => m[0]).join('') !== header) return null;
-    const fields = new Map(pairs.map((m) => [m[1] ?? '', m[2] ?? '']));
+    if (header.length > CAVAGE_MAX_SIGNATURE_CHARS) return null;
+    const fields = readCavageFields(header);
+    if (!fields) return null;
     const keyId = fields.get('keyId');
     const signature = base64ToBytes(fields.get('signature') ?? '');
     if (!keyId || !signature || signature.length === 0) return null;

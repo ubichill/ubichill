@@ -39,4 +39,4 @@ shared（`@ubichill/shared` の純粋な規則。画面と同じ関数）。DB �
 
 - やり取り（申請・承認・招待・メッセージ・フォロー・通知）を止める共通の前提は shared の `interactionRefusal`（自分自身・ブロック）。
   種類ごとの条件は `inviteRefusal`・`inviteRequestRefusal`・`messageRefusal`。
-- ユーザーごとの回数の制限は `lib/rateLimit.ts` の `perUserLimiter`。システムユーザーは `services/users/systemUser.ts`。
+- ユーザーごとの回数の制限は `lib/rateLimit.ts` の `perUserLimiter`（IP・任意のキーごとは `sharedLimiter`）。システムユーザーは `services/users/systemUser.ts`。
