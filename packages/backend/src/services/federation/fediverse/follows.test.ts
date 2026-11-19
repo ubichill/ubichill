@@ -272,6 +272,44 @@ describe('フェディバースからのフォロー', () => {
         expect(rows).toMatchObject([{ followId: 'https://misskey.example/follows/new' }]);
     });
 
+    it('来直した Follow のあとに、前の Follow の Undo（相手と宛先を埋め込んだもの）が届いても、いまのフォローは消さない', async () => {
+        for (const manual of [false, true]) {
+            const { follows, rows } = setup({ manual });
+            await follows.onFollow(MISSKEY, follow('https://misskey.example/follows/x'));
+            await follows.onFollow(MISSKEY, follow('https://misskey.example/follows/y'));
+            const undoX = {
+                id: 'https://misskey.example/follows/x',
+                type: 'Follow',
+                actor: MISSKEY.id,
+                object: ALICE_URL,
+            };
+            // Mastodon・Misskey は Undo に Follow の相手を埋め込む。送り直しで 2 度届いても同じ
+            await follows.onUndo(MISSKEY, undoX);
+            await follows.onUndo(MISSKEY, undoX);
+            expect(rows).toMatchObject([
+                { followId: 'https://misskey.example/follows/y', state: manual ? 'pending' : 'accepted' },
+            ]);
+            // いまの Follow の Undo なら消える
+            await follows.onUndo(MISSKEY, { ...undoX, id: 'https://misskey.example/follows/y' });
+            expect(rows).toEqual([]);
+        }
+    });
+
+    it('来直した Follow のあとでも、記録に無い id の Undo は相手と宛先で引いて消す（id を合わせない実装）', async () => {
+        const { follows, rows } = setup();
+        await follows.onFollow(MISSKEY, follow('https://misskey.example/follows/x'));
+        await follows.onFollow(MISSKEY, follow('https://misskey.example/follows/y'));
+        // 同じ id の送り直しは置き換えではない（その id の Undo は記録の id で引ける）
+        await follows.onFollow(MISSKEY, follow('https://misskey.example/follows/y'));
+        await follows.onUndo(MISSKEY, {
+            id: 'https://misskey.example/other-id',
+            type: 'Follow',
+            actor: MISSKEY.id,
+            object: ALICE_URL,
+        });
+        expect(rows).toEqual([]);
+    });
+
     it('Follow の id が記録と違っても、埋め込まれた Follow の相手と宛先で引いて消す', async () => {
         const { follows, rows } = setup();
         await follows.onFollow(MISSKEY, follow());

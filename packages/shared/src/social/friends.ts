@@ -19,19 +19,33 @@ export function friendshipOf(edges: readonly FriendEdge[], me: string, other: st
     const between = edges.filter(
         (e) => (e.userId === me && e.friendId === other) || (e.userId === other && e.friendId === me),
     );
+    return classify(between, me, other);
+}
+
+/** 2 人の間の行（`between`）から関係を決める。 */
+function classify(between: readonly FriendEdge[], me: string, other: string): Exclude<Friendship, 'self'> {
     if (between.some((e) => e.status === 'accepted')) return 'friends';
     if (between.some((e) => e.userId === other)) return 'incoming';
     if (between.some((e) => e.userId === me)) return 'outgoing';
     return 'none';
 }
 
-/** 自分の関係を、フレンド・自分への申請・自分の申請に分ける（それぞれ相手の ID）。 */
+/** 自分の関係を、フレンド・自分への申請・自分の申請に分ける（それぞれ相手の ID。行に最初に出てきた順）。 */
 export function friendGroupsOf(
     edges: readonly FriendEdge[],
     me: string,
 ): { friends: string[]; incoming: string[]; outgoing: string[] } {
-    const others = [...new Set(edges.flatMap((e) => [e.userId, e.friendId]).filter((id) => id !== me))];
-    const byKind = (kind: Friendship) => others.filter((id) => friendshipOf(edges, me, id) === kind);
+    // 相手ごとに自分との行を束ねて 1 回だけ分類する（相手ごとに全行を見ると行の数の 2 乗になる）
+    const betweenByOther = new Map<string, FriendEdge[]>();
+    for (const e of edges) {
+        for (const id of [e.userId, e.friendId]) {
+            if (id !== me && !betweenByOther.has(id)) betweenByOther.set(id, []);
+        }
+        const other = e.userId === me ? e.friendId : e.friendId === me ? e.userId : me;
+        if (other !== me) betweenByOther.get(other)?.push(e);
+    }
+    const kinds = [...betweenByOther].map(([id, between]) => ({ id, kind: classify(between, me, id) }));
+    const byKind = (kind: Friendship) => kinds.filter((k) => k.kind === kind).map((k) => k.id);
     return { friends: byKind('friends'), incoming: byKind('incoming'), outgoing: byKind('outgoing') };
 }
 

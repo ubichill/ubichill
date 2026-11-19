@@ -12,6 +12,7 @@ vi.mock('../instances/instanceRuntime', () => ({
     instanceRuntime: {
         provision: vi.fn(async () => {}),
         presence: vi.fn(async () => new Map()),
+        roomPresence: vi.fn(async () => new Map()),
     },
 }));
 
