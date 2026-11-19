@@ -405,6 +405,11 @@ export class InputCollector {
         };
     }
 
+    /** これまでに付けた最後の連番。新しいコンシューマはここから読み始める。 */
+    public get lastSeq(): number {
+        return this._seq;
+    }
+
     /**
      * 全コンシューマが処理済みの連番までを破棄してメモリ使用量を抑える。
      */

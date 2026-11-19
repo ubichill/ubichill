@@ -2,10 +2,25 @@ import { describe, expect, it } from 'vitest';
 import { sanitizeHtmlAttr, sanitizeStyle, sanitizeSvgAttr, sanitizeUrl } from './sanitize';
 
 describe('sanitizeUrl', () => {
-    it('http(s)・data:image・相対 URL だけを通す', () => {
+    it('https・相対 URL だけを通す', () => {
         expect(sanitizeUrl('https://example.com/a.png')).toBe('https://example.com/a.png');
-        expect(sanitizeUrl('data:image/png;base64,AAAA')).toBe('data:image/png;base64,AAAA');
         expect(sanitizeUrl('icons/a.png')).toBe('icons/a.png');
+        expect(sanitizeUrl('/mods/pen/v1.0.0/a.png')).toBe('/mods/pen/v1.0.0/a.png');
+    });
+
+    it('http はページと同じオリジン（開発時の http://localhost）だけ通す', () => {
+        expect(sanitizeUrl('http://attacker.example/?d=1', 'https://ubichill.example')).toBeNull();
+        expect(sanitizeUrl('http://attacker.example/?d=1', undefined)).toBeNull();
+        expect(sanitizeUrl('http://localhost:5173/mods/a.png', 'http://localhost:5173')).toBe(
+            'http://localhost:5173/mods/a.png',
+        );
+        expect(sanitizeUrl('http://localhost:9999/a.png', 'http://localhost:5173')).toBeNull();
+        expect(sanitizeUrl('http://127.0.0.1:5173/a.png', 'http://localhost:5173')).toBeNull();
+    });
+
+    it('data: はどれも通さない（画像の src だけは sanitizeHtmlAttr が別に通す）', () => {
+        expect(sanitizeUrl('data:image/png;base64,AAAA')).toBeNull();
+        expect(sanitizeUrl('data:image/svg+xml,<svg onload=alert(1)>')).toBeNull();
     });
 
     it('スクリプトを実行できるスキームや、スキームを紛れ込ませた書き方は通さない', () => {
@@ -36,6 +51,30 @@ describe('sanitizeHtmlAttr', () => {
         expect(sanitizeHtmlAttr('input', 'type', 'password')).toBeNull();
         expect(sanitizeHtmlAttr('input', 'type', ' PassWord ')).toBeNull();
         expect(sanitizeHtmlAttr('input', 'type', 'text')).toBe('text');
+    });
+
+    it('画像の src は https・相対 URL・data:image/ だけ', () => {
+        expect(sanitizeHtmlAttr('img', 'src', 'https://e.x/a.png')).toBe('https://e.x/a.png');
+        expect(sanitizeHtmlAttr('img', 'src', 'data:image/png;base64,AAAA')).toBe('data:image/png;base64,AAAA');
+        expect(sanitizeHtmlAttr('img', 'src', 'thumb.png')).toBe('thumb.png');
+        expect(sanitizeHtmlAttr('img', 'src', 'http://attacker.example/?d=secret')).toBeNull();
+        expect(sanitizeHtmlAttr('img', 'src', 'data:text/html,<script>alert(1)</script>')).toBeNull();
+    });
+
+    it('リンク先に data: は付けない', () => {
+        expect(sanitizeHtmlAttr('a', 'href', 'data:image/svg+xml,<svg onload=alert(1)>')).toBeNull();
+        expect(sanitizeHtmlAttr('a', 'href', 'data:image/png;base64,AAAA')).toBeNull();
+        expect(sanitizeHtmlAttr('a', 'href', 'https://example.com/')).toBe('https://example.com/');
+    });
+
+    it('img 以外の src（<input type="image"> など）は通さない', () => {
+        expect(sanitizeHtmlAttr('input', 'src', 'https://attacker.example/beacon.png')).toBeNull();
+        expect(sanitizeHtmlAttr('div', 'src', 'https://e.x/a.png')).toBeNull();
+    });
+
+    it('referrerpolicy は mod に決めさせない（unsafe-url でページの URL を送らせない）', () => {
+        expect(sanitizeHtmlAttr('img', 'referrerpolicy', 'unsafe-url')).toBeNull();
+        expect(sanitizeHtmlAttr('img', 'referrerpolicy', 'no-referrer')).toBeNull();
     });
 
     it('data-* と aria-* は通す', () => {

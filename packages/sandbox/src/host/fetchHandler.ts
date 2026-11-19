@@ -50,15 +50,6 @@ export interface HostFetchContext {
 
 export const PRODUCTION_ALLOWED_DOMAINS = ['api.github.com', 'cdn.jsdelivr.net', 'unpkg.com'];
 
-export const DEMO_ALLOWED_DOMAINS = [
-    ...PRODUCTION_ALLOWED_DOMAINS,
-    'api.openweathermap.org',
-    'jsonplaceholder.typicode.com',
-    'pokeapi.co',
-    'dog.ceo',
-    'catfact.ninja',
-];
-
 export const DEFAULT_ALLOWED_DOMAINS = PRODUCTION_ALLOWED_DOMAINS;
 
 // ============================================================

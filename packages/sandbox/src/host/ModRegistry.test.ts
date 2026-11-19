@@ -121,4 +121,35 @@ describe('selectEmitTargets: 階層の scope', () => {
     it('知らない scope（信頼しない Worker から来た値）には誰にも届かない', () => {
         expect(selectEmitTargets(root, all, { scope: 'everyone' as 'world' }, undefined)).toEqual([]);
     });
+
+    it('subtree は Worker の数に比例する手間で選ぶ（emit 1 回で全 Worker の親子表を作り直さない）', () => {
+        // 1 本の長い鎖: e0 ← e1 ← … ← e(n-1)。e0 から subtree に送ると全員に届く
+        const n = 300;
+        const chain = Array.from({ length: n }, (_, i) =>
+            worker(`c${i}`, `e${i}`, 'm:x', i === 0 ? {} : { parent: `e${i - 1}` }),
+        );
+        const reads = { count: 0 };
+        const counted = new Proxy(chain, {
+            get(target, key, receiver) {
+                if (typeof key === 'string' && /^\d+$/.test(key)) reads.count += 1;
+                return Reflect.get(target, key, receiver);
+            },
+        });
+        const [head] = chain;
+        expect(selectEmitTargets(head, counted, { scope: 'subtree' }, undefined)).toHaveLength(n - 1);
+        expect(reads.count).toBeLessThan(n * 4);
+    });
+
+    it('subtree: Entity の id を持たない Worker も、親が subtree の中なら届く', () => {
+        const top = worker('top', 'et', 'm:x');
+        const orphan: EmitCandidate = { ...worker('orphan', '', 'm:x', { parent: 'et' }), entityId: undefined };
+        expect(ids(selectEmitTargets(top, [top, orphan], { scope: 'subtree' }, undefined))).toEqual(['orphan']);
+    });
+
+    it('subtree の親子が循環していても止まる', () => {
+        const x = worker('x', 'ex', 'm:x', { parent: 'ey' });
+        const y = worker('y', 'ey', 'm:x', { parent: 'ex' });
+        const outsider = worker('o', 'eo', 'm:x', { parent: 'ez' });
+        expect(ids(selectEmitTargets(x, [x, y, outsider], { scope: 'subtree' }, undefined))).toEqual(['y']);
+    });
 });

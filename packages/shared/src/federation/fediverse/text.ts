@@ -5,7 +5,9 @@ const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '
 /** HTML に埋め込む文字列をエスケープする（ほかの実装に送る自己紹介・ノートの本文）。 */
 export const escapeHtml = (text: string): string => text.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c] ?? c);
 
-const ENTITIES: Record<string, string> = { lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', amp: '&' };
+const ENTITIES: ReadonlyMap<string, string> = new Map(
+    Object.entries({ lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', amp: '&' }),
+);
 
 /** 実体参照を文字に戻す（名前の付いたよく使うものと数値）。&amp; は 1 度だけ戻す（&amp;lt; は &lt; のまま）。 */
 export function decodeEntities(text: string): string {
@@ -15,7 +17,7 @@ export function decodeEntities(text: string): string {
             const code = lower.startsWith('#x') ? Number.parseInt(lower.slice(2), 16) : Number(lower.slice(1));
             return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
         }
-        return ENTITIES[lower] ?? whole;
+        return ENTITIES.get(lower) ?? whole;
     });
 }
 

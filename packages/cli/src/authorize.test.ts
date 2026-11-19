@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { cliAuthProofMessage, type WorldSigningKey } from '@ubichill/shared';
 import { silentLogger } from '@ubichill/terminal';
 import { describe, expect, it } from 'vitest';
-import { type AuthorizeDeps, authorize, type HttpResponse } from './authorize.ts';
+import { type AuthorizeDeps, approveUrlOf, authorize, type HttpResponse } from './authorize.ts';
 
 const sha256 = (v: string) => createHash('sha256').update(v).digest('base64url');
 const key: WorldSigningKey = { publicKey: 'P'.repeat(43), sign: async (m) => `signed(${m})` };
@@ -80,7 +80,7 @@ describe('authorize（ループバック）', () => {
     it('リダイレクトの state が違えば引き換えない（別の要求の承認を受け取らない）', async () => {
         const { deps, posts, callback } = fakeDeps(() => ({
             status: 201,
-            body: { requestId: 'req-1', approveUrl: 'https://x/cli/authorize?request=req-1' },
+            body: { requestId: 'req-1', approveUrl: 'https://ubichill.com/cli/authorize?request=req-1' },
         }));
         callback.state = 'forged';
         await expect(authorize(deps, options)).rejects.toThrow(/state/);
@@ -90,6 +90,63 @@ describe('authorize（ループバック）', () => {
     it('サーバーのエラーはその文言で失敗する', async () => {
         const { deps } = fakeDeps(() => ({ status: 400, body: { error: 'redirectUri は … に限ります' } }));
         await expect(authorize(deps, options)).rejects.toThrow('redirectUri は … に限ります');
+    });
+
+    it('承認画面の URL に & があっても、state は 1 つの値として付く', async () => {
+        const { deps, opened } = fakeDeps((url) =>
+            url.endsWith('/requests')
+                ? { status: 201, body: { requestId: 'r', approveUrl: 'https://ubichill.com/cli/authorize?a=1&calc' } }
+                : tokenResponse,
+        );
+        await authorize(deps, options);
+        expect(new URL(opened[0] ?? '').searchParams.get('state')).toBe('state-1');
+        expect(new URL(opened[0] ?? '').searchParams.get('a')).toBe('1');
+    });
+
+    it('ログイン先と別のオリジンの承認画面は開かず、承認を待たずに失敗する', async () => {
+        const { deps, posts, opened } = fakeDeps(() => ({
+            status: 201,
+            body: { requestId: 'req-1', approveUrl: 'https://evil.example/cli/authorize?request=req-1' },
+        }));
+        await expect(authorize(deps, options)).rejects.toThrow('承認画面の URL');
+        expect(opened).toEqual([]);
+        expect(posts).toHaveLength(1);
+    });
+});
+
+describe('approveUrlOf（ブラウザに渡す承認画面の URL）', () => {
+    it.each([
+        ['https://ubichill.com', 'https://ubichill.com/cli/authorize?request=1'],
+        ['https://ubichill.com', 'https://UBICHILL.com:443/cli/authorize'],
+        ['http://localhost:3001', 'http://localhost:5173/cli/authorize?request=1'],
+        ['http://127.0.0.1:3001', 'http://localhost:5173/cli/authorize'],
+        ['http://[::1]:3001', 'http://127.0.0.1:5173/cli/authorize'],
+    ])('%s へのログインでは %s を開く', (server, approveUrl) => {
+        expect(approveUrlOf(server, approveUrl).href).toBe(new URL(approveUrl).href);
+    });
+
+    it.each([
+        ['別のサイト', 'https://evil.example/cli/authorize'],
+        ['同じサイトの別のポート', 'https://ubichill.com:8443/cli/authorize'],
+        ['http への格下げ', 'http://ubichill.com/cli/authorize'],
+        ['userinfo で同じサイトに見せかける', 'https://ubichill.com@evil.example/cli/authorize'],
+        ['サブドメイン', 'https://evil.ubichill.com/cli/authorize'],
+        ['手元のポート（ログイン先は手元でない）', 'http://localhost:5173/cli/authorize'],
+        ['javascript:', 'javascript:alert(1)'],
+        ['file:', 'file:///C:/Windows/System32/calc.exe'],
+        ['ほかのアプリのスキーム', 'ms-msdt:/id PCWDiagnostic'],
+        ['相対パス', '/cli/authorize'],
+        ['空', ''],
+        ['文字列でない', undefined],
+        ['数', 1],
+    ])('%s（%j）は開かない', (_label, approveUrl) => {
+        expect(() => approveUrlOf('https://ubichill.com', approveUrl)).toThrow('承認画面の URL');
+    });
+
+    it('ログイン先が手元でも、手元でない承認画面は開かない', () => {
+        expect(() => approveUrlOf('http://localhost:3001', 'https://evil.example/cli/authorize')).toThrow(
+            '承認画面の URL',
+        );
     });
 });
 

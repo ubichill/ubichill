@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { PackageAuthorSchema } from '../mod/packageRef';
+import { PackageAuthorSchema, PackageVersionSchema } from '../mod/packageRef';
 
 // ============================================
 // Mod Lock スキーマ（ワールドに埋め込む mod 完全性ロック）
@@ -25,12 +25,42 @@ import { PackageAuthorSchema } from '../mod/packageRef';
 export const IntegritySchema = z.string().regex(/^sha256-[A-Za-z0-9+/]{43}=$/, 'Must be "sha256-<base64(32byte)>"');
 
 /**
+ * versioned ディレクトリの中のファイル（`./canvas/index.ab12cd34.js`）。取得の URL は文字列の連結で作るので、
+ * `..`（`%2e%2e` も同じ扱いになる）・絶対パス・`\`・クエリで、検証の前に別の場所へ GET させない。
+ */
+const ModFilePathSchema = z
+    .string()
+    .max(512)
+    .regex(/^(?:\.\/)?[\w.-]+(?:\/[\w.-]+)*$/, 'versioned ディレクトリの中の相対パスを指定してください')
+    .refine(
+        (path) =>
+            path
+                .replace(/^\.\//, '')
+                .split('/')
+                .every((segment) => segment !== '.' && segment !== '..'),
+        '`.`・`..` は使えません',
+    );
+
+/**
+ * mod の取得元（末尾スラッシュなし）。後ろにパスを連結するので、クエリ・フラグメント・認証情報・`\` を含めない。
+ * http を取りに行ってよいかは取得する側が決める（開発用の Host が自分のオリジンにだけ許す）。
+ */
+const ModBaseUrlSchema = z
+    .string()
+    .max(2048)
+    .regex(
+        /^https?:\/\/(?:[A-Za-z0-9.-]+|\[[A-Fa-f0-9:.]+\])(?::\d{1,5})?(?:\/[^\s?#@\\]*)?$/,
+        'http(s) の URL を指定してください',
+    )
+    .url('http(s) の URL を指定してください');
+
+/**
  * lock された 1 つの Component。
  * `modId:componentName` 形式のキーで {@link ModLockEntrySchema.components} に格納される。
  */
 export const ModLockComponentSchema = z.object({
     /** versioned ディレクトリからの相対 workerUrl（manifest と同形）。 */
-    workerUrl: z.string(),
+    workerUrl: ModFilePathSchema,
     /** worker バンドルのバイト列 sha256（SRI）。 */
     integrity: IntegritySchema,
     /** 付与を許す capability の上限（ビルド時に固定した値）。 */
@@ -46,7 +76,7 @@ export type ModLockComponent = z.infer<typeof ModLockComponentSchema>;
 export const ModLockEntrySchema = z.object({
     id: z.string(),
     /** 固定した解決バージョン（最新ポインタを信頼せずこの版を直接取得する）。 */
-    version: z.string(),
+    version: PackageVersionSchema,
     /** versioned manifest.json のバイト列 sha256（SRI）。メタ改ざん検知用。 */
     manifestIntegrity: IntegritySchema,
     /** `modId:componentName` → lock 済み Component。 */
@@ -55,7 +85,7 @@ export const ModLockEntrySchema = z.object({
      * この mod だけの取得元 URL（末尾スラッシュなし）。世界の他 mod と別ホストに
      * 配布されている場合のみ設定する。未設定ならホスト側の既定 baseUrl を使う。
      */
-    baseUrl: z.string().url().optional(),
+    baseUrl: ModBaseUrlSchema.optional(),
     /** ワールド作者が指定した作者。lock v2 では実行時にも署名の作者と照合する。 */
     author: PackageAuthorSchema.optional(),
 });

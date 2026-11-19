@@ -1,7 +1,7 @@
 /**
  * jsx-runtime — Worker 内で TSX を使うための JSX ファクトリ実装。
  *
- * TypeScript の automatic runtime（jsxImportSource: "@ubichill/sdk"）に対応する。
+ * TypeScript の automatic runtime（jsxImportSource: "ubichill"）に対応する。
  * DOM を一切触らず、シリアライズ可能な VNode オブジェクトを返す。
  *
  * onUbi* プロパティに関数が渡されると、ハンドラーレジストリに登録して
@@ -182,7 +182,7 @@ export const jsxDEV = jsxs;
 /**
  * TSX ファイルで以下を tsconfig に追加するだけで型が効く:
  * ```json
- * { "jsx": "react-jsx", "jsxImportSource": "@ubichill/sdk" }
+ * { "jsx": "react-jsx", "jsxImportSource": "ubichill" }
  * ```
  *
  * 全 HTML タグを受け付け、onUbi* イベントと style オブジェクトに対応する。

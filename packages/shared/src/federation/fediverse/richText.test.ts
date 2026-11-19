@@ -78,6 +78,13 @@ describe('htmlToRichText', () => {
         ]);
     });
 
+    it('Object.prototype 由来の名前（&constructor; など）は実体参照として戻さず、そのまま表示する', () => {
+        const text = '&constructor; &__proto__; &toString; &hasOwnProperty; &valueOf;';
+        expect(displayText(text, 100)).toBe(text);
+        expect(displayMultilineText(text, 100)).toBe(text);
+        expect(htmlToRichText(text, 100)).toEqual([{ kind: 'text', text }]);
+    });
+
     it('閉じない <a> や < を並べた壊れた HTML（actor の上限 256KiB）も、長さに比例する時間で読む', () => {
         const time = (html: string) => {
             const start = Date.now();

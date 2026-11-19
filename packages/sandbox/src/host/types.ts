@@ -158,11 +158,6 @@ export interface ModHostManagerOptions<TPayloadMap extends Record<string, unknow
      */
     capabilities?: string[];
     /**
-     * capability ゲートを完全に無効化し全コマンドを許可する明示的エスケープハッチ。
-     * 信頼済み first-party modや開発用途のみ。通常は未指定（= ゲート有効）。
-     */
-    allowAllCapabilities?: boolean;
-    /**
      * 認可コールバック。渡すと capability ゲートは静的 allowlist ではなくこの関数を判断源にする。
      * **同期で即時判定**する（承認は読み込み時に確定済み・実行時は保留しない）。
      * 未指定なら従来通り `capabilities` からの静的 allowlist で判定する。

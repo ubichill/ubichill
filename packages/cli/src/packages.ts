@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import {
     buildWorldLock,
     createDependencyAwareLockEntryGetter,
@@ -87,79 +87,77 @@ export async function searchPackages(args: string[], log: Logger): Promise<void>
     if (!page.items.length) log.info('見つかりませんでした。完全な作者参照は検索への登録なしで install できます');
 }
 
+/** `ubichill init` の雛形（プロジェクトからの相対パス → 中身）。 */
+export function projectFiles(kind: 'mod' | 'world', name: string): Record<string, string> {
+    const entity = {
+        id: 'welcome',
+        transform: { x: 40, y: 40, w: 320, h: 100 },
+        components: [{ id: 'label', type: 'core:ui', data: { markup: '<div>ようこそ</div>' } }],
+    };
+    const packageJson = JSON.stringify(
+        {
+            name,
+            version: '1.0.0',
+            private: true,
+            type: 'module',
+            scripts: {
+                dev: 'ubichill dev',
+                ...(kind === 'mod' ? { build: 'tsc --noEmit && ubichill build --layout=registry' } : {}),
+            },
+            ...(kind === 'mod' ? { dependencies: { ubichill: '^4' } } : {}),
+            devDependencies: { '@ubichill/cli': '^1', ...(kind === 'mod' ? { typescript: '^5' } : {}) },
+        },
+        null,
+        2,
+    );
+    const common = { '.gitignore': 'node_modules/\ndist/\n.ubichill/\n', 'package.json': packageJson };
+    if (kind === 'world')
+        return {
+            ...common,
+            'world.yaml': yaml.stringify({
+                apiVersion: 'ubichill.com/v1alpha1',
+                kind: 'World',
+                metadata: { name, version: '1.0.0' },
+                spec: { displayName: name, dependencies: [], initialEntities: [entity] },
+            }),
+        };
+    return {
+        ...common,
+        'src/hello.worker.tsx':
+            "import type { ComponentConfig } from 'ubichill';\nexport const config: ComponentConfig = { defaultTransform: { x: 40, y: 160, w: 320, h: 100 } };\nexport default function Hello() { return <div>Hello!</div>; }\n",
+        // Worker には Host が Ubi を注入する。import 文を書くとモジュールになりグローバルの宣言にならない
+        'src/env.d.ts': "declare const Ubi: import('ubichill').Ubi;\n",
+        'prefabs/welcome.json': JSON.stringify({ name: 'ようこそ', entities: [entity] }, null, 2),
+        'tsconfig.json': JSON.stringify(
+            {
+                compilerOptions: {
+                    target: 'ES2022',
+                    lib: ['ES2022', 'WebWorker'],
+                    module: 'ESNext',
+                    moduleResolution: 'Bundler',
+                    strict: true,
+                    noEmit: true,
+                    jsx: 'react-jsx',
+                    jsxImportSource: 'ubichill',
+                    types: ['ubichill'],
+                },
+                include: ['src'],
+            },
+            null,
+            2,
+        ),
+    };
+}
+
 export function initProject(args: string[], log: Logger): void {
     const [kind, name] = args;
     if (kind !== 'mod' && kind !== 'world') throw new Error('使い方: ubichill init mod|world <名前>');
     PackageIdSchema.parse(name);
     const dir = resolve(name);
     if (existsSync(dir)) throw new Error(`${name} は既に存在します。上書きしません`);
-    mkdirSync(dir);
-    const entity = {
-        id: 'welcome',
-        transform: { x: 40, y: 40, w: 320, h: 100 },
-        components: [{ id: 'label', type: 'core:ui', data: { markup: '<div>ようこそ</div>' } }],
-    };
-    writeFileSync(join(dir, '.gitignore'), 'node_modules/\ndist/\n.ubichill/\n');
-    if (kind === 'mod') {
-        mkdirSync(join(dir, 'src'));
-        mkdirSync(join(dir, 'prefabs'));
-        writeFileSync(
-            join(dir, 'src', 'hello.worker.tsx'),
-            "import type { ComponentConfig } from 'ubichill';\nexport const config: ComponentConfig = { defaultTransform: { x: 40, y: 160, w: 320, h: 100 } };\nexport default function Hello() { return <div>Hello!</div>; }\n",
-        );
-        writeFileSync(
-            join(dir, 'prefabs', 'welcome.json'),
-            JSON.stringify({ name: 'ようこそ', entities: [entity] }, null, 2),
-        );
-        writeFileSync(
-            join(dir, 'tsconfig.json'),
-            JSON.stringify(
-                {
-                    compilerOptions: {
-                        target: 'ES2022',
-                        lib: ['ES2022', 'WebWorker'],
-                        module: 'ESNext',
-                        moduleResolution: 'Bundler',
-                        strict: true,
-                        noEmit: true,
-                        jsx: 'react-jsx',
-                        jsxImportSource: 'ubichill',
-                        types: ['ubichill'],
-                    },
-                    include: ['src'],
-                },
-                null,
-                2,
-            ),
-        );
-    } else
-        writeFileSync(
-            join(dir, 'world.yaml'),
-            yaml.stringify({
-                apiVersion: 'ubichill.com/v1alpha1',
-                kind: 'World',
-                metadata: { name, version: '1.0.0' },
-                spec: { displayName: name, dependencies: [], initialEntities: [entity] },
-            }),
-        );
-    writeFileSync(
-        join(dir, 'package.json'),
-        JSON.stringify(
-            {
-                name,
-                version: '1.0.0',
-                private: true,
-                type: 'module',
-                scripts: {
-                    dev: 'ubichill dev',
-                    ...(kind === 'mod' ? { build: 'tsc --noEmit && ubichill build --layout=registry' } : {}),
-                },
-                ...(kind === 'mod' ? { dependencies: { ubichill: '^4' } } : {}),
-                devDependencies: { '@ubichill/cli': '^1', ...(kind === 'mod' ? { typescript: '^5' } : {}) },
-            },
-            null,
-            2,
-        ),
-    );
+    for (const [path, text] of Object.entries(projectFiles(kind, name))) {
+        mkdirSync(dirname(join(dir, path)), { recursive: true });
+        writeFileSync(join(dir, path), text);
+    }
     log.success(`${name} を作りました`, `cd ${name} → npm install → npm run dev`);
 }

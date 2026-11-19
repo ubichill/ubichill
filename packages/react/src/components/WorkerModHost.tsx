@@ -365,6 +365,7 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
                     targetId={targetId}
                     vnode={vnode}
                     sendAction={sendAction}
+                    modId={definition.id}
                     style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
                 />
             ))}

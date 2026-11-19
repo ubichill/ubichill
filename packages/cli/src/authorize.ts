@@ -62,6 +62,35 @@ function credentialFrom(res: HttpResponse, pkcs8: string, server: string): Crede
     return { server, account, token, key: pkcs8, environmentId: environment.id };
 }
 
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+const parseUrl = (value: unknown): URL | undefined => {
+    if (typeof value !== 'string') return undefined;
+    try {
+        return new URL(value);
+    } catch {
+        return undefined;
+    }
+};
+
+/**
+ * サーバーが返した承認画面の URL を読む。そのままブラウザに渡すので、http(s) でログイン先と同じオリジンのものだけを通す。
+ * ログイン先が手元なら手元の別のポートも通す（開発でフロントを別のポートで動かすとき。backend の FRONTEND_URL）。
+ */
+export function approveUrlOf(server: string, value: unknown): URL {
+    const url = parseUrl(value);
+    const origin = new URL(server);
+    const allowed =
+        url !== undefined &&
+        (url.protocol === 'https:' || url.protocol === 'http:') &&
+        (url.origin === origin.origin || (LOOPBACK_HOSTS.has(url.hostname) && LOOPBACK_HOSTS.has(origin.hostname)));
+    if (!allowed)
+        throw new Error(
+            `サーバーが返した承認画面の URL を開きません（${origin.origin} と同じオリジンの http(s) に限ります）: ${String(value)}`,
+        );
+    return url;
+}
+
 /** 認可して、公開環境の認証情報（鍵とトークン）を得る。 */
 export async function authorize(deps: AuthorizeDeps, options: AuthorizeOptions): Promise<Credential> {
     const random = deps.random ?? base64UrlRandom;
@@ -85,7 +114,9 @@ export async function authorize(deps: AuthorizeDeps, options: AuthorizeOptions):
             });
             if (created.status !== 201) throw errorOf(created, '認可の要求を作れませんでした');
             requestIdOf.value = String(created.body.requestId);
-            const url = `${String(created.body.approveUrl)}&state=${encodeURIComponent(state)}`;
+            const approveUrl = approveUrlOf(options.server, created.body.approveUrl);
+            approveUrl.searchParams.set('state', state);
+            const url = approveUrl.href;
             deps.log.info(`ブラウザで承認してください: ${url}`);
             if (!(await deps.openBrowser(url))) deps.log.warn('ブラウザを開けませんでした。上の URL を開いてください');
             const callback = await loopback.waitForCallback();
@@ -115,10 +146,11 @@ export async function authorize(deps: AuthorizeDeps, options: AuthorizeOptions):
     const deviceCode = String(created.body.deviceCode);
     const intervalMs = Number(created.body.interval ?? 3) * 1000;
     const deadline = deps.now() + Number(created.body.expiresIn ?? 600) * 1000;
+    const approveUrl = approveUrlOf(options.server, created.body.approveUrl).href;
     deps.log.info(
-        `別の端末のブラウザで ${String(created.body.approveUrl)} を開き、コード ${String(created.body.userCode)} を確かめて承認してください`,
+        `別の端末のブラウザで ${approveUrl} を開き、コード ${String(created.body.userCode)} を確かめて承認してください`,
     );
-    await deps.openBrowser(String(created.body.approveUrl));
+    await deps.openBrowser(approveUrl);
 
     const poll = async (): Promise<Credential> => {
         if (deps.now() > deadline) throw new Error('承認されないまま期限が切れました。もう一度実行してください');
