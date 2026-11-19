@@ -60,7 +60,7 @@ export async function friendLocationsOf(me: string) {
             canSeeInstance(instanceManager.audienceOf(record, presence), me, myFriends),
     );
     const instances = (
-        await Promise.all(grouped.locations.map((l) => instanceManager.getInstance(l.instance.id)))
+        await Promise.all(grouped.locations.map((l) => instanceManager.getInstance(l.instance.id, presence)))
     ).flatMap((i) => (i ? [i] : []));
     // 招待のみの部屋は見えても入れない（画面は「入る」ではなく「リクエスト」を出す）
     const withAccess = new Map(

@@ -4,7 +4,8 @@
  * DOM のマウス/キーボード入力は 1 度だけ収集し、各 Worker は自分の「読み取りカーソル」
  * から未読分だけを受け取る。これにより N 個の Worker が居ても DOM リスナーは 1 セットで済む。
  *
- * - acquire/release : 参照カウントで InputCollector の生成/破棄を管理
+ * - acquire/release : 読み手（カーソル）が 1 つ以上ある間だけ InputCollector を持つ。
+ *                     acquire より前の入力は渡さない。同じ key の release は 2 回目以降は何もしない
  * - collectFor      : instanceKey のカーソル以降の入力を返し、全 Worker が読んだ分を prune
  * - setScrollElement: ワールドスクロール供給要素を登録 (どれか 1 つが有効ならそれを使う)
  */
@@ -12,7 +13,6 @@ import type { InputFrameEvent } from '@ubichill/shared';
 import { InputCollector } from './InputCollector';
 
 let _collector: InputCollector | null = null;
-let _refCount = 0;
 const _cursor = new Map<string, number>();
 const _scrollElementByInstance = new Map<string, Element | null>();
 
@@ -20,27 +20,25 @@ export function acquireSharedInput(instanceKey: string): void {
     if (!_collector) {
         _collector = new InputCollector();
     }
-    _refCount += 1;
-    _cursor.set(instanceKey, 0);
+    // 0 から読ませると、読み始めない Worker が全体の prune を止め、過去の入力を後から再生してしまう
+    _cursor.set(instanceKey, _collector.lastSeq);
     _scrollElementByInstance.set(instanceKey, null);
 }
 
 export function releaseSharedInput(instanceKey: string): void {
-    _cursor.delete(instanceKey);
+    if (!_cursor.delete(instanceKey)) return;
     _scrollElementByInstance.delete(instanceKey);
     _applyScrollElement();
 
-    _refCount = Math.max(0, _refCount - 1);
-    if (_refCount === 0) {
+    if (_cursor.size === 0) {
         _collector?.destroy();
         _collector = null;
-        _cursor.clear();
         _scrollElementByInstance.clear();
     }
 }
 
 export function setSharedScrollElement(instanceKey: string, el: Element | null): void {
-    if (!_collector) return;
+    if (!_collector || !_cursor.has(instanceKey)) return;
     _scrollElementByInstance.set(instanceKey, el);
     _applyScrollElement();
 }

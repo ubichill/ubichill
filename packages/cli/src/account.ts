@@ -65,16 +65,19 @@ async function requestJson(
     return { status: res.status, body: parsed };
 }
 
+/** ブラウザを開くコマンドと引数。shell を通さずに渡す。 */
+export function browserCommand(platform: NodeJS.Platform, url: string): [string, string[]] {
+    if (platform === 'darwin') return ['open', [url]];
+    // cmd /c start は URL の & をコマンドの区切りとして読む（state が落ち、続きがコマンドとして動く）
+    if (platform === 'win32') return ['explorer.exe', [url]];
+    return ['xdg-open', [url]];
+}
+
 /** ブラウザを開く（開けなければ false。URL は常に表示するので、開けなくても続けられる）。 */
 function openBrowser(url: string): Promise<boolean> {
-    const command =
-        process.platform === 'darwin'
-            ? ['open', url]
-            : process.platform === 'win32'
-              ? ['cmd', '/c', 'start', '', url]
-              : ['xdg-open', url];
+    const [command, args] = browserCommand(process.platform, url);
     return new Promise((resolve) => {
-        const child = spawn(command[0] as string, command.slice(1), { stdio: 'ignore', detached: true });
+        const child = spawn(command, args, { stdio: 'ignore', detached: true });
         child.on('error', () => resolve(false));
         child.on('spawn', () => {
             child.unref();

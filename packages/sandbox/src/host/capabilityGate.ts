@@ -3,8 +3,7 @@
  *
  * ModHostManager から分離した純粋なロジック（Worker/DOM 非依存）。単体テスト可能。
  *
- * モードは 3 つ:
- *  - allowAll  : 全コマンド許可（信頼済み first-party / 開発用エスケープハッチ）。
+ * モードは 2 つ:
  *  - dynamic   : allowlist（lock が許す天井）**かつ** authorizeCapability（ユーザーの許可）。
  *                ユーザー設定の既定で許される権限でも、lock に無ければ拒否する。
  *                コールバックは**毎回評価する（キャッシュしない）**。承認はmod読み込み時に別途まとめて確定するため、
@@ -13,7 +12,7 @@
  *
  * コアコマンド（ALWAYS_ALLOWED_COMMANDS）は capability 宣言なしで常に許可する。
  */
-import { ALWAYS_ALLOWED_COMMANDS, COMMAND_TO_CAPABILITY } from '@ubichill/shared';
+import { ALWAYS_ALLOWED_COMMANDS, COMMAND_TO_CAPABILITY, describeCapability, UbiErrorCode } from '@ubichill/shared';
 
 export interface CapabilityGate {
     /** コマンドを許可してよいか即時判定する（同期・高頻度コマンドでもオーバーヘッドなし）。 */
@@ -21,8 +20,6 @@ export interface CapabilityGate {
 }
 
 export interface CapabilityGateOptions {
-    /** 全コマンドを許可する（他の判定を一切行わない）。 */
-    allowAll?: boolean;
     /** lock が許すコマンド（天井）。authorizeCapability があってもこれを超えては許可しない。未指定は全拒否。 */
     allowedCommands?: ReadonlySet<string>;
     /**
@@ -37,7 +34,6 @@ const ALWAYS_ALLOWED = new Set<string>(ALWAYS_ALLOWED_COMMANDS);
 export function createCapabilityGate(options: CapabilityGateOptions): CapabilityGate {
     return {
         authorize(commandType): boolean {
-            if (options.allowAll) return true;
             if (ALWAYS_ALLOWED.has(commandType)) return true;
             if (!options.allowedCommands?.has(commandType)) return false;
 
@@ -53,5 +49,29 @@ export function createCapabilityGate(options: CapabilityGateOptions): Capability
 
             return true;
         },
+    };
+}
+
+export interface CommandDenial {
+    code: UbiErrorCode;
+    message: string;
+    /** コマンドが属する capability。拒否を「許可」に変える UI が使う。知らないコマンドには無い。 */
+    capability?: string;
+}
+
+/**
+ * 拒否したコマンドの診断。mod が決めた type は載せない（type を毎回変えて、診断の抑制を外させない）。
+ * on-demand はユーザーの拒否、静的は未宣言。
+ */
+export function describeDenial(commandType: string, onDemand: boolean): CommandDenial {
+    const code = onDemand ? UbiErrorCode.CAPABILITY_DENIED : UbiErrorCode.CAPABILITY_NOT_DECLARED;
+    const capability = COMMAND_TO_CAPABILITY[commandType];
+    if (typeof capability !== 'string') return { code, message: '知らないコマンドを拒否しました' };
+    return {
+        code,
+        capability,
+        message: onDemand
+            ? `権限が許可されていません: ${describeCapability(capability).label}`
+            : `未宣言の capability です: ${capability}`,
     };
 }

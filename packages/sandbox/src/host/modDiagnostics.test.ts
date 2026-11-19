@@ -30,6 +30,27 @@ describe('reportDiagnostic レート制限（毎フレーム console 洪水の�
         expect(handler).toHaveBeenCalledTimes(1);
     });
 
+    it('許可に変えられる拒否は capability ごとに抑える（メッセージが違っても同じ権限なら 1 回）', () => {
+        const handler = vi.fn();
+        setDiagnosticHandler(handler);
+        const retry = { subject: 'alice@example.com/pen', capability: 'net:fetch' };
+        reportDiagnostic({ ...diag('a'), retry });
+        reportDiagnostic({ ...diag('b'), retry });
+        reportDiagnostic({ ...diag('c'), retry: { ...retry, capability: 'scene:update' } });
+        expect(handler).toHaveBeenCalledTimes(2);
+    });
+
+    it('1 つの mod が診断を大量に出しても、ほかの mod の抑制は解けない', () => {
+        const handler = vi.fn();
+        setDiagnosticHandler(handler);
+        reportDiagnostic({ ...diag('quiet'), modId: 'quiet' });
+        for (const i of Array.from({ length: 1000 }, (_, n) => n))
+            reportDiagnostic({ ...diag(`noisy ${i}`), modId: 'noisy' });
+        handler.mockClear();
+        reportDiagnostic({ ...diag('quiet'), modId: 'quiet' });
+        expect(handler).not.toHaveBeenCalled();
+    });
+
     it('異なるメッセージは個別に通る', () => {
         const handler = vi.fn();
         setDiagnosticHandler(handler);

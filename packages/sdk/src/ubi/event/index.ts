@@ -125,40 +125,35 @@ export function createEventModule(deps: EventModuleDeps): EventModule {
         broadcast: rawBroadcast,
         emit: rawEmit,
         define: <TMap extends Record<string, unknown>>(): EventRegistry<TMap> => {
-            const handlers = new Map<string, Array<(data: unknown) => void>>();
-            const broadcastHandlers = new Map<string, Array<(userId: string, data: unknown) => void>>();
+            const handlers = new Map<string, Array<{ handler: (data: unknown) => void }>>();
+            const broadcastHandlers = new Map<string, Array<{ handler: (userId: string, data: unknown) => void }>>();
             let dispatchRegistered = false;
             const ensureDispatcher = (): void => {
                 if (dispatchRegistered) return;
                 dispatchRegistered = true;
                 registerSystem((_e, _dt, events) => {
                     for (const ev of events) {
-                        const list = handlers.get(ev.type);
-                        if (list) {
-                            for (const h of list) h(ev.payload);
-                        }
+                        for (const { handler } of handlers.get(ev.type) ?? []) handler(ev.payload);
                         const blist = broadcastHandlers.get(ev.type);
                         if (blist) {
                             const env = ev.payload as { userId: string; data: unknown };
-                            for (const h of blist) h(env.userId, env.data);
+                            for (const { handler } of blist) handler(env.userId, env.data);
                         }
                     }
                 });
             };
 
-            const register = <H>(map: Map<string, H[]>, type: string, handler: H): (() => void) => {
+            // 一覧は書き換えずに置き換える。handler の中で解除・追加しても走査中の一覧はずれない。
+            // 登録ごとに別の入れ物に入れ、同じ handler を 2 回登録しても解除は 1 回分だけに効く。
+            const register = <H>(map: Map<string, Array<{ handler: H }>>, type: string, handler: H): (() => void) => {
                 ensureDispatcher();
-                let list = map.get(type);
-                if (!list) {
-                    list = [];
-                    map.set(type, list);
-                }
-                list.push(handler);
+                const entry = { handler };
+                map.set(type, [...(map.get(type) ?? []), entry]);
                 return () => {
-                    const cur = map.get(type);
-                    if (!cur) return;
-                    const idx = cur.indexOf(handler);
-                    if (idx >= 0) cur.splice(idx, 1);
+                    map.set(
+                        type,
+                        (map.get(type) ?? []).filter((e) => e !== entry),
+                    );
                 };
             };
 

@@ -42,8 +42,14 @@ export interface ActorDirectoryDeps {
 }
 
 export interface ActorDirectory {
-    /** actor を id で引く（必要なら取りに行く）。引けなければ null。消えた actor は deletedAt 付きで返す */
-    get(actorId: string, options?: { refresh?: boolean }): Promise<RemoteActorRecord | null>;
+    /**
+     * actor を id で引く（必要なら取りに行く）。引けなければ null。消えた actor は deletedAt 付きで返す。
+     * admitUnknown は知らない actor を取りに行く前に尋ねる（断れば取りに行かない。署名を確かめる前の取得を全体で絞る）
+     */
+    get(
+        actorId: string,
+        options?: { refresh?: boolean; admitUnknown?: () => Promise<boolean> },
+    ): Promise<RemoteActorRecord | null>;
     /** `handle@domain` で引く（WebFinger）。このサーバーのアカウントは null */
     byAccount(account: string): Promise<RemoteActorRecord | null>;
 }
@@ -70,12 +76,17 @@ export function createActorDirectory(deps: ActorDirectoryDeps): ActorDirectory {
         return null;
     };
 
-    const fetchActor = async (url: string, known?: RemoteActorRecord): Promise<RemoteActorRecord | null> => {
+    const fetchActor = async (
+        url: string,
+        known?: RemoteActorRecord,
+        admitUnknown?: () => Promise<boolean>,
+    ): Promise<RemoteActorRecord | null> => {
         const parsed = parseFederationUrl(url, { allowHttp: deps.allowHttp });
         const host = parsed ? hostOf(parsed.href) : null;
         if (!parsed || !host || host === deps.identity.domain) return null;
         if (deps.policyOf(host) === 'block') return null;
         if (!known && !guard.tryAcquire(host)) return null;
+        if (!known && admitUnknown && !(await admitUnknown())) return null;
         const response = await deps.transport
             .get(parsed.href, {
                 signAs: { kind: 'app' },
@@ -160,7 +171,7 @@ export function createActorDirectory(deps: ActorDirectoryDeps): ActorDirectory {
                     return cached;
                 }
             }
-            return once(actorId, () => fetchActor(actorId, cached));
+            return once(actorId, () => fetchActor(actorId, cached, options.admitUnknown));
         },
 
         async byAccount(input) {

@@ -3,6 +3,8 @@ import type { FriendRequestRefusal, FriendshipService } from '../../services/soc
 
 export interface FriendsRouterDeps {
     requireAuth: RequestHandler;
+    /** 申請は相手に通知が届き、ほかのサーバーの人なら連合へ送信が出るので、連打で増やさせない */
+    limiter: RequestHandler;
     friendships: FriendshipService;
 }
 
@@ -36,7 +38,7 @@ export function createFriendsRouter(deps: FriendsRouterDeps): Router {
         return res.json(await deps.friendships.list(req.user.id));
     });
 
-    router.post('/friends', deps.requireAuth, async (req, res) => {
+    router.post('/friends', deps.requireAuth, deps.limiter, async (req, res) => {
         if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
         const targetId = typeof req.body?.userId === 'string' ? req.body.userId : '';
         const outcome = await deps.friendships.request(req.user.id, targetId);
