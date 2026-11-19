@@ -34,7 +34,7 @@ mise exec -- pnpm smoke http://localhost:3200 --api=http://localhost:3201 --suit
 
 ## PR の修正を検証する
 
-バックエンドとフロントエンドの両方が PR の head に切り替わってから、スモークを走らせる。例は PR #372 の場合。
+バックエンドとフロントエンドの両方が PR の head に切り替わってから、スモークを走らせる。手元での確認には `gh`・`curl`・`jq` が必要。例は PR #372 の場合。
 
 ```sh
 pr=372

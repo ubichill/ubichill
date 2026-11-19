@@ -123,7 +123,12 @@ test('セッション取得が一時的に失敗しても、CLI 承認画面で�
     await test.step('ログアウト直後の get-session を 503 にする', async () => {
         const sessionRoute = '**/api/auth/get-session**';
         await page.route(sessionRoute, (route) => route.fulfill({ status: 503, json: { message: '一時的な障害' } }));
-        await switchAccount.click();
+        await Promise.all([
+            page.waitForResponse(
+                (response) => new URL(response.url()).pathname === '/api/auth/get-session' && response.status() === 503,
+            ),
+            switchAccount.click(),
+        ]);
         await expect(page).toHaveURL(/\/auth$/);
         await expect(page.locator('form').getByRole('button', { name: 'ログイン', exact: true })).toBeVisible();
         await page.unroute(sessionRoute);
