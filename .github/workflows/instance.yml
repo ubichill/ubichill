@@ -32,7 +32,7 @@ jobs:
   instance:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5.1.0
+      - uses: actions/checkout@v7.0.1
       # Go も mise.toml から導入する（バージョンの真実源を 1 つにする）
       - uses: $/.github/actions/setup
       - name: Check Go version matches Dockerfile
