@@ -1,5 +1,35 @@
 # @ubichill/cli
 
+## 1.4.1
+
+### Patch Changes
+
+- ba0ec17: `ubichill build` と `ubichill verify` の検査を厳しくする。
+
+  - `build` は `package.json` の `version` を x.y.z に限る（Host が受け付けない `1.0.0-beta.1` や、出力先の外に書き出す `../` を含む版で止める）。`index.json` の版の履歴は SemVer の順に並べる。
+  - `export const config` をテンプレート文字列・定数・スプレッドなどで書いて静的に読めないときは、capabilities・dataFields などの宣言を取り込めないことを警告する（これまでは黙って落としていた）。文字列の `\x`・`\u`・数字・行の継続のエスケープは誤訳せず読めないものとして扱い、`\b`・`\f`・`\v` は JS と同じ文字に読む。
+  - `verify` は、`lock.json` の無い版のディレクトリと、版のディレクトリが 1 つも無い出力を不合格にする（`build` は常に `lock.json` を書く）。
+
+- ba0ec17: `ubichill init mod` の雛形に `src/env.d.ts`（Worker のグローバルの `Ubi` の型の宣言）を置き、`Ubi` を使うと `npm run build` の型チェックで落ちていたのを直す。`ubichill login` は Windows では `cmd` を通さず `explorer.exe` でブラウザを開き（URL の `&` で state が落ちていた）、サーバーが返す承認画面の URL はログイン先と同じオリジンの http(s) だけを開く（ログイン先が localhost なら、localhost の別のポートも開く）。
+- ba0ec17: `ubichill dev` の画面（world.html）で、mod の不正な値 1 つで画面全体が止まらないようにする。
+
+  - lock の `capabilities` に `constructor` などがあっても権限の判定が例外にならない
+  - 型に合わない VNode（`props: null`・数値の `children`・深すぎる入れ子）でも、その mod の UI だけを空にして診断を出す
+  - 初期化に失敗した Worker が入力のイベントを溜め続けない。後から起動した Worker に過去の入力を渡さない
+  - Shadow DOM の中の入力欄で、入力中の文字・日本語の変換を古い VNode で戻さない。`textarea`・`select` にも値を入れる
+  - mod の UI の画像は https（同じオリジンの http）・相対 URL・`data:image/` だけにし、参照元を送らない。`referrerpolicy` は mod に決めさせない
+
+- ba0ec17: mod の取得と実行に上限を付ける（`ubichill dev` の画面と、lock を読む CLI の処理）。
+
+  - mod の取得は manifest 1MiB・署名 64KiB・Worker 32MiB、時間は manifest と署名 15 秒・Worker 60 秒まで。超えた応答は読むのをやめる
+  - lock の `version` は `x.y.z`、`workerUrl` は版のディレクトリの中の相対パス（`..`・絶対パス・`\`・`%`・クエリは不可）、`baseUrl` は http(s) でクエリ・フラグメント・認証情報なし。http の `baseUrl` は開発用の Host が自分のオリジンとして許すときだけ取りに行く
+  - mod から Host へのコマンドは 1 tick 512 件まで、`Ubi.event.emit` の data はおよそ 64KiB まで。超えた分は捨てて診断を 1 回出す
+  - 拒否の診断に mod が送ったコマンド名を入れない（名前を変えて診断の抑制を外させない）
+
+- Updated dependencies [6b7e38d]
+  - @ubichill/shared@1.17.1
+  - @ubichill/loader@1.4.2
+
 ## 1.4.0
 
 ### Minor Changes

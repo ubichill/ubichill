@@ -1,5 +1,12 @@
 # @ubichill/loader
 
+## 1.4.2
+
+### Patch Changes
+
+- Updated dependencies [6b7e38d]
+  - @ubichill/shared@1.17.1
+
 ## 1.4.1
 
 ### Patch Changes
