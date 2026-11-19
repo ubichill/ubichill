@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { startFediverseSignIn } from '@/lib/account/fediverseSignIn';
 import { css } from '@/styled-system/css';
-import { buttonStyle, errorStyle, linkButtonStyle, titleStyle } from './authStyles';
-import { FediverseAccountInput } from './FediverseAccountInput';
+import { errorStyle, hintStyle, linkButtonStyle, titleStyle } from './authStyles';
 import { MastodonLogo, MisskeyLogo } from './FediverseBrandIcons';
+import { FediverseServerPicker } from './FediverseServerPicker';
 
 /** ログイン画面の「Mastodon・Misskey で続ける」のボタン（ロゴだけ）。 */
 export function FediverseSignInButton({ onClick }: { onClick: () => void }) {
@@ -21,23 +21,25 @@ export function FediverseSignInButton({ onClick }: { onClick: () => void }) {
 }
 
 /**
- * ユーザー ID を入れて、出てきたサーバーとアカウントを確かめてから、ログインか新規登録を選ぶ。
+ * ログインに使うサーバーを選び、そのサーバーの認証画面へ進む。ログインと新規登録はログイン画面のタブで選んだ方を渡す。
  * 登録済みかは認証の前に明かさない（外部アカウントと Ubichill のアカウントの結び付きを他人に見せない）ので、
- * どちらを押しても同じ認証に進み、結果に合わせて登録画面かログインになる。
+ * どちらでも同じ認証に進み、結果に合わせて登録画面かログインになる。
  */
 export function FediverseSignInPanel({
     returnTo,
-    registrationOpen,
+    prefer,
+    featuredServers,
     onBack,
 }: {
     returnTo: string;
-    registrationOpen: boolean;
+    prefer: 'sign-in' | 'sign-up';
+    featuredServers: readonly string[];
     onBack: () => void;
 }) {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
 
-    const go = async (server: string, prefer: 'sign-in' | 'sign-up') => {
+    const go = async (server: string) => {
         setBusy(true);
         setError('');
         try {
@@ -54,41 +56,21 @@ export function FediverseSignInPanel({
                 <MastodonLogo size={36} />
                 <MisskeyLogo size={36} />
             </div>
-            <h1 className={titleStyle}>フェディバースで続ける</h1>
-            <div className={css({ w: 'full' })}>
-                <FediverseAccountInput
-                    autoFocus
-                    actions={(preview) => (
-                        <div className={css({ display: 'flex', gap: '2', w: 'full' })}>
-                            <button
-                                type="button"
-                                className={buttonStyle}
-                                disabled={busy}
-                                onClick={() => void go(preview.server.host, 'sign-in')}
-                            >
-                                ログイン
-                            </button>
-                            {registrationOpen && (
-                                <button
-                                    type="button"
-                                    className={secondaryButton}
-                                    disabled={busy}
-                                    onClick={() => void go(preview.server.host, 'sign-up')}
-                                >
-                                    新規登録
-                                </button>
-                            )}
-                        </div>
-                    )}
-                />
-            </div>
+            <h1 className={titleStyle}>{prefer === 'sign-up' ? '登録に使うサーバー' : 'ログインするサーバー'}</h1>
+            <FediverseServerPicker
+                featuredServers={featuredServers}
+                busy={busy}
+                confirmLabel="このサーバーで続ける"
+                onChoose={(host) => void go(host)}
+            />
+            {busy && <p className={hintStyle}>サーバーの画面へ移動しています...</p>}
             {error && (
                 <p role="alert" className={errorStyle}>
                     {error}
                 </p>
             )}
             <button type="button" className={linkButtonStyle} onClick={onBack} disabled={busy}>
-                メールアドレスでログイン
+                戻る
             </button>
         </>
     );
@@ -110,22 +92,4 @@ const logoButton = css({
     transition: 'all 0.2s',
     _hover: { bg: 'surfaceHover' },
     _focusVisible: { outline: '2px solid token(colors.primary)', outlineOffset: '2px' },
-});
-
-const secondaryButton = css({
-    w: 'full',
-    minH: '44px',
-    py: '2.5',
-    px: '4',
-    fontSize: 'sm',
-    fontWeight: 'medium',
-    color: 'text',
-    bg: 'surface',
-    border: '1px solid',
-    borderColor: 'border',
-    rounded: 'lg',
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-    _hover: { bg: 'surfaceHover' },
-    _disabled: { opacity: 0.6, cursor: 'not-allowed' },
 });

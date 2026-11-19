@@ -8,7 +8,7 @@ import {
     users,
     verifications,
 } from '@ubichill/db';
-import { contactEmailOf, displayNameKey, isReservedEmail } from '@ubichill/shared';
+import { contactEmailOf, displayNameKey, FEATURED_FEDIVERSE_SERVERS, isReservedEmail } from '@ubichill/shared';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { eq } from 'drizzle-orm';
@@ -304,6 +304,11 @@ export const auth = betterAuth({
             options: () => ({
                 enabled: appConfig.fediverseSignIn.enabled,
                 registrationOpen: appConfig.registrationOpen,
+                // 使えるサーバーを限っているなら、それを並べる
+                featuredServers:
+                    appConfig.fediverseSignIn.allowedServers.size > 0
+                        ? [...appConfig.fediverseSignIn.allowedServers]
+                        : FEATURED_FEDIVERSE_SERVERS,
             }),
         }),
     ],

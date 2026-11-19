@@ -17,15 +17,9 @@ function setup(callbackOutcome: CallbackOutcome) {
     } = { started: 0 };
     const signIn: FediverseSignIn = {
         lookup: async (input) =>
-            input === '@alice@mi.example'
-                ? {
-                      ok: true,
-                      preview: {
-                          server: { host: 'mi.example', software: 'misskey', name: 'Mi', iconUrl: null },
-                          account: { username: 'alice', displayName: 'Alice', avatarUrl: null },
-                      },
-                  }
-                : { ok: false, error: 'account-not-found' },
+            input === 'mi.example'
+                ? { ok: true, server: { host: 'mi.example', software: 'misskey', name: 'Mi', iconUrl: null } }
+                : { ok: false, error: 'unsupported-server' },
         cancelSignUp: async (ticket) => {
             seen.cancelled = ticket;
         },
@@ -85,7 +79,7 @@ function setup(callbackOutcome: CallbackOutcome) {
         plugins: [
             fediverseSignInPlugin({
                 getSignIn: async () => signIn,
-                options: () => ({ enabled: true, registrationOpen: true }),
+                options: () => ({ enabled: true, registrationOpen: true, featuredServers: ['mi.example'] }),
             }),
         ],
     });
@@ -263,10 +257,12 @@ describe('fediverseSignInPlugin', () => {
 
     it('lookup は公開情報か、理由のコードを返す', async () => {
         const t = setup({ kind: 'error', error: 'expired', redirectTo: BASE });
-        const ok = await t.request(`/fediverse/lookup?account=${encodeURIComponent('@alice@mi.example')}`);
-        expect(await ok.json()).toMatchObject({ server: { host: 'mi.example' }, account: { username: 'alice' } });
-        const ng = await t.request(`/fediverse/lookup?account=${encodeURIComponent('@bob@mi.example')}`);
+        const ok = await t.request('/fediverse/lookup?server=mi.example');
+        expect(await ok.json()).toEqual({ host: 'mi.example', software: 'misskey', name: 'Mi', iconUrl: null });
+        const ng = await t.request('/fediverse/lookup?server=old.example');
         expect(ng.status).toBe(400);
-        expect(await ng.json()).toMatchObject({ code: 'account-not-found' });
+        expect(await ng.json()).toMatchObject({ code: 'unsupported-server' });
+        const options = await t.request('/fediverse/options');
+        expect(await options.json()).toMatchObject({ featuredServers: ['mi.example'] });
     });
 });

@@ -24,7 +24,7 @@ import {
 } from '@ubichill/shared';
 import { z } from 'zod';
 import { type AuthorizationServer, readAuthorizationServer } from './discovery';
-import { createLookupCache, type LookupOutcome, lookupFediverse } from './lookup';
+import { createLookupCache, type LookupOutcome, lookupFediverseServer } from './lookup';
 import {
     authorizationUrl,
     type ClientCredentials,
@@ -245,10 +245,15 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
     const lookupCache = createLookupCache({ ttlMs: 5 * 60 * 1000, max: 500, now: () => deps.now().getTime() });
 
     return {
-        /** 入力したユーザー ID のサーバーとアカウントの公開情報（登録済みかは返さない）。 */
+        /** 選んだサーバーの公開情報（名前・アイコン・種類）。ログインに使えるかもここで分かる。 */
         lookup(input: string): Promise<LookupOutcome> {
             return lookupCache(input, () =>
-                lookupFediverse(input, { http: deps.http, discover, serverAllowed, enabled: deps.config.enabled }),
+                lookupFediverseServer(input, {
+                    http: deps.http,
+                    discover,
+                    serverAllowed,
+                    enabled: deps.config.enabled,
+                }),
             );
         },
 
@@ -281,7 +286,7 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
         }): Promise<StartOutcome> {
             if (!deps.config.enabled) return { ok: false, error: 'disabled' };
             const parsed = parseFediverseServer(input.server);
-            if (!parsed.ok) return { ok: false, error: 'unsupported-server' };
+            if (!parsed.ok) return { ok: false, error: 'invalid-server' };
             if (!(await serverAllowed(parsed.host))) return { ok: false, error: 'server-not-allowed' };
             if (input.intent === 'link' && !input.session) return { ok: false, error: 'session-changed' };
             const server = await discover(parsed.host);

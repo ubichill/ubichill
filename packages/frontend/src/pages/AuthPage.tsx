@@ -30,7 +30,7 @@ import {
 import { FediverseSignInButton, FediverseSignInPanel } from '@/components/auth/FediverseSignInPanel';
 import { FediverseSignUpForm } from '@/components/auth/FediverseSignUpForm';
 import { readFediverseReturn } from '@/lib/account/fediverseReturn';
-import { fetchFediverseSignInOptions } from '@/lib/account/fediverseSignIn';
+import { type FediverseSignInOptions, fetchFediverseSignInOptions } from '@/lib/account/fediverseSignIn';
 import { useDisplayNameAvailability, useHandleAvailability } from '@/lib/account/useHandleAvailability';
 import { registerWithOTP, resendOTP, signIn, verifyOTPAndRegister } from '@/lib/auth-client';
 import { useSession } from '@/lib/session';
@@ -44,7 +44,11 @@ export function AuthPage() {
     const from = (location.state as { from?: string } | null)?.from ?? '/';
     const { data: session, isPending } = useSession();
     const fediverseReturn = readFediverseReturn(location.search);
-    const [fediverseOptions, setFediverseOptions] = useState({ enabled: false, registrationOpen: false });
+    const [fediverseOptions, setFediverseOptions] = useState<FediverseSignInOptions>({
+        enabled: false,
+        registrationOpen: false,
+        featuredServers: [],
+    });
     const [fediverseOpen, setFediverseOpen] = useState(false);
     const [mode, setMode] = useState<AuthMode>('login');
     const [email, setEmail] = useState('');
@@ -65,7 +69,7 @@ export function AuthPage() {
     useEffect(() => {
         fetchFediverseSignInOptions()
             .then(setFediverseOptions)
-            .catch(() => setFediverseOptions({ enabled: false, registrationOpen: false }));
+            .catch(() => setFediverseOptions({ enabled: false, registrationOpen: false, featuredServers: [] }));
     }, []);
 
     // クールダウンタイマー
@@ -214,7 +218,8 @@ export function AuthPage() {
                 <div className={cardStyle}>
                     <FediverseSignInPanel
                         returnTo={from}
-                        registrationOpen={fediverseOptions.registrationOpen}
+                        prefer={mode === 'register' && fediverseOptions.registrationOpen ? 'sign-up' : 'sign-in'}
+                        featuredServers={fediverseOptions.featuredServers}
                         onBack={() => setFediverseOpen(false)}
                     />
                 </div>

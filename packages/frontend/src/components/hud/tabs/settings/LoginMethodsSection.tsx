@@ -1,10 +1,10 @@
 import type { LoginMethods } from '@ubichill/shared';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router';
-import { FediverseAccountInput } from '@/components/auth/FediverseAccountInput';
 import { SoftwareLogo } from '@/components/auth/FediverseBrandIcons';
+import { FediverseServerPicker } from '@/components/auth/FediverseServerPicker';
 import { requestAdminRecheck } from '@/lib/account/adminStatus';
-import { removeLoginMethod, startFediverseSignIn } from '@/lib/account/fediverseSignIn';
+import { fetchFediverseSignInOptions, removeLoginMethod, startFediverseSignIn } from '@/lib/account/fediverseSignIn';
 import { removableLoginMethods } from '@/lib/account/loginMethods';
 import { pushToast } from '@/lib/toast';
 import { css } from '@/styled-system/css';
@@ -27,6 +27,13 @@ export function LoginMethodsSection({
 }) {
     const location = useLocation();
     const [busy, setBusy] = useState<string | null>(null);
+    const [adding, setAdding] = useState(false);
+    const [featuredServers, setFeaturedServers] = useState<readonly string[]>([]);
+    useEffect(() => {
+        fetchFediverseSignInOptions()
+            .then((options) => setFeaturedServers(options.featuredServers))
+            .catch(() => undefined);
+    }, []);
     if (!methods) return null;
     const returnTo = `${location.pathname}${location.search}`;
     const removable = removableLoginMethods(methods);
@@ -106,18 +113,18 @@ export function LoginMethodsSection({
             )}
 
             {methods.recentlyAuthenticated ? (
-                <FediverseAccountInput
-                    actions={(preview) => (
-                        <button
-                            type="button"
-                            className={addButton}
-                            disabled={busy !== null}
-                            onClick={() => void start(preview.server.host, 'link')}
-                        >
-                            このアカウントを追加
-                        </button>
-                    )}
-                />
+                adding ? (
+                    <FediverseServerPicker
+                        featuredServers={featuredServers}
+                        busy={busy !== null}
+                        confirmLabel="このサーバーのアカウントを追加"
+                        onChoose={(host) => void start(host, 'link')}
+                    />
+                ) : (
+                    <button type="button" className={addButton} onClick={() => setAdding(true)}>
+                        フェディバースのアカウントを追加
+                    </button>
+                )
             ) : methods.password ? (
                 // 管理者の案内で本人確認の欄を出しているときは重ねない
                 !adminRequiresPassword && (

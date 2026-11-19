@@ -8,7 +8,6 @@ import {
     handleCandidateOf,
     isPlaceholderEmail,
     isReservedEmail,
-    parseFediverseAccount,
     parseFediverseServer,
     placeholderEmail,
     safeReturnTo,
@@ -44,21 +43,6 @@ describe('parseFediverseServer', () => {
             'https://mastodon.social#x',
         ]) {
             expect(parseFediverseServer(input).ok).toBe(false);
-        }
-    });
-});
-
-describe('parseFediverseAccount', () => {
-    it('ユーザー名とホストを分け、ホストだけならユーザー名は null', () => {
-        expect(parseFediverseAccount('@Alice@Misskey.io')).toEqual({ ok: true, username: 'Alice', host: 'misskey.io' });
-        expect(parseFediverseAccount('alice@mastodon.social')).toMatchObject({ username: 'alice' });
-        expect(parseFediverseAccount('misskey.io')).toEqual({ ok: true, username: null, host: 'misskey.io' });
-        expect(parseFediverseAccount('https://misskey.io')).toMatchObject({ ok: true, username: null });
-    });
-
-    it('@ が多い・ユーザー名にパスや空白を含む・空は拒否する', () => {
-        for (const input of ['@a@b@misskey.io', '@a/b@misskey.io', '@a b@misskey.io', '@@misskey.io', '@alice@', '']) {
-            expect(parseFediverseAccount(input).ok, input).toBe(false);
         }
     });
 });

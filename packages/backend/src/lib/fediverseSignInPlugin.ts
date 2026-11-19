@@ -51,8 +51,8 @@ async function signInAs(ctx: EndpointContext, userId: string, accountRowId: stri
 
 export interface FediverseSignInPluginOptions {
     getSignIn: () => Promise<FediverseSignIn>;
-    /** ログイン画面に出す設定（使えるか・新規登録を受け付けるか） */
-    options: () => { enabled: boolean; registrationOpen: boolean };
+    /** ログイン画面に出す設定（使えるか・新規登録を受け付けるか・並べるサーバー） */
+    options: () => { enabled: boolean; registrationOpen: boolean; featuredServers: readonly string[] };
 }
 
 export function fediverseSignInPlugin({ getSignIn, options }: FediverseSignInPluginOptions) {
@@ -173,13 +173,13 @@ export function fediverseSignInPlugin({ getSignIn, options }: FediverseSignInPlu
 
             fediverseLookup: createAuthEndpoint(
                 '/fediverse/lookup',
-                { method: 'GET', query: z.object({ account: z.string().max(300) }) },
+                { method: 'GET', query: z.object({ server: z.string().max(300) }) },
                 async (ctx) => {
-                    const outcome = await (await getSignIn()).lookup(ctx.query.account);
+                    const outcome = await (await getSignIn()).lookup(ctx.query.server);
                     if (!outcome.ok) {
                         throw APIError.fromStatus('BAD_REQUEST', { code: outcome.error, message: outcome.error });
                     }
-                    return ctx.json(outcome.preview);
+                    return ctx.json(outcome.server);
                 },
             ),
 
@@ -195,7 +195,7 @@ export function fediverseSignInPlugin({ getSignIn, options }: FediverseSignInPlu
             // 開始は相手のサーバーへ要求を送る（アプリ登録・メタデータ）ので、IP ごとに強く絞る
             { pathMatcher: (path: string) => path === '/fediverse/start', window: 60, max: 10 },
             { pathMatcher: (path: string) => path === '/fediverse/sign-up', window: 60, max: 20 },
-            // 入力のたびに呼ばれ、相手のサーバーへ要求を送る（結果は backend が 5 分覚える）
+            // 並べたサーバーと入力したサーバーごとに呼ばれ、相手へ要求を送る（結果は backend が 5 分覚える）
             { pathMatcher: (path: string) => path === '/fediverse/lookup', window: 60, max: 30 },
         ],
     } satisfies BetterAuthPlugin;

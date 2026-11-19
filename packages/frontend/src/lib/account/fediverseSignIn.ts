@@ -1,5 +1,5 @@
 import {
-    type FediversePreview,
+    type FediverseServerInfo,
     type FediverseSignInIntent,
     type FediverseSignUpCandidate,
     fediverseSignInErrorMessage,
@@ -24,12 +24,17 @@ async function authRequest<T>(path: string, init?: RequestInit): Promise<T> {
         cache: 'no-store',
         ...init,
         headers: { ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...init?.headers },
+    }).catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') throw error;
+        throw new FediverseRequestError('Ubichill に接続できませんでした。ネットワークを確かめてください', null);
     });
     const body = (await res.json().catch(() => ({}))) as { code?: string; message?: string };
     if (!res.ok) {
         const code = body.code ?? null;
+        // 理由のコードが無い失敗（古い backend・中継の不調など）は、状態の番号を添えて出す
+        const known = fediverseSignInErrorMessage(code);
         throw new FediverseRequestError(
-            fediverseSignInErrorMessage(code) ?? body.message ?? '通信に失敗しました',
+            code && known ? known : `うまくいきませんでした。時間をおいてもう一度お試しください（HTTP ${res.status}）`,
             code,
         );
     }
@@ -50,11 +55,17 @@ export async function startFediverseSignIn(input: {
     window.location.assign(url);
 }
 
-export async function lookupFediverseAccount(account: string, signal?: AbortSignal): Promise<FediversePreview> {
-    return authRequest(`/fediverse/lookup?account=${encodeURIComponent(account)}`, { signal });
+export async function lookupFediverseServer(server: string, signal?: AbortSignal): Promise<FediverseServerInfo> {
+    return authRequest(`/fediverse/lookup?server=${encodeURIComponent(server)}`, { signal });
 }
 
-export async function fetchFediverseSignInOptions(): Promise<{ enabled: boolean; registrationOpen: boolean }> {
+export interface FediverseSignInOptions {
+    enabled: boolean;
+    registrationOpen: boolean;
+    featuredServers: string[];
+}
+
+export async function fetchFediverseSignInOptions(): Promise<FediverseSignInOptions> {
     return authRequest('/fediverse/options');
 }
 
@@ -102,45 +113,46 @@ export function useLoginMethods(enabled: boolean): { methods: LoginMethods | nul
     return { methods, reload };
 }
 
-export type FediverseLookupState =
+export type FediverseServerState =
     | { state: 'idle' }
     | { state: 'checking' }
-    | { state: 'found'; preview: FediversePreview }
-    | { state: 'error'; error: string };
+    | { state: 'found'; server: FediverseServerInfo }
+    | { state: 'error'; error: string; code: string | null };
 
 /**
- * 入力したユーザー ID を、打ち終わってから（500ms）サーバーに問い合わせる。前の問い合わせは取り消し、
- * 遅れて返った古い結果で上書きしない。
+ * サーバーの公開情報を引く。`delayMs` は入力を打ち終わるまで待つ時間（並べたサーバーは 0）。
+ * 前の問い合わせは取り消し、遅れて返った古い結果で上書きしない。
  */
-export function useFediverseLookup(input: string): FediverseLookupState {
-    const [result, setResult] = useState<FediverseLookupState>({ state: 'idle' });
+export function useFediverseServer(input: string, delayMs: number): FediverseServerState {
+    const [result, setResult] = useState<FediverseServerState>({ state: 'idle' });
     const latest = useRef(0);
     useEffect(() => {
         const query = input.trim();
         const id = ++latest.current;
-        if (query.replace(/^@/, '').length < 3) {
+        if (!query.includes('.') && !query.includes(':')) {
             setResult({ state: 'idle' });
             return;
         }
         setResult({ state: 'checking' });
         const controller = new AbortController();
         const timer = setTimeout(() => {
-            lookupFediverseAccount(query, controller.signal)
-                .then((preview) => {
-                    if (id === latest.current) setResult({ state: 'found', preview });
+            lookupFediverseServer(query, controller.signal)
+                .then((server) => {
+                    if (id === latest.current) setResult({ state: 'found', server });
                 })
                 .catch((error: unknown) => {
                     if (id !== latest.current || controller.signal.aborted) return;
                     setResult({
                         state: 'error',
-                        error: error instanceof Error ? error.message : '見つかりませんでした',
+                        error: error instanceof Error ? error.message : '確認できませんでした',
+                        code: error instanceof FediverseRequestError ? error.code : null,
                     });
                 });
-        }, 500);
+        }, delayMs);
         return () => {
             clearTimeout(timer);
             controller.abort();
         };
-    }, [input]);
+    }, [input, delayMs]);
     return result;
 }

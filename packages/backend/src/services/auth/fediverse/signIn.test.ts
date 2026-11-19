@@ -293,7 +293,7 @@ describe('開始', () => {
         });
         expect(await t.signIn.start(startInput('https://mi.example/@alice'))).toEqual({
             ok: false,
-            error: 'unsupported-server',
+            error: 'invalid-server',
         });
         expect(await t.signIn.start(startInput('old.example'))).toEqual({ ok: false, error: 'unsupported-server' });
         expect(await t.signIn.start(startInput('down.example'))).toEqual({ ok: false, error: 'server-unreachable' });
@@ -785,17 +785,9 @@ describe('連携の知らせ', () => {
 });
 
 describe('lookup', () => {
-    const webfinger = (actor: string) => () => ({
-        subject: 'acct:alice@example.com',
-        links: [{ rel: 'self', type: 'application/activity+json', href: actor }],
-    });
-
-    it('WebFinger で認証サーバーを引き（委任したドメインも）、サーバーとアカウントの公開情報を返す', async () => {
+    it('サーバーの種類・名前・大きいアイコンを返す（Mastodon）', async () => {
         const t = setup({
             routes: {
-                'GET https://example.com/.well-known/webfinger?resource=acct%3Aalice%40example.com': webfinger(
-                    'https://mastodon.example/users/alice',
-                ),
                 'GET https://mastodon.example/api/v2/instance': () => ({
                     title: 'Example :party:',
                     icon: [
@@ -803,49 +795,38 @@ describe('lookup', () => {
                         { src: 'https://mastodon.example/icon-192.png', size: '192x192' },
                     ],
                 }),
-                'GET https://mastodon.example/api/v1/accounts/lookup?acct=alice': () => ({
-                    username: 'alice',
-                    display_name: 'Alice :blobcat:',
-                    avatar: 'https://mastodon.example/a.png',
-                }),
             },
         });
-        expect(await t.signIn.lookup('@alice@example.com')).toEqual({
+        expect(await t.signIn.lookup('https://Mastodon.example/')).toEqual({
             ok: true,
-            preview: {
-                server: {
-                    host: 'mastodon.example',
-                    software: 'mastodon',
-                    name: 'Example',
-                    iconUrl: 'https://mastodon.example/icon-192.png',
-                },
-                account: { username: 'alice', displayName: 'Alice', avatarUrl: 'https://mastodon.example/a.png' },
+            server: {
+                host: 'mastodon.example',
+                software: 'mastodon',
+                name: 'Example',
+                iconUrl: 'https://mastodon.example/icon-192.png',
             },
         });
     });
 
-    it('Misskey は公開 API で引き、http の画像は使わない。公開 API が閉じていてもユーザー名で続ける', async () => {
+    it('Misskey は /api/meta で引き、http の画像は使わない。公開 API が閉じていても種類だけで続ける', async () => {
         const t = setup({
             routes: {
-                'GET https://mi.example/.well-known/webfinger?resource=acct%3Aalice%40mi.example': webfinger(
-                    'https://mi.example/users/9abc',
-                ),
                 'POST https://mi.example/api/meta': () => ({ name: 'みすきー', iconUrl: 'http://mi.example/i.png' }),
             },
         });
-        expect(await t.signIn.lookup('alice@mi.example')).toMatchObject({
+        expect(await t.signIn.lookup('mi.example')).toEqual({
             ok: true,
-            preview: {
-                server: { host: 'mi.example', software: 'misskey', name: 'みすきー', iconUrl: null },
-                account: { username: 'alice', displayName: null, avatarUrl: null },
-            },
+            server: { host: 'mi.example', software: 'misskey', name: 'みすきー', iconUrl: null },
+        });
+        expect(await setup().signIn.lookup('mi.example')).toMatchObject({
+            ok: true,
+            server: { name: null, iconUrl: null },
         });
     });
 
-    it('いないユーザー・未対応・block・無効はそれぞれの理由で返し、登録済みかは返さない', async () => {
+    it('形式違い・未対応・block・無効はそれぞれの理由で返す', async () => {
         const t = setup();
-        t.identities.set('fediverse:https://mi.example 9abc', 'user-bob');
-        expect(await t.signIn.lookup('@nobody@mi.example')).toEqual({ ok: false, error: 'account-not-found' });
+        expect(await t.signIn.lookup('not a domain')).toEqual({ ok: false, error: 'invalid-server' });
         expect(await t.signIn.lookup('old.example')).toEqual({ ok: false, error: 'unsupported-server' });
         t.state.blocked.add('mi.example');
         expect(await t.signIn.lookup('mi.example')).toEqual({ ok: false, error: 'server-not-allowed' });
@@ -853,7 +834,7 @@ describe('lookup', () => {
         expect(await t.signIn.lookup('mastodon.example')).toEqual({ ok: false, error: 'disabled' });
     });
 
-    it('同じ入力は覚えた結果を返す（入力のたびに相手へ送らない）', async () => {
+    it('同じサーバーは覚えた結果を返す（画面を開くたびに相手へ送らない）', async () => {
         const t = setup();
         await t.signIn.lookup('mi.example');
         const sent = t.calls.length;
