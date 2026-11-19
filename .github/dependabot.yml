@@ -62,6 +62,10 @@ updates:
       day: "saturday"
       time: "03:00"
       timezone: "Asia/Tokyo"
+    # Changesets CLI v2 は Action v1 を使う。CLI の移行と合わせて Action v2 に上げる。
+    ignore:
+      - dependency-name: "changesets/action"
+        update-types: ["version-update:semver-major"]
     groups:
       github-actions:
         patterns:

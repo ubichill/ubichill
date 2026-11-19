@@ -36,7 +36,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5.1.0
+        uses: actions/checkout@v7.0.1
         with:
           # changeset status が「main からどこで分岐したか」を見るのに履歴が必要
           # （既定のshallow checkoutだとPRブランチの単一commitしか無く
@@ -125,7 +125,7 @@ jobs:
           --health-retries 30
 
     steps:
-      - uses: actions/checkout@v5.1.0
+      - uses: actions/checkout@v7.0.1
 
       - uses: $/.github/actions/setup
 
@@ -167,7 +167,7 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v5.1.0
+      - uses: actions/checkout@v7.0.1
 
       - uses: $/.github/actions/setup
 
@@ -182,7 +182,7 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v5.1.0
+      - uses: actions/checkout@v7.0.1
 
       - uses: $/.github/actions/setup
 
@@ -260,7 +260,7 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v5.1.0
+      - uses: actions/checkout@v7.0.1
         with:
           # check-npm-drift.mjs が直近publishタグ(ubichill@*、@ubichill/cli@*)をworktreeでビルド・比較するため、
           # タグと履歴が必要（デフォルトのshallow checkoutでは見えない）。
@@ -294,7 +294,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5.1.0
+      - uses: actions/checkout@v7.0.1
 
       - uses: $/.github/actions/setup
         with:
@@ -336,7 +336,7 @@ jobs:
       instance: ${{ steps.filter.outputs.instance }}
       next-version: ${{ steps.next-version.outputs.tag }}
     steps:
-      - uses: actions/checkout@v5.1.0
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -494,7 +494,7 @@ jobs:
       BUILD_FRONTEND: ${{ needs.preview-frontend.result }}
       BUILD_INSTANCE: ${{ needs.preview-instance.result }}
     steps:
-      - uses: actions/checkout@v5.1.0
+      - uses: actions/checkout@v7.0.1
 
       - name: Wait for preview
         id: wait
@@ -588,7 +588,7 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v5.1.0
+      - uses: actions/checkout@v7.0.1
 
       - name: Create and push git tag
         run: |
