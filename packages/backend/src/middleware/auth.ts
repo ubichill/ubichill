@@ -1,4 +1,4 @@
-import { authorKeyRepository, userRepository } from '@ubichill/db';
+import { authorKeyRepository, fediverseAccountRepository, userRepository } from '@ubichill/db';
 import { OFFICIAL_HANDLE } from '@ubichill/shared';
 import type { NextFunction, Request, Response } from 'express';
 import { auth } from '../lib/auth';
@@ -6,6 +6,7 @@ import { bearerToken, sha256Base64Url } from '../services/auth/cliAuth';
 import {
     canActAsAdmin,
     isRecentlyAuthenticated,
+    isStrongSession,
     type SessionFacts,
     toDateOrNull,
 } from '../services/auth/sessionAssurance';
@@ -96,9 +97,31 @@ export const requireAuth = authRequired({ fresh: false });
  * 再認証をしたものだけ通す。奪われたセッションでログイン手段を足され、パスワードを変えても残るのを防ぐ。
  */
 export async function requireRecentAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
-    await requireFreshAuth(req, res, () => {
-        if (!req.session || !isRecentlyAuthenticated(req.session, new Date())) {
+    await requireFreshAuth(req, res, async () => {
+        const session = req.session;
+        if (!session || !req.user) return;
+        const hasPassword = await fediverseAccountRepository.hasPassword(req.user.id);
+        if (!isRecentlyAuthenticated(session, new Date(), hasPassword)) {
             res.status(403).json({ error: 'もう一度本人確認をしてください', code: 'reauth-required' });
+            return;
+        }
+        next();
+    });
+}
+
+/**
+ * アカウントの安全に関わる操作（公開環境・CLI の承認・ほかの端末のログアウト）の認証。DB のセッションで、
+ * パスワードを持つ人はパスワードを確かめたセッションに限る（SSO だけで入ったセッションでは断る）。
+ */
+export async function requireStrongSession(req: Request, res: Response, next: NextFunction): Promise<void> {
+    await requireFreshAuth(req, res, async () => {
+        const session = req.session;
+        if (!session || !req.user) return;
+        if (!isStrongSession(session, await fediverseAccountRepository.hasPassword(req.user.id))) {
+            res.status(403).json({
+                error: 'この操作の前に、設定の「アカウント」でパスワードの本人確認をしてください',
+                code: 'password-required',
+            });
             return;
         }
         next();

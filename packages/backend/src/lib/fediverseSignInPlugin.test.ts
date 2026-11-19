@@ -79,6 +79,8 @@ function setup(callbackOutcome: CallbackOutcome) {
         plugins: [
             fediverseSignInPlugin({
                 getSignIn: async () => signIn,
+                hasPassword: async (userId) =>
+                    db.account.some((a) => a.userId === userId && a.providerId === 'credential'),
                 options: () => ({ enabled: true, registrationOpen: true, featuredServers: ['mi.example'] }),
             }),
         ],
@@ -241,6 +243,9 @@ describe('fediverseSignInPlugin', () => {
         expect(res.status).toBe(403);
         expect(await res.json()).toMatchObject({ code: 'reauth-required' });
         expect(t.seen.started).toBe(1);
+        // 作った直後でも、パスワードを確かめていない（SSO で入った）セッションでは始められない
+        Object.assign(t.db.session[0] ?? {}, { createdAt: new Date(), passwordVerifiedAt: null });
+        expect((await link()).status).toBe(403);
     });
 
     it('登録をやめると鍵を消し、クッキーも消す', async () => {

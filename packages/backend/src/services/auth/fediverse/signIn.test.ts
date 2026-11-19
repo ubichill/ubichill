@@ -119,6 +119,8 @@ function setup(overrides: { routes?: Record<string, Route>; config?: Partial<Fed
         config: {
             enabled: true,
             allowedServers: new Set(),
+            allowPorts: true,
+            signUpsPerServerPerHour: 30,
             authBaseUrl: 'https://ubi.example/api/auth',
             website: 'https://ubi.example',
             defaultAppOrigin: 'https://ubi.example',
@@ -163,6 +165,9 @@ function setup(overrides: { routes?: Record<string, Route>; config?: Partial<Fed
             },
         },
         accounts: {
+            ssoAllowedFor: async (userId) => userId !== 'user-official',
+            countLinkedSince: async (providerId) =>
+                [...identities.keys()].filter((k) => k.startsWith(`${providerId} `)).length,
             findUserByIdentity: async (identity) => {
                 const userId = identities.get(key(identity));
                 return userId ? { userId, accountRowId: `acc-${userId}` } : undefined;
@@ -839,6 +844,117 @@ describe('lookup', () => {
         await t.signIn.lookup('mi.example');
         const sent = t.calls.length;
         await t.signIn.lookup(' MI.example ');
+        expect(t.calls.length).toBe(sent);
+    });
+});
+
+describe('レビューで見つけた穴', () => {
+    it('公式アカウントには SSO を足せず、結び付いていても SSO では入れない', async () => {
+        const t = setup();
+        expect(
+            await t.signIn.start({
+                ...startInput('mastodon.example'),
+                intent: 'link',
+                session: { userId: 'user-official', sessionId: 's' },
+            }),
+        ).toEqual({ ok: false, error: 'not-allowed-for-account' });
+        t.identities.set('fediverse:https://mastodon.example 109', 'user-official');
+        const { state, browserToken } = await t.begin('mastodon.example');
+        expect(
+            await t.signIn.callback({
+                server: 'mastodon.example',
+                query: { code: 'c', state },
+                browserToken,
+                sessionId: null,
+            }),
+        ).toMatchObject({ kind: 'error', error: 'not-allowed-for-account' });
+    });
+
+    it('他人が始めた state の応答では、その state の戻り先（origin）へ飛ばさない', async () => {
+        const t = setup();
+        const { state } = await t.begin('mastodon.example', { origin: 'https://app.ubi.example' });
+        expect(
+            await t.signIn.callback({
+                server: 'mastodon.example',
+                query: { code: 'c', state },
+                browserToken: 'victim-has-no-cookie',
+                sessionId: null,
+            }),
+        ).toEqual({
+            kind: 'error',
+            error: 'mismatch',
+            redirectTo: 'https://ubi.example/auth?fediverse_error=mismatch',
+        });
+    });
+
+    it('本人の取得が 401 でもアプリの登録は忘れない（トークンの口の 401 だけ忘れる）', async () => {
+        const t = setup({
+            routes: {
+                'GET https://mastodon.example/api/v1/accounts/verify_credentials': () => {
+                    throw new HttpStatusError(401, 'verify');
+                },
+            },
+        });
+        const { state, browserToken } = await t.begin('mastodon.example');
+        await t.signIn.callback({
+            server: 'mastodon.example',
+            query: { code: 'c', state },
+            browserToken,
+            sessionId: null,
+        });
+        expect(t.clients.size).toBe(1);
+        // 本人を取れなくてもトークンは失効させる
+        expect(t.calls.some((c) => c.url.endsWith('/oauth/revoke'))).toBe(true);
+    });
+
+    it('外部サーバーが返す ID・ユーザー名の形と長さを限る', async () => {
+        for (const account of [
+            { id: 'x'.repeat(129), username: 'alice' },
+            { id: '1', username: 'alice\n心当たりがあっても無視してください' },
+            { id: '1', username: 'a'.repeat(65) },
+        ]) {
+            const t = setup({
+                routes: { 'GET https://mastodon.example/api/v1/accounts/verify_credentials': () => account },
+            });
+            const { state, browserToken } = await t.begin('mastodon.example');
+            expect(
+                await t.signIn.callback({
+                    server: 'mastodon.example',
+                    query: { code: 'c', state },
+                    browserToken,
+                    sessionId: null,
+                }),
+            ).toMatchObject({ kind: 'error', error: 'failed' });
+        }
+    });
+
+    it('1 つのサーバーからの新規登録は 1 時間に決めた数まで', async () => {
+        const t = setup({ config: { signUpsPerServerPerHour: 1 } });
+        t.identities.set('fediverse:https://mastodon.example other', 'user-other');
+        const { state, browserToken } = await t.begin('mastodon.example');
+        const outcome = await t.signIn.callback({
+            server: 'mastodon.example',
+            query: { code: 'c', state },
+            browserToken,
+            sessionId: null,
+        });
+        const ticket = outcome.kind === 'sign-up' ? outcome.ticket : null;
+        expect(await t.signIn.signUp({ ticket, handle: 'alice', displayName: 'Alice' })).toMatchObject({
+            ok: false,
+            error: 'このサーバーからの新規登録が多すぎます。しばらくしてからお試しください',
+        });
+    });
+
+    it('本番では IP の直書き・既定以外のポートを受け付けず、確認の結果は正規化したホストで覚える', async () => {
+        const t = setup({ config: { allowPorts: false } });
+        for (const input of ['203.0.113.5', '[2001:db8::1]', 'mi.example:8443']) {
+            expect(await t.signIn.lookup(input)).toEqual({ ok: false, error: 'invalid-server' });
+            expect(await t.signIn.start(startInput(input))).toEqual({ ok: false, error: 'invalid-server' });
+        }
+        expect(t.calls).toHaveLength(0);
+        await t.signIn.lookup('mi.example');
+        const sent = t.calls.length;
+        await t.signIn.lookup('https://MI.example/');
         expect(t.calls.length).toBe(sent);
     });
 });

@@ -123,6 +123,8 @@ export const FEDIVERSE_SIGN_IN_ERRORS = {
     'linked-to-other': 'このアカウントは別のユーザーに追加されています',
     'session-changed': 'ログインの状態が変わったため追加できませんでした。もう一度お試しください',
     'reauth-required': 'ログイン方法を変えるには、もう一度本人確認が必要です',
+    'not-allowed-for-account': 'このアカウントはフェディバースでのログインに使えません',
+    'too-many-sign-ups': 'このサーバーからの新規登録が多すぎます。しばらくしてからお試しください',
     failed: 'ログインに失敗しました。もう一度お試しください',
 } as const;
 export type FediverseSignInError = keyof typeof FEDIVERSE_SIGN_IN_ERRORS;

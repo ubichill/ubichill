@@ -1,7 +1,10 @@
 /**
- * セッションがどこまで本人を確かめたか。外部の SSO はそのサーバーが乗っ取られると誰にでもなれるので、
- * 管理者の操作は SSO と独立した確認（パスワード）を済ませたセッションだけに許す。ログイン方法を変える操作は、
- * 奪われたセッションで手段を足されないよう、直近にログインか再認証をしたセッションだけに許す。
+ * セッションがどこまで本人を確かめたか。外部の SSO はそのサーバーが乗っ取られると誰にでもなれる。
+ * - 管理者の操作は、SSO と独立した確認（パスワード）を済ませたセッションだけに許す。
+ * - パスワードを持つユーザーは、アカウントの安全に関わる操作（ログイン方法・公開環境・CLI の承認・ほかの端末の
+ *   ログアウト）もパスワードを確かめたセッションに限る。SSO の乗っ取りを、乗っ取りが終わった後も残る権限
+ *   （足したログイン方法・API トークン）に変えさせないため。パスワードの無いユーザーは SSO が唯一の手段なので限らない。
+ * - ログイン方法を変える操作は、奪われた古いセッションで手段を足されないよう、直近の本人確認を求める。
  */
 
 /** ログイン方法の追加・解除に求める「直近」の長さ。 */
@@ -17,10 +20,18 @@ export function isPasswordVerified(session: SessionFacts): boolean {
     return session.passwordVerifiedAt !== null;
 }
 
-/** 直近にログインしたか、パスワードで再認証したか。 */
-export function isRecentlyAuthenticated(session: SessionFacts, now: Date): boolean {
-    const latest = Math.max(session.createdAt.getTime(), session.passwordVerifiedAt?.getTime() ?? 0);
-    return now.getTime() - latest <= RECENT_AUTHENTICATION_MS;
+/** アカウントの安全に関わる操作をこのセッションでできるか（パスワードを持つ人は、パスワードを確かめたセッション）。 */
+export function isStrongSession(session: SessionFacts, hasPassword: boolean): boolean {
+    return !hasPassword || isPasswordVerified(session);
+}
+
+/**
+ * 直近に本人を確かめたか。パスワードを持つ人はパスワードを 10 分以内に確かめたこと、持たない人は 10 分以内に
+ * ログインしたこと（SSO でログインし直す）。
+ */
+export function isRecentlyAuthenticated(session: SessionFacts, now: Date, hasPassword: boolean): boolean {
+    const recent = (at: Date | null) => at !== null && now.getTime() - at.getTime() <= RECENT_AUTHENTICATION_MS;
+    return recent(session.passwordVerifiedAt) || (!hasPassword && recent(session.createdAt));
 }
 
 /** 管理者の権限をこのセッションで使えるか。 */

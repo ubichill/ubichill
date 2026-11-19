@@ -2,6 +2,7 @@ import { randomBytes, randomInt } from 'node:crypto';
 import {
     accounts,
     db,
+    fediverseAccountRepository,
     pendingRegistrationRepository,
     sessions,
     userRepository,
@@ -301,6 +302,7 @@ export const auth = betterAuth({
     plugins: [
         fediverseSignInPlugin({
             getSignIn: () => getFediverseSignIn(),
+            hasPassword: (userId) => fediverseAccountRepository.hasPassword(userId),
             options: () => ({
                 enabled: appConfig.fediverseSignIn.enabled,
                 registrationOpen: appConfig.registrationOpen,

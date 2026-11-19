@@ -1,4 +1,4 @@
-import { and, asc, eq, like, lt, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, like, lt, sql } from 'drizzle-orm';
 import { db } from '../index';
 import { accounts, externalAccountProfiles, fediverseOauthClients, sessions, users, verifications } from '../schema';
 
@@ -188,6 +188,38 @@ export const fediverseAccountRepository = {
             await tx.delete(accounts).where(eq(accounts.id, accountRowId));
             return { status: 'unlinked' as const };
         });
+    },
+
+    /** そのサーバー（providerId）の外部アカウントが、ある時刻から後に何件結び付いたか（登録の量の制限に使う）。 */
+    async countLinkedSince(providerId: string, since: Date): Promise<number> {
+        const [row] = await db
+            .select({ n: sql<number>`count(*)::int` })
+            .from(accounts)
+            .where(and(eq(accounts.providerId, providerId), gte(accounts.createdAt, since)));
+        return row?.n ?? 0;
+    },
+
+    /**
+     * 今の設定で使えなくなったサーバー（無効化・許可の外・block）の外部アカウントで作ったセッションを消す。
+     * 結び付き自体は残す（設定を戻せば同じアカウントで入れる）。消した数を返す。
+     */
+    async revokeSessionsOfUnusable(isUsable: (providerId: string) => boolean): Promise<number> {
+        const providers = await db
+            .selectDistinct({ providerId: accounts.providerId })
+            .from(sessions)
+            .innerJoin(accounts, eq(accounts.id, sessions.authAccountId));
+        const unusable = providers.map((p) => p.providerId).filter((id) => !isUsable(id));
+        if (unusable.length === 0) return 0;
+        const removed = await db
+            .delete(sessions)
+            .where(
+                inArray(
+                    sessions.authAccountId,
+                    db.select({ id: accounts.id }).from(accounts).where(inArray(accounts.providerId, unusable)),
+                ),
+            )
+            .returning({ id: sessions.id });
+        return removed.length;
     },
 
     async listLinked(userId: string): Promise<LinkedFediverseAccount[]> {

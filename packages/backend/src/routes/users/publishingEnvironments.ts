@@ -1,7 +1,7 @@
 /** 公開環境（署名鍵。`/api/v1/users/me/publishing-environments`）。流れは services/authors/publishingEnvironmentService.ts。 */
 import { RevokeReasonSchema } from '@ubichill/shared';
 import { Router } from 'express';
-import { requireAuth, requireFreshAuth } from '../../middleware/auth';
+import { requireAuth, requireStrongSession } from '../../middleware/auth';
 import { publishingEnvironmentService } from '../../services/authors/publishingEnvironmentService';
 
 export const router = Router();
@@ -13,7 +13,7 @@ router.get('/me/publishing-environments', requireAuth, async (req, res) => {
 });
 
 // このブラウザを公開環境として登録する
-router.post('/me/publishing-environments', requireFreshAuth, async (req, res) => {
+router.post('/me/publishing-environments', requireStrongSession, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const { publicKey, at, signature } = (req.body ?? {}) as { publicKey?: unknown; at?: unknown; signature?: unknown };
     if (typeof publicKey !== 'string' || typeof at !== 'string' || typeof signature !== 'string') {
@@ -33,7 +33,7 @@ router.post('/me/publishing-environments', requireFreshAuth, async (req, res) =>
 });
 
 // 取り消す
-router.post('/me/publishing-environments/:id/revoke', requireFreshAuth, async (req, res) => {
+router.post('/me/publishing-environments/:id/revoke', requireStrongSession, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const reason = RevokeReasonSchema.safeParse(req.body?.reason);
     if (!reason.success) return res.status(400).json({ error: '取り消す理由（lost / compromised）が必要です' });

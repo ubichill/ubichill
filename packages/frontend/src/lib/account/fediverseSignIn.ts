@@ -33,6 +33,9 @@ async function authRequest<T>(path: string, init?: RequestInit): Promise<T> {
     if (!res.ok) {
         const code = body.code ?? null;
         // 理由のコードが無い失敗（古い backend・中継の不調など）は、状態の番号を添えて出す
+        if (res.status === 429) {
+            throw new FediverseRequestError('操作が多すぎます。しばらくしてからお試しください', 'rate-limited');
+        }
         throw new FediverseRequestError(
             isFediverseSignInError(code)
                 ? FEDIVERSE_SIGN_IN_ERRORS[code]

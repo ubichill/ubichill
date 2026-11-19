@@ -48,15 +48,22 @@ const bearer = (token: string) => ({ Authorization: `Bearer ${token}`, Accept: '
 
 const AppSchema = z.object({ client_id: z.string().min(1), client_secret: z.string().min(1) });
 const TokenSchema = z.object({ access_token: z.string().min(1) });
+// 外部サーバーの応答は信用しない。ID とユーザー名は DB・通知メールに入るので形と長さを限る
+const ExternalIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/);
+const ExternalUsernameSchema = z.string().regex(/^[A-Za-z0-9_.-]{1,64}$/);
+const ExternalNameSchema = z
+    .string()
+    .nullish()
+    .transform((v) => (v ? v.slice(0, 200) : v));
 const MastodonAccountSchema = z.object({
-    id: z.string().min(1),
-    username: z.string().min(1),
-    display_name: z.string().nullish(),
+    id: ExternalIdSchema,
+    username: ExternalUsernameSchema,
+    display_name: ExternalNameSchema,
 });
 const MisskeyAccountSchema = z.object({
-    id: z.string().min(1),
-    username: z.string().min(1),
-    name: z.string().nullish(),
+    id: ExternalIdSchema,
+    username: ExternalUsernameSchema,
+    name: ExternalNameSchema,
     // 他サーバーのユーザーなら host が入る（自分のサーバーの本人なら null）
     host: z.string().nullish(),
 });

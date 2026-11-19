@@ -18,6 +18,7 @@ import { appConfig } from './config';
 import { auth, authRateLimitEnabled } from './lib/auth';
 import { isPublicAuthPath } from './lib/authEndpoints';
 import { requireSharedRateLimitForLogin } from './lib/authRateLimit';
+import { sharedLimiter } from './lib/rateLimit';
 import { connectSubscriber, redis, redisHealth } from './lib/redis';
 import { sharedRateLimit } from './lib/sharedRateLimit';
 import { blockOfficialPasswordChange } from './middleware/auth';
@@ -38,7 +39,7 @@ import { router as socialRouter } from './routes/social';
 import { router as usersRouter } from './routes/users';
 import { router as webfingerRouter } from './routes/webfinger';
 import { router as worldsRouter } from './routes/worlds';
-import { FEDIVERSE_FLOW_PREFIX } from './services/auth/fediverse';
+import { FEDIVERSE_FLOW_PREFIX, fediverseLoginPolicyChanged } from './services/auth/fediverse';
 import { bootstrapOfficialAccount } from './services/authors/officialAccountService';
 import { backendEvents, createRedisBackendBus } from './services/cluster/backendEvents';
 import { maintenanceGate } from './services/cluster/maintenance';
@@ -133,6 +134,22 @@ app.use('/api/auth', (req, res, next) => {
     res.status(404).json({ error: 'Not Found' });
 });
 app.use('/api/auth/change-password', blockOfficialPasswordChange);
+// フェディバースのログインの IP ごとの制限。better-auth の制限は X-Forwarded-For が 2 段以上だと IP を取れず
+// 全員で 1 つの枠になる（1 人で全員を止められる）ので、trust proxy で IP を取る Express の側で数える
+app.use(
+    '/api/auth/fediverse/start',
+    sharedLimiter('fediverse-start', 60_000, 10, 'ログインの開始が多すぎます。しばらくしてからお試しください'),
+);
+app.use(
+    '/api/auth/fediverse/lookup',
+    sharedLimiter('fediverse-lookup', 60_000, 60, 'サーバーの確認が多すぎます。しばらくしてからお試しください'),
+);
+app.use(
+    '/api/auth/fediverse/sign-up',
+    sharedLimiter('fediverse-sign-up', 15 * 60_000, 10, '登録が多すぎます。しばらくしてからお試しください', {
+        skip: (req) => req.method !== 'POST',
+    }),
+);
 // ログインだけは Redis が使えない間も通さない（総当たりの上限を外さない）。ほかの認証の口は制限なしで通す
 app.use('/api/auth/sign-in/email', requireSharedRateLimitForLogin(redis, authRateLimitEnabled));
 app.use('/api/auth', toNodeHandler(auth));
@@ -239,6 +256,10 @@ async function startServer() {
                 authFlowRepository
                     .deleteExpired(FEDIVERSE_FLOW_PREFIX, new Date())
                     .catch((err: unknown) => logger.error('フェディバースのログインの途中の状態の掃除に失敗:', err)),
+                // 無効にした・block したサーバーのアカウントで入ったログインを切る（設定の変更・再デプロイの後に追いつく）
+                fediverseLoginPolicyChanged().catch((err: unknown) =>
+                    logger.error('使えなくなったサーバーのログインの掃除に失敗:', err),
+                ),
                 // インスタンスが消えて消せるようになった古い版を消し直す
                 worldRegistry
                     .pruneAllVersions()

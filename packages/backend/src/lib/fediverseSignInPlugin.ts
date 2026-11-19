@@ -51,11 +51,13 @@ async function signInAs(ctx: EndpointContext, userId: string, accountRowId: stri
 
 export interface FediverseSignInPluginOptions {
     getSignIn: () => Promise<FediverseSignIn>;
+    /** パスワードを持つユーザーか（連携の開始に求める本人確認を決める） */
+    hasPassword: (userId: string) => Promise<boolean>;
     /** ログイン画面に出す設定（使えるか・新規登録を受け付けるか・並べるサーバー） */
     options: () => { enabled: boolean; registrationOpen: boolean; featuredServers: readonly string[] };
 }
 
-export function fediverseSignInPlugin({ getSignIn, options }: FediverseSignInPluginOptions) {
+export function fediverseSignInPlugin({ getSignIn, hasPassword, options }: FediverseSignInPluginOptions) {
     return {
         id: 'fediverse-sign-in',
         endpoints: {
@@ -79,7 +81,8 @@ export function fediverseSignInPlugin({ getSignIn, options }: FediverseSignInPlu
                         ctx.body.intent === 'link'
                             ? await getSessionFromCtx(ctx, { disableCookieCache: true, disableRefresh: true })
                             : null;
-                    // 奪われたセッションでログイン方法を足されないよう、直近にログインか再認証をしたセッションに限る
+                    // 奪われたセッションでログイン方法を足されないよう、直近に本人確認をしたセッションに限る
+                    // （パスワードを持つ人はパスワードで。SSO で入った直後のセッションだけでは足せない）
                     if (
                         current &&
                         !isRecentlyAuthenticated(
@@ -88,6 +91,7 @@ export function fediverseSignInPlugin({ getSignIn, options }: FediverseSignInPlu
                                 passwordVerifiedAt: toDateOrNull(current.session.passwordVerifiedAt),
                             },
                             new Date(),
+                            await hasPassword(current.user.id),
                         )
                     ) {
                         throw APIError.fromStatus('FORBIDDEN', { code: 'reauth-required', message: 'reauth-required' });
@@ -196,11 +200,11 @@ export function fediverseSignInPlugin({ getSignIn, options }: FediverseSignInPlu
             }),
         },
         rateLimit: [
-            // 開始は相手のサーバーへ要求を送る（アプリ登録・メタデータ）ので、IP ごとに強く絞る
-            { pathMatcher: (path: string) => path === '/fediverse/start', window: 60, max: 10 },
-            { pathMatcher: (path: string) => path === '/fediverse/sign-up', window: 60, max: 20 },
-            // 並べたサーバーと入力したサーバーごとに呼ばれ、相手へ要求を送る（結果は backend が 5 分覚える）
-            { pathMatcher: (path: string) => path === '/fediverse/lookup', window: 60, max: 30 },
+            // IP ごとの制限は Express の側（index.ts）。better-auth は IP を取れないと全員で 1 つの枠にするので、
+            // ここで絞ると 1 人で全員を止められる。既定（100 回/分）より緩めて、全体の上限としてだけ置く
+            { pathMatcher: (path: string) => path === '/fediverse/start', window: 60, max: 2000 },
+            { pathMatcher: (path: string) => path === '/fediverse/sign-up', window: 60, max: 2000 },
+            { pathMatcher: (path: string) => path === '/fediverse/lookup', window: 60, max: 5000 },
         ],
     } satisfies BetterAuthPlugin;
 }

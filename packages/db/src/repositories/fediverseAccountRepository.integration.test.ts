@@ -244,4 +244,33 @@ describe.skipIf(!RUN)('fediverseAccountRepository (DB統合)', () => {
         expect(left.map((r) => r.id).sort()).toEqual([`v-${stamp}-s2`, `v-${stamp}-s3`]);
         await db.delete(verifications).where(eq(verifications.id, `v-${stamp}-s3`));
     });
+
+    it('使えなくなったサーバーの外部アカウントで作ったセッションだけ消し、結び付きは残す', async () => {
+        await fediverseAccountRepository.createUser(newUser('w'));
+        const userId = `fu-${stamp}-w`;
+        const blockedProvider = `fediverse:https://blocked-${stamp}.example`;
+        await fediverseAccountRepository.link({
+            userId,
+            accountRowId: `fa-${stamp}-w2`,
+            identity: { ...newUser('w').identity, providerId: blockedProvider, accountId: 'w2' },
+            now,
+        });
+        const expiresAt = new Date(now.getTime() + 60_000);
+        await db.insert(sessions).values([
+            { id: `s-${stamp}-w1`, token: `t-${stamp}-w1`, userId, expiresAt, authAccountId: `fa-${stamp}-w` },
+            { id: `s-${stamp}-w2`, token: `t-${stamp}-w2`, userId, expiresAt, authAccountId: `fa-${stamp}-w2` },
+            { id: `s-${stamp}-w3`, token: `t-${stamp}-w3`, userId, expiresAt, authAccountId: null },
+        ]);
+        const removed = await fediverseAccountRepository.revokeSessionsOfUnusable((p) => p !== blockedProvider);
+        expect(removed).toBe(1);
+        const left = await db.select({ id: sessions.id }).from(sessions).where(eq(sessions.userId, userId));
+        expect(left.map((r) => r.id).sort()).toEqual([`s-${stamp}-w1`, `s-${stamp}-w3`]);
+        expect(await fediverseAccountRepository.listLinked(userId)).toHaveLength(2);
+        expect(await fediverseAccountRepository.countLinkedSince(blockedProvider, new Date(now.getTime() - 1000))).toBe(
+            1,
+        );
+        expect(
+            await fediverseAccountRepository.countLinkedSince(blockedProvider, new Date(now.getTime() + 60_000)),
+        ).toBe(0);
+    });
 });

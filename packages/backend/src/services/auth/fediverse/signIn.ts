@@ -12,6 +12,7 @@ import {
     type DisplayNameSchema,
     displayNameCandidateOf,
     displayNameKey,
+    FEDIVERSE_SIGN_IN_ERRORS,
     type FediverseSignInError,
     type FediverseSignInIntent,
     type FediverseSignUpCandidate,
@@ -53,6 +54,10 @@ export interface FediverseSignInDeps {
         enabled: boolean;
         /** 空ならすべてのサーバー */
         allowedServers: ReadonlySet<string>;
+        /** 既定（443）以外のポートのサーバーを受け付けるか（開発だけ。本番で任意のポートを試させない） */
+        allowPorts: boolean;
+        /** 1 つのサーバーから 1 時間に受け付ける新規登録の数（偽のサーバーでアカウントを量産させない） */
+        signUpsPerServerPerHour: number;
         /** better-auth の baseURL（`https://example.com/api/auth`）。戻り先と Misskey の client_id を作る */
         authBaseUrl: string;
         /** Mastodon のアプリ登録に載せる Ubichill の URL */
@@ -82,6 +87,10 @@ export interface FediverseSignInDeps {
         remove(identifier: string): Promise<void>;
     };
     accounts: {
+        /** このユーザーが SSO を使えるか（公式アカウントは使えない。外部サーバーに公式の作者の権限を渡さない） */
+        ssoAllowedFor(userId: string): Promise<boolean>;
+        /** そのサーバー（providerId）の外部アカウントが、ある時刻から後に何件結び付いたか */
+        countLinkedSince(providerId: string, since: Date): Promise<number>;
         findUserByIdentity(
             identity: ExternalIdentity,
             now: Date,
@@ -205,6 +214,16 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
         (deps.config.allowedServers.size === 0 || deps.config.allowedServers.has(host)) &&
         !(await deps.isBlocked(host));
 
+    /** IP の直書きと、本番での既定以外のポートは受け付けない（公開 IP のポートを調べる手段にさせない）。 */
+    const parseServer = (input: string): { ok: true; host: string } | { ok: false } => {
+        const parsed = parseFediverseServer(input);
+        if (!parsed.ok) return { ok: false };
+        const hostname = parsed.host.replace(/:\d+$/, '');
+        const ipLiteral = /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.startsWith('[');
+        const hasPort = parsed.host !== hostname;
+        return ipLiteral || (hasPort && !deps.config.allowPorts) ? { ok: false } : parsed;
+    };
+
     const discover = async (host: string): Promise<AuthorizationServer | 'unsupported' | 'unreachable'> => {
         try {
             const metadata = await deps.http.json(`https://${host}/.well-known/oauth-authorization-server`, {
@@ -247,8 +266,11 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
     return {
         /** 選んだサーバーの公開情報（名前・アイコン・種類）。ログインに使えるかもここで分かる。 */
         lookup(input: string): Promise<LookupOutcome> {
-            return lookupCache(input, () =>
-                lookupFediverseServer(input, {
+            const parsed = parseServer(input);
+            if (!parsed.ok) return Promise.resolve({ ok: false, error: 'invalid-server' });
+            // 書き方の違い（大文字・https:// 付き）で覚えた結果を外させない
+            return lookupCache(parsed.host, () =>
+                lookupFediverseServer(parsed.host, {
                     http: deps.http,
                     discover,
                     serverAllowed,
@@ -286,10 +308,13 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
             session: { userId: string; sessionId: string } | null;
         }): Promise<StartOutcome> {
             if (!deps.config.enabled) return { ok: false, error: 'disabled' };
-            const parsed = parseFediverseServer(input.server);
+            const parsed = parseServer(input.server);
             if (!parsed.ok) return { ok: false, error: 'invalid-server' };
             if (!(await serverAllowed(parsed.host))) return { ok: false, error: 'server-not-allowed' };
             if (input.intent === 'link' && !input.session) return { ok: false, error: 'session-changed' };
+            if (input.session && !(await deps.accounts.ssoAllowedFor(input.session.userId))) {
+                return { ok: false, error: 'not-allowed-for-account' };
+            }
             const server = await discover(parsed.host);
             if (server === 'unsupported') return { ok: false, error: 'unsupported-server' };
             if (server === 'unreachable') return { ok: false, error: 'server-unreachable' };
@@ -344,6 +369,8 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
             sessionId: string | null;
         }): Promise<CallbackOutcome> {
             const now = deps.now();
+            // state の中身（戻り先の origin）は、このブラウザーが始めたと確かめた後にだけ使う。それより前の失敗は
+            // 既定の画面に戻す（他人が始めた state で、任意の origin へ飛ばさせない）
             const fail = (error: FediverseSignInError, state?: FlowState): CallbackOutcome => {
                 const appOrigin = state?.appOrigin ?? deps.config.defaultAppOrigin;
                 const path = state?.intent === 'link' ? state.returnTo : '/auth';
@@ -357,7 +384,7 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
             if (!state) return fail('expired');
             // 開始の後に止められたら、応答が来ても続けない
             if (!deps.config.enabled) return fail('disabled', state);
-            if (!input.browserToken || hash(input.browserToken) !== state.browserHash) return fail('mismatch', state);
+            if (!input.browserToken || hash(input.browserToken) !== state.browserHash) return fail('mismatch');
             if (input.server !== state.server.host) return fail('mismatch', state);
             if (input.query.error) return fail(input.query.error === 'access_denied' ? 'denied' : 'failed', state);
             // Misskey は応答に発行元を付ける（RFC 9207）。付けるサーバーでは必ず照合する
@@ -374,25 +401,29 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
             if (!client) return fail('failed', state);
             const server: AuthorizationServer = state.server;
             const account = await (async () => {
-                try {
-                    const token = await exchangeCode(deps.http, server, {
-                        client,
-                        code: input.query.code ?? '',
-                        redirectUri: state.redirectUri,
-                        codeVerifier: state.codeVerifier,
-                    });
-                    const fetched = await fetchAccount(deps.http, server, token);
-                    await revokeToken(deps.http, server, { client, token }).catch((error: unknown) =>
-                        deps.warn(`トークンを失効できませんでした: ${server.host}`, error),
-                    );
-                    return fetched;
-                } catch (error) {
-                    deps.warn(`フェディバースのログインに失敗しました: ${server.host}`, error);
-                    // 相手のサーバーでアプリが消されたら、次は登録し直す
+                const token = await exchangeCode(deps.http, server, {
+                    client,
+                    code: input.query.code ?? '',
+                    redirectUri: state.redirectUri,
+                    codeVerifier: state.codeVerifier,
+                }).catch(async (error: unknown) => {
+                    deps.warn(`フェディバースのトークンを受け取れませんでした: ${server.host}`, error);
+                    // 相手のサーバーでアプリが消された（トークンの口がクライアントを認めない）ときだけ、次は登録し直す
                     if (server.software === 'mastodon' && error instanceof HttpStatusError && error.status === 401) {
                         await deps.clients.forget(server.origin, state.redirectUri);
                     }
                     return null;
+                });
+                if (!token) return null;
+                try {
+                    return await fetchAccount(deps.http, server, token);
+                } catch (error) {
+                    deps.warn(`フェディバースの本人の情報を受け取れませんでした: ${server.host}`, error);
+                    return null;
+                } finally {
+                    await revokeToken(deps.http, server, { client, token }).catch((error: unknown) =>
+                        deps.warn(`トークンを失効できませんでした: ${server.host}`, error),
+                    );
                 }
             })();
             if (!account) return fail('failed', state);
@@ -406,6 +437,8 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
             const back = `${state.appOrigin}${state.returnTo}`;
 
             if (state.intent === 'link' && state.link) {
+                if (!(await deps.accounts.ssoAllowedFor(state.link.userId)))
+                    return fail('not-allowed-for-account', state);
                 const linked = await deps.accounts.link({
                     userId: state.link.userId,
                     accountRowId: deps.newId('account'),
@@ -425,6 +458,9 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
             }
 
             const existing = await deps.accounts.findUserByIdentity(identity, now);
+            if (existing && !(await deps.accounts.ssoAllowedFor(existing.userId))) {
+                return fail('not-allowed-for-account', state);
+            }
             if (existing) {
                 // 新規登録を押したが登録済みだった。そのままログインし、画面で知らせる
                 const redirectTo =
@@ -491,12 +527,22 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
                 return { ok: false, status: 400, error: 'このサーバーのアカウントでは登録できません' };
             }
             const existing = await deps.accounts.findUserByIdentity(pending.identity, now);
+            if (existing && !(await deps.accounts.ssoAllowedFor(existing.userId))) {
+                return { ok: false, status: 400, error: 'このアカウントはフェディバースでのログインに使えません' };
+            }
             if (existing) {
                 await deps.flows.remove(identifier);
                 return { ok: true, ...existing, returnTo: pending.returnTo };
             }
             if (!deps.registrationOpen()) {
                 return { ok: false, status: 400, error: '現在、新規登録を受け付けていません' };
+            }
+            const recent = await deps.accounts.countLinkedSince(
+                pending.identity.providerId,
+                new Date(now.getTime() - 60 * 60 * 1000),
+            );
+            if (recent >= deps.config.signUpsPerServerPerHour) {
+                return { ok: false, status: 400, error: FEDIVERSE_SIGN_IN_ERRORS['too-many-sign-ups'] };
             }
             const handle = deps.validate.handle.safeParse(typeof input.handle === 'string' ? input.handle.trim() : '');
             if (!handle.success)

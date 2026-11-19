@@ -1,7 +1,7 @@
 /** 本番の依存（safeFetch・DB・設定）につないだフェディバースのログイン。 */
 import { randomBytes } from 'node:crypto';
 import { authFlowRepository, domainPolicyRepository, fediverseAccountRepository, userRepository } from '@ubichill/db';
-import { DisplayNameSchema, type DomainRestriction, HandleSchema, policyFor } from '@ubichill/shared';
+import { DisplayNameSchema, type DomainRestriction, HandleSchema, OFFICIAL_HANDLE, policyFor } from '@ubichill/shared';
 import { appConfig } from '../../../config';
 import { safeFetch } from '../../../lib/safeFetch';
 import { logger } from '../../../utils/logger';
@@ -24,14 +24,37 @@ const http: FediverseHttp = {
     },
 };
 
-/** 連合で block にしたドメインか、を引く関数（一度読んだ方針で答える。ロック中にも使える）。 */
-async function loadBlockedHosts(): Promise<(host: string) => boolean> {
-    const restrictions = new Map<string, DomainRestriction>(
-        (await domainPolicyRepository.list()).flatMap((r) =>
-            r.policy === 'block' || r.policy === 'limit' ? [[r.domain.toLowerCase(), r.policy]] : [],
-        ),
-    );
-    return (host) => policyFor(host.replace(/:\d+$/, ''), restrictions) === 'block';
+const BLOCKED_HOSTS_TTL_MS = 10_000;
+const blockedHostsCache: { at: number; value: Promise<(host: string) => boolean> | null } = { at: 0, value: null };
+
+/**
+ * 連合で block にしたドメインか、を引く関数（一度読んだ方針で答える。ロック中にも使える）。
+ * 入力の確認のたびに表を全部読まないよう 10 秒だけ覚える（方針を変えたら forgetBlockedHosts で捨てる）。
+ */
+function loadBlockedHosts(): Promise<(host: string) => boolean> {
+    if (blockedHostsCache.value && Date.now() - blockedHostsCache.at < BLOCKED_HOSTS_TTL_MS) {
+        return blockedHostsCache.value;
+    }
+    const value = domainPolicyRepository.list().then((rows) => {
+        const restrictions = new Map<string, DomainRestriction>(
+            rows.flatMap((r) =>
+                r.policy === 'block' || r.policy === 'limit' ? [[r.domain.toLowerCase(), r.policy]] : [],
+            ),
+        );
+        return (host: string) => policyFor(host.replace(/:\d+$/, ''), restrictions) === 'block';
+    });
+    value.catch(() => {
+        blockedHostsCache.value = null;
+    });
+    blockedHostsCache.at = Date.now();
+    blockedHostsCache.value = value;
+    return value;
+}
+
+/** 連合のドメインの方針を変えたとき。覚えた方針を捨て、使えなくなったサーバーで入ったセッションを消す。 */
+export async function fediverseLoginPolicyChanged(): Promise<number> {
+    blockedHostsCache.value = null;
+    return fediverseAccountRepository.revokeSessionsOfUnusable(await loadLoginPolicy());
 }
 
 /** 今の設定でログインに使える手段か（providerId ごと）。 */
@@ -44,11 +67,13 @@ export async function loadLoginPolicy(): Promise<(providerId: string) => boolean
 }
 
 const corsOrigins = appConfig.cors.origin;
-const defaultAppOrigin =
-    (Array.isArray(corsOrigins) ? corsOrigins[0] : undefined) ?? process.env.PUBLIC_BASE_URL ?? appConfig.auth.url;
+const defaultAppOrigin = new URL(
+    (Array.isArray(corsOrigins) ? corsOrigins[0] : undefined) ?? process.env.PUBLIC_BASE_URL ?? appConfig.auth.url,
+).origin;
 
+/** 画面の origin として戻してよいか。CORS が `*`（開発の chart）のときは既定の origin だけ（任意の origin へ飛ばさない）。 */
 function isAppOrigin(origin: string): boolean {
-    if (corsOrigins === '*') return /^https?:\/\/[^/]+$/.test(origin);
+    if (corsOrigins === '*') return origin === defaultAppOrigin;
     return corsOrigins.includes(origin);
 }
 
@@ -63,6 +88,9 @@ export function createProductionFediverseSignIn(newId: (model: 'user' | 'account
         config: {
             enabled: appConfig.fediverseSignIn.enabled,
             allowedServers: appConfig.fediverseSignIn.allowedServers,
+            // 開発・手元の確認だけ（WORLDS_FETCH_ALLOW_PRIVATE と同じ扱い）
+            allowPorts: !appConfig.isProduction,
+            signUpsPerServerPerHour: 30,
             authBaseUrl: `${appConfig.auth.url.replace(/\/+$/, '')}/api/auth`,
             website: process.env.PUBLIC_BASE_URL || defaultAppOrigin,
             defaultAppOrigin,
@@ -77,6 +105,8 @@ export function createProductionFediverseSignIn(newId: (model: 'user' | 'account
         },
         flows: authFlowRepository,
         accounts: {
+            ssoAllowedFor: async (userId) => (await userRepository.findById(userId))?.handle !== OFFICIAL_HANDLE,
+            countLinkedSince: (providerId, since) => fediverseAccountRepository.countLinkedSince(providerId, since),
             findUserByIdentity: (identity, now) => fediverseAccountRepository.findUserByIdentity(identity, now),
             createUser: (input) => fediverseAccountRepository.createUser(input),
             link: (input) => fediverseAccountRepository.link(input),

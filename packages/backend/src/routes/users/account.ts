@@ -18,6 +18,7 @@ import {
     requireFreshAuth,
     requirePublisher,
     requireRecentAuth,
+    requireStrongSession,
     sessionFactsOf,
     toWebHeaders,
 } from '../../middleware/auth';
@@ -172,7 +173,7 @@ router.get('/me/login-methods', requireFreshAuth, async (req, res) => {
         s !== null && (FEDIVERSE_SOFTWARE as readonly string[]).includes(s);
     const body: LoginMethods = {
         password,
-        recentlyAuthenticated: isRecentlyAuthenticated(req.session, new Date()),
+        recentlyAuthenticated: isRecentlyAuthenticated(req.session, new Date(), password),
         fediverse: linked.map((a) => ({
             id: a.id,
             server: fediverseHostOf(a.providerId) ?? a.providerId,
@@ -207,7 +208,7 @@ router.delete('/me/login-methods/:id', requireRecentAuth, async (req, res) => {
 });
 
 // いま使っているもの以外のログインをすべて無効にする（乗っ取りに気付いたとき。公開環境の取り消しだけでは攻撃者のログインは残る）
-router.post('/me/sessions/revoke-others', requireFreshAuth, async (req, res) => {
+router.post('/me/sessions/revoke-others', requireStrongSession, async (req, res) => {
     if (!req.user || !req.session) return res.status(401).json({ error: 'Unauthorized' });
     const revoked = await userRepository.revokeOtherSessions(req.user.id, req.session.id);
     return res.json({ revoked });

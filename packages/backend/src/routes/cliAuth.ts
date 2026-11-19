@@ -10,7 +10,7 @@ import {
 } from '@ubichill/shared';
 import { Router } from 'express';
 import { sendAccountNotice } from '../lib/auth';
-import { requireFreshAuth, requirePublisher } from '../middleware/auth';
+import { requireFreshAuth, requirePublisher, requireStrongSession } from '../middleware/auth';
 import {
     exchangeOutcome,
     loopbackRedirect,
@@ -97,7 +97,7 @@ router.get('/requests', requireFreshAuth, async (req, res) => {
 });
 
 // 3. 承認する（ログイン、DB のセッション）。ループバックならリダイレクト先（認可コード付き）を返す。
-router.post('/requests/:id/approve', requireFreshAuth, async (req, res) => {
+router.post('/requests/:id/approve', requireStrongSession, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const user = await userRepository.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
