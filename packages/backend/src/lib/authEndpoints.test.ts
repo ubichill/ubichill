@@ -30,7 +30,7 @@ describe('isPublicAuthPath', () => {
             '/fediverse/sign-up',
             '/fediverse/options',
             '/fediverse/callback/mi.example',
-            '/fediverse/client/mastodon.example:8443',
+            '/fediverse/callback/mastodon.example:8443',
         ]) {
             expect(isPublicAuthPath(path), path).toBe(true);
         }
@@ -40,6 +40,7 @@ describe('isPublicAuthPath', () => {
             '/fediverse/callback/MI.example',
             '/fediverse/callback/a%2Fb',
             '/fediverse/client/..',
+            '/fediverse/client/mi.example',
             '/fediverse/unknown',
         ]) {
             expect(isPublicAuthPath(path), path).toBe(false);

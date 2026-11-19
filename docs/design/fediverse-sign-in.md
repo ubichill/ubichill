@@ -69,22 +69,25 @@ Better Auth 1.7 は `email` を一意の文字列として扱い、`users.email`
 
 ## 対応するサーバー
 
-公開メタデータ（RFC 8414 `/.well-known/oauth-authorization-server`）を取得し、実際に備えるもので判定する。バージョン文字列は見ない。 [Misskey の OAuth](https://misskey-hub.net/ja/docs/for-developers/api/token/oauth/) · [Mastodon の OAuth と権限](https://docs.joinmastodon.org/api/oauth-scopes/)
+実際に備えるもので判定する。バージョン文字列は見ない。 [Mastodon の OAuth と権限](https://docs.joinmastodon.org/api/oauth-scopes/) · [Misskey の MiAuth](https://misskey-hub.net/ja/docs/for-developers/api/token/miauth/)
 
-| | Mastodon（4.3 以降） | Misskey 系（2023.9.0 以降） |
+| | Mastodon（4.3 以降） | Misskey 系（Misskey・Sharkey・CherryPick） |
 | --- | --- | --- |
-| 判定 | `app_registration_endpoint` と `profile` の権限がある | `read:account` の権限と `authorization_response_iss_parameter_supported: true` |
-| クライアント | `POST /api/v1/apps` で認証サーバーと戻り先 URL ごとに 1 回登録し、使い回す | `client_id` は Ubichill の URL（`/api/auth/fediverse/client/<host>`）。返す HTML の `<link rel="redirect_uri">` に戻り先を載せる |
-| 本人の取得 | `GET /api/v1/accounts/verify_credentials` | `POST /api/i`（`host` が入っていたら他サーバーの人なので断る） |
-| 応答の照合 | サーバーごとに違う戻り先 URL と、開始時の state | 戻り先 URL と state に加え、`iss` を開始時の issuer と完全一致で照合 |
-| トークン | 本人を確認したら `revocation_endpoint` で失効させる | 失効の口が無いので保存せずに捨てる（Misskey の「連携アプリ」に残る） |
+| 判定 | OAuth の公開メタデータ（RFC 8414）に `app_registration_endpoint`・`profile` の権限・PKCE S256 がある | nodeinfo の `software.name` が Misskey 系 |
+| 方式 | OAuth（認可コード + PKCE S256） | MiAuth |
+| クライアント | `POST /api/v1/apps` で認証サーバーと戻り先 URL ごとに 1 回登録し、使い回す | 登録しない（許可の画面に名前とアイコンの URL を渡す） |
+| 開始 | 認可の口へ。state を一度だけの鍵にする | `/miauth/<セッション ID>?name&icon&callback&permission=read:account`。セッション ID（32 バイトの乱数）を一度だけの鍵にする |
+| 本人の取得 | `GET /api/v1/accounts/verify_credentials` | `POST /api/miauth/<セッション ID>/check`（Misskey はトークンを一度だけ返す。`host` が入っていたら他サーバーの人なので断る） |
+| 応答の照合 | サーバーごとに違う戻り先 URL・state・付いていれば `iss` | サーバーごとに違う戻り先 URL・セッション ID |
+| トークン | 本人を確認したら `revocation_endpoint` で失効させる | 外の口から失効できないので保存せずに捨てる（Misskey の「連携アプリ」に残る） |
+
+**Misskey で OAuth を使わない理由**: Misskey の OAuth は、同意の途中の状態と認可コードをプロセスのメモリにしか持たない。複数台で動くサーバーでは、同意の送信やトークンの交換が別の台に当たると「Invalid or expired transaction ID」やトークンの 400 になる（[misskey-dev/misskey#13088](https://github.com/misskey-dev/misskey/issues/13088)、未解決）。プレビューで misskey.niri.la が実際にこれで失敗した。1 台で動く mi.youkan.uk では通った。MiAuth は状態を DB に置くので台数によらず動く。さらに、OAuth のメタデータを出さない Misskey（sushi.ski など）でも使える。
 
 共通の条件は次のとおり。
 
-- 認可・トークンのエンドポイントは、認証サーバーと同じ origin の https に限る。失効・登録の口が別の origin を指すなら、その口は使わない。
-- 認可コードと PKCE（S256）を使う。
-
-Sharkey など Misskey の派生も、上の条件を満たせば同じ扱いになる。
+- 認可・トークン・nodeinfo の文書は、認証サーバーと同じ origin の https に限る。失効・登録の口が別の origin を指すなら、その口は使わない。
+- Mastodon の state で Misskey の流れを進めさせない（逆も）。state と session を両方付けた応答も受け付けない。
+- 戻りの URL（認可コード・セッション ID）はログに出さない。
 
 ## サーバーの選択
 
@@ -131,7 +134,7 @@ Sharkey など Misskey の派生も、上の条件を満たせば同じ扱いに
 
 | 値 | 期限 | 中身 | 使い方 |
 | --- | --- | --- | --- |
-| state | 10 分 | サーバーのメタデータ、client_id、戻り先 URL、PKCE verifier、ブラウザーの印のハッシュ、操作（sign-in / link）、戻り先、画面の origin、link なら開始時のユーザーとセッション | 応答で `DELETE … RETURNING` により一度だけ取り出す |
+| state（Misskey は MiAuth のセッション ID） | 10 分 | サーバーの種類と口、Mastodon の client_id と PKCE verifier、戻り先 URL、ブラウザーの印のハッシュ、操作（sign-in / link）、戻り先、画面の origin、link なら開始時のユーザーとセッション | 応答で `DELETE … RETURNING` により一度だけ取り出す |
 | 登録の途中 | 15 分 | 外部アカウントのキー、ユーザー名、表示名、戻り先、ログインを押したか | ID と表示名の確定で使い、ユーザーを作ったら・やめたら消す。ID が重複したら残して直させる |
 
 期限切れの行は、既存の定期掃除（10 分ごと、リースを持つ 1 台）で消す。
@@ -235,12 +238,12 @@ A は次のテストで確かめている。
 | --- | --- |
 | `shared/account/fediverseSignIn.test.ts` | 入力の解釈、内部値と連絡先、ID・表示名の候補、戻り先の制限 |
 | `services/auth/fediverse/signIn.test.ts` | 判定、state の使い回し・期限・別ブラウザー・別サーバー、`iss`、失効の失敗、block、初回登録、同時登録、別サーバーの同じ ID、連携のセッション、開始後の無効化・block、ログインと新規登録の押し分け、やめる、追加の知らせ、入力の確認 |
-| `lib/fediverseSignInPlugin.test.ts` | クッキーの属性と署名、セッション発行（SSO は外部アカウントを覚え、パスワードの印は付かない／パスワードのログインには付く）、古いセッションからの連携の拒否、origin 確認、client_id 文書、やめる、lookup |
+| `lib/fediverseSignInPlugin.test.ts` | クッキーの属性と署名、セッション発行（SSO は外部アカウントを覚え、パスワードの印は付かない／パスワードのログインには付く）、古いセッションからの連携の拒否、origin 確認、MiAuth の戻り、やめる、lookup |
 | `db/.../fediverseAccountRepository.integration.test.ts` | 同時登録で 1 人、同時解除で最後の 1 つが残る、使える手段で数える解除、外したアカウントのセッションの削除と今のセッションの維持、改名の追従、一度だけ取り出す、期限切れの掃除 |
 | `services/auth/sessionAssurance.test.ts`・`loginPolicy.test.ts` | SSO のセッションでは管理者の権限を使えない、直近の境界、使える手段の判定 |
 | `services/roles/roles.test.ts` | メールの無い人は管理者にできず、管理者にもならない |
 
-手元では、自己署名の HTTPS で動く偽の Misskey（client_id の文書を実際に取得して redirect_uri を照合する）と、別ポートの backend・Vite を使い、Express の関門を含めて次を確かめた。
+手元では、自己署名の HTTPS で動く偽の Misskey（OAuth 版と、nodeinfo と MiAuth だけを備える版）と、別ポートの backend・Vite を使い、Express の関門を含めて次を確かめた。
 
 - 開始 → 同意 → 初回登録 → 元の部屋
 - 再ログイン、応答の使い回し、印の無い応答、信頼しない Origin
@@ -251,7 +254,7 @@ A は次のテストで確かめている。
 - 画面: ロゴのボタン → サーバーの一覧（本物の公開情報）→ その他のサーバー（未対応の理由・確認）→ 認証 → 登録画面
 - 移行: 0038 まで当てた DB に 0039 を当てると、パスワードだけのユーザーのセッションは埋まり、外部アカウントを持つユーザーのセッションは埋まらない
 
-本物のサーバーでの確認は、PR に紐づく HTTPS プレビューで行う。Misskey は client_id の文書を取りに来るので、プレビューが外から届く必要がある。[PR プレビューの待機スクリプト](../../.github/scripts/wait-preview.sh) で起動を確かめてから、Mastodon と Misskey の実アカウントで次を通す。
+本物のサーバーでの確認は、PR に紐づく HTTPS プレビューで行う。[PR プレビューの待機スクリプト](../../.github/scripts/wait-preview.sh) で起動を確かめてから、Mastodon と Misskey の実アカウントで次を通す。
 
 - 招待からメールなしで登録し、元の部屋に戻る
 - 再ログイン、既存ユーザーへの連携、外部での改名

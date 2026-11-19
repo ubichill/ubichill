@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { DisplayNameSchema, HandleSchema, isPlaceholderEmail } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
-import { readAuthorizationServer } from './discovery';
+import { nodeInfoDocumentUrl, readMastodonServer, readMisskeyServer } from './discovery';
 import { HttpStatusError } from './protocol';
 import { createFediverseSignIn, type ExternalIdentity, type FediverseSignInDeps, withQuery } from './signIn';
 
@@ -16,60 +16,65 @@ const MASTODON_METADATA = {
     app_registration_endpoint: 'https://mastodon.example/api/v1/apps',
 };
 
-const MISSKEY_METADATA = {
-    issuer: 'https://mi.example',
-    authorization_endpoint: 'https://mi.example/oauth/authorize',
-    token_endpoint: 'https://mi.example/oauth/token',
-    scopes_supported: ['read:account', 'write:notes'],
-    response_types_supported: ['code'],
-    code_challenge_methods_supported: ['S256'],
-    authorization_response_iss_parameter_supported: true,
-};
+const NODEINFO_WELL_KNOWN = (origin: string) => ({
+    links: [{ rel: 'http://nodeinfo.diaspora.software/ns/schema/2.1', href: `${origin}/nodeinfo/2.1` }],
+});
+const misskeyNodeInfo = { version: '2.1', software: { name: 'misskey', version: '2026.11.0' } };
 
-describe('readAuthorizationServer', () => {
-    it('Mastodon と Misskey を備えるもので見分ける', () => {
-        const mastodon = readAuthorizationServer('mastodon.example', MASTODON_METADATA);
-        const misskey = readAuthorizationServer('mi.example', MISSKEY_METADATA);
-        expect(mastodon.ok && mastodon.server.software).toBe('mastodon');
-        expect(misskey.ok && misskey.server.software).toBe('misskey');
+describe('サーバーの判定', () => {
+    it('Mastodon は OAuth のメタデータ、Misskey 系は nodeinfo で見分ける', () => {
+        expect(readMastodonServer('mastodon.example', MASTODON_METADATA)?.software).toBe('mastodon');
+        expect(readMisskeyServer('mi.example', misskeyNodeInfo)?.software).toBe('misskey');
+        expect(readMisskeyServer('mi.example', { software: { name: 'Sharkey' } })?.software).toBe('misskey');
+        expect(readMisskeyServer('mi.example', { software: { name: 'pleroma' } })).toBeNull();
+        expect(readMisskeyServer('mi.example', 'not json')).toBeNull();
     });
 
-    it('エンドポイントが別のホストを指すサーバーは使わない（資格情報を外へ送らせない）', () => {
-        for (const key of ['authorization_endpoint', 'token_endpoint'] as const) {
+    it('エンドポイントが別のホストを指す Mastodon は使わない（資格情報を外へ送らせない）', () => {
+        for (const key of ['authorization_endpoint', 'token_endpoint', 'app_registration_endpoint'] as const) {
             expect(
-                readAuthorizationServer('mi.example', { ...MISSKEY_METADATA, [key]: 'https://evil.example/oauth/x' })
-                    .ok,
-            ).toBe(false);
+                readMastodonServer('mastodon.example', { ...MASTODON_METADATA, [key]: 'https://evil.example/x' }),
+            ).toBeNull();
         }
-        expect(readAuthorizationServer('mi.example', { ...MISSKEY_METADATA, issuer: 'https://evil.example' }).ok).toBe(
-            false,
-        );
-        // 失効・登録の口だけが外を指すなら、その口を使わない
-        const server = readAuthorizationServer('mastodon.example', {
-            ...MASTODON_METADATA,
-            revocation_endpoint: 'https://evil.example/revoke',
-        });
-        expect(server.ok && server.server.revocationEndpoint).toBeNull();
+        expect(
+            readMastodonServer('mastodon.example', { ...MASTODON_METADATA, issuer: 'https://evil.example/' }),
+        ).toBeNull();
+        // 失効の口だけが外を指すなら、その口を使わない
+        expect(
+            readMastodonServer('mastodon.example', {
+                ...MASTODON_METADATA,
+                revocation_endpoint: 'https://evil.example/r',
+            })?.revocationEndpoint,
+        ).toBeNull();
     });
 
-    it('http のエンドポイント・PKCE S256 なし・iss なしの Misskey は使わない', () => {
+    it('http のエンドポイント・PKCE S256 なし・profile なしの Mastodon は使わない', () => {
         expect(
-            readAuthorizationServer('mi.example', {
-                ...MISSKEY_METADATA,
-                token_endpoint: 'http://mi.example/oauth/token',
-            }).ok,
-        ).toBe(false);
+            readMastodonServer('mastodon.example', {
+                ...MASTODON_METADATA,
+                token_endpoint: 'http://mastodon.example/oauth/token',
+            }),
+        ).toBeNull();
         expect(
-            readAuthorizationServer('mi.example', { ...MISSKEY_METADATA, code_challenge_methods_supported: ['plain'] })
-                .ok,
-        ).toBe(false);
+            readMastodonServer('mastodon.example', {
+                ...MASTODON_METADATA,
+                code_challenge_methods_supported: ['plain'],
+            }),
+        ).toBeNull();
+        expect(readMastodonServer('mastodon.example', { ...MASTODON_METADATA, scopes_supported: ['read'] })).toBeNull();
+    });
+
+    it('nodeinfo の文書は同じ origin の https だけ読む（2.1 が無ければ 2.0）', () => {
+        expect(nodeInfoDocumentUrl('mi.example', NODEINFO_WELL_KNOWN('https://mi.example'))).toBe(
+            'https://mi.example/nodeinfo/2.1',
+        );
+        expect(nodeInfoDocumentUrl('mi.example', NODEINFO_WELL_KNOWN('https://evil.example'))).toBeNull();
+        expect(nodeInfoDocumentUrl('mi.example', NODEINFO_WELL_KNOWN('http://mi.example'))).toBeNull();
         expect(
-            readAuthorizationServer('mi.example', {
-                ...MISSKEY_METADATA,
-                authorization_response_iss_parameter_supported: false,
-            }).ok,
-        ).toBe(false);
-        expect(readAuthorizationServer('mi.example', 'not json').ok).toBe(false);
+            nodeInfoDocumentUrl('mi.example', {
+                links: [{ rel: 'http://nodeinfo.diaspora.software/ns/schema/2.0', href: 'https://mi.example/n/2.0' }],
+            }),
+        ).toBe('https://mi.example/n/2.0');
     });
 });
 
@@ -101,7 +106,8 @@ function setup(overrides: { routes?: Record<string, Route>; config?: Partial<Fed
 
     const routes: Record<string, Route> = {
         'GET https://mastodon.example/.well-known/oauth-authorization-server': () => MASTODON_METADATA,
-        'GET https://mi.example/.well-known/oauth-authorization-server': () => MISSKEY_METADATA,
+        'GET https://mi.example/.well-known/nodeinfo': () => NODEINFO_WELL_KNOWN('https://mi.example'),
+        'GET https://mi.example/nodeinfo/2.1': () => misskeyNodeInfo,
         'POST https://mastodon.example/api/v1/apps': () => ({ client_id: 'cid', client_secret: 'secret' }),
         'POST https://mastodon.example/oauth/token': () => ({ access_token: 'mtoken' }),
         'GET https://mastodon.example/api/v1/accounts/verify_credentials': () => ({
@@ -110,8 +116,12 @@ function setup(overrides: { routes?: Record<string, Route>; config?: Partial<Fed
             display_name: 'Alice :blobcat:',
         }),
         'POST https://mastodon.example/oauth/revoke': () => ({}),
-        'POST https://mi.example/oauth/token': () => ({ access_token: 'mitoken' }),
-        'POST https://mi.example/api/i': () => ({ id: '9abc', username: 'alice', name: 'ありす', host: null }),
+        // MiAuth の確認はセッション ID ごと（* はパスの 1 段）
+        'POST https://mi.example/api/miauth/*/check': () => ({
+            ok: true,
+            token: 'mitoken',
+            user: { id: '9abc', username: 'alice', name: 'ありす', host: null },
+        }),
         ...overrides.routes,
     };
 
@@ -131,7 +141,19 @@ function setup(overrides: { routes?: Record<string, Route>; config?: Partial<Fed
         http: {
             async json(url, init) {
                 calls.push({ url, ...init });
-                const route = routes[`${init.method} ${url}`];
+                const requested = `${init.method} ${url}`;
+                const route =
+                    routes[requested] ??
+                    Object.entries(routes).find(
+                        ([pattern]) =>
+                            pattern.includes('*') &&
+                            new RegExp(
+                                `^${pattern
+                                    .split('*')
+                                    .map((p) => p.replace(/[.?+^$()[\]{}|\\]/g, '\\$&'))
+                                    .join('[^/]+')}$`,
+                            ).test(requested),
+                    )?.[1];
                 if (!route) throw new HttpStatusError(404, url);
                 return route(init);
             },
@@ -214,7 +236,10 @@ function setup(overrides: { routes?: Record<string, Route>; config?: Partial<Fed
         });
         if (!started.ok) throw new Error(started.error);
         const url = new URL(started.authorizationUrl);
-        return { url, state: url.searchParams.get('state') ?? '', browserToken: started.browserToken };
+        // Mastodon は state、Misskey（MiAuth）はパスのセッション ID。どちらも応答の鍵
+        const miauth = url.pathname.match(/^\/miauth\/([^/]+)$/);
+        const key = miauth ? decodeURIComponent(miauth[1] ?? '') : (url.searchParams.get('state') ?? '');
+        return { url, state: key, browserToken: started.browserToken };
     };
 
     return { signIn, deps, calls, flows, clients, identities, users, links, clock, state, begin };
@@ -236,41 +261,32 @@ describe('開始', () => {
         expect(registered.redirect_uris).toEqual([params.get('redirect_uri')]);
     });
 
-    it('Misskey は登録せず、client_id に Ubichill の URL を使う', async () => {
+    it('Misskey は MiAuth の許可の画面へ（推測できないセッション ID・サーバーごとの戻り先・read:account）', async () => {
         const t = setup();
-        const { url } = await t.begin('mi.example');
-        expect(url.searchParams.get('client_id')).toBe('https://ubi.example/api/auth/fediverse/client/mi.example');
-        expect(url.searchParams.get('scope')).toBe('read:account');
-        expect(t.calls.some((c) => c.method === 'POST')).toBe(false);
+        const { url, state } = await t.begin('mi.example');
+        expect(url.origin).toBe('https://mi.example');
+        expect(url.pathname).toBe(`/miauth/${state}`);
+        expect(state.length).toBeGreaterThanOrEqual(43);
+        expect(url.searchParams.get('callback')).toBe('https://ubi.example/api/auth/fediverse/callback/mi.example');
+        expect(url.searchParams.get('permission')).toBe('read:account');
+        expect(url.searchParams.get('name')).toBe('Ubichill');
+        expect(url.searchParams.get('icon')).toBe('https://ubi.example/icon.png');
+        // アプリ登録も OAuth も使わない
+        expect(t.calls.some((c) => c.method === 'POST' || c.url.includes('/oauth/'))).toBe(false);
     });
 
-    it('Misskey の client_id の文書は戻り先を載せ、読めないホストには出さない', () => {
-        const t = setup();
-        const doc = t.signIn.clientDocument('mi.example') ?? '';
-        expect(doc).toContain(
-            '<link rel="redirect_uri" href="https://ubi.example/api/auth/fediverse/callback/mi.example">',
-        );
-        expect(doc).toContain('href="https://ubi.example/api/auth/fediverse/client/mi.example" class="u-url p-name"');
-        expect(t.signIn.clientDocument('MI.example')).toBeNull();
-        expect(t.signIn.clientDocument('"><script>')).toBeNull();
-    });
-
-    it('ポート付きのホストも戻り先・client_id のパスにそのまま入れる（%3A にしない）', async () => {
+    it('ポート付きのホストも戻り先のパスにそのまま入れる（%3A にしない）', async () => {
         const t = setup({
             routes: {
-                'GET https://mi.example:8443/.well-known/oauth-authorization-server': () => ({
-                    ...MISSKEY_METADATA,
-                    issuer: 'https://mi.example:8443',
-                    authorization_endpoint: 'https://mi.example:8443/oauth/authorize',
-                    token_endpoint: 'https://mi.example:8443/oauth/token',
-                }),
+                'GET https://mi.example:8443/.well-known/nodeinfo': () =>
+                    NODEINFO_WELL_KNOWN('https://mi.example:8443'),
+                'GET https://mi.example:8443/nodeinfo/2.1': () => misskeyNodeInfo,
             },
         });
         const { url } = await t.begin('mi.example:8443');
-        expect(url.searchParams.get('redirect_uri')).toBe(
+        expect(url.searchParams.get('callback')).toBe(
             'https://ubi.example/api/auth/fediverse/callback/mi.example:8443',
         );
-        expect(url.searchParams.get('client_id')).toBe('https://ubi.example/api/auth/fediverse/client/mi.example:8443');
     });
 
     it('無効・許可外・block・形式違い・未対応・接続できないは、それぞれの理由で断る', async () => {
@@ -340,13 +356,13 @@ describe('応答', () => {
         expect(t.calls.some((c) => c.url.endsWith('/oauth/revoke'))).toBe(true);
     });
 
-    it('PKCE の verifier は開始時の challenge と対応する', async () => {
+    it('PKCE の verifier は開始時の challenge と対応する（Mastodon）', async () => {
         const t = setup();
-        t.identities.set('fediverse:https://mi.example 9abc', 'user-bob');
-        const { url, state, browserToken } = await t.begin('mi.example');
+        t.identities.set('fediverse:https://mastodon.example 109', 'user-bob');
+        const { url, state, browserToken } = await t.begin('mastodon.example');
         await t.signIn.callback({
-            server: 'mi.example',
-            query: { code: 'c', state, iss: 'https://mi.example' },
+            server: 'mastodon.example',
+            query: { code: 'c', state },
             browserToken,
             sessionId: null,
         });
@@ -358,6 +374,16 @@ describe('応答', () => {
                 .update(verifier ?? '')
                 .digest('base64url'),
         ).toBe(url.searchParams.get('code_challenge'));
+    });
+
+    it('Misskey はセッション ID で戻り、確認の口でだけ本人を得る（ログイン済みなら入れる）', async () => {
+        const t = setup();
+        t.identities.set('fediverse:https://mi.example 9abc', 'user-bob');
+        const { state, browserToken } = await t.begin('mi.example');
+        expect(
+            await t.signIn.callback({ server: 'mi.example', query: { session: state }, browserToken, sessionId: null }),
+        ).toMatchObject({ kind: 'signed-in', userId: 'user-bob' });
+        expect(t.calls.filter((c) => c.url === `https://mi.example/api/miauth/${state}/check`)).toHaveLength(1);
     });
 
     it('state は一度しか使えない（同じ応答を送り直してもログインできない）', async () => {
@@ -412,20 +438,57 @@ describe('応答', () => {
         expect(t.calls.some((c) => c.url.endsWith('/oauth/token'))).toBe(false);
     });
 
-    it('Misskey は iss が無い・違う応答を受け付けない', async () => {
+    it('Mastodon の鍵で Misskey を（逆も）進めさせず、state と session を両方付けた応答も受け付けない', async () => {
         const t = setup();
-        for (const iss of [undefined, 'https://evil.example', 'https://mi.example/']) {
-            const { state, browserToken } = await t.begin('mi.example');
-            expect(
-                await t.signIn.callback({
-                    server: 'mi.example',
-                    query: { code: 'c', state, iss },
-                    browserToken,
-                    sessionId: null,
-                }),
-            ).toMatchObject({ kind: 'error', error: 'mismatch' });
-        }
-        expect(t.calls.some((c) => c.url.endsWith('/oauth/token'))).toBe(false);
+        const misskey = await t.begin('mi.example');
+        expect(
+            await t.signIn.callback({
+                server: 'mi.example',
+                query: { state: misskey.state, code: 'c' },
+                browserToken: misskey.browserToken,
+                sessionId: null,
+            }),
+        ).toMatchObject({ kind: 'error', error: 'mismatch' });
+        const mastodon = await t.begin('mastodon.example');
+        expect(
+            await t.signIn.callback({
+                server: 'mastodon.example',
+                query: { session: mastodon.state },
+                browserToken: mastodon.browserToken,
+                sessionId: null,
+            }),
+        ).toMatchObject({ kind: 'error', error: 'mismatch' });
+        const both = await t.begin('mi.example');
+        expect(
+            await t.signIn.callback({
+                server: 'mi.example',
+                query: { session: both.state, state: both.state },
+                browserToken: both.browserToken,
+                sessionId: null,
+            }),
+        ).toMatchObject({ kind: 'error', error: 'mismatch' });
+        expect(t.calls.some((c) => c.url.includes('/api/miauth/') || c.url.endsWith('/oauth/token'))).toBe(false);
+    });
+
+    it('Mastodon が iss を付けたら、開始時の issuer と完全一致で照合する', async () => {
+        const t = setup();
+        const { state, browserToken } = await t.begin('mastodon.example');
+        expect(
+            await t.signIn.callback({
+                server: 'mastodon.example',
+                query: { code: 'c', state, iss: 'https://evil.example/' },
+                browserToken,
+                sessionId: null,
+            }),
+        ).toMatchObject({ kind: 'error', error: 'mismatch' });
+    });
+
+    it('MiAuth の確認が ok: false（使い回し・許可されていない）ならサーバーの失敗として返す', async () => {
+        const t = setup({ routes: { 'POST https://mi.example/api/miauth/*/check': () => ({ ok: false }) } });
+        const { state, browserToken } = await t.begin('mi.example');
+        expect(
+            await t.signIn.callback({ server: 'mi.example', query: { session: state }, browserToken, sessionId: null }),
+        ).toMatchObject({ kind: 'error', error: 'server-error' });
     });
 
     it('同意を拒否されたら denied で戻す', async () => {
@@ -444,18 +507,21 @@ describe('応答', () => {
     it('Misskey が別サーバーのユーザーを返したらログインさせない', async () => {
         const t = setup({
             routes: {
-                'POST https://mi.example/api/i': () => ({ id: '1', username: 'eve', name: null, host: 'evil.example' }),
+                'POST https://mi.example/api/miauth/*/check': () => ({
+                    ok: true,
+                    user: { id: '1', username: 'eve', name: null, host: 'evil.example' },
+                }),
             },
         });
         const { state, browserToken } = await t.begin('mi.example');
         expect(
             await t.signIn.callback({
                 server: 'mi.example',
-                query: { code: 'c', state, iss: 'https://mi.example' },
+                query: { session: state },
                 browserToken,
                 sessionId: null,
             }),
-        ).toMatchObject({ kind: 'error', error: 'failed' });
+        ).toMatchObject({ kind: 'error', error: 'server-error' });
     });
 
     it('Mastodon でアプリが無効（401）なら登録を忘れ、次は登録し直す', async () => {
@@ -534,7 +600,7 @@ describe('初回登録', () => {
         const { state, browserToken } = await t.begin(server);
         const outcome = await t.signIn.callback({
             server,
-            query: { code: 'c', state, iss: server === 'mi.example' ? 'https://mi.example' : undefined },
+            query: server === 'mi.example' ? { session: state } : { code: 'c', state },
             browserToken,
             sessionId: null,
         });
@@ -590,7 +656,10 @@ describe('初回登録', () => {
     it('別のサーバーの同じ ID は別人', async () => {
         const t = setup({
             routes: {
-                'POST https://mi.example/api/i': () => ({ id: '109', username: 'alice', name: null, host: null }),
+                'POST https://mi.example/api/miauth/*/check': () => ({
+                    ok: true,
+                    user: { id: '109', username: 'alice', name: null, host: null },
+                }),
             },
         });
         const a = await arrive(t, 'mastodon.example');
@@ -924,7 +993,7 @@ describe('レビューで見つけた穴', () => {
                     browserToken,
                     sessionId: null,
                 }),
-            ).toMatchObject({ kind: 'error', error: 'failed' });
+            ).toMatchObject({ kind: 'error', error: 'server-error' });
         }
     });
 

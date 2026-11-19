@@ -2,9 +2,11 @@
  * フェディバースのアカウントでのログイン・登録・連携の流れ（docs/design/fediverse-sign-in.md）。HTTP・DB・乱数・時刻は
  * 注入し、セッションの発行とクッキーは呼ぶ側（lib/fediverseSignInPlugin.ts の better-auth のエンドポイント）が持つ。
  *
- * - 開始で一度だけ使える state と PKCE verifier を作り、ブラウザーに渡した値のハッシュと一緒に保存する
- *   （他人の認証応答を踏ませてログインさせる攻撃を防ぐ）。
- * - 応答は、開始時のサーバーと戻り先 URL（サーバーごとに違う）・Misskey は `iss` も照合してから code を使う。
+ * - Mastodon は OAuth（認可コード + PKCE S256）、Misskey 系は MiAuth（discovery.ts の理由）。
+ * - 開始で一度だけ使える鍵（Mastodon は state、Misskey は MiAuth のセッション ID）を作り、ブラウザーに渡した値の
+ *   ハッシュと一緒に保存する（他人の認証応答を踏ませてログインさせる攻撃を防ぐ）。
+ * - 応答は、開始時のサーバーと戻り先 URL（サーバーごとに違う）を照合してから使う。Mastodon は `iss` が付いていれば
+ *   それも照合する。
  * - 初回は外部アカウントを指す登録の途中の状態を作り、ID と表示名を決めてもらってからユーザーを作る。
  */
 import { createHash } from 'node:crypto';
@@ -24,17 +26,26 @@ import {
     safeReturnTo,
 } from '@ubichill/shared';
 import { z } from 'zod';
-import { type AuthorizationServer, readAuthorizationServer } from './discovery';
+import {
+    type AuthorizationServer,
+    type MastodonServer,
+    nodeInfoDocumentUrl,
+    readMastodonServer,
+    readMisskeyServer,
+} from './discovery';
 import { createLookupCache, type LookupOutcome, lookupFediverseServer } from './lookup';
 import {
-    authorizationUrl,
     type ClientCredentials,
-    exchangeCode,
+    checkMiAuth,
+    type ExternalAccount,
+    exchangeMastodonCode,
     type FediverseHttp,
-    fetchAccount,
+    fetchMastodonAccount,
     HttpStatusError,
+    mastodonAuthorizationUrl,
+    miAuthUrl,
     registerMastodonApp,
-    revokeToken,
+    revokeMastodonToken,
 } from './protocol';
 
 export const STATE_TTL_MS = 10 * 60 * 1000;
@@ -131,21 +142,26 @@ export interface FediverseSignInDeps {
 
 const hash = (value: string) => createHash('sha256').update(value).digest('base64url');
 
-const StoredServerSchema = z.object({
-    software: z.enum(['mastodon', 'misskey']),
-    host: z.string(),
-    origin: z.string(),
-    issuer: z.string(),
-    authorizationEndpoint: z.string(),
-    tokenEndpoint: z.string(),
-    revocationEndpoint: z.string().nullable(),
-    registrationEndpoint: z.string().nullable(),
-});
+const StoredServerSchema = z.discriminatedUnion('software', [
+    z.object({
+        software: z.literal('mastodon'),
+        host: z.string(),
+        origin: z.string(),
+        issuer: z.string(),
+        authorizationEndpoint: z.string(),
+        tokenEndpoint: z.string(),
+        revocationEndpoint: z.string().nullable(),
+        registrationEndpoint: z.string(),
+    }),
+    z.object({ software: z.literal('misskey'), host: z.string(), origin: z.string() }),
+]);
 
 const StateSchema = z.object({
     server: StoredServerSchema,
+    /** Mastodon のアプリの client_id（Misskey は空） */
     clientId: z.string(),
     redirectUri: z.string(),
+    /** Mastodon の PKCE verifier（Misskey は空） */
     codeVerifier: z.string(),
     browserHash: z.string(),
     intent: z.enum(['sign-in', 'link']),
@@ -208,7 +224,6 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
     // host は parseFediverseServer を通した小文字のホスト（英数字・`.`・`-`・ポートの `:`）なので、そのままパスに入れる。
     // エンコードすると `:` が `%3A` になり、戻り先の照合（authEndpoints）と URL の完全一致が崩れる
     const callbackUrlFor = (host: string) => `${deps.config.authBaseUrl}/fediverse/callback/${host}`;
-    const clientIdFor = (host: string) => `${deps.config.authBaseUrl}/fediverse/client/${host}`;
 
     const serverAllowed = async (host: string): Promise<boolean> =>
         (deps.config.allowedServers.size === 0 || deps.config.allowedServers.has(host)) &&
@@ -224,24 +239,31 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
         return ipLiteral || (hasPort && !deps.config.allowPorts) ? { ok: false } : parsed;
     };
 
+    const getJson = (url: string) => deps.http.json(url, { method: 'GET', headers: { Accept: 'application/json' } });
+    // 4xx は「備えていない」。リダイレクトは追わないので 3xx も同じ扱い
+    const isAbsent = (error: unknown) => error instanceof HttpStatusError && error.status >= 300 && error.status < 500;
+
+    /** Mastodon は OAuth のメタデータ、Misskey 系は nodeinfo で見分ける（discovery.ts）。 */
     const discover = async (host: string): Promise<AuthorizationServer | 'unsupported' | 'unreachable'> => {
         try {
-            const metadata = await deps.http.json(`https://${host}/.well-known/oauth-authorization-server`, {
-                method: 'GET',
-                headers: { Accept: 'application/json' },
-            });
-            const result = readAuthorizationServer(host, metadata);
-            return result.ok ? result.server : 'unsupported';
+            const mastodon = await getJson(`https://${host}/.well-known/oauth-authorization-server`)
+                .then((metadata) => readMastodonServer(host, metadata))
+                .catch((error: unknown) => {
+                    if (isAbsent(error)) return null;
+                    throw error;
+                });
+            if (mastodon) return mastodon;
+            const documentUrl = nodeInfoDocumentUrl(host, await getJson(`https://${host}/.well-known/nodeinfo`));
+            if (!documentUrl) return 'unsupported';
+            return readMisskeyServer(host, await getJson(documentUrl)) ?? 'unsupported';
         } catch (error) {
-            // 404 などはメタデータを出さない（古い・別の）サーバー。リダイレクトは追わないので 3xx も同じ扱い
-            if (error instanceof HttpStatusError && error.status >= 300 && error.status < 500) return 'unsupported';
+            if (isAbsent(error)) return 'unsupported';
             deps.warn(`フェディバースのサーバーに接続できません: ${host}`, error);
             return 'unreachable';
         }
     };
 
-    const clientFor = async (server: AuthorizationServer, redirectUri: string): Promise<ClientCredentials> => {
-        if (server.software === 'misskey') return { clientId: clientIdFor(server.host), clientSecret: null };
+    const clientFor = async (server: MastodonServer, redirectUri: string): Promise<ClientCredentials> => {
         const saved = await deps.clients.find(server.origin, redirectUri);
         if (saved) return saved;
         const registered = await registerMastodonApp(deps.http, server, {
@@ -252,10 +274,43 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
         return deps.clients.save({ origin: server.origin, redirectUri, ...registered });
     };
 
-    const storedClient = async (state: FlowState): Promise<ClientCredentials | undefined> => {
-        if (state.server.software === 'misskey') return { clientId: state.clientId, clientSecret: null };
-        const saved = await deps.clients.find(state.server.origin, state.redirectUri);
+    const storedClient = async (state: FlowState, server: MastodonServer): Promise<ClientCredentials | undefined> => {
+        const saved = await deps.clients.find(server.origin, state.redirectUri);
         return saved?.clientId === state.clientId ? saved : undefined;
+    };
+
+    /** 認可コードをトークンに換えて本人を取り、トークンは失効させる。取れなければ null。 */
+    const mastodonAccount = async (
+        state: FlowState,
+        server: MastodonServer,
+        code: string,
+    ): Promise<ExternalAccount | null> => {
+        const client = await storedClient(state, server);
+        if (!client) return null;
+        const token = await exchangeMastodonCode(deps.http, server, {
+            client,
+            code,
+            redirectUri: state.redirectUri,
+            codeVerifier: state.codeVerifier,
+        }).catch(async (error: unknown) => {
+            deps.warn(`フェディバースのトークンを受け取れませんでした: ${server.host}`, error);
+            // 相手のサーバーでアプリが消された（トークンの口がクライアントを認めない）ときだけ、次は登録し直す
+            if (error instanceof HttpStatusError && error.status === 401) {
+                await deps.clients.forget(server.origin, state.redirectUri);
+            }
+            return null;
+        });
+        if (!token) return null;
+        try {
+            return await fetchMastodonAccount(deps.http, server, token);
+        } catch (error) {
+            deps.warn(`フェディバースの本人の情報を受け取れませんでした: ${server.host}`, error);
+            return null;
+        } finally {
+            await revokeMastodonToken(deps.http, server, { client, token }).catch((error: unknown) =>
+                deps.warn(`トークンを失効できませんでした: ${server.host}`, error),
+            );
+        }
     };
 
     const appOriginOf = (origin: string | null): string =>
@@ -279,25 +334,6 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
             );
         },
 
-        /** Misskey の client_id の URL が返す文書（戻り先 URL とアプリ名）。読めないホストは null。 */
-        clientDocument(rawHost: string): string | null {
-            const parsed = parseFediverseServer(rawHost);
-            if (!parsed.ok || parsed.host !== rawHost) return null;
-            const clientId = clientIdFor(parsed.host);
-            const redirectUri = callbackUrlFor(parsed.host);
-            const escapeHtml = (s: string) =>
-                s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            return [
-                '<!doctype html>',
-                '<html><head><meta charset="utf-8"><title>Ubichill</title>',
-                `<link rel="redirect_uri" href="${escapeHtml(redirectUri)}">`,
-                '</head><body>',
-                // Misskey は h-app の名前とロゴを同意画面に出す
-                `<div class="h-app"><img src="${escapeHtml(`${deps.config.website.replace(/\/+$/, '')}/icon.png`)}" class="u-logo" alt=""><a href="${escapeHtml(clientId)}" class="u-url p-name">Ubichill</a></div>`,
-                '</body></html>',
-            ].join('');
-        },
-
         async start(input: {
             server: string;
             intent: FediverseSignInIntent;
@@ -319,18 +355,22 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
             if (server === 'unsupported') return { ok: false, error: 'unsupported-server' };
             if (server === 'unreachable') return { ok: false, error: 'server-unreachable' };
             const redirectUri = callbackUrlFor(server.host);
-            const client = await clientFor(server, redirectUri).catch((error: unknown) => {
-                deps.warn(`アプリを登録できません: ${server.host}`, error);
-                return null;
-            });
-            if (!client) return { ok: false, error: 'server-unreachable' };
+            const client =
+                server.software === 'mastodon'
+                    ? await clientFor(server, redirectUri).catch((error: unknown) => {
+                          deps.warn(`アプリを登録できません: ${server.host}`, error);
+                          return null;
+                      })
+                    : null;
+            if (server.software === 'mastodon' && !client) return { ok: false, error: 'server-unreachable' };
 
-            const state = deps.random();
-            const codeVerifier = deps.random();
+            // Mastodon は state、Misskey は MiAuth のセッション ID。どちらも推測できない一度だけの鍵
+            const key = deps.random();
+            const codeVerifier = server.software === 'mastodon' ? deps.random() : '';
             const browserToken = deps.random();
             const stored: FlowState = {
                 server,
-                clientId: client.clientId,
+                clientId: client?.clientId ?? '',
                 redirectUri,
                 codeVerifier,
                 browserHash: hash(browserToken),
@@ -342,27 +382,32 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
             };
             const now = deps.now();
             await deps.flows.put(
-                `${STATE_PREFIX}${hash(state)}`,
+                `${STATE_PREFIX}${hash(key)}`,
                 JSON.stringify(stored),
                 new Date(now.getTime() + STATE_TTL_MS),
                 deps.random(),
             );
-            return {
-                ok: true,
-                browserToken,
-                authorizationUrl: authorizationUrl(server, {
-                    clientId: client.clientId,
-                    redirectUri,
-                    state,
-                    codeChallenge: hash(codeVerifier),
-                }),
-            };
+            const icon = `${deps.config.website.replace(/\/+$/, '')}/icon.png`;
+            const authorizationUrl =
+                server.software === 'misskey'
+                    ? miAuthUrl(server, { session: key, callback: redirectUri, name: 'Ubichill', icon })
+                    : client
+                      ? mastodonAuthorizationUrl(server, {
+                            clientId: client.clientId,
+                            redirectUri,
+                            state: key,
+                            codeChallenge: hash(codeVerifier),
+                        })
+                      : null;
+            if (!authorizationUrl) return { ok: false, error: 'server-unreachable' };
+            return { ok: true, browserToken, authorizationUrl };
         },
 
         async callback(input: {
             /** 戻り先 URL のパスに入れたホスト */
             server: string;
-            query: { code?: string; state?: string; iss?: string; error?: string };
+            /** Mastodon は code・state・iss・error、Misskey（MiAuth）は session */
+            query: { code?: string; state?: string; iss?: string; error?: string; session?: string };
             /** 開始時にブラウザーへ渡した値（クッキー） */
             browserToken: string | null;
             /** いまのセッション（link のときに開始時と同じか確かめる） */
@@ -376,57 +421,41 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
                 const path = state?.intent === 'link' ? state.returnTo : '/auth';
                 return { kind: 'error', error, redirectTo: `${appOrigin}${withQuery(path, 'fediverse_error', error)}` };
             };
-            if (!input.query.state) return fail('mismatch');
-            const state = readJson(
-                StateSchema,
-                await deps.flows.take(`${STATE_PREFIX}${hash(input.query.state)}`, now),
-            );
+            // state と session の両方が付いた応答は受け付けない（どちらの流れの鍵かを曖昧にしない）
+            const key = input.query.state ?? input.query.session;
+            if (!key || (input.query.state && input.query.session)) return fail('mismatch');
+            const state = readJson(StateSchema, await deps.flows.take(`${STATE_PREFIX}${hash(key)}`, now));
             if (!state) return fail('expired');
+            // Mastodon の state で Misskey の流れを（またはその逆を）進めさせない
+            const keyKind = input.query.state ? 'mastodon' : 'misskey';
+            if (state.server.software !== keyKind) return fail('mismatch');
             // 開始の後に止められたら、応答が来ても続けない
             if (!deps.config.enabled) return fail('disabled', state);
             if (!input.browserToken || hash(input.browserToken) !== state.browserHash) return fail('mismatch');
             if (input.server !== state.server.host) return fail('mismatch', state);
             if (input.query.error) return fail(input.query.error === 'access_denied' ? 'denied' : 'failed', state);
-            // Misskey は応答に発行元を付ける（RFC 9207）。付けるサーバーでは必ず照合する
-            const issRequired = state.server.software === 'misskey';
-            if ((issRequired || input.query.iss !== undefined) && input.query.iss !== state.server.issuer) {
+            // 発行元（RFC 9207）が付いていれば照合する
+            if (
+                state.server.software === 'mastodon' &&
+                input.query.iss !== undefined &&
+                input.query.iss !== state.server.issuer
+            ) {
                 return fail('mismatch', state);
             }
-            if (!input.query.code) return fail('failed', state);
+            if (state.server.software === 'mastodon' && !input.query.code) return fail('failed', state);
             if (!(await serverAllowed(state.server.host))) return fail('server-not-allowed', state);
             if (state.intent === 'link' && state.link?.sessionId !== input.sessionId)
                 return fail('session-changed', state);
 
-            const client = await storedClient(state);
-            if (!client) return fail('failed', state);
             const server: AuthorizationServer = state.server;
-            const account = await (async () => {
-                const token = await exchangeCode(deps.http, server, {
-                    client,
-                    code: input.query.code ?? '',
-                    redirectUri: state.redirectUri,
-                    codeVerifier: state.codeVerifier,
-                }).catch(async (error: unknown) => {
-                    deps.warn(`フェディバースのトークンを受け取れませんでした: ${server.host}`, error);
-                    // 相手のサーバーでアプリが消された（トークンの口がクライアントを認めない）ときだけ、次は登録し直す
-                    if (server.software === 'mastodon' && error instanceof HttpStatusError && error.status === 401) {
-                        await deps.clients.forget(server.origin, state.redirectUri);
-                    }
-                    return null;
-                });
-                if (!token) return null;
-                try {
-                    return await fetchAccount(deps.http, server, token);
-                } catch (error) {
-                    deps.warn(`フェディバースの本人の情報を受け取れませんでした: ${server.host}`, error);
-                    return null;
-                } finally {
-                    await revokeToken(deps.http, server, { client, token }).catch((error: unknown) =>
-                        deps.warn(`トークンを失効できませんでした: ${server.host}`, error),
-                    );
-                }
-            })();
-            if (!account) return fail('failed', state);
+            const account =
+                server.software === 'mastodon'
+                    ? await mastodonAccount(state, server, input.query.code ?? '')
+                    : await checkMiAuth(deps.http, server, key).catch((error: unknown) => {
+                          deps.warn(`MiAuth を確かめられませんでした: ${server.host}`, error);
+                          return null;
+                      });
+            if (!account) return fail('server-error', state);
 
             const identity: ExternalIdentity = {
                 providerId: fediverseProviderId(server.origin),

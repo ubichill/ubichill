@@ -123,7 +123,8 @@ import { toNodeHandler } from 'better-auth/node';
 // info だと本番でも全 auth リクエストを吐いてしまうため debug 時のみに絞る。
 if (appConfig.debug) {
     app.use('/api/auth', (req, _res, next) => {
-        logger.debug(`Auth リクエスト: ${req.method} ${req.originalUrl}`);
+        // クエリは出さない（認可コード・MiAuth のセッション ID が入る）
+        logger.debug(`Auth リクエスト: ${req.method} ${req.baseUrl}${req.path}`);
         next();
     });
 }

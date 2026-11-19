@@ -113,7 +113,7 @@ export function FediverseSignUpForm({ onCancel }: { onCancel: () => void }) {
                 <h1 className={titleStyle}>はじめまして</h1>
                 <p className={subtitleStyle}>
                     {candidate.notRegistered
-                        ? `${account} はまだ登録されていません。Ubichill での ID と表示名を決めて登録します。`
+                        ? `${account} はまだ登録されていません。ID と表示名を決めると、このまま登録できます。`
                         : `${account} で登録します。Ubichill での ID と表示名を決めてください。`}
                 </p>
                 <form onSubmit={submit} className={formStyle} aria-busy={busy}>

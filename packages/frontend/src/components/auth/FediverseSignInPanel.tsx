@@ -6,12 +6,13 @@ import { MastodonLogo, MisskeyLogo } from './FediverseBrandIcons';
 import { FediverseServerPicker } from './FediverseServerPicker';
 
 /** ログイン画面の「Mastodon・Misskey で続ける」のボタン（ロゴだけ）。 */
-export function FediverseSignInButton({ onClick }: { onClick: () => void }) {
+export function FediverseSignInButton({ onClick, disabled = false }: { onClick: () => void; disabled?: boolean }) {
     return (
         <button
             type="button"
             className={logoButton}
             onClick={onClick}
+            disabled={disabled}
             aria-label="Mastodon・Misskey のアカウントで続ける"
         >
             <MastodonLogo size={22} />
@@ -92,4 +93,5 @@ const logoButton = css({
     transition: 'all 0.2s',
     _hover: { bg: 'surfaceHover' },
     _focusVisible: { outline: '2px solid token(colors.primary)', outlineOffset: '2px' },
+    _disabled: { cursor: 'default', _hover: { bg: 'white' } },
 });

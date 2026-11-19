@@ -21,9 +21,7 @@ const PUBLIC_AUTH_PATHS: ReadonlySet<string> = new Set([
 ]);
 
 /** 最後の 1 段がサーバーのホスト（`/fediverse/callback/mi.example`）のもの。ホストの形でなければ通さない。 */
-const PUBLIC_AUTH_PATH_PATTERNS: readonly RegExp[] = [
-    /^\/fediverse\/(callback|client)\/[a-z0-9][a-z0-9.-]*(:\d{1,5})?$/,
-];
+const PUBLIC_AUTH_PATH_PATTERNS: readonly RegExp[] = [/^\/fediverse\/callback\/[a-z0-9][a-z0-9.-]*(:\d{1,5})?$/];
 
 /** `/api/auth` より後ろのパス（`req.path`）が HTTP から呼んでよいものか。大文字小文字・末尾の `/` の違いでもすり抜けさせない。 */
 export function isPublicAuthPath(path: string): boolean {

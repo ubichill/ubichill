@@ -44,11 +44,8 @@ export function AuthPage() {
     const from = returnPathOf(location.state);
     const { data: session, isPending } = useSession();
     const fediverseReturn = readFediverseReturn(location.search);
-    const [fediverseOptions, setFediverseOptions] = useState<FediverseSignInOptions>({
-        enabled: false,
-        registrationOpen: false,
-        featuredServers: [],
-    });
+    // null は読み込み中。読み込み中もボタンの場所を取っておき、届いた後に画面がずれないようにする
+    const [fediverseOptions, setFediverseOptions] = useState<FediverseSignInOptions | null>(null);
     const [fediverseOpen, setFediverseOpen] = useState(false);
     const [mode, setMode] = useState<AuthMode>('login');
     const [email, setEmail] = useState('');
@@ -218,8 +215,8 @@ export function AuthPage() {
                 <div className={cardStyle}>
                     <FediverseSignInPanel
                         returnTo={from}
-                        prefer={mode === 'register' && fediverseOptions.registrationOpen ? 'sign-up' : 'sign-in'}
-                        featuredServers={fediverseOptions.featuredServers}
+                        prefer={mode === 'register' && fediverseOptions?.registrationOpen ? 'sign-up' : 'sign-in'}
+                        featuredServers={fediverseOptions?.featuredServers ?? []}
                         onBack={() => setFediverseOpen(false)}
                     />
                 </div>
@@ -494,12 +491,13 @@ export function AuthPage() {
                     </button>
                 </form>
 
-                {fediverseOptions.enabled && (
+                {fediverseOptions?.enabled !== false && (
                     <>
                         <div className={dividerStyle} role="separator">
                             または
                         </div>
                         <FediverseSignInButton
+                            disabled={fediverseOptions === null}
                             onClick={() => {
                                 setError('');
                                 setSuccess('');

@@ -125,6 +125,8 @@ export function fediverseSignInPlugin({ getSignIn, hasPassword, options }: Fediv
                         state: z.string().max(200).optional(),
                         iss: z.string().max(300).optional(),
                         error: z.string().max(200).optional(),
+                        // Misskey（MiAuth）の戻りはセッション ID だけ
+                        session: z.string().max(200).optional(),
                     }),
                 },
                 async (ctx) => {
@@ -190,14 +192,6 @@ export function fediverseSignInPlugin({ getSignIn, hasPassword, options }: Fediv
                     return ctx.json(outcome.server);
                 },
             ),
-
-            fediverseClient: createAuthEndpoint('/fediverse/client/:server', { method: 'GET' }, async (ctx) => {
-                const html = (await getSignIn()).clientDocument(ctx.params.server);
-                if (!html) return new Response('Not Found', { status: 404 });
-                return new Response(html, {
-                    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
-                });
-            }),
         },
         rateLimit: [
             // IP ごとの制限は Express の側（index.ts）。better-auth は IP を取れないと全員で 1 つの枠にするので、

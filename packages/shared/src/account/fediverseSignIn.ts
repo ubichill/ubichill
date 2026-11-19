@@ -115,7 +115,7 @@ export const FEDIVERSE_SIGN_IN_ERRORS = {
     disabled: 'フェディバースでのログインは無効になっています',
     'invalid-server': 'サーバーのドメインの形式が正しくありません（例: misskey.io）',
     'server-not-allowed': 'このサーバーのアカウントではログインできません',
-    'unsupported-server': 'このサーバーには対応していません（Mastodon 4.3 以降・Misskey 2023.9.0 以降）',
+    'unsupported-server': 'このサーバーには対応していません（Mastodon 4.3 以降・Misskey 系）',
     'server-unreachable': 'そのサーバーに接続できませんでした。ドメインを確かめて、時間をおいてもう一度お試しください',
     denied: 'ログインが取り消されました',
     expired: 'ログインの期限が切れました。もう一度お試しください',
@@ -124,6 +124,7 @@ export const FEDIVERSE_SIGN_IN_ERRORS = {
     'session-changed': 'ログインの状態が変わったため追加できませんでした。もう一度お試しください',
     'reauth-required': 'ログイン方法を変えるには、もう一度本人確認が必要です',
     'not-allowed-for-account': 'このアカウントはフェディバースでのログインに使えません',
+    'server-error': 'サーバーでの確認がうまくいきませんでした（混み合っていることがあります）。もう一度お試しください',
     'too-many-sign-ups': 'このサーバーからの新規登録が多すぎます。しばらくしてからお試しください',
     failed: 'ログインに失敗しました。もう一度お試しください',
 } as const;

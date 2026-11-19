@@ -23,7 +23,6 @@ function setup(callbackOutcome: CallbackOutcome) {
         cancelSignUp: async (ticket) => {
             seen.cancelled = ticket;
         },
-        clientDocument: (host) => (host === 'mi.example' ? '<!doctype html><link rel="redirect_uri" href="x">' : null),
         start: async () => {
             seen.started = (seen.started ?? 0) + 1;
             return { ok: true, authorizationUrl: 'https://mi.example/oauth/authorize?x', browserToken: 'B1' };
@@ -183,14 +182,6 @@ describe('fediverseSignInPlugin', () => {
         expect(res.status).toBe(403);
     });
 
-    it('Misskey の client_id の文書を HTML で返し、知らないホストは 404', async () => {
-        const t = setup({ kind: 'error', error: 'expired', redirectTo: BASE });
-        const ok = await t.request('/fediverse/client/mi.example');
-        expect(ok.headers.get('content-type')).toMatch(/text\/html/);
-        expect(await ok.text()).toContain('redirect_uri');
-        expect((await t.request('/fediverse/client/other.example')).status).toBe(404);
-    });
-
     it('SSO で作ったセッションは外部アカウントを覚え、パスワードの印は付かない', async () => {
         const t = setup({ kind: 'signed-in', userId: 'u1', accountRowId: 'acc-1', redirectTo: `${BASE}/` });
         const started = await start(t);
@@ -269,5 +260,20 @@ describe('fediverseSignInPlugin', () => {
         expect(await ng.json()).toMatchObject({ code: 'unsupported-server' });
         const options = await t.request('/fediverse/options');
         expect(await options.json()).toMatchObject({ featuredServers: ['mi.example'] });
+    });
+
+    it('MiAuth の戻り（session だけ）を受け付けて流れに渡す', async () => {
+        const t = setup({ kind: 'signed-in', userId: 'u1', accountRowId: 'acc-1', redirectTo: `${BASE}/` });
+        const started = await start(t);
+        const res = await t.request('/fediverse/callback/mi.example?session=S1', {
+            headers: { Cookie: cookiesOf(started).join('; ') },
+        });
+        expect(res.status).toBe(302);
+        expect(t.seen.browserToken).toBe('B1');
+    });
+
+    it('Misskey の client_id の文書の口はもう無い', async () => {
+        const t = setup({ kind: 'error', error: 'expired', redirectTo: BASE });
+        expect((await t.request('/fediverse/client/mi.example')).status).toBe(404);
     });
 });
