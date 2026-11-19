@@ -251,7 +251,9 @@ describe('開始', () => {
             },
         });
         const { url } = await t.begin('mi.example:8443');
-        expect(url.searchParams.get('redirect_uri')).toBe('https://ubi.example/api/auth/fediverse/callback/mi.example:8443');
+        expect(url.searchParams.get('redirect_uri')).toBe(
+            'https://ubi.example/api/auth/fediverse/callback/mi.example:8443',
+        );
         expect(url.searchParams.get('client_id')).toBe('https://ubi.example/api/auth/fediverse/client/mi.example:8443');
     });
 
