@@ -56,7 +56,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5.1.0
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
@@ -83,7 +83,7 @@ jobs:
 
       - name: Create Release Pull Request or Publish
         id: changesets
-        uses: changesets/action@v1.9.0
+        uses: changesets/action@v2.1.2
         with:
           # Version Packages PR が既に無い状態（＝マージ済み）のときだけ実行される。
           # instance を cli より先に出す（cli の optionalDependencies が同じ版の instance を指す。逆だと、公開の間 cli を入れても Go が入らない）
