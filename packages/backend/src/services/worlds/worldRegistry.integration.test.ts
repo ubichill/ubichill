@@ -1,5 +1,5 @@
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { copyFileSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { type InitialEntity, signWorld, type WorldDefinition, type WorldSigningKey } from '@ubichill/shared';
@@ -68,9 +68,18 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
 
     beforeAll(async () => {
         // vitest は repo ルートから走る
-        for (const file of ['default.yaml', 'default.lock.json', 'default.sig.json']) {
+        for (const file of ['default.yaml', 'default.lock.json']) {
             copyFileSync(path.resolve(process.cwd(), 'worlds', file), path.join(worldsDir, file));
         }
+        // 公式ワールドの .sig.json はコミットしない（main のイメージのビルドで付ける）。同じ名義で使い捨ての鍵で署名する
+        const official = {
+            definition: yaml.parse(readFileSync(path.join(worldsDir, 'default.yaml'), 'utf8')) as unknown,
+            lock: JSON.parse(readFileSync(path.join(worldsDir, 'default.lock.json'), 'utf8')) as unknown,
+        };
+        const officialSig = await signWorld(official, newTestSigningKey(), nodeWorldCrypto, {
+            author: 'ubichill@ubichill.com',
+        });
+        writeFileSync(path.join(worldsDir, 'default.sig.json'), JSON.stringify(officialSig));
         process.env.WORLDS_DIR = worldsDir;
         // backend の config 検証（config/index.ts）が要求する最小 env を埋める。
         process.env.NODE_ENV ??= 'test';

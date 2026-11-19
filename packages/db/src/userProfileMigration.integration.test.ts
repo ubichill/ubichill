@@ -48,7 +48,7 @@ describe.skipIf(!RUN)('0027_user_profile（DB 統合）', () => {
                 ('b', 'B', 'b@example.com', 'user_b', NULL, NULL)
         `);
         await migrate(db(), { migrationsFolder: MIGRATIONS });
-    });
+    }, 60_000);
 
     afterAll(async () => {
         await state.scratch?.client.end();

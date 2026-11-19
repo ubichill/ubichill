@@ -10,10 +10,14 @@ const RUN = !!process.env.DATABASE_URL;
 const stamp = Date.now().toString(36);
 const PASSWORD = 'correct horse battery';
 
-describe.skipIf(!RUN)('仮登録（DB統合）', () => {
+// どのテストもパスワードのハッシュ（scrypt）を何度も計算する。単体で 1 秒台でも、並列で走らせると既定の 5 秒を超えることがある
+describe.skipIf(!RUN)('仮登録（DB統合）', { timeout: 30_000 }, () => {
     // lib/auth は読み込んだ時点で環境変数を検証するので、走らせるときだけ読み込む（スキップ時に落とさない）
     const loaded: { module?: typeof import('../../lib/auth') } = {};
     beforeAll(async () => {
+        // backend の config 検証（config/index.ts）が要求する最小 env を埋める（.env の無い CI でも読めるように）
+        process.env.BETTER_AUTH_SECRET ??= 'test-secret';
+        process.env.INSTANCE_ADMIN_TOKEN ??= 'test-instance-token-at-least-32-characters';
         loaded.module = await import('../../lib/auth');
     });
     const authModule = () => {
