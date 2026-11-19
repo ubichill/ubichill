@@ -8,10 +8,11 @@ import { API_BASE } from '../../lib/api';
  * fetch せずモジュール singleton で 1 回だけ取得し、全 consumer を同期する。
  * トグルは楽観的更新し、失敗時はサーバー状態へ戻す。
  */
-const store: { favorites: ReadonlySet<string>; loaded: boolean; inflight: Promise<void> | null } = {
+const store: { favorites: ReadonlySet<string>; loaded: boolean; inflight: Promise<void> | null; generation: number } = {
     favorites: new Set(),
     loaded: false,
     inflight: null,
+    generation: 0,
 };
 const listeners = new Set<() => void>();
 
@@ -55,12 +56,14 @@ function setFavorites(next: ReadonlySet<string>): void {
 
 /** ログアウトしたとき（次の人に前の人のお気に入りを使わない）。 */
 export function resetFavorites(): void {
+    store.generation += 1;
     store.inflight = null;
     store.loaded = false;
     setFavorites(new Set());
 }
 
 async function toggle(worldRef: string): Promise<void> {
+    const generation = store.generation;
     const willAdd = !store.favorites.has(worldRef);
     const next = new Set(store.favorites);
     if (willAdd) next.add(worldRef);
@@ -76,8 +79,11 @@ async function toggle(worldRef: string): Promise<void> {
         if (!res.ok) throw new Error('failed');
         // サーバーは共有 URL を正規化して保存するので、保存された形も持つ（どちらの形でもお気に入り済みと表示する）
         const saved = willAdd ? ((await res.json().catch(() => ({}))) as { worldRef?: string }).worldRef : undefined;
-        if (saved && saved !== worldRef) setFavorites(new Set([...store.favorites, saved]));
+        if (generation === store.generation && saved && saved !== worldRef) {
+            setFavorites(new Set([...store.favorites, saved]));
+        }
     } catch {
+        if (generation !== store.generation) return;
         const revert = new Set(store.favorites);
         if (willAdd) revert.delete(worldRef);
         else revert.add(worldRef);

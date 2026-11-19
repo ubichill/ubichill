@@ -50,6 +50,36 @@ describe('お気に入り: ログアウトで前の人の一覧を捨てる', ()
         expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
+    it.each(['削除の失敗', '追加の成功'])('ログアウト後は前の人のお気に入り変更を反映しない（%s）', async (kind) => {
+        const priorRef = 'https://a.example/alice-room';
+        const removing = kind === '削除の失敗';
+        const slow = deferred();
+        vi.stubGlobal(
+            'fetch',
+            vi
+                .fn()
+                .mockResolvedValueOnce(json({ worldRefs: removing ? [priorRef] : [] }))
+                .mockReturnValueOnce(slow.promise)
+                .mockResolvedValueOnce(json({ worldRefs: ['https://b.example/bob-room'] })),
+        );
+        const alice = renderHook(() => useFavorites());
+        await act(async () => alice.result.current.refresh());
+        const request = Promise.withResolvers<void>();
+        act(() => {
+            void alice.result.current.toggle(priorRef).then(request.resolve, request.reject);
+        });
+        alice.unmount();
+        act(() => resetFavorites());
+
+        const bob = renderHook(() => useFavorites());
+        await waitFor(() => expect(bob.result.current.favorites.size).toBe(1));
+        await act(async () => {
+            slow.resolve(removing ? new Response(null, { status: 500 }) : json({ worldRef: `${priorRef}.json` }));
+            await request.promise;
+        });
+        expect([...bob.result.current.favorites]).toEqual(['https://b.example/bob-room']);
+    });
+
     it('読んでいる途中で捨てたら、届いた前の人の一覧は入れない', async () => {
         const slow = deferred();
         const fetchMock = vi

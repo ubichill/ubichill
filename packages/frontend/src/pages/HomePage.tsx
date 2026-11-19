@@ -9,6 +9,7 @@ import {
     recordEntryOutcome,
 } from '@/lib/home/home';
 import { ensureHomeInstance } from '@/lib/home/homeApi';
+import { useSession } from '@/lib/session';
 import { css, cva } from '@/styled-system/css';
 import { InstanceLoadingScreen } from '@/world/InstanceLoadingScreen';
 
@@ -34,6 +35,7 @@ function initialAttempt(state: unknown): {
 export function HomePage() {
     const navigate = useNavigate();
     const location = useLocation();
+    const { forgetSession } = useSession();
     const [initial] = useState(() => initialAttempt(location.state));
     const { retryPath } = initial;
     // null は止まっている（もう一度試すのを待つ）
@@ -64,9 +66,13 @@ export function HomePage() {
     }, [attempt, navigate, retryPath]);
 
     const handleLogout = useCallback(async () => {
-        await signOutAndReset();
-        navigate('/auth', { replace: true });
-    }, [navigate]);
+        try {
+            await signOutAndReset(forgetSession);
+            navigate('/auth', { replace: true });
+        } catch (error) {
+            setError(error instanceof Error ? error.message : 'ログアウトに失敗しました');
+        }
+    }, [forgetSession, navigate]);
 
     if (attempt) {
         return (

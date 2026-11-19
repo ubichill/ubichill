@@ -1,8 +1,8 @@
 import { displayAuthorAccount, normalizeUserCode } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
+import { signOutAndReset } from '@/components/hud/tabs/settings/signOut';
 import { fetchMyAccount } from '@/lib/account/me';
-import { signOut } from '@/lib/auth-client';
 import {
     approveCliAuthRequest,
     type CliAuthRequestView,
@@ -10,6 +10,7 @@ import {
     keyFingerprint,
 } from '@/lib/publishing/cliAuthApi';
 import { useSession } from '@/lib/session';
+import { pushToast } from '@/lib/toast';
 import { css, cva } from '@/styled-system/css';
 
 const page = css({
@@ -70,7 +71,7 @@ type State =
  */
 function ApprovingAccount({ returnTo }: { returnTo: string }) {
     const navigate = useNavigate();
-    const { data: session } = useSession();
+    const { data: session, forgetSession } = useSession();
     const [author, setAuthor] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
 
@@ -86,8 +87,13 @@ function ApprovingAccount({ returnTo }: { returnTo: string }) {
 
     const switchAccount = async () => {
         setBusy(true);
-        await signOut();
-        navigate('/auth', { state: { from: returnTo }, replace: true });
+        try {
+            await signOutAndReset(forgetSession);
+            navigate('/auth', { state: { from: returnTo }, replace: true });
+        } catch (error) {
+            pushToast(error instanceof Error ? error.message : 'ログアウトに失敗しました', 'error');
+            setBusy(false);
+        }
     };
 
     if (!session) return null;

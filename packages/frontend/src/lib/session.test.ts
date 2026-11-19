@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/auth-client', () => ({ useSession: () => null }));
 
-const { nextLastGoodSession, resilientSession } = await import('./session');
+const { nextLastGoodSession, resilientSession, withoutEndedSession } = await import('./session');
 
 type Raw = Parameters<typeof resilientSession>[0];
 type Data = NonNullable<Raw['data']>;
@@ -68,6 +68,22 @@ describe('SessionProvider の直近のセッション', () => {
             bob,
             bob,
         ]);
+    });
+
+    it('終了したセッションは 5xx で Better Auth に残っていても使わない', () => {
+        const stale = withoutEndedSession(state({ data: alice, error: serverError }), 's1');
+        expect(stale.data).toBeNull();
+        expect(run([state({ data: alice }), stale, state({ error: serverError }), state({ data: bob })])).toEqual([
+            alice,
+            null,
+            null,
+            bob,
+        ]);
+        expect(withoutEndedSession(state({ data: bob }), 's1').data).toBe(bob);
+    });
+
+    it('401 に古いデータが伴っても未認証として扱う', () => {
+        expect(run([state({ data: alice, error: unauthorized }), state({ error: serverError })])).toEqual([null, null]);
     });
 
     it('一度もセッションが無いまま失敗しても、何も作らない', () => {
