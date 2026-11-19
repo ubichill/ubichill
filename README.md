@@ -52,9 +52,12 @@ URL を開くだけでカーソルがアバターになる、軽量な 2D メタ
 helm repo add ubichill https://ubichill.github.io/ubichill
 helm install ubichill ubichill/ubichill -n ubichill --create-namespace \
   --set global.domain=<your-domain> \
-  --set backend.secretEnv.BETTER_AUTH_SECRET=<random-secret>
+  --set backend.secretEnv.BETTER_AUTH_SECRET=<random-secret> \
+  --set redis.auth.password=<random-secret>
 ```
 
+`BETTER_AUTH_SECRET` は 32 文字以上にする（Go インスタンスの管理トークンにも使うため。短いと描画で失敗する。例: `openssl rand -hex 32`）。
+`redis.auth.password` は同梱の Redis（Valkey）のパスワード。
 `global.domain` から Ingress ホスト / `CORS_ORIGIN` / `BETTER_AUTH_URL` が導出される。
 DB は同梱の PostgreSQL がパスワードを自動生成するので指定不要（自前 DB を使うなら
 `postgresql.auth.password` か `postgresql.auth.existingSecret` を指定）。メール認証を使うなら

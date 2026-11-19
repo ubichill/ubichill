@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -236,6 +237,36 @@ func TestEntityDeleteRules(t *testing.T) {
 	}
 }
 
+// entity:ephemeral の送信者はサーバーが付ける（senderId）。中身の userId や、送り手が付けた senderId では偽れない。
+// 別の Pod から中継されてきた接続でも、owner がチケットで確かめた userId を付ける。
+func TestEphemeralCarriesTheSenderSetByTheServer(t *testing.T) {
+	c := newCluster()
+	owner, edge := c.pod(t, "node-a"), c.pod(t, "node-b")
+	provision(t, owner, "room")
+	owner.maintain()
+	edge.maintain()
+	alice, out := joinWith(t, edge.http, "room", memberGrant(t, owner, "room", "alice"))
+	joined(t, out)
+	bob, out := joinWith(t, owner.http, "room", memberGrant(t, owner, "room", "bob"))
+	joined(t, out)
+	id := createEntity(t, alice, Object{})
+	receive(t, bob, "entity:created")
+
+	for name, sent := range map[string]Object{
+		"spoofed userId in data": {"entityId": id, "data": Object{"type": "chat", "userId": "bob", "data": "hi"}},
+		"spoofed senderId":       {"entityId": id, "data": Object{"type": "chat", "userId": "bob"}, "senderId": "bob"},
+		"data without an object": {"entityId": id, "data": "raw"},
+	} {
+		if err := alice.WriteJSON(Frame{Event: "entity:ephemeral", Data: encoded(sent)}); err != nil {
+			t.Fatal(err)
+		}
+		got, _ := object(receive(t, bob, "entity:ephemeral").Data)
+		if got["senderId"] != "alice" || got["entityId"] != id || string(encoded(got["data"])) != string(encoded(sent["data"])) {
+			t.Fatalf("%s: relayed %v", name, got)
+		}
+	}
+}
+
 func TestEphemeralCursorAndStatus(t *testing.T) {
 	s, h := start(t, false)
 	alice := connect(t, s, h, "a", "alice")
@@ -279,5 +310,67 @@ func TestEphemeralCursorAndStatus(t *testing.T) {
 	r.mu.Unlock()
 	if user["status"] != "busy" || user["position"].(map[string]any)["y"] != float64(4) {
 		t.Fatalf("user state not stored: %v", user)
+	}
+}
+
+// 座標は x・y だけを保存して配る。余分なキーを付けた入室・cursor:move は、余分を落として届く（他の全員へ大きな値を配らせない）。
+func TestPositionKeepsOnlyXAndY(t *testing.T) {
+	s, h := start(t, false)
+	bob := connect(t, s, h, "a", "bob")
+	padded := func(x, y float64) Object {
+		return Object{"x": x, "y": y, "z": float64(9), "blob": strings.Repeat("x", 60<<10), "nested": Object{"x": float64(0)}}
+	}
+	expectXY := func(label string, got any, x, y float64) {
+		t.Helper()
+		if want := (Object{"x": x, "y": y}); string(encoded(got)) != string(encoded(want)) {
+			t.Fatalf("%s: position = %.80s, want %s", label, encoded(got), encoded(want))
+		}
+	}
+	enterAs := func(user string, position Object) *websocket.Conn {
+		t.Helper()
+		c := dial(t, h)
+		token := s.sign(ticket{"a", user, time.Now().Add(time.Minute).Unix(), "member", "", "", false})
+		if err := c.WriteJSON(Frame{Event: "world:join", ID: "join", Data: encoded(Object{
+			"instanceId": "a", "token": token, "user": Object{"name": user, "status": "online", "position": position},
+		})}); err != nil {
+			t.Fatal(err)
+		}
+		if out, _ := object(receive(t, c, "join").Data); out["success"] != true {
+			t.Fatalf("join %s: %v", user, out)
+		}
+		return c
+	}
+
+	alice := enterAs("alice", padded(1, 2))
+	joinedUser, _ := object(receive(t, bob, "user:joined").Data)
+	expectXY("user:joined", joinedUser["position"], 1, 2)
+
+	if err := alice.WriteJSON(Frame{Event: "cursor:move", Data: encoded(Object{"position": padded(3, 4)})}); err != nil {
+		t.Fatal(err)
+	}
+	moved, _ := object(receive(t, bob, "cursor:moved").Data)
+	expectXY("cursor:moved", moved["position"], 3, 4)
+
+	carol := enterAs("carol", Object{"x": float64(0), "y": float64(0)})
+	var list []Object
+	if err := json.Unmarshal(receive(t, carol, "users:update").Data, &list); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(list, func(u Object) bool { return u["id"] == "alice" }) {
+		t.Fatalf("users:update = %v", list)
+	}
+	for _, u := range list {
+		if u["id"] == "alice" {
+			expectXY("users:update", u["position"], 3, 4)
+		}
+	}
+	snapshot, ok := s.room("a").freeze()
+	if !ok {
+		t.Fatal("freeze")
+	}
+	for _, m := range snapshot.Members {
+		if m.ID == "alice" {
+			expectXY("handoff snapshot", m.User["position"], 3, 4)
+		}
 	}
 }

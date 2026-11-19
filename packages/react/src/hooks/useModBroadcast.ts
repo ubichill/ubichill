@@ -12,6 +12,22 @@ import type { EntityEphemeralPayload, ModHostEvent } from '@ubichill/shared';
 import { useEffect, useRef } from 'react';
 import { useSocket } from './useSocket';
 
+/** senderId は Go が中継のときに付ける送信者。data の中の userId は送り手が自由に書けるので、senderId を付けない古い Go のときだけ使う。 */
+type ReceivedEphemeral = EntityEphemeralPayload & { senderId?: string };
+
+export function toNetworkBroadcast(
+    payload: ReceivedEphemeral,
+    entityId: string,
+    selfId: string | undefined,
+): ModHostEvent | null {
+    if (payload.entityId !== entityId) return null;
+    const d = payload.data as { type: string; userId: string; data: unknown } | null | undefined;
+    if (!d?.type) return null;
+    const userId = payload.senderId ?? d.userId;
+    if (userId === selfId) return null;
+    return { type: 'EVT_NETWORK_BROADCAST', payload: { type: d.type, userId, data: d.data } };
+}
+
 export function useModBroadcast(
     entityId: string,
     sendEvent: (event: ModHostEvent) => void,
@@ -31,12 +47,9 @@ export function useModBroadcast(
     useEffect(() => {
         const sock = socket;
         if (!sock) return;
-        const handler = (payload: EntityEphemeralPayload) => {
-            if (payload.entityId !== entityId) return;
-            const d = payload.data as { type: string; userId: string; data: unknown };
-            if (!d?.type) return;
-            if (d.userId === currentUserIdRef.current) return;
-            sendEvent({ type: 'EVT_NETWORK_BROADCAST', payload: { type: d.type, userId: d.userId, data: d.data } });
+        const handler = (payload: ReceivedEphemeral) => {
+            const event = toNetworkBroadcast(payload, entityId, currentUserIdRef.current);
+            if (event) sendEvent(event);
         };
         sock.on('entity:ephemeral', handler);
         return () => {

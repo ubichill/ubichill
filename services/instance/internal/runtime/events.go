@@ -32,24 +32,29 @@ func transform(value any, partial bool) (Object, bool) {
 	}
 	return v, true
 }
-func position(value any) bool {
+
+// position は x・y だけの座標に作り直す。ほかのキーは保存も再配信もしない（全員へ大きな値を配らせない）。
+func position(value any) (Object, bool) {
 	v, ok := value.(map[string]any)
 	if !ok {
-		return false
+		return nil, false
 	}
+	out := make(Object, 2)
 	for _, k := range []string{"x", "y"} {
 		n, ok := v[k].(float64)
 		if !ok || math.Abs(n) > 1e7 {
-			return false
+			return nil, false
 		}
+		out[k] = n
 	}
-	return true
+	return out, true
 }
 func validName(name string) bool {
 	return utf8.RuneCountInString(strings.TrimSpace(name)) >= 1 && utf8.RuneCountInString(name) <= 30
 }
 func validUser(v Object) bool {
-	return validName(str(v["name"])) && position(v["position"]) && validStatus(str(v["status"]))
+	_, ok := position(v["position"])
+	return validName(str(v["name"])) && ok && validStatus(str(v["status"]))
 }
 func validStatus(v string) bool {
 	return v == "online" || v == "busy" || v == "dnd" || v == "away" || v == "offline"
@@ -75,13 +80,14 @@ func (r *Room) handle(p *peer, f Frame) {
 	data, _ := object(f.Data)
 	switch f.Event {
 	case "cursor:move":
-		if !position(data["position"]) {
+		pos, ok := position(data["position"])
+		if !ok {
 			p.reject(f.ID, "不正な座標です")
 			return
 		}
-		m.user["position"] = data["position"]
+		m.user["position"] = pos
 		m.user["lastActiveAt"] = time.Now().UnixMilli()
-		out := Object{"userId": p.userID, "position": data["position"]}
+		out := Object{"userId": p.userID, "position": pos}
 		if held, exists := data["heldEntityId"]; exists && (held == nil || (len(str(held)) > 0 && len(str(held)) <= 64)) {
 			out["heldEntityId"] = held
 		}
@@ -196,7 +202,8 @@ func (r *Room) handle(p *peer, f Frame) {
 			p.reject(f.ID, "不正な一時データです")
 			return
 		}
-		r.broadcast(f.Event, Object{"entityId": data["entityId"], "data": data["data"]}, p, true)
+		// 送信者はサーバーが付ける（data の中の userId は送り手が自由に書ける）
+		r.broadcast(f.Event, Object{"entityId": data["entityId"], "data": data["data"], "senderId": p.userID}, p, true)
 	case "entity:delete":
 		var id string
 		if json.Unmarshal(f.Data, &id) != nil {

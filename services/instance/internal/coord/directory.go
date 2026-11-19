@@ -3,6 +3,7 @@ package coord
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"os"
@@ -94,8 +95,10 @@ type Directory interface {
 }
 
 var (
-	ErrGenChanged = errors.New("directory: cluster generation changed")
-	ErrRetired    = errors.New("directory: room has been closed recently")
+	// ErrInvalidLease は名前・期限の指定が不正なとき（どちらの実装でも同じ判定）。
+	ErrInvalidLease = errors.New("lease: name must be non-empty and ttl at least 1ms")
+	ErrGenChanged   = errors.New("directory: cluster generation changed")
+	ErrRetired      = errors.New("directory: room has been closed recently")
 	// "epoch:" で始まる ID は ubi:room:epoch:<id> と ubi:room:<id> のキーがぶつかるので受け付けない。
 	ErrInvalidRoom = errors.New("directory: room must be non-empty and must not start with \"epoch:\"")
 )
@@ -103,6 +106,21 @@ var (
 // epochRetention は部屋の epoch を最後の延長から残す期間。チケットの最長の期限（ゲストの 24 時間）より長くし、
 // 同じ部屋 ID が作り直されて epoch が 1 から数え直されても、前の部屋のチケットが通らないようにする。
 const epochRetention = 25 * time.Hour
+
+func validate(name string, ttl time.Duration) error {
+	if name == "" || ttl < time.Millisecond {
+		return ErrInvalidLease
+	}
+	return nil
+}
+
+func newToken() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
+	return base64.RawURLEncoding.EncodeToString(b)
+}
 
 func validateRoom(room string, ttl time.Duration, checkTTL bool) error {
 	if room == "" || strings.HasPrefix(room, "epoch:") {

@@ -658,7 +658,11 @@
                 "entityId": {
                   "type": "string"
                 },
-                "data": {}
+                "data": {},
+                "senderId": {
+                  "type": "string",
+                  "description": "Participant ID of the sender, set by the server when it relays the event (server to client only). The server overwrites any value sent by the client; receivers trust this instead of IDs inside data."
+                }
               },
               "required": [
                 "entityId",

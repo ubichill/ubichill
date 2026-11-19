@@ -248,8 +248,10 @@ ALTER TABLE users ADD COLUMN profile_image_url varchar(1024);
 - `instances` に `content_hash` と `world_version_id`（`world_versions` へ `ON DELETE RESTRICT`）を足す。既存のインスタンスは NULL のまま。
 - `worlds` の `name`・`version`・`definition`・`lock`・`signature`・`draft_*` は**残す**（デプロイ中の古い Pod が読み書きする）。
   新しいイメージは読まず、保存のたびに版と下書きから書き直す（古いイメージに戻したときに同じ中身が見えるように）。消すのは後続のマイグレーション。
-- 開発環境の `pnpm dev` は `drizzle-kit push` でスキーマだけ合わせるので、既存のワールドは移らない（版も下書きも無いので見つからなくなる）。
-  手元のワールドを残したいときは、下の「古い Pod が書いたものを写す」の SQL を当てる。
+- 開発環境の `pnpm dev` も `migrate:dev` で同じ SQL を流す。ただし `drizzle-kit push` で作った古い手元の DB は、記録が無いため
+  全 migration を実行せず「適用済み」にされる（新しい migration の表や列が無いまま migrate だけ成功する）。
+  `pnpm dev` を初めてこの形で動かす前に `docker compose -f packages/db/docker-compose.yml down -v` で DB を作り直す。
+  手元のワールドを残したいときは、作り直す前に下の「古い Pod が書いたものを写す」の SQL を当てる。
 
 1.〜2. の手順（事前確認・バックアップ）は同じ。
 
