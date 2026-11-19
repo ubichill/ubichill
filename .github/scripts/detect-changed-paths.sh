@@ -13,7 +13,7 @@
 # diff の取り方:
 #   - synchronize かつ before が reachable: 前回 push HEAD との incremental
 #   - それ以外 (opened / reopened / force-push 等): PR base からの cumulative
-#   push to main では PR_ACTION=synchronize / PR_BEFORE_SHA=push 前の HEAD として呼ぶ。
+#   push to main では PR_ACTION=synchronize / PR_BEFORE_SHA=前のリリースタグのコミット（無ければ push 前の HEAD）として呼ぶ。
 #   diff が取れなければ全部 true にする（ビルド漏れより無駄なビルドの方がまし）。
 #
 # 出力 (GITHUB_OUTPUT):

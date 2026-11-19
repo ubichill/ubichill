@@ -1,5 +1,13 @@
 # @ubichill/backend
 
+## 1.14.1
+
+### Patch Changes
+
+- c3bd3ca: DB・Redis の統合テストを CI で走らせるため、テストの前提（コミットされなくなった署名ファイル・手元の `.env`・短すぎる制限時間）を直す。動作は変わらない。
+- Updated dependencies [c3bd3ca]
+  - @ubichill/db@1.9.2
+
 ## 1.14.0
 
 ### Minor Changes
