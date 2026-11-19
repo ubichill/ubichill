@@ -52,7 +52,7 @@ const ModBaseUrlSchema = z
         /^https?:\/\/(?:[A-Za-z0-9.-]+|\[[A-Fa-f0-9:.]+\])(?::\d{1,5})?(?:\/[^\s?#@\\]*)?$/,
         'http(s) の URL を指定してください',
     )
-    .refine((url) => URL.canParse(url), 'http(s) の URL を指定してください');
+    .url('http(s) の URL を指定してください');
 
 /**
  * lock された 1 つの Component。
