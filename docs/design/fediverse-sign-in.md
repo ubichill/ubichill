@@ -236,7 +236,7 @@ A では、奪われたセッションでログイン方法を足されないよ
 
 ### メール送信
 
-現在は `RESEND_API_KEY` と `MAIL_FROM` で [Resend の HTTP API](../../packages/backend/src/lib/auth.ts) を使っている。C ではこれを共通の送信処理にまとめ、SMTP を選べるようにする。
+送信は [`lib/mail.ts`](../../packages/backend/src/lib/mail.ts) にまとめた（B）。環境変数 `SMTP_URL`（`smtps://` か STARTTLS 必須の `smtp://`）があれば SMTP、無ければ `RESEND_API_KEY` で Resend の API、どちらも無ければ送らない。送信元は `MAIL_FROM`。Resend は API の失敗を投げずに返すので、返り値を見て失敗にする。C では、これをコントロールパネルから設定できるようにする。
 
 - SMTP では証明書を検証し、暗号化を必須にする。
 - 接続先は DNS で解決したアドレスを検査してから使い、TLS 証明書は元のホスト名に対して検証する。

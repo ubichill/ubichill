@@ -14,7 +14,6 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { multiSession } from 'better-auth/plugins';
 import { eq } from 'drizzle-orm';
-import { Resend } from 'resend';
 import { z } from 'zod';
 import { appConfig } from '../config';
 import { createProductionFediverseSignIn } from '../services/auth/fediverse';
@@ -31,35 +30,25 @@ import { logger } from '../utils/logger';
 import { accountSwitchPlugin } from './accountSwitchPlugin';
 import { createAuthRateLimitStorage } from './authRateLimit';
 import { fediverseSignInPlugin } from './fediverseSignInPlugin';
+import { createMailer, mailTransportFrom } from './mail';
 import { redis } from './redis';
 import { sessionAssuranceFields, sessionAssuranceHooks } from './sessionAssuranceOptions';
-
-// SKIP_EMAIL_VERIFICATION=true の場合はAPIキー不要なので遅延初期化
-let _resend: Resend | null = null;
-function getResend(): Resend {
-    if (!_resend) {
-        _resend = new Resend(process.env.RESEND_API_KEY);
-    }
-    return _resend;
-}
-
-/**
- * メールを送る。Resend は API の失敗（キーの誤り・送信元の未確認など）を投げずに `error` で返すので、ここで投げる
- * （返り値を見ないと、届かない確認コードを「送りました」と言ってしまう）。
- */
-async function sendMail(input: { to: string; subject: string; text: string }): Promise<void> {
-    const { error } = await getResend().emails.send({ from: MAIL_FROM, ...input });
-    if (error) throw new Error(`メールを送れませんでした: ${error.name} ${error.message}`);
-}
 
 // 認証メールの送信元。組織固有ドメインを直書きせず env で差し替え可能にする
 // （OSS としてセルフホスト時に自分の検証済みドメインを使えるように）。
 const MAIL_FROM = process.env.MAIL_FROM ?? 'Ubichill <onboarding@resend.dev>';
 
+/** メールの送り方（SMTP_URL か RESEND_API_KEY。lib/mail.ts） */
+const mailer = createMailer(
+    mailTransportFrom({ smtpUrl: appConfig.email.smtpUrl, resendApiKey: appConfig.email.resendApiKey }),
+    MAIL_FROM,
+);
+const sendMail = (input: { to: string; subject: string; text: string }) => mailer.send(input);
+
 /**
  * アカウントの安全に関わる通知（新しい公開環境の追加など）をメールで送る。乗っ取りに本人が気付けるようにするため。
  * 確認済みの連絡先が無いユーザー（フェディバースで登録したメールなしのユーザーなど）には送らない。
- * メールを送らない環境（SKIP_EMAIL_VERIFICATION・API キー未設定）ではログだけ出す。送信の失敗で操作は止めない。
+ * メールを送らない環境（SKIP_EMAIL_VERIFICATION・送り方が未設定）ではログだけ出す。送信の失敗で操作は止めない。
  */
 export async function sendAccountNotice(
     user: { email: string; emailVerified: boolean },
@@ -67,7 +56,7 @@ export async function sendAccountNotice(
     text: string,
 ): Promise<void> {
     const to = contactEmailOf(user);
-    if (!to || process.env.SKIP_EMAIL_VERIFICATION === 'true' || !process.env.RESEND_API_KEY) {
+    if (!to || appConfig.email.skipVerification || !mailer.configured) {
         logger.info(`通知（送信しない環境）: ${subject}`);
         return;
     }
@@ -284,7 +273,7 @@ ${otp}
 logger.debug(
     [
         'Better Auth 初期化中',
-        `RESEND_API_KEY=${process.env.RESEND_API_KEY ? '設定済み' : '未設定'}`,
+        `メールの送り方=${mailer.kind}`,
         `BETTER_AUTH_URL=${process.env.BETTER_AUTH_URL || 'http://localhost:3001'}`,
         `CORS_ORIGIN=${process.env.CORS_ORIGIN || 'http://localhost:3000'}`,
         `SKIP_EMAIL_VERIFICATION=${SKIP_EMAIL_VERIFICATION ? '有効' : '無効'}`,

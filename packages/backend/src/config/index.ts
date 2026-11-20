@@ -48,6 +48,8 @@ const envSchema = z
         BETTER_AUTH_SECRET: z.string().min(1),
         BETTER_AUTH_URL: z.string().default('http://localhost:3001'),
         RESEND_API_KEY: z.string().optional(),
+        // SMTP で送る（smtps://ユーザー:パスワード@ホスト:ポート、または STARTTLS の smtp://）。あれば Resend より優先する
+        SMTP_URL: z.preprocess(emptyToUndefined, z.url({ protocol: /^smtps?$/ }).optional()),
         SKIP_EMAIL_VERIFICATION: z
             .string()
             .default('false')
@@ -138,6 +140,7 @@ export const appConfig = {
     },
     email: {
         resendApiKey: parsedEnv.data.RESEND_API_KEY,
+        smtpUrl: parsedEnv.data.SMTP_URL,
         skipVerification: parsedEnv.data.SKIP_EMAIL_VERIFICATION,
     },
     fediverseSignIn: {
@@ -201,7 +204,7 @@ log.info(
 );
 log.info(
     summary('メール', {
-        RESEND_API_KEY: appConfig.email.resendApiKey ? '設定済み' : '未設定',
+        送り方: appConfig.email.smtpUrl ? 'SMTP' : appConfig.email.resendApiKey ? 'Resend' : '未設定（送らない）',
         メール確認スキップ: appConfig.email.skipVerification ? '有効' : '無効',
     }),
 );
