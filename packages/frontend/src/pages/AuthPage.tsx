@@ -86,10 +86,11 @@ export function AuthPage() {
 
     // Redirect if already logged in
     useEffect(() => {
-        if (session && !isPending && !adding) {
+        // 二段階目の途中は移らない（アカウントの追加では、元のアカウントのセッションが残っている）
+        if (session && !isPending && !adding && !twoFactor) {
             navigate(from, { replace: true });
         }
-    }, [session, isPending, navigate, from, adding]);
+    }, [session, isPending, navigate, from, adding, twoFactor]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -208,7 +209,7 @@ export function AuthPage() {
     }, [registrationId, otp]);
 
     // 既にログイン済みなら、元の画面へ移るまでの間だけ（ログイン状態を確かめている間は下のフォームが場所を取る）
-    if (session && !isPending && !adding) {
+    if (session && !isPending && !adding && !twoFactor) {
         return (
             <main className={containerStyle}>
                 <div className={cardStyle}>

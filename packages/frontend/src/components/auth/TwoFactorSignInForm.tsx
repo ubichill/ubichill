@@ -110,7 +110,7 @@ export function TwoFactorSignInForm({
                     setError('');
                 }}
             >
-                {backup ? '認証アプリのコードを使う' : '認証アプリを使えないとき（バックアップコード）'}
+                {backup ? '認証アプリのコードを使う' : 'バックアップコードを使う'}
             </button>
             <button type="button" className={linkButtonStyle} disabled={busy} onClick={() => onRestart()}>
                 最初からログインし直す

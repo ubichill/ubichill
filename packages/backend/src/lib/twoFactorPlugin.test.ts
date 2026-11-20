@@ -65,7 +65,8 @@ function fakeFediverse(outcome: CallbackOutcome): FediverseSignIn {
 }
 
 function setup(options: { enabled?: string[]; callback?: CallbackOutcome } = {}) {
-    const { gate, rows } = memoryGate(new Set(options.enabled ?? []));
+    const enabled = new Set(options.enabled ?? []);
+    const { gate, rows } = memoryGate(enabled);
     const db = {
         user: [
             {
@@ -104,7 +105,7 @@ function setup(options: { enabled?: string[]; callback?: CallbackOutcome } = {})
     });
     const request = (path: string, init: RequestInit = {}) =>
         auth.handler(new Request(`${BASE}/api/auth${path}`, init));
-    return { auth, request, db, rows };
+    return { auth, request, db, rows, enabled };
 }
 
 const cookiesOf = (res: Response) =>
@@ -177,6 +178,39 @@ describe('twoFactorPlugin（パスワードのログイン）', () => {
         expect(challenge).toMatch(/Path=\/api\/auth\/two-factor/);
         expect(gated.rows.size).toBe(1);
         expect([...gated.rows.values()][0]).toMatchObject({ userId: id, passwordVerified: true, authAccountId: null });
+    });
+});
+
+describe('twoFactorPlugin（アカウントの追加）', () => {
+    it('ログイン中に別のアカウントを足す途中で二段階目に進んでも、元のアカウントのログインはこのブラウザーに残る', async () => {
+        const t = setup();
+        const a = await signUpWithPassword(t, 'a@example.com');
+        const b = await signUpWithPassword(t, 'b@example.com');
+        t.enabled.add(b);
+        const asA = await signIn(t, 'a@example.com');
+        const cookieA = cookiesOf(asA).join('; ');
+
+        const adding = await t.request('/sign-in/email', {
+            method: 'POST',
+            headers: { ...json, Cookie: cookieA },
+            body: JSON.stringify({ email: 'b@example.com', password: 'password-123' }),
+        });
+        expect(await adding.json()).toEqual({ twoFactorRequired: true });
+        // B のセッションは作らず、A のクッキーを戻す（ブラウザーと同じく、後の Set-Cookie で上書きし、期限切れは消す）
+        const jar = adding.headers.getSetCookie().reduce(
+            (cookies, header) => {
+                const pair = header.split(';')[0] ?? '';
+                const name = pair.split('=')[0] ?? '';
+                const next = new Map(cookies);
+                if (/Max-Age=0/i.test(header)) next.delete(name);
+                else next.set(name, pair);
+                return next;
+            },
+            new Map(cookieA.split('; ').map((c) => [c.split('=')[0] ?? '', c] as const)),
+        );
+        const session = await t.request('/get-session', { headers: { Cookie: [...jar.values()].join('; ') } });
+        expect(((await session.json()) as { user?: { id: string } } | null)?.user?.id).toBe(a);
+        expect(t.db.session.map((s) => s.userId)).toEqual([a]);
     });
 });
 

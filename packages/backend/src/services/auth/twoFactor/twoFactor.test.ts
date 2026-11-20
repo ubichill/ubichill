@@ -1,7 +1,8 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import type { LockedTwoFactor, TwoFactorRecord } from '@ubichill/db';
 import { describe, expect, it } from 'vitest';
 import { createSecretBox } from '../../../lib/secretBox';
+import { keyedHmac, matchesKeyedHmac, serverKeysFrom } from '../../../lib/serverKeys';
 import { hotp, totpStep } from './totp';
 import { createTwoFactor, TWO_FACTOR_LIMITS } from './twoFactor';
 
@@ -53,11 +54,15 @@ function setup() {
     const clock = { now: new Date('2026-11-21T00:00:00Z') };
     const notices: Array<{ userId: string; subject: string; text: string }> = [];
     const warnings: string[] = [];
-    const box = createSecretBox('server-secret', 'two-factor/totp-secret');
+    const keys = serverKeysFrom('server-secret');
+    const box = createSecretBox(keys, 'two-factor/totp-secret');
     const twoFactor = createTwoFactor({
         repository,
         box,
-        hashBackupCode: (userId, code) => createHash('sha256').update(`${userId}\n${code}`).digest('base64url'),
+        backupCodeHash: {
+            create: (userId, code) => keyedHmac(keys, `${userId}\n${code}`),
+            matches: (userId, code, stored) => matchesKeyedHmac(keys, `${userId}\n${code}`, stored),
+        },
         randomBytes: (n) => new Uint8Array(randomBytes(n)),
         label: async (userId) =>
             userId === 'ghost' ? null : { issuer: 'Ubichill', account: `@${userId}@ubi.example` },
@@ -187,7 +192,7 @@ describe('ログインの二段階目のコード', () => {
         expect(await t.twoFactor.verifyForSignIn('alice', bobCode)).toEqual({ ok: false, reason: 'invalid-code' });
     });
 
-    it('続けて 10 回間違えると 15 分止め（正しいコードも通さない）、1 回だけ知らせる。時間が経てば通る', async () => {
+    it('ログインで続けて 10 回間違えると 15 分止め（正しいコードも通さない）、1 回だけ知らせる。時間が経てば通る', async () => {
         const t = setup();
         await t.enabled('alice');
         const results = await Promise.all(
@@ -195,10 +200,55 @@ describe('ログインの二段階目のコード', () => {
         );
         expect(results.filter((r) => !r.ok && r.reason === 'locked')).toHaveLength(1);
         expect(await t.twoFactor.verifyForSignIn('alice', t.codeOf('alice'))).toEqual({ ok: false, reason: 'locked' });
-        expect(await t.twoFactor.disable('alice', t.codeOf('alice'))).toMatchObject({ ok: false, status: 429 });
         expect(t.notices.filter((n) => n.subject.includes('続けて間違えられました'))).toHaveLength(1);
+        expect(t.notices[0]?.text).toContain('15 分間');
 
         t.advance(TWO_FACTOR_LIMITS.lockMs + 1);
+        expect(await t.twoFactor.verifyForSignIn('alice', t.codeOf('alice'))).toMatchObject({ ok: true });
+    });
+
+    it('止めた後も間違え続けると、止める長さを倍にしていく（24 時間まで）', async () => {
+        const t = setup();
+        await t.enabled('alice');
+        const lockRound = async () => {
+            await Promise.all(
+                Array.from({ length: TWO_FACTOR_LIMITS.maxFailures }, () =>
+                    t.twoFactor.verifyForSignIn('alice', '000000'),
+                ),
+            );
+            const until = t.repository.rows.get('alice')?.lockedUntil;
+            const ms = until ? until.getTime() - t.clock.now.getTime() : 0;
+            t.advance(ms + 1);
+            return ms / 60_000;
+        };
+        // 1 回ずつ順に止める
+        const minutes = await Array.from({ length: 9 }).reduce<Promise<number[]>>(
+            async (done) => [...(await done), await lockRound()],
+            Promise.resolve([]),
+        );
+        expect(minutes).toEqual([15, 30, 60, 120, 240, 480, 960, 1440, 1440]);
+        expect(t.notices.at(-1)?.text).toContain('24 時間');
+    });
+
+    it('設定での間違いはログインを止める回数に数えない（奪われたセッションで本人のログインを止めさせない）', async () => {
+        const t = setup();
+        await t.enabled('alice');
+        await Promise.all(
+            Array.from({ length: TWO_FACTOR_LIMITS.maxFailures * 2 }, () => t.twoFactor.disable('alice', '000000')),
+        );
+        expect(t.repository.rows.get('alice')).toMatchObject({ failures: 0, lockedUntil: null });
+        expect(await t.twoFactor.verifyForSignIn('alice', t.codeOf('alice'))).toMatchObject({ ok: true });
+        expect(t.notices).toHaveLength(0);
+    });
+
+    it('ログインが止まっていても、設定で正しいコードを入れれば止めたのを戻せる（本人だと分かるので）', async () => {
+        const t = setup();
+        await t.enabled('alice');
+        await Promise.all(
+            Array.from({ length: TWO_FACTOR_LIMITS.maxFailures }, () => t.twoFactor.verifyForSignIn('alice', '000000')),
+        );
+        expect(await t.twoFactor.regenerateBackupCodes('alice', t.codeOf('alice'))).toMatchObject({ ok: true });
+        t.advance(30_000);
         expect(await t.twoFactor.verifyForSignIn('alice', t.codeOf('alice'))).toMatchObject({ ok: true });
     });
 

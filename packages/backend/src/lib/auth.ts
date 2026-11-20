@@ -283,13 +283,14 @@ logger.debug(
 );
 
 /**
- * 二段階認証（services/auth/twoFactor）。鍵の暗号化とバックアップコードの HMAC の鍵はサーバーの秘密（auth.$context）から作る。
+ * 二段階認証（services/auth/twoFactor）。鍵の暗号化とバックアップコードの HMAC の鍵はサーバーの秘密（auth.$context の
+ * secretConfig。BETTER_AUTH_SECRETS で入れ替えられる）から作る。
  * better-auth の設定より前に要るので、使うときに初めて作る。
  */
 export const getTwoFactor = (() => {
     const cache: { ready?: Promise<ProductionTwoFactor> } = {};
     return (): Promise<ProductionTwoFactor> => {
-        cache.ready ??= auth.$context.then((ctx) => createProductionTwoFactor(ctx.secret, sendAccountNotice));
+        cache.ready ??= auth.$context.then((ctx) => createProductionTwoFactor(ctx.secretConfig, sendAccountNotice));
         return cache.ready;
     };
 })();

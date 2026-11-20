@@ -70,6 +70,14 @@ async function createSignedInSession(ctx: GenericEndpointContext, first: Omit<Fi
     await setSessionCookie(ctx, { session, user }, !first.remember);
 }
 
+/** このブラウザーが今ログインしているセッション（新しく作ったものを除く。期限切れ・取り消し済みなら null）。 */
+async function previousSession(ctx: GenericEndpointContext, createdToken: string) {
+    const token = await ctx.getSignedCookie(ctx.context.authCookies.sessionToken.name, ctx.context.secret);
+    if (typeof token !== 'string' || !token || token === createdToken) return null;
+    const found = await ctx.context.internalAdapter.findSession(token);
+    return found && new Date(found.session.expiresAt) > new Date() ? found : null;
+}
+
 const ERROR_STATUS = {
     'challenge-expired': 'BAD_REQUEST',
     'invalid-code': 'BAD_REQUEST',
@@ -111,8 +119,11 @@ export function twoFactorPlugin({ gate }: { gate: SecondFactorGate }) {
                     handler: createAuthMiddleware(async (ctx) => {
                         const created = ctx.context.newSession;
                         if (!created || !(await gate.required(created.user.id))) return;
+                        const previous = await previousSession(ctx, created.session.token);
                         deleteSessionCookie(ctx);
                         await ctx.context.internalAdapter.deleteSession(created.session.token);
+                        // 「アカウントを追加」の途中なら、元のアカウントのログインをこのブラウザーに残す
+                        if (previous) await setSessionCookie(ctx, previous);
                         ctx.context.setNewSession(null);
                         const body = ctx.body as { rememberMe?: unknown } | undefined;
                         await setChallengeCookie(

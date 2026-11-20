@@ -47,6 +47,19 @@ describe('isPublicAuthPath', () => {
         }
     });
 
+    it('ログインの二段階目は確かめる口だけを通す（better-auth の twoFactor プラグインの口は無い）', () => {
+        expect(isPublicAuthPath('/two-factor/verify')).toBe(true);
+        for (const path of [
+            '/two-factor/enable',
+            '/two-factor/disable',
+            '/two-factor/verify-totp',
+            '/two-factor/verify-backup-code',
+            '/two-factor/get-totp-uri',
+        ]) {
+            expect(isPublicAuthPath(path), path).toBe(false);
+        }
+    });
+
     it('大文字・二重スラッシュ・エンコードなどの書き換えでは通さない', () => {
         for (const path of [
             '/SIGN-UP/email',
