@@ -236,6 +236,8 @@ router.delete('/me', requireRecentAuth, deleteLimiter, async (req, res) => {
             openRooms: async (id) => (await instanceRepository.findByLeaderId(id)).map((room) => room.id),
             closeRoom: async (roomId, id) => (await instanceManager.closeInstance(roomId, id)).success,
             retire: (id) => accountDeletionRepository.retire(id),
+            closeOrphanedRoom: (roomId) => instanceManager.closeOrphanedRoom(roomId),
+            warnOrphanedRoom: (roomId) => logger.warn(`退会で消えた部屋を閉じられませんでした: ${roomId}`),
             afterDeleted: (id, handle) => {
                 worldRegistry.invalidateResolvedWorlds();
                 logger.info(`アカウントを削除しました: @${handle} (${id})`);

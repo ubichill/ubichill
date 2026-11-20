@@ -129,7 +129,7 @@ export async function createPendingRegistration(
     // メール確認をスキップする場合は直接登録
     if (SKIP_EMAIL_VERIFICATION) {
         try {
-            await userRepository.createCredentialUser({
+            const created = await userRepository.createCredentialUser({
                 userId: newBetterAuthId(ctx, 'user'),
                 accountId: newBetterAuthId(ctx, 'account'),
                 email,
@@ -139,6 +139,7 @@ export async function createPendingRegistration(
                 passwordHash: await ctx.password.hash(password),
                 now: new Date(),
             });
+            if (created === 'handle-retired') return { success: false, error: 'この ID は既に使用されています' };
 
             logger.info(`ユーザー登録完了（メール確認スキップ）: ${email}`);
             return { success: true, skipVerification: true };
@@ -199,6 +200,7 @@ const VERIFY_ERRORS = {
     'wrong-code': '認証コードが正しくありません',
     'too-many-failures': '認証コードを何度も間違えたため、この登録は無効になりました。もう一度登録してください。',
     'register-failed': '登録に失敗しました',
+    'handle-retired': 'この ID は使えなくなりました。別の ID でもう一度登録してください。',
 } as const;
 
 // OTPを検証して本登録。仮登録は申し込んだ本人に返した registrationId で引く。

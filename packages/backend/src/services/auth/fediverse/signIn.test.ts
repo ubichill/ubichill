@@ -189,7 +189,6 @@ function setup(overrides: { routes?: Record<string, Route>; config?: Partial<Fed
             },
         },
         accounts: {
-            isHandleRetired: async (handle) => handle === 'retired_one',
             ssoAllowedFor: async (userId) => userId !== 'user-official',
             findUserByIdentity: async (identity) => {
                 const userId = identities.get(key(identity));
@@ -200,7 +199,9 @@ function setup(overrides: { routes?: Record<string, Route>; config?: Partial<Fed
                 if (owner) return { status: 'identity-taken', userId: owner, accountRowId: `acc-${owner}` };
                 const sameServer = [...identities.keys()].filter((k) => k.startsWith(`${input.identity.providerId} `));
                 if (sameServer.length >= input.signUpLimit.max) return { status: 'too-many-sign-ups' };
-                if ([...users.values()].some((u) => u.handle === input.handle)) return { status: 'handle-taken' };
+                // 退会した ID も handle-taken（本物は ID のロックの中で退会の記録を見る）
+                if (input.handle === 'retired_one' || [...users.values()].some((u) => u.handle === input.handle))
+                    return { status: 'handle-taken' };
                 users.set(input.userId, { email: input.email, handle: input.handle, name: input.name });
                 identities.set(key(input.identity), input.userId);
                 return { status: 'created' };

@@ -1,12 +1,6 @@
 /** 本番の依存（safeFetch・DB・設定）につないだフェディバースのログイン。 */
 import { randomBytes } from 'node:crypto';
-import {
-    accountDeletionRepository,
-    authFlowRepository,
-    domainPolicyRepository,
-    fediverseAccountRepository,
-    userRepository,
-} from '@ubichill/db';
+import { authFlowRepository, domainPolicyRepository, fediverseAccountRepository, userRepository } from '@ubichill/db';
 import {
     DisplayNameSchema,
     type DomainRestriction,
@@ -119,7 +113,6 @@ export function createProductionFediverseSignIn(newId: (model: 'user' | 'account
         },
         flows: authFlowRepository,
         accounts: {
-            isHandleRetired: (handle) => accountDeletionRepository.isHandleRetired(handle),
             ssoAllowedFor: async (userId) => (await userRepository.findById(userId))?.handle !== OFFICIAL_HANDLE,
             findUserByIdentity: (identity, now) => fediverseAccountRepository.findUserByIdentity(identity, now),
             createUser: (input) => fediverseAccountRepository.createUser(input),

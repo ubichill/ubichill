@@ -21,7 +21,7 @@ export {
     type CreateCliAuthRequestInput,
     cliAuthRequestRepository,
 } from './repositories/cliAuthRequestRepository';
-export type { NewCredentialUser } from './repositories/credentialUser';
+export type { InsertCredentialUserOutcome, NewCredentialUser } from './repositories/credentialUser';
 export {
     type ConversationRecord,
     type DirectMessageRecord,

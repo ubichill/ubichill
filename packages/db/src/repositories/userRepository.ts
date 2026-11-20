@@ -18,7 +18,7 @@ import {
 } from 'drizzle-orm';
 import { type Database, db } from '../index';
 import { accounts, instances, sessions, userBlocks, userProfiles, users, worlds, worldVersions } from '../schema';
-import { insertCredentialUser, type NewCredentialUser } from './credentialUser';
+import { type InsertCredentialUserOutcome, insertCredentialUser, type NewCredentialUser } from './credentialUser';
 
 export type UserRecord = typeof users.$inferSelect;
 
@@ -111,9 +111,9 @@ export const userRepository = {
         return results[0];
     },
 
-    /** パスワードでログインできるユーザーを作る（users と accounts を 1 トランザクションで）。 */
-    async createCredentialUser(user: NewCredentialUser): Promise<void> {
-        await db.transaction((tx) => insertCredentialUser(tx, user));
+    /** パスワードでログインできるユーザーを作る（users と accounts を 1 トランザクションで）。退会した ID なら作らない。 */
+    async createCredentialUser(user: NewCredentialUser): Promise<InsertCredentialUserOutcome> {
+        return db.transaction((tx) => insertCredentialUser(tx, user));
     },
 
     async findByDisplayNameKey(key: string): Promise<UserRecord | undefined> {

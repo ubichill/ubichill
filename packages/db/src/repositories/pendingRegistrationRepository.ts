@@ -1,7 +1,7 @@
 import { and, count, eq, gt, lt, sql } from 'drizzle-orm';
 import { db } from '../index';
 import { pendingRegistrations } from '../schema';
-import { insertCredentialUser, type NewCredentialUser } from './credentialUser';
+import { type InsertCredentialUserOutcome, insertCredentialUser, type NewCredentialUser } from './credentialUser';
 
 export type PendingRegistrationRecord = typeof pendingRegistrations.$inferSelect;
 
@@ -15,7 +15,7 @@ export interface PendingRegistrationEmailScope {
 export interface LockedPendingRegistration {
     remove(): Promise<void>;
     setFailures(failures: number): Promise<void>;
-    createCredentialUser(user: NewCredentialUser): Promise<void>;
+    createCredentialUser(user: NewCredentialUser): Promise<InsertCredentialUserOutcome>;
 }
 
 export const pendingRegistrationRepository = {

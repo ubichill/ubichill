@@ -16,6 +16,8 @@ function fakeRepository() {
     const rows = new Map<string, PendingRegistrationRecord>();
     const created: NewCredentialUser[] = [];
     const failNextCreate = { value: false };
+    /** 退会した ID（本物は ID のロックの中で退会の記録を見る） */
+    const retiredHandles = new Set<string>();
 
     const transaction = async <T>(fn: () => Promise<T>): Promise<T> => {
         const rowsBefore = new Map([...rows].map(([k, v]) => [k, { ...v }]));
@@ -53,11 +55,13 @@ function fakeRepository() {
                         if (row) rows.set(idHash, { ...row, failures });
                     },
                     createCredentialUser: async (user) => {
+                        if (retiredHandles.has(user.handle)) return 'handle-retired';
                         created.push(user);
                         if (failNextCreate.value) {
                             failNextCreate.value = false;
                             throw new Error('duplicate key value violates unique constraint "users_handle_unique"');
                         }
+                        return 'created';
                     },
                 });
             }),
@@ -71,7 +75,7 @@ function fakeRepository() {
             rows.delete(idHash);
         },
     };
-    return { repository, rows, created, failNextCreate };
+    return { repository, rows, created, failNextCreate, retiredHandles };
 }
 
 function setup() {
@@ -228,6 +232,16 @@ describe('仮登録', () => {
         expect(rows.get(hashRegistrationId(id))?.failures).toBe(0);
         expect(await store.verify(id, otp)).toMatchObject({ status: 'verified' });
         expect(created).toHaveLength(1);
+    });
+
+    it('コードを送った後にその ID が退会した ID になったら、正しいコードでも作らず、仮登録も捨てる', async () => {
+        const { store, rows, created, retiredHandles } = setup();
+        const { id, otp } = await added(store.add(registration()));
+        // コードを送った後に、別人が同じ ID で登録して退会した
+        retiredHandles.add('victim');
+        expect(await store.verify(id, otp)).toEqual({ status: 'handle-retired' });
+        expect(created).toHaveLength(0);
+        expect(rows.size).toBe(0);
     });
 
     it('取り消した仮登録は使えない', async () => {

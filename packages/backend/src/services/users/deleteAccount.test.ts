@@ -13,8 +13,13 @@ function setup(overrides: Partial<DeleteAccountDeps> = {}) {
         },
         retire: async (id) => {
             log.push(`retire ${id}`);
-            return { status: 'retired', handle: 'alice' };
+            return { status: 'retired', handle: 'alice', roomIds: [] };
         },
+        closeOrphanedRoom: async (roomId) => {
+            log.push(`close orphan ${roomId}`);
+            return true;
+        },
+        warnOrphanedRoom: (roomId) => log.push(`warn ${roomId}`),
         afterDeleted: (id) => log.push(`after ${id}`),
         ...overrides,
     };
@@ -26,6 +31,30 @@ describe('deleteAccount', () => {
         const { deps, log } = setup();
         expect(await deleteAccount(deps, { userId: 'u1', confirmHandle: 'alice' })).toEqual({ ok: true });
         expect(log).toEqual(['close r1', 'close r2', 'retire u1', 'after u1']);
+    });
+
+    it('先に閉じた後に別のタブで作られ、退会で一緒に消えた部屋も閉じる。閉じられなくても退会は終わる', async () => {
+        const { deps, log } = setup({
+            retire: async (id) => {
+                log.push(`retire ${id}`);
+                return { status: 'retired', handle: 'alice', roomIds: ['late1', 'late2'] };
+            },
+            closeOrphanedRoom: async (roomId) => {
+                log.push(`close orphan ${roomId}`);
+                if (roomId === 'late2') throw new Error('runtime down');
+                return true;
+            },
+        });
+        expect(await deleteAccount(deps, { userId: 'u1', confirmHandle: 'alice' })).toEqual({ ok: true });
+        expect(log).toEqual([
+            'close r1',
+            'close r2',
+            'retire u1',
+            'close orphan late1',
+            'close orphan late2',
+            'warn late2',
+            'after u1',
+        ]);
     });
 
     it('ID が違う・入っていないなら何もしない', async () => {

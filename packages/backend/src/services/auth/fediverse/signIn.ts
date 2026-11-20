@@ -98,8 +98,6 @@ export interface FediverseSignInDeps {
         remove(identifier: string): Promise<void>;
     };
     accounts: {
-        /** 退会した ID か（二度と使わせない） */
-        isHandleRetired(handle: string): Promise<boolean>;
         /** このユーザーが SSO を使えるか（公式アカウントは使えない。外部サーバーに公式の作者の権限を渡さない） */
         ssoAllowedFor(userId: string): Promise<boolean>;
         findUserByIdentity(
@@ -580,9 +578,6 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
             const name = deps.validate.displayName.safeParse(input.displayName);
             if (!name.success) {
                 return { ok: false, status: 400, error: name.error.issues[0]?.message ?? '表示名が不正です' };
-            }
-            if (await deps.accounts.isHandleRetired(handle.data)) {
-                return { ok: false, status: 409, error: 'この ID は既に使用されています' };
             }
             const userId = deps.newId('user');
             const accountRowId = deps.newId('account');

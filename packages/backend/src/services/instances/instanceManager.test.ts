@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
     findById: vi.fn(),
+    provision: vi.fn(async () => ({ base: 'http://owner', gen: 1, epoch: 1 })),
+    close: vi.fn(async () => true),
+    ticket: vi.fn(async () => ({ ticket: 't' })),
     findValidInvite: vi.fn(async () => undefined),
     friendIdsOf: vi.fn(async (): Promise<Set<string>> => new Set()),
     presence: vi.fn(async () => new Map()),
@@ -17,7 +20,13 @@ vi.mock('../../config', () => ({ appConfig: { runtime: { publicUrl: '/ws' } } })
 vi.mock('../social/friends/friends', () => ({ friendIdsOf: mocks.friendIdsOf }));
 vi.mock('../worlds/worldRegistry', () => ({ worldRegistry: { getWorldByUrl: mocks.getWorldByUrl } }));
 vi.mock('./instanceRuntime', () => ({
-    instanceRuntime: { presence: mocks.presence, roomPresence: mocks.roomPresence },
+    instanceRuntime: {
+        presence: mocks.presence,
+        roomPresence: mocks.roomPresence,
+        provision: mocks.provision,
+        close: mocks.close,
+        ticket: mocks.ticket,
+    },
 }));
 
 import { instanceManager } from './instanceManager';
@@ -85,5 +94,23 @@ describe('在席は、その部屋の分だけ読む（全部屋を読み直さ�
         mocks.findById.mockResolvedValue(room('public'));
         mocks.roomPresence.mockResolvedValueOnce(new Map());
         expect((await instanceManager.getInstanceFor('room-1', null))?.stats.currentUsers).toBe(0);
+    });
+});
+
+describe('入室で部屋を置いている間に部屋が消えたら（終了・作成者の退会）', () => {
+    it('Go の部屋を閉じて入れない（DB の行の無い部屋を Go に残さない）', async () => {
+        // 入れるかを確かめた時点では行があり、Go に置いた後に見直すと消えている
+        mocks.findById.mockResolvedValueOnce(room('public')).mockResolvedValueOnce(undefined);
+        await expect(instanceManager.join('room-1', { id: 'alice', name: 'Alice' })).rejects.toThrow('入れません');
+        expect(mocks.provision).toHaveBeenCalledTimes(1);
+        expect(mocks.close).toHaveBeenCalledWith('room-1');
+        expect(mocks.ticket).not.toHaveBeenCalled();
+    });
+
+    it('行が残っていれば閉じずにチケットを出す', async () => {
+        mocks.findById.mockResolvedValue(room('public'));
+        await instanceManager.join('room-1', { id: 'alice', name: 'Alice' });
+        expect(mocks.close).not.toHaveBeenCalled();
+        expect(mocks.ticket).toHaveBeenCalledTimes(1);
     });
 });
