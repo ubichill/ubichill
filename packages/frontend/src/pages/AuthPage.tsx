@@ -45,6 +45,8 @@ export function AuthPage() {
     const from = returnPathOf(location.state);
     const { data: session, isPending } = useSession();
     const fediverseReturn = readFediverseReturn(location.search);
+    // ログインしたまま別のアカウントを足す（アカウントのメニューの「アカウントを追加」）
+    const adding = new URLSearchParams(location.search).get('add') === '1';
     // null は読み込み中。読み込み中もボタンの場所を取っておき、届いた後に画面がずれないようにする
     const [fediverseOptions, setFediverseOptions] = useState<FediverseSignInOptions | null>(null);
     const [fediverseOpen, setFediverseOpen] = useState(false);
@@ -80,10 +82,10 @@ export function AuthPage() {
 
     // Redirect if already logged in
     useEffect(() => {
-        if (session && !isPending) {
+        if (session && !isPending && !adding) {
             navigate(from, { replace: true });
         }
-    }, [session, isPending, navigate, from]);
+    }, [session, isPending, navigate, from, adding]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -132,6 +134,9 @@ export function AuthPage() {
 
                 if (result.error) {
                     setError(result.error.message || 'ログインに失敗しました');
+                } else if (adding) {
+                    // 前のアカウントの状態を持ち越さないよう、画面ごと読み直す
+                    window.location.assign(from);
                 } else {
                     navigate(from, { replace: true });
                 }
@@ -196,7 +201,7 @@ export function AuthPage() {
     }, [registrationId, otp]);
 
     // 既にログイン済みなら、元の画面へ移るまでの間だけ（ログイン状態を確かめている間は下のフォームが場所を取る）
-    if (session && !isPending) {
+    if (session && !isPending && !adding) {
         return (
             <main className={containerStyle}>
                 <div className={cardStyle}>
@@ -314,7 +319,9 @@ export function AuthPage() {
             <div className={cx(cardStyle, isPending && pendingStyle)} aria-busy={isPending} inert={isPending}>
                 <img src="/icon.png" alt="Ubichill" width={64} height={64} className={iconStyle} />
                 <h1 className={titleStyle}>Ubichill</h1>
-                <p className={subtitleStyle}>同じ空間で、作業も会話もいっしょに。</p>
+                <p className={subtitleStyle}>
+                    {adding ? '追加するアカウントでログインしてください' : '同じ空間で、作業も会話もいっしょに。'}
+                </p>
 
                 <div className={tabContainerStyle} role="group" aria-label="アカウントへのアクセス">
                     <button
@@ -492,6 +499,12 @@ export function AuthPage() {
                         {isLoading ? '処理中...' : mode === 'login' ? 'ログイン' : '登録'}
                     </button>
                 </form>
+
+                {adding && (
+                    <button type="button" className={linkButtonStyle} onClick={() => navigate('/')}>
+                        今のアカウントに戻る
+                    </button>
+                )}
 
                 {fediverseOptions?.enabled !== false && (
                     <>

@@ -1,6 +1,7 @@
 import type { Instance } from '@ubichill/shared';
 import { type ReactNode, useEffect, useId, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { AccountMenu } from '@/components/account/AccountMenu';
 import { useConsoleEntries } from '@/components/console/useConsoleEntries';
 import { ConversationView } from '@/components/messages';
 import { useNotifications } from '@/components/notifications';
@@ -267,7 +268,17 @@ export function HudOverlay({ onClose, currentInstanceId, initialTab }: HudOverla
                     <div className={main}>
                         <nav className={rail} aria-label="メニュー">
                             {PERSON_ITEMS.filter((item) => isTabVisible(item.id, isAdmin)).map((item) =>
-                                tabButton(item, 'rail'),
+                                item.id === 'profile' && session ? (
+                                    // プロフィールの横の「…」からアカウントの切り替え・ログアウト（設定を開かずに）
+                                    <div key={item.id} className={profileSlot}>
+                                        {tabButton(item, 'rail')}
+                                        <div className={moreSlot}>
+                                            <AccountMenu />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    tabButton(item, 'rail')
+                                ),
                             )}
                         </nav>
                         <section
@@ -420,6 +431,9 @@ const rail = css({
     borderColor: 'hudBorder',
     borderRadius: '12px',
 });
+
+const profileSlot = css({ position: 'relative', flex: 1, minW: 0, display: 'flex' });
+const moreSlot = css({ position: 'absolute', top: '0', right: '0' });
 
 const panel = css({
     flex: 1,

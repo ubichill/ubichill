@@ -5,9 +5,9 @@ import { PublishingSection } from '@/components/publishing/PublishingSection';
 import { useLoginMethods } from '@/lib/account/fediverseSignIn';
 import { css } from '@/styled-system/css';
 import { SplitTab, type SplitTabItem } from './SplitTab';
+import { DeleteAccountSection } from './settings/DeleteAccountSection';
 import { FediverseSection } from './settings/FediverseSection';
 import { LoginMethodsSection } from './settings/LoginMethodsSection';
-import { LogoutSection } from './settings/LogoutSection';
 import { ModPermissionsSettings } from './settings/ModPermissionsSettings';
 import { PasswordSection } from './settings/PasswordSection';
 import { PrivacySection } from './settings/PrivacySection';
@@ -93,7 +93,14 @@ export function SettingsTab({
                         onChanged={() => account.setProfile({ ...profile, passwordChangeRequired: false })}
                     />
                 )}
-                {current === 'account' && <LogoutSection />}
+                {current === 'account' && profile && (
+                    <DeleteAccountSection
+                        handle={profile.handle}
+                        official={!!profile.passwordManagedBySecret}
+                        methods={loginMethods.methods}
+                        onReauthenticated={loginMethods.reload}
+                    />
+                )}
                 {current === 'mods' && <ModPermissionsSettings />}
             </div>
         </SplitTab>

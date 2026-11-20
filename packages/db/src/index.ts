@@ -2,6 +2,10 @@ import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from './schema';
 
+export {
+    accountDeletionRepository,
+    type RetireOutcome,
+} from './repositories/accountDeletionRepository';
 export { type AnnouncementRecord, announcementRepository } from './repositories/announcementRepository';
 export {
     type AuthorKeyRepository,

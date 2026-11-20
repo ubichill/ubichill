@@ -1,7 +1,13 @@
 /**
  * 自分のアカウント（`/api/v1/users/me` の下）: 自分のプロフィール・管理者か・パスワード・表示名・ほかのログインの無効化。
  */
-import { authorKeyRepository, fediverseAccountRepository, userRepository } from '@ubichill/db';
+import {
+    accountDeletionRepository,
+    authorKeyRepository,
+    fediverseAccountRepository,
+    instanceRepository,
+    userRepository,
+} from '@ubichill/db';
 import {
     DISPLAY_NAME_CHANGE_COOLDOWN_DAYS,
     FEDIVERSE_SOFTWARE,
@@ -24,9 +30,13 @@ import {
 } from '../../middleware/auth';
 import { loadLoginPolicy } from '../../services/auth/fediverse';
 import { canActAsAdmin, isRecentlyAuthenticated } from '../../services/auth/sessionAssurance';
+import { instanceManager } from '../../services/instances/instanceManager';
 import { roleService } from '../../services/roles/roleService';
+import { deleteAccount } from '../../services/users/deleteAccount';
 import { changeDisplayName, displayNameAvailableAtOf } from '../../services/users/displayName';
 import { publicProfileOf } from '../../services/users/publicProfile';
+import { worldRegistry } from '../../services/worlds/worldRegistry';
+import { logger } from '../../utils/logger';
 
 export const router = Router();
 
@@ -205,6 +215,36 @@ router.delete('/me/login-methods/:id', requireRecentAuth, async (req, res) => {
         case 'last-method':
             return res.status(409).json({ error: 'ほかにログインする方法が無いため外せません' });
     }
+});
+
+const deleteLimiter = sharedLimiter(
+    'delete-account',
+    15 * 60 * 1000,
+    5,
+    '試行が多すぎます。しばらくしてからお試しください',
+    {
+        keyGenerator: (req) => req.user?.id ?? '',
+    },
+);
+
+// アカウントを削除する（退会）。直近の本人確認と、ID の入れ直しが要る。流れは services/users/deleteAccount.ts
+router.delete('/me', requireRecentAuth, deleteLimiter, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const outcome = await deleteAccount(
+        {
+            findUser: (id) => userRepository.findById(id),
+            openRooms: async (id) => (await instanceRepository.findByLeaderId(id)).map((room) => room.id),
+            closeRoom: async (roomId, id) => (await instanceManager.closeInstance(roomId, id)).success,
+            retire: (id) => accountDeletionRepository.retire(id),
+            afterDeleted: (id, handle) => {
+                worldRegistry.invalidateResolvedWorlds();
+                logger.info(`アカウントを削除しました: @${handle} (${id})`);
+            },
+        },
+        { userId: req.user.id, confirmHandle: req.body?.handle },
+    );
+    if (!outcome.ok) return res.status(outcome.status).json({ error: outcome.error });
+    return res.status(204).send();
 });
 
 // いま使っているもの以外のログインをすべて無効にする（乗っ取りに気付いたとき。公開環境の取り消しだけでは攻撃者のログインは残る）

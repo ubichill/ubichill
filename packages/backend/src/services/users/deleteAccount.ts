@@ -1,0 +1,48 @@
+/**
+ * アカウントの削除（退会）。取り消せないので、確かめてから順に行う。
+ * 1. 公式アカウントは消せない（公式ワールドの作者・サーバーの管理者）
+ * 2. 本人が ID（handle）を入れ直して確かめる（別のアカウントのつもりで消さないように）
+ * 3. 自分が開いている部屋を先に閉じる（DB だけ消すと、インスタンスのサーバーに部屋が残る）。閉じられなければ消さない
+ * 4. ユーザーを消し、ID を退会の記録に残す（持ち物は FK で一緒に消える。ID は二度と使わせない）
+ */
+import { OFFICIAL_HANDLE } from '@ubichill/shared';
+
+export interface DeleteAccountDeps {
+    findUser(userId: string): Promise<{ id: string; handle: string } | undefined>;
+    /** そのユーザーが開いている部屋の ID */
+    openRooms(userId: string): Promise<string[]>;
+    /** 部屋を閉じる。閉じられなければ false */
+    closeRoom(roomId: string, userId: string): Promise<boolean>;
+    retire(userId: string): Promise<{ status: 'retired'; handle: string } | { status: 'not-found' }>;
+    /** 消した後の後始末（ワールドの一覧などの覚えた結果を捨てる） */
+    afterDeleted(userId: string, handle: string): void;
+}
+
+export type DeleteAccountOutcome = { ok: true } | { ok: false; status: 400 | 403 | 404 | 503; error: string };
+
+export async function deleteAccount(
+    deps: DeleteAccountDeps,
+    input: { userId: string; confirmHandle: unknown },
+): Promise<DeleteAccountOutcome> {
+    const user = await deps.findUser(input.userId);
+    if (!user) return { ok: false, status: 404, error: 'アカウントが見つかりません' };
+    if (user.handle === OFFICIAL_HANDLE) {
+        return { ok: false, status: 403, error: '公式アカウントは削除できません' };
+    }
+    if (input.confirmHandle !== user.handle) {
+        return { ok: false, status: 400, error: '確認のため、自分の ID を正しく入力してください' };
+    }
+    for (const roomId of await deps.openRooms(user.id)) {
+        if (!(await deps.closeRoom(roomId, user.id))) {
+            return {
+                ok: false,
+                status: 503,
+                error: '開いている部屋を閉じられませんでした。しばらくしてからやり直してください',
+            };
+        }
+    }
+    const retired = await deps.retire(user.id);
+    if (retired.status === 'not-found') return { ok: false, status: 404, error: 'アカウントが見つかりません' };
+    deps.afterDeleted(user.id, retired.handle);
+    return { ok: true };
+}

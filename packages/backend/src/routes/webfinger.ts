@@ -1,4 +1,4 @@
-import { userRepository } from '@ubichill/db';
+import { accountDeletionRepository, userRepository } from '@ubichill/db';
 import {
     DISPLAY_NAME_WEBFINGER_PROPERTY,
     ENV_KEYS,
@@ -33,7 +33,9 @@ router.get('/', async (req, res) => {
     }
     const user = await userRepository.findByHandle(account.handle);
     if (!user) {
-        res.status(404).json({ error: 'Not found' });
+        // 退会した ID は 410（ほかのサーバーに、いなくなったと分からせる）
+        const gone = await accountDeletionRepository.isHandleRetired(account.handle);
+        res.status(gone ? 410 : 404).json({ error: gone ? 'Gone' : 'Not found' });
         return;
     }
     res.set('Access-Control-Allow-Origin', '*');

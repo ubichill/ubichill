@@ -189,6 +189,7 @@ function setup(overrides: { routes?: Record<string, Route>; config?: Partial<Fed
             },
         },
         accounts: {
+            isHandleRetired: async (handle) => handle === 'retired_one',
             ssoAllowedFor: async (userId) => userId !== 'user-official',
             countLinkedSince: async (providerId) =>
                 [...identities.keys()].filter((k) => k.startsWith(`${providerId} `)).length,
@@ -1098,5 +1099,23 @@ describe('アイコンの取り込み', () => {
             throw new Error('too-large');
         };
         expect((await t.signIn.signUp({ ticket, handle: 'alice', displayName: 'Alice' })).ok).toBe(true);
+    });
+});
+
+describe('退会した ID', () => {
+    it('退会した ID では登録できない', async () => {
+        const t = setup();
+        const { state, browserToken } = await t.begin('mastodon.example');
+        const outcome = await t.signIn.callback({
+            server: 'mastodon.example',
+            query: { code: 'c', state },
+            browserToken,
+            sessionId: null,
+        });
+        const ticket = outcome.kind === 'sign-up' ? outcome.ticket : null;
+        expect(await t.signIn.signUp({ ticket, handle: 'retired_one', displayName: 'A' })).toMatchObject({
+            status: 409,
+        });
+        expect(t.users.size).toBe(0);
     });
 });

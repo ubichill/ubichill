@@ -1,7 +1,7 @@
 /**
  * 登録（`/api/v1/users` の下）: 仮登録と OTP・表示名と ID が使えるかの確認。流れは lib/auth.ts（better-auth）。
  */
-import { userRepository } from '@ubichill/db';
+import { accountDeletionRepository, userRepository } from '@ubichill/db';
 import { DisplayNameSchema, HandleSchema } from '@ubichill/shared';
 import { Router } from 'express';
 import { appConfig } from '../../config';
@@ -90,8 +90,10 @@ router.get('/check-handle', async (req, res) => {
         return res.json({ available: false, error: parsed.error.issues[0]?.message ?? 'ID が不正です' });
     }
     try {
-        const existing = await userRepository.findByHandle(parsed.data);
-        return res.json({ available: !existing, error: existing ? 'この ID は既に使用されています' : null });
+        const taken =
+            !!(await userRepository.findByHandle(parsed.data)) ||
+            (await accountDeletionRepository.isHandleRetired(parsed.data));
+        return res.json({ available: !taken, error: taken ? 'この ID は既に使用されています' : null });
     } catch (error) {
         logger.error('Handle check error:', error);
         return res.status(500).json({ error: 'Internal server error' });

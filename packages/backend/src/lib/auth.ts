@@ -1,5 +1,6 @@
 import { randomBytes, randomInt } from 'node:crypto';
 import {
+    accountDeletionRepository,
     accounts,
     db,
     fediverseAccountRepository,
@@ -12,6 +13,7 @@ import {
 import { contactEmailOf, displayNameKey, FEATURED_FEDIVERSE_SERVERS, isReservedEmail } from '@ubichill/shared';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { multiSession } from 'better-auth/plugins';
 import { eq } from 'drizzle-orm';
 import { Resend } from 'resend';
 import { z } from 'zod';
@@ -25,6 +27,7 @@ import {
     type PendingRegistrations,
 } from '../services/auth/pendingRegistrations';
 import { logger } from '../utils/logger';
+import { accountSwitchPlugin } from './accountSwitchPlugin';
 import { createAuthRateLimitStorage } from './authRateLimit';
 import { fediverseSignInPlugin } from './fediverseSignInPlugin';
 import { redis } from './redis';
@@ -112,7 +115,7 @@ export async function createPendingRegistration(
     const existingHandle = await db.query.users.findFirst({
         where: eq(users.handle, handle),
     });
-    if (existingHandle) {
+    if (existingHandle || (await accountDeletionRepository.isHandleRetired(handle))) {
         return { success: false, error: 'この ID は既に使用されています' };
     }
     const nameKey = displayNameKey(displayName);
@@ -300,6 +303,9 @@ export const auth = betterAuth({
         ...(redis ? { customStorage: createAuthRateLimitStorage(redis, logger) } : {}),
     },
     plugins: [
+        // ログインしたセッションを「このブラウザーのアカウント」として覚える（切り替えの口は accountSwitchPlugin）
+        multiSession({ maximumSessions: 5 }),
+        accountSwitchPlugin(),
         fediverseSignInPlugin({
             getSignIn: () => getFediverseSignIn(),
             hasPassword: (userId) => fediverseAccountRepository.hasPassword(userId),
