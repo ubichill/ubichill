@@ -1,4 +1,3 @@
-import { accountDeletionRepository, userRepository } from '@ubichill/db';
 import {
     DISPLAY_NAME_WEBFINGER_PROPERTY,
     ENV_KEYS,
@@ -11,6 +10,7 @@ import {
 import { Router } from 'express';
 import { selfDomain } from '../services/authors/authorKeys';
 import { federation } from '../services/federation';
+import { userService } from '../services/users/userService';
 
 /**
  * GET /.well-known/webfinger?resource=acct:handle@domain（RFC 7033）
@@ -31,10 +31,10 @@ router.get('/', async (req, res) => {
         res.status(404).json({ error: 'このサーバーのアカウントではありません' });
         return;
     }
-    const user = await userRepository.findByHandle(account.handle);
+    const user = await userService.byHandle(account.handle);
     if (!user) {
         // 退会した ID は 410（ほかのサーバーに、いなくなったと分からせる）
-        const gone = await accountDeletionRepository.isHandleRetired(account.handle);
+        const gone = await userService.isHandleRetired(account.handle);
         res.status(gone ? 410 : 404).json({ error: gone ? 'Gone' : 'Not found' });
         return;
     }

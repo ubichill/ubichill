@@ -145,12 +145,14 @@ function defineCleanupSuite(from: string): void {
             await database.execute(sql`
                 INSERT INTO users (id, name, email, handle) VALUES (${AUTHOR_ID}, 'Alice', 'cleanup-alice@example.com', ${HANDLE})
             `);
-            await db.authorKeyRepository.createLocal({
-                userId: AUTHOR_ID,
-                kind: 'browser',
-                name: 'テスト',
-                publicKey: key.publicKey,
-            });
+            expect(
+                await db.authorKeyRepository.createLocal({
+                    userId: AUTHOR_ID,
+                    kind: 'browser',
+                    name: 'テスト',
+                    publicKey: key.publicKey,
+                }),
+            ).toBeDefined();
             const pubDef = def('pub', '公開中');
             const pubSig = await signed(pubDef, LOCK);
             const draftedDef = def('drafted', '公開中');

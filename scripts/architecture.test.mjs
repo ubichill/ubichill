@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { architectureRules, checkFile, importedModules, resolveFrontendImport, stripComments, worldAppClosure } from './architecture.mjs';
+import {
+    architectureRules,
+    checkFile,
+    importedModules,
+    resolveFrontendImport,
+    stripComments,
+    valueImportsFrom,
+    worldAppClosure,
+} from './architecture.mjs';
 
 const rules = architectureRules({ loaderNodeOnly: new Set(['packages/loader/src/installDependencies.ts']) });
 const violations = (path, source) => checkFile(path, source, rules).map((v) => v.rule);
@@ -115,6 +123,60 @@ describe('signatures-in-one-place', () => {
         expect(violations('packages/shared/src/publishing/cliAuth.ts', call)).toEqual([]);
         expect(violations('packages/loader/src/worldCrypto.ts', 'verifyEd25519: async (publicKey, message, signature) => {')).toEqual([]);
         expect(violations('packages/backend/src/x.test.ts', call)).toEqual([]);
+    });
+});
+
+describe('valueImportsFrom', () => {
+    it('値の import・export・import()・require を拾い、型だけの import は拾わない', () => {
+        const source = [
+            "import type { A } from '@ubichill/db';",
+            "import { type B, type C } from '@ubichill/db';",
+            "export type { D } from '@ubichill/db';",
+            "import { type E, userRepository } from '@ubichill/db';",
+            "import * as dbModule from '@ubichill/db';",
+            "import {\n    worldRepository,\n} from '@ubichill/db';",
+            "export { db } from '@ubichill/db';",
+            "const late = await import('@ubichill/db');",
+            "import { x } from '@ubichill/dbx';",
+            "// import { db } from '@ubichill/db';",
+        ].join('\n');
+        expect(valueImportsFrom(source, '@ubichill/db')).toEqual([
+            "import { type E, userRepository } from '@ubichill/db'",
+            "import * as dbModule from '@ubichill/db'",
+            "import { worldRepository, } from '@ubichill/db'",
+            "export { db } from '@ubichill/db'",
+            "import('@ubichill/db')",
+        ]);
+    });
+});
+
+describe('backend-http-has-no-db', () => {
+    it('routes・middleware が DB を値で読むと違反（route の index.ts の配線も）', () => {
+        for (const path of [
+            'packages/backend/src/routes/worlds.ts',
+            'packages/backend/src/routes/profiles/index.ts',
+            'packages/backend/src/middleware/auth.ts',
+        ]) {
+            expect(violations(path, "import { userRepository } from '@ubichill/db';")).toEqual(['backend-http-has-no-db']);
+        }
+    });
+
+    it('型だけの import・services・テストは対象にしない', () => {
+        expect(violations('packages/backend/src/routes/federation/rpc.ts', "import type { RemoteActorRecord } from '@ubichill/db';")).toEqual([]);
+        expect(violations('packages/backend/src/services/users/userService.ts', "import { userRepository } from '@ubichill/db';")).toEqual([]);
+        expect(violations('packages/backend/src/routes/writeLimits.test.ts', "vi.mock('@ubichill/db', () => ({}));\nimport { db } from '@ubichill/db';")).toEqual([]);
+    });
+});
+
+describe('author-key-writes-in-one-place', () => {
+    it('公開環境の手順の外で鍵を足す・取り消すと違反。読むのは良い', () => {
+        for (const call of ['createLocal(input)', 'revoke(userId, id, "lost")', 'revokeAllForUser(userId, "compromised")']) {
+            expect(violations('packages/backend/src/routes/cliAuth.ts', `await authorKeyRepository.${call};`)).toContain(
+                'author-key-writes-in-one-place',
+            );
+        }
+        expect(violations('packages/backend/src/services/authors/officialAccountService.ts', 'authorKeyRepository.listByUser(id)')).toEqual([]);
+        expect(violations('packages/backend/src/services/worlds/x.integration.test.ts', 'authorKeyRepository.revoke(u, id, "lost")')).toEqual([]);
     });
 });
 

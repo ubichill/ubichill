@@ -1,7 +1,6 @@
 /**
  * 通知: 一覧（カーソル）・未読数・既読・SSE・運営のお知らせ。規則は services/notifications/notifications.ts。
  */
-import { announcementRepository } from '@ubichill/db';
 import {
     CreateAnnouncementRequestSchema,
     MarkReadRequestSchema,
@@ -97,16 +96,7 @@ router.get('/stream', requireAuth, streamLimiter, (req, res) => {
 
 router.get('/announcements', requireAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-    const since = new Date(Date.now() - NOTIFICATION_LIMITS.RETENTION_DAYS * 24 * 60 * 60 * 1000);
-    const rows = await announcementRepository.listPage({ since, limit: NOTIFICATION_LIMITS.MAX_PAGE_SIZE });
-    return res.json({
-        announcements: rows.map((r) => ({
-            id: r.id,
-            title: r.title,
-            content: r.content,
-            published: r.publishedAt.toISOString(),
-        })),
-    });
+    return res.json({ announcements: await notificationService.recentAnnouncements() });
 });
 
 router.post('/announcements', requireAuth, requireAdmin, announceLimiter, async (req, res) => {

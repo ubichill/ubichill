@@ -4,10 +4,11 @@
  * - inbox は署名した actor からだけ受ける（受けたら 202。2 度目・知らない型も 202）
  * - 部屋の作りは、署名した人（見る人）に見える部屋だけ答える（見えなければ無い部屋と同じ 404）
  */
-import { accountDeletionRepository } from '@ubichill/db';
+
 import { ACTIVITY_CONTENT_TYPE, AS_CONTEXT, FEDERATION_LIMITS, isActivityMediaType } from '@ubichill/shared';
 import { Router } from 'express';
 import type { Federation } from '../../services/federation';
+import { userService } from '../../services/users/userService';
 import { logger } from '../../utils/logger';
 import { jsonBody, perHostLimit, perIpLimit, sendProblem, signed, signerOf } from './signed';
 
@@ -27,7 +28,7 @@ export function createActivityPubRouter(federation: Federation): Router {
         const doc = await federation.localActors.person(String(req.params.id));
         if (!doc) {
             // 退会したユーザーは 410（ほかのサーバーはこれでフォローやフレンドを外す）
-            if (await accountDeletionRepository.isUserRetired(String(req.params.id))) {
+            if (await userService.isUserRetired(String(req.params.id))) {
                 return sendProblem(res, 410, 'not-found', 'このユーザーは退会しました');
             }
             return sendProblem(res, 404, 'not-found', 'ユーザーが見つかりません');

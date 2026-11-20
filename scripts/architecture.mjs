@@ -26,6 +26,30 @@ export function importedModules(source) {
     return [...new Set(patterns.flatMap((re) => [...code.matchAll(re)].map((m) => m[1])))];
 }
 
+/**
+ * `module` から値として読み込んでいる import・export・import()・require の文（型だけの import は除く）。
+ * `import type { A }`・`import { type A, type B }` は型だけ。`import { type A, b }`・default・namespace は値。
+ */
+export function valueImportsFrom(source, module) {
+    const code = stripComments(source);
+    const quoted = `['"]${module.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}['"]`;
+    const statements = [...code.matchAll(new RegExp(`\\b(import|export)\\s+(type\\s+)?([^;'"]*?)\\s*from\\s*${quoted}`, 'g'))]
+        .filter(([, , typeOnly, clause]) => {
+            if (typeOnly) return false;
+            const named = /^\{([^}]*)\}$/.exec(clause.trim());
+            if (!named) return true;
+            return named[1]
+                .split(',')
+                .map((spec) => spec.trim())
+                .some((spec) => spec !== '' && !spec.startsWith('type '));
+        })
+        .map((m) => m[0].replace(/\s+/g, ' '));
+    const dynamic = [...code.matchAll(new RegExp(`\\b(?:import|require)\\s*\\(\\s*${quoted}\\s*\\)|^\\s*import\\s*${quoted}`, 'gm'))].map(
+        (m) => m[0].trim(),
+    );
+    return [...statements, ...dynamic];
+}
+
 const isTest = (path) => /\.(test|spec)\.[cm]?[jt]sx?$/.test(path) || path.includes('/test/');
 
 /** ブラウザで動くパッケージのソース（loader は既定の入口だけがブラウザ向けなので別に扱う）。 */
@@ -138,6 +162,26 @@ export function architectureRules(context) {
             check: (source) =>
                 [...stripComments(source).matchAll(/\.verifyEd25519\s*\(/g)].map(
                     () => 'Ed25519 の照合を直接呼んでいます。shared の署名の部品（verifyEnvelope など）を使ってください',
+                ),
+        },
+        {
+            id: 'backend-http-has-no-db',
+            why: 'backend の routes・middleware は HTTP の形（入力の検査・状態コード・ヘッダ）だけを持つ。DB を触る手順は services に置き、route は service を呼ぶ（route に手順を書くと、同じ手順の書き写しで一意制約やキャッシュの破棄の扱いがずれる。packages/backend/src/README.md）。型だけの import はよい',
+            applies: (path) =>
+                !isTest(path) &&
+                (path.startsWith('packages/backend/src/routes/') || path.startsWith('packages/backend/src/middleware/')),
+            check: (source) =>
+                valueImportsFrom(source, '@ubichill/db').map(
+                    (statement) => `DB を読み込んでいます（${statement}）。手順を services に置いて、それを呼んでください`,
+                ),
+        },
+        {
+            id: 'author-key-writes-in-one-place',
+            why: '公開環境（作者の署名鍵）を足す・取り消すと、全 backend の解決済みワールドの作者表示を捨て直す必要がある。書き込みは services/authors/publishingEnvironments.ts の 1 か所に置く（各所で書くと捨て忘れる）',
+            applies: (path) => path.startsWith('packages/backend/src/') && !isTest(path),
+            check: (source) =>
+                [...stripComments(source).matchAll(/\bauthorKeyRepository\s*\.\s*(createLocal|revoke|revokeAllForUser)\b/g)].map(
+                    (m) => `authorKeyRepository.${m[1]} を直接呼んでいます。publishingEnvironmentService を使ってください`,
                 ),
         },
         {
