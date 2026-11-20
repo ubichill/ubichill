@@ -121,7 +121,6 @@ export function createProductionFediverseSignIn(newId: (model: 'user' | 'account
         accounts: {
             isHandleRetired: (handle) => accountDeletionRepository.isHandleRetired(handle),
             ssoAllowedFor: async (userId) => (await userRepository.findById(userId))?.handle !== OFFICIAL_HANDLE,
-            countLinkedSince: (providerId, since) => fediverseAccountRepository.countLinkedSince(providerId, since),
             findUserByIdentity: (identity, now) => fediverseAccountRepository.findUserByIdentity(identity, now),
             createUser: (input) => fediverseAccountRepository.createUser(input),
             link: (input) => fediverseAccountRepository.link(input),
