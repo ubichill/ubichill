@@ -14,6 +14,7 @@ import {
     sessionFactsOf,
     toWebHeaders,
 } from '../../middleware/auth';
+import { emailLinkService } from '../../services/auth/emailLinkService';
 import { loginMethodService } from '../../services/auth/loginMethods';
 import { canActAsAdmin } from '../../services/auth/sessionAssurance';
 import { publishingEnvironmentService } from '../../services/authors/publishingEnvironmentService';
@@ -155,14 +156,14 @@ router.put('/me/display-name', requireAuth, async (req, res) => {
     }
 });
 
-// ログイン方法（パスワードの有無と、追加したフェディバースのアカウント・今の設定で使えるか）
+// ログイン方法（メールアドレスとパスワード・追加したフェディバースのアカウント・今の設定で使えるか）
 router.get('/me/login-methods', requireFreshAuth, async (req, res) => {
     if (!req.user || !req.session) return res.status(401).json({ error: 'Unauthorized' });
     return res.json(await loginMethodService.of(req.user.id, req.session, new Date()));
 });
 
-// フェディバースのアカウントを外す。流れは services/auth/loginMethods.ts
-router.delete('/me/login-methods/:id', requireRecentAuth, async (req, res) => {
+// フェディバースのアカウントを外す（パスワードの入れ直しは求めず、連絡先に知らせる）。流れは services/auth/loginMethods.ts
+router.delete('/me/login-methods/:id', requireFreshAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const outcome = await loginMethodService.unlink(req.user.id, String(req.params.id), req.session?.id ?? null);
     switch (outcome.status) {
@@ -173,6 +174,46 @@ router.delete('/me/login-methods/:id', requireRecentAuth, async (req, res) => {
         case 'last-method':
             return res.status(409).json({ error: 'ほかにログインする方法が無いため外せません' });
     }
+});
+
+const emailLinkLimiter = sharedLimiter(
+    'email-link',
+    15 * 60 * 1000,
+    5,
+    'メールの送信が多すぎます。しばらくしてからお試しください',
+    { keyGenerator: (req) => req.user?.id ?? '' },
+);
+const emailLinkVerifyLimiter = sharedLimiter(
+    'email-link-verify',
+    15 * 60 * 1000,
+    20,
+    '試行が多すぎます。しばらくしてからお試しください',
+    { keyGenerator: (req) => req.user?.id ?? '' },
+);
+
+// メールアドレスを足す（メールなしで登録した人）。アドレスとパスワードを受け取り、確認コードを送る。流れは services/auth/emailLinks.ts
+router.post('/me/email', requireFreshAuth, emailLinkLimiter, async (req, res) => {
+    if (!req.user || !req.session) return res.status(401).json({ error: 'Unauthorized' });
+    const outcome = await emailLinkService.start({
+        userId: req.user.id,
+        sessionId: req.session.id,
+        email: req.body?.email,
+        password: req.body?.password,
+    });
+    if (!outcome.ok) return res.status(outcome.status).json({ error: outcome.error });
+    return res.json({ status: outcome.status });
+});
+
+// 届いた確認コードで、メールアドレスとパスワードをログイン方法に足す
+router.post('/me/email/verify', requireFreshAuth, emailLinkVerifyLimiter, async (req, res) => {
+    if (!req.user || !req.session) return res.status(401).json({ error: 'Unauthorized' });
+    const outcome = await emailLinkService.verify({
+        userId: req.user.id,
+        sessionId: req.session.id,
+        code: req.body?.code,
+    });
+    if (!outcome.ok) return res.status(outcome.status).json({ error: outcome.error });
+    return res.status(204).send();
 });
 
 const deleteLimiter = sharedLimiter(

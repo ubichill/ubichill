@@ -122,7 +122,6 @@ export const FEDIVERSE_SIGN_IN_ERRORS = {
     mismatch: 'ログインの応答を確かめられませんでした。もう一度お試しください',
     'linked-to-other': 'このアカウントは別のユーザーに追加されています',
     'session-changed': 'ログインの状態が変わったため追加できませんでした。もう一度お試しください',
-    'reauth-required': 'ログイン方法を変えるには、もう一度本人確認が必要です',
     'not-allowed-for-account': 'このアカウントはフェディバースでのログインに使えません',
     'server-error': 'サーバーでの確認がうまくいきませんでした（混み合っていることがあります）。もう一度お試しください',
     'too-many-sign-ups': 'このサーバーからの新規登録が多すぎます。しばらくしてからお試しください',
@@ -164,20 +163,17 @@ export interface FediverseServerInfo {
 }
 
 /**
- * ログイン画面に並べるサーバー（ログインの判定に通ることを 2026-11 に確かめたもの）。
- * 運営が FEDIVERSE_SIGN_IN_SERVERS で使えるサーバーを限っているときは、そちらを並べる。
+ * ログイン画面に並べるサーバーの数の上限。並べるサーバーは管理者がコントロールパネルの「認証」で決める
+ * （DB の featured_fediverse_servers。初期値は 0041 のマイグレーション）。
  */
-export const FEATURED_FEDIVERSE_SERVERS: readonly string[] = [
-    'misskey.io',
-    'mstdn.jp',
-    'mastodon.social',
-    'misskey.niri.la',
-];
+export const MAX_FEATURED_FEDIVERSE_SERVERS = 12;
 
 /** 設定の「ログイン方法」。 */
 export interface LoginMethods {
     password: boolean;
-    /** 直近にログインか再認証をした（ログイン方法の追加・解除ができる） */
+    /** ログインと連絡に使うメールアドレス（確認済みのものだけ。メールなしで登録した人は、足すまで null） */
+    email: string | null;
+    /** 直近にログインか再認証をした（アカウントの削除に要る） */
     recentlyAuthenticated: boolean;
     fediverse: Array<{
         id: string;

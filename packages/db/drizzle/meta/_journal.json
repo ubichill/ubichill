@@ -288,6 +288,13 @@
       "when": 1795158002232,
       "tag": "0040_retired_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1795191740315,
+      "tag": "0041_auth_panel_email_link",
+      "breakpoints": true
     }
   ]
 }

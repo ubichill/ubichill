@@ -14,6 +14,7 @@ function setup(callbackOutcome: CallbackOutcome) {
         sessionId?: string | null;
         cancelled?: string | null;
         started?: number;
+        startSession?: Parameters<FediverseSignIn['start']>[0]['session'];
     } = { started: 0 };
     const signIn: FediverseSignIn = {
         lookup: async (input) =>
@@ -23,8 +24,9 @@ function setup(callbackOutcome: CallbackOutcome) {
         cancelSignUp: async (ticket) => {
             seen.cancelled = ticket;
         },
-        start: async () => {
+        start: async (input) => {
             seen.started = (seen.started ?? 0) + 1;
+            seen.startSession = input.session;
             return { ok: true, authorizationUrl: 'https://mi.example/oauth/authorize?x', browserToken: 'B1' };
         },
         callback: async (input) => {
@@ -79,9 +81,7 @@ function setup(callbackOutcome: CallbackOutcome) {
         plugins: [
             fediverseSignInPlugin({
                 getSignIn: async () => signIn,
-                hasPassword: async (userId) =>
-                    db.account.some((a) => a.userId === userId && a.providerId === 'credential'),
-                options: () => ({ enabled: true, registrationOpen: true, featuredServers: ['mi.example'] }),
+                options: async () => ({ enabled: true, registrationOpen: true, featuredServers: ['mi.example'] }),
             }),
         ],
     });
@@ -218,7 +218,7 @@ describe('fediverseSignInPlugin', () => {
         expect(t.db.session[0]?.authAccountId ?? null).toBeNull();
     });
 
-    it('連携の開始は、直近にログインか再認証をしたセッションだけ', async () => {
+    it('連携の開始はパスワードを入れ直さずにできる。ただし DB で取り消したセッションでは始められない', async () => {
         const t = setup({ kind: 'error', error: 'expired', redirectTo: BASE });
         const cookie = await passwordUser(t);
         const link = () =>
@@ -227,17 +227,15 @@ describe('fediverseSignInPlugin', () => {
                 headers: { 'Content-Type': 'application/json', Origin: BASE, Cookie: cookie },
                 body: JSON.stringify({ server: 'mi.example', intent: 'link' }),
             });
+        // 何日も前のログイン・パスワードを確かめていないセッションでも始められる
+        const old = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+        Object.assign(t.db.session[0] ?? {}, { createdAt: old, passwordVerifiedAt: null });
         expect((await link()).status).toBe(200);
-        // 11 分前のログイン（奪われた古いセッション）では始められない
-        const old = new Date(Date.now() - 11 * 60 * 1000);
-        Object.assign(t.db.session[0] ?? {}, { createdAt: old, passwordVerifiedAt: old });
-        const res = await link();
-        expect(res.status).toBe(403);
-        expect(await res.json()).toMatchObject({ code: 'reauth-required' });
-        expect(t.seen.started).toBe(1);
-        // 作った直後でも、パスワードを確かめていない（SSO で入った）セッションでは始められない
-        Object.assign(t.db.session[0] ?? {}, { createdAt: new Date(), passwordVerifiedAt: null });
-        expect((await link()).status).toBe(403);
+        expect(t.seen.startSession).toMatchObject({ sessionId: t.db.session[0]?.id });
+        // 取り消したセッション（クッキーキャッシュは残っている）は、ログインしていない扱いで流れに渡す
+        t.db.session.length = 0;
+        await link();
+        expect(t.seen.startSession).toBeNull();
     });
 
     it('登録をやめると鍵を消し、クッキーも消す', async () => {

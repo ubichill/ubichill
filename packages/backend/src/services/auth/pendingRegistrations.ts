@@ -93,7 +93,7 @@ export function judgeVerification<R extends Pick<PendingRegistrationRecord, 'otp
     record: R | undefined,
     presentedOtpHash: string,
     now: Date,
-    limits: PendingRegistrationLimits,
+    limits: Pick<PendingRegistrationLimits, 'maxFailures'>,
 ): Judged<R> {
     if (!record) return { status: 'not-found' };
     if (record.expiresAt.getTime() <= now.getTime()) return { status: 'expired' };

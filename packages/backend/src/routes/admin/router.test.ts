@@ -3,6 +3,7 @@ import type { AddressInfo } from 'node:net';
 import type { RoleFields } from '@ubichill/shared';
 import express, { type RequestHandler } from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createFeaturedServers } from '../../services/auth/fediverse/featuredServers';
 import { createRoleService, type RoleStore, type StoredRole } from '../../services/roles/roles';
 import { createAdminRouter } from './router';
 
@@ -85,9 +86,50 @@ const requireAdmin: RequestHandler = (req, res, next) => {
     next();
 };
 
+/** 並べるサーバー（偽の保存先。misskey.example と mastodon.example だけログインの判定に通る） */
+const featured = { hosts: [] as string[], changed: 0 };
+const featuredServers = createFeaturedServers({
+    repository: {
+        list: async () => [...featured.hosts],
+        add: async (host, max) => {
+            if (featured.hosts.includes(host)) return 'exists';
+            if (featured.hosts.length >= max) return 'full';
+            featured.hosts.push(host);
+            return 'added';
+        },
+        remove: async (host) => {
+            const before = featured.hosts.length;
+            featured.hosts = featured.hosts.filter((h) => h !== host);
+            return featured.hosts.length < before;
+        },
+        reorder: async (hosts) => {
+            if (hosts.length !== featured.hosts.length || !hosts.every((h) => featured.hosts.includes(h)))
+                return 'mismatch';
+            featured.hosts = [...hosts];
+            return 'reordered';
+        },
+    },
+    lookup: async (host) =>
+        host === 'misskey.example' || host === 'mastodon.example'
+            ? {
+                  ok: true,
+                  server: {
+                      host,
+                      software: host.startsWith('misskey') ? 'misskey' : 'mastodon',
+                      name: null,
+                      iconUrl: null,
+                  },
+              }
+            : { ok: false, error: 'unsupported-server' },
+    changed: () => {
+        featured.changed++;
+    },
+    max: 2,
+});
+
 const app = express();
 app.use(express.json());
-app.use('/api/v1/admin', createAdminRouter({ requireAuth, requireAdmin, roles: service }));
+app.use('/api/v1/admin', createAdminRouter({ requireAuth, requireAdmin, roles: service, featuredServers }));
 const server = createServer(app);
 const url = (path: string) => `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/admin${path}`;
 
@@ -116,6 +158,10 @@ const ENDPOINTS: ReadonlyArray<[string, string]> = [
     ['PUT', '/roles/r1/members/alice'],
     ['DELETE', '/roles/r1/members/alice'],
     ['GET', '/users'],
+    ['GET', '/fediverse-servers'],
+    ['POST', '/fediverse-servers'],
+    ['PUT', '/fediverse-servers/order'],
+    ['DELETE', '/fediverse-servers/misskey.example'],
 ];
 
 describe('コントロールパネルの API', () => {
@@ -179,5 +225,50 @@ describe('コントロールパネルの API', () => {
         const res = await call('GET', '/users?q=alice');
         expect(res.status).toBe(200);
         expect(await res.json()).toEqual({ users: [] });
+    });
+
+    describe('ログイン画面に並べるサーバー', () => {
+        beforeEach(() => {
+            featured.hosts = [];
+            featured.changed = 0;
+        });
+
+        it('ログインの判定に通るサーバーだけ足せる。書き方は揃え、応答は変えた後の一覧', async () => {
+            const added = await call('POST', '/fediverse-servers', { server: 'https://Misskey.Example/' });
+            expect(added.status).toBe(201);
+            expect(await added.json()).toEqual({ servers: ['misskey.example'] });
+            const unsupported = await call('POST', '/fediverse-servers', { server: 'blog.example' });
+            expect(unsupported.status).toBe(400);
+            expect(((await unsupported.json()) as { error: string }).error).toBeTruthy();
+            expect((await call('POST', '/fediverse-servers', { server: 'misskey.example' })).status).toBe(409);
+            expect((await call('POST', '/fediverse-servers', { server: 'not a domain' })).status).toBe(400);
+            expect(featured.hosts).toEqual(['misskey.example']);
+            expect(featured.changed).toBe(1);
+        });
+
+        it('上限を超えては足せない', async () => {
+            featured.hosts = ['a.example', 'b.example'];
+            const res = await call('POST', '/fediverse-servers', { server: 'mastodon.example' });
+            expect(res.status).toBe(400);
+            expect(featured.hosts).toEqual(['a.example', 'b.example']);
+        });
+
+        it('並べ替えは今の一覧と同じ組だけ受け付ける（ほかの管理者が変えた後なら 409）', async () => {
+            featured.hosts = ['misskey.example', 'mastodon.example'];
+            const res = await call('PUT', '/fediverse-servers/order', {
+                servers: ['mastodon.example', 'misskey.example'],
+            });
+            expect(await res.json()).toEqual({ servers: ['mastodon.example', 'misskey.example'] });
+            for (const servers of [['mastodon.example'], ['mastodon.example', 'other.example'], 'x']) {
+                expect((await call('PUT', '/fediverse-servers/order', { servers })).status).toBeGreaterThanOrEqual(400);
+            }
+            expect(featured.hosts).toEqual(['mastodon.example', 'misskey.example']);
+        });
+
+        it('外すと一覧から消え、並んでいなければ 404', async () => {
+            featured.hosts = ['misskey.example'];
+            expect(await (await call('DELETE', '/fediverse-servers/misskey.example')).json()).toEqual({ servers: [] });
+            expect((await call('DELETE', '/fediverse-servers/misskey.example')).status).toBe(404);
+        });
     });
 });
