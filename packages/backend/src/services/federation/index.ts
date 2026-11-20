@@ -383,7 +383,7 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
 export type Federation = ReturnType<typeof createFederation>;
 
 /** ドメインとの付き合い方を変えた（block ならフレンドとフォローを切り、ほかの backend にも読み直させる）。 */
-export async function domainPolicyChanged(domain: string, policy: string | null): Promise<void> {
+async function domainPolicyChanged(domain: string, policy: string | null): Promise<void> {
     await federation?.policies.reload();
     backendEvents.broadcast({ type: 'federation.policies.changed' });
     if (policy === 'block') {
@@ -394,6 +394,31 @@ export async function domainPolicyChanged(domain: string, policy: string | null)
         );
     }
 }
+
+/** ほかのサーバーとの付き合い方を決める・やめる（管理者）。保存と読み直し・関係を切るのを 1 か所で行う。 */
+export const domainPolicyAdmin = {
+    list: () => domainPolicyRepository.list(),
+
+    async set(input: {
+        domain: string;
+        policy: 'limit' | 'block';
+        reason: string | null;
+        createdBy: string | null;
+    }): Promise<void> {
+        await domainPolicyRepository.set(input);
+        await domainPolicyChanged(input.domain, input.policy);
+    },
+
+    /** 方針をやめる。決めていなかったら false。 */
+    async remove(domain: string): Promise<boolean> {
+        if (!(await domainPolicyRepository.remove(domain))) return false;
+        await domainPolicyChanged(domain, null);
+        return true;
+    },
+
+    /** 知っているほかのサーバーと配送の調子。 */
+    knownServers: () => remoteServerRepository.list(),
+};
 
 const config = federationConfigFromEnv(process.env);
 

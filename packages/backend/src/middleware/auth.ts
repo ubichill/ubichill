@@ -1,5 +1,3 @@
-import { authorKeyRepository, fediverseAccountRepository, userRepository } from '@ubichill/db';
-import { OFFICIAL_HANDLE } from '@ubichill/shared';
 import type { NextFunction, Request, Response } from 'express';
 import { auth } from '../lib/auth';
 import { bearerToken, sha256Base64Url } from '../services/auth/cliAuth';
@@ -10,7 +8,9 @@ import {
     type SessionFacts,
     toDateOrNull,
 } from '../services/auth/sessionAssurance';
+import { publishingEnvironmentService } from '../services/authors/publishingEnvironmentService';
 import { roleService } from '../services/roles/roleService';
+import { userService } from '../services/users/userService';
 import { logger } from '../utils/logger';
 
 // Extend Express Request type with user info
@@ -100,7 +100,7 @@ export async function requireRecentAuth(req: Request, res: Response, next: NextF
     await requireFreshAuth(req, res, async () => {
         const session = req.session;
         if (!session || !req.user) return;
-        const hasPassword = await fediverseAccountRepository.hasPassword(req.user.id);
+        const hasPassword = await userService.hasPassword(req.user.id);
         if (!isRecentlyAuthenticated(session, new Date(), hasPassword)) {
             res.status(403).json({ error: 'もう一度本人確認をしてください', code: 'reauth-required' });
             return;
@@ -117,7 +117,7 @@ export async function requireStrongSession(req: Request, res: Response, next: Ne
     await requireFreshAuth(req, res, async () => {
         const session = req.session;
         if (!session || !req.user) return;
-        if (!isStrongSession(session, await fediverseAccountRepository.hasPassword(req.user.id))) {
+        if (!isStrongSession(session, await userService.hasPassword(req.user.id))) {
             res.status(403).json({
                 error: 'この操作の前に、設定の「アカウント」でパスワードの本人確認をしてください',
                 code: 'password-required',
@@ -146,15 +146,15 @@ export async function requirePublisher(req: Request, res: Response, next: NextFu
         return;
     }
     try {
-        const env = await authorKeyRepository.findActiveByTokenHash(sha256Base64Url(token));
-        const user = env ? await userRepository.findById(env.userId) : undefined;
-        if (!env || !user) {
+        const authenticated = await publishingEnvironmentService.authenticateToken(sha256Base64Url(token));
+        if (!authenticated) {
             res.status(401).json({
                 error: 'API トークンが無効です（取り消されたか、存在しません）',
                 code: 'invalid-token',
             });
             return;
         }
+        const { user, environment } = authenticated;
         req.user = {
             id: user.id,
             email: user.email,
@@ -162,8 +162,7 @@ export async function requirePublisher(req: Request, res: Response, next: NextFu
             emailVerified: user.emailVerified,
             image: user.image,
         };
-        req.publishingEnvironment = { id: env.id, publicKey: env.publicKey, kind: env.kind };
-        void authorKeyRepository.touch(env.id).catch(() => undefined);
+        req.publishingEnvironment = environment;
         next();
     } catch (error) {
         logger.error('API トークンの確認に失敗しました:', error);
@@ -210,8 +209,7 @@ export function toWebHeaders(req: Request): Headers {
 export async function blockOfficialPasswordChange(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
         const session = await auth.api.getSession({ headers: toWebHeaders(req) });
-        const user = session ? await userRepository.findById(session.user.id) : undefined;
-        if (user?.handle === OFFICIAL_HANDLE) {
+        if (session && (await userService.isOfficialAccount(session.user.id))) {
             res.status(403).json({
                 error: '公式アカウントのパスワードはサーバーの設定（OFFICIAL_ACCOUNT_PASSWORD）で管理されています',
             });

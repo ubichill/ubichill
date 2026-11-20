@@ -1,14 +1,16 @@
 /**
- * CLI・CI の認可（`ubichill login` / `ubichill ci create`）の判定。DB・時計・ハッシュは注入する。
+ * CLI・CI の認可（`ubichill login` / `ubichill ci create`）の判定と手順。DB・時計・乱数は注入する（実体は cliAuthService.ts）。
  * 手順は docs/design/author-publishing.md §9。
  */
 import { createHash, randomBytes, randomInt } from 'node:crypto';
 import {
     API_TOKEN_PREFIX,
+    CLI_AUTH_REQUEST_TTL_MS,
     type CliAuthRequestInput,
     isLoopbackRedirectUri,
     USER_CODE_ALPHABET,
 } from '@ubichill/shared';
+import type { KeyOwner, PublishingEnvironments, PublishingEnvironmentView } from '../authors/publishingEnvironments';
 
 export const sha256Base64Url = (value: string): string => createHash('sha256').update(value).digest('base64url');
 
@@ -92,3 +94,168 @@ export function bearerToken(header: string | undefined): string | undefined {
     const token = m?.[1];
     return token?.startsWith(API_TOKEN_PREFIX) ? token : undefined;
 }
+
+/** 保存した要求（DB の行のうち使うもの）。 */
+export interface CliAuthRequestRow extends StoredRequest {
+    id: string;
+    kind: string;
+    name: string;
+    publicKey: string;
+    redirectUri: string | null;
+    userCode: string | null;
+    /** 承認した人（承認されるまで null） */
+    userId: string | null;
+}
+
+/** 承認画面に見せる要求の内容（秘密は返さない）。 */
+export function cliAuthRequestView(r: CliAuthRequestRow) {
+    return {
+        id: r.id,
+        kind: r.kind,
+        name: r.name,
+        publicKey: r.publicKey,
+        flow: r.redirectUri ? ('loopback' as const) : ('device' as const),
+        redirectHost: r.redirectUri ? new URL(r.redirectUri).host : null,
+        userCode: r.userCode,
+        status: r.status,
+        expiresAt: r.expiresAt.toISOString(),
+    };
+}
+export type CliAuthRequestView = ReturnType<typeof cliAuthRequestView>;
+
+export interface CliAuthDeps {
+    requests: {
+        create(
+            input: Omit<CliAuthRequestRow, 'status' | 'authCodeHash' | 'userId'> & { deviceCodeHash: string | null },
+        ): Promise<unknown>;
+        /** 失効していない要求 */
+        findActive(id: string): Promise<CliAuthRequestRow | undefined>;
+        findActiveByUserCode(userCode: string): Promise<CliAuthRequestRow | undefined>;
+        /** 承認待ちのものだけ承認する。承認できなければ undefined */
+        approve(id: string, userId: string, authCodeHash: string | null): Promise<object | undefined>;
+        /** 承認済みのものを 1 回だけ引き換え済みにする。同時に来ても 1 つしか通らない */
+        consume(id: string): Promise<object | undefined>;
+    };
+    findUser(id: string): Promise<(KeyOwner & { handle: string }) | undefined>;
+    environments: Pick<PublishingEnvironments, 'registerWithToken'>;
+    /** CLI がその鍵の秘密鍵を持っていることの証明 */
+    verifyProof(request: { id: string; publicKey: string }, signature: string): Promise<boolean>;
+    accountOf(handle: string): string;
+    secrets: { random(bytes: number): string; userCode(): string; apiToken(): string };
+    hash(value: string): string;
+    now(): Date;
+}
+
+type Refusal<S extends number> = { ok: false; status: S; error: string };
+
+export function createCliAuth(deps: CliAuthDeps) {
+    return {
+        /** 要求を作る。ループバックなら redirectUri + codeChallenge、デバイス認可ならどちらも無し。 */
+        async createRequest(
+            input: CliAuthRequestInput,
+        ): Promise<
+            | Refusal<400>
+            | { ok: true; requestId: string; deviceCode: string | null; userCode: string | null; expiresAt: Date }
+        > {
+            const flow = requestFlowOf(input);
+            if (typeof flow === 'object') return { ok: false, status: 400, error: flow.error };
+            const requestId = deps.secrets.random(16);
+            const deviceCode = flow === 'device' ? deps.secrets.random(32) : null;
+            const userCode = flow === 'device' ? deps.secrets.userCode() : null;
+            const expiresAt = new Date(deps.now().getTime() + CLI_AUTH_REQUEST_TTL_MS);
+            await deps.requests.create({
+                id: requestId,
+                kind: input.kind,
+                name: input.name,
+                publicKey: input.publicKey,
+                redirectUri: input.redirectUri ?? null,
+                codeChallenge: input.codeChallenge ?? null,
+                userCode,
+                deviceCodeHash: deviceCode ? deps.hash(deviceCode) : null,
+                expiresAt,
+            });
+            return { ok: true, requestId, deviceCode, userCode, expiresAt };
+        },
+
+        async findRequest(id: string): Promise<CliAuthRequestView | undefined> {
+            const request = await deps.requests.findActive(id);
+            return request && cliAuthRequestView(request);
+        },
+
+        /** デバイス認可は画面で入力された user code（正規化したもの）で引く。 */
+        async findRequestByUserCode(userCode: string): Promise<CliAuthRequestView | undefined> {
+            const request = await deps.requests.findActiveByUserCode(userCode);
+            return request && cliAuthRequestView(request);
+        },
+
+        /** 承認する。ループバックならリダイレクト先（認可コードと CLI が付けた state 付き）を返す。 */
+        async approve(
+            userId: string,
+            requestId: string,
+            state: string | undefined,
+        ): Promise<Refusal<404 | 409> | { ok: true; redirect: string | null }> {
+            const user = await deps.findUser(userId);
+            if (!user) return { ok: false, status: 404, error: 'User not found' };
+            const request = await deps.requests.findActive(requestId);
+            if (request?.status !== 'pending') {
+                return {
+                    ok: false,
+                    status: 404,
+                    error: '承認できる要求が見つかりません（期限切れか、処理済みです）',
+                };
+            }
+            const code = request.redirectUri ? deps.secrets.random(32) : null;
+            if (!(await deps.requests.approve(request.id, user.id, code ? deps.hash(code) : null))) {
+                return { ok: false, status: 409, error: 'この要求はすでに処理されています' };
+            }
+            return {
+                ok: true,
+                redirect: request.redirectUri && code ? loopbackRedirect(request.redirectUri, code, state) : null,
+            };
+        },
+
+        /**
+         * 引き換える（鍵の所有の証明）。ここで公開環境と API トークンを作る。
+         * 引き換え済みにしてから作るので、同時に送られても 1 つしか通らない。作れなかった要求は使い切りになる
+         * （同じ鍵では作れないので、CLI は鍵から作り直す）。
+         */
+        async exchange(
+            requestId: string,
+            signature: string,
+            input: ExchangeInput,
+        ): Promise<
+            | Extract<ExchangeOutcome, { ok: false }>
+            | { ok: true; token: string; account: string; environment: PublishingEnvironmentView }
+        > {
+            const request = await deps.requests.findActive(requestId);
+            const outcome = exchangeOutcome(request, input, deps.now(), deps.hash);
+            if (!outcome.ok) return outcome;
+            if (!request?.userId) {
+                return { ok: false, status: 400, code: 'invalid-grant', error: '認可コードが一致しません' };
+            }
+            if (!(await deps.verifyProof(request, signature))) {
+                return { ok: false, status: 400, code: 'invalid-proof', error: '鍵の所有を確認できません' };
+            }
+            if (!(await deps.requests.consume(request.id))) {
+                return { ok: false, status: 409, code: 'consumed', error: 'この認可の要求は引き換え済みです' };
+            }
+            const user = await deps.findUser(request.userId);
+            if (!user) {
+                return { ok: false, status: 409, code: 'author-not-found', error: '作者アカウントが見つかりません' };
+            }
+            const token = deps.secrets.apiToken();
+            const environment = await deps.environments.registerWithToken(user, {
+                kind: request.kind,
+                name: request.name,
+                publicKey: request.publicKey,
+                apiTokenHash: deps.hash(token),
+            });
+            if (!environment) {
+                return { ok: false, status: 409, code: 'taken', error: 'この鍵は登録できません（作り直してください）' };
+            }
+            return { ok: true, token, account: deps.accountOf(user.handle), environment };
+        },
+    };
+}
+
+export type CliAuth = ReturnType<typeof createCliAuth>;

@@ -5,12 +5,11 @@
  *   block にしたら、そのドメインの人とのフレンドも切る
  * - `GET /servers`: 知っているほかのサーバーと配送の調子（管理者）
  */
-import { domainPolicyRepository, remoteServerRepository } from '@ubichill/db';
 import { isServerDomain } from '@ubichill/shared';
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireAdmin, requireAuth } from '../../middleware/auth';
-import { domainPolicyChanged, type Federation } from '../../services/federation';
+import { domainPolicyAdmin, type Federation } from '../../services/federation';
 
 const PolicyBodySchema = z
     .object({ policy: z.enum(['limit', 'block']), reason: z.string().trim().max(200).optional() })
@@ -24,7 +23,7 @@ export function createFederationAdminRouter(federation: Federation | null): Rout
     });
 
     router.get('/policies', requireAuth, requireAdmin, async (_req, res) => {
-        res.set('Cache-Control', 'no-store').json({ policies: await domainPolicyRepository.list() });
+        res.set('Cache-Control', 'no-store').json({ policies: await domainPolicyAdmin.list() });
     });
 
     router.put('/policies/:domain', requireAuth, requireAdmin, async (req, res) => {
@@ -34,26 +33,24 @@ export function createFederationAdminRouter(federation: Federation | null): Rout
             return void res.status(400).json({ error: 'ドメインか方針が正しくありません' });
         if (domain === federation?.identity.domain)
             return void res.status(400).json({ error: 'このサーバーには決められません' });
-        await domainPolicyRepository.set({
+        await domainPolicyAdmin.set({
             domain,
             policy: parsed.data.policy,
             reason: parsed.data.reason || null,
             createdBy: req.user?.id ?? null,
         });
-        await domainPolicyChanged(domain, parsed.data.policy);
         res.status(204).send();
     });
 
     router.delete('/policies/:domain', requireAuth, requireAdmin, async (req, res) => {
         const domain = String(req.params.domain).toLowerCase();
-        const removed = await domainPolicyRepository.remove(domain);
-        if (!removed) return void res.status(404).json({ error: '決めた方針がありません' });
-        await domainPolicyChanged(domain, null);
+        if (!(await domainPolicyAdmin.remove(domain)))
+            return void res.status(404).json({ error: '決めた方針がありません' });
         res.status(204).send();
     });
 
     router.get('/servers', requireAuth, requireAdmin, async (_req, res) => {
-        const servers = await remoteServerRepository.list();
+        const servers = await domainPolicyAdmin.knownServers();
         res.set('Cache-Control', 'no-store').json({
             servers: servers.map((s) => ({
                 domain: s.domain,

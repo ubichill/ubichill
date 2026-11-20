@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
     resendOTP: vi.fn(async () => ({ success: true })),
 }));
 
-vi.mock('@ubichill/db', () => ({ userRepository: {} }));
+vi.mock('../../services/users/userService', () => ({ userService: {} }));
 vi.mock('../../config', () => ({ appConfig: { email: { skipVerification: false } } }));
 vi.mock('../../lib/redis', () => ({ redis: null }));
 vi.mock('../../lib/auth', () => ({

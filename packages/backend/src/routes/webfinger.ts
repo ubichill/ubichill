@@ -1,4 +1,3 @@
-import { userRepository } from '@ubichill/db';
 import {
     DISPLAY_NAME_WEBFINGER_PROPERTY,
     ENV_KEYS,
@@ -11,6 +10,7 @@ import {
 import { Router } from 'express';
 import { selfDomain } from '../services/authors/authorKeys';
 import { federation } from '../services/federation';
+import { userService } from '../services/users/userService';
 
 /**
  * GET /.well-known/webfinger?resource=acct:handle@domain（RFC 7033）
@@ -31,7 +31,7 @@ router.get('/', async (req, res) => {
         res.status(404).json({ error: 'このサーバーのアカウントではありません' });
         return;
     }
-    const user = await userRepository.findByHandle(account.handle);
+    const user = await userService.byHandle(account.handle);
     if (!user) {
         res.status(404).json({ error: 'Not found' });
         return;

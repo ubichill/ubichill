@@ -1,12 +1,12 @@
 /**
  * 自分の作品（`/api/v1/users/me` の下）: 作ったワールド（編集用）・外部の作品の登録。ほかの人に見せる一覧は public.ts。
  */
-import { userRepository } from '@ubichill/db';
 import { ExternalWorkRegistrationSchema, MAX_EXTERNAL_WORKS_PER_USER } from '@ubichill/shared';
 import { Router } from 'express';
 import { perUserLimiter } from '../../lib/rateLimit';
 import { requireAuth, requirePublisher } from '../../middleware/auth';
 import { selfAccount } from '../../services/authors/authorKeys';
+import { userService } from '../../services/users/userService';
 import { registerExternalWork, removeExternalWork } from '../../services/worlds/externalWorkRegistration';
 import { externalWorkStatuses } from '../../services/worlds/externalWorkService';
 import { myWorldsOf } from '../../services/worlds/myWorlds';
@@ -36,7 +36,7 @@ router.put('/me/external-works', requirePublisher, registerLimiter, async (req, 
             .status(400)
             .json({ error: parsed.error.issues[0]?.message ?? '依頼の形式が違います', code: 'invalid-request' });
     }
-    const me = await userRepository.findById(req.user.id);
+    const me = await userService.byId(req.user.id);
     if (!me) return res.status(404).json({ error: 'User not found' });
     const outcome = await registerExternalWork(me, parsed.data, req.publishingEnvironment?.publicKey);
     if (!outcome.ok) return res.status(outcome.status).json({ error: outcome.error, code: outcome.code });
@@ -55,7 +55,7 @@ const recheckLimiter = perUserLimiter(
 // 登録した外部の作品（本人の設定画面）。公開先を確かめた状態つきで全部返す。?refresh=1 で確かめ直す
 router.get('/me/external-works', requireAuth, recheckLimiter, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-    const me = await userRepository.findById(req.user.id);
+    const me = await userService.byId(req.user.id);
     if (!me) return res.json({ works: [] });
     const works = await externalWorkStatuses(me.id, selfAccount(me.handle), req.query.refresh === '1');
     res.set('Cache-Control', 'private, no-store');
