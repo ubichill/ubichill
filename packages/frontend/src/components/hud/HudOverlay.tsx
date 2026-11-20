@@ -273,7 +273,9 @@ export function HudOverlay({ onClose, currentInstanceId, initialTab }: HudOverla
                                     <div key={item.id} className={profileSlot}>
                                         {tabButton(item, 'rail')}
                                         <div className={moreSlot}>
-                                            <AccountMenu />
+                                            <div className={moreAnchor}>
+                                                <AccountMenu />
+                                            </div>
                                         </div>
                                     </div>
                                 ) : (
@@ -433,8 +435,31 @@ const rail = css({
 });
 
 // 横並び（スマホ）ではほかのタブと幅を分け合い、縦並び（PC）では中身の高さのまま（伸ばすと空きを全部埋めてずれる）
-const profileSlot = css({ position: 'relative', flex: { base: 1, md: 'none' }, minW: 0, display: 'flex' });
-const moreSlot = css({ position: 'absolute', top: '0', right: '0' });
+// 縦並びにして、中のタブを横いっぱいに広げる（PC のタブは幅が中身のままなので、横並びだと左に寄る）
+const profileSlot = css({
+    position: 'relative',
+    flex: { base: 1, md: 'none' },
+    minW: 0,
+    display: 'flex',
+    flexDirection: 'column',
+});
+// 「…」はアイコンの右下に重ねる。タブの上の余白（py 2 / PC は 2.5）に合わせて、アイコンと同じ 24px の枠を
+// 中央に置き、その右下に付ける（余白を推測して数字で置くと、画面の幅でずれる）
+const moreSlot = css({
+    position: 'absolute',
+    top: { base: '2', md: '2.5' },
+    left: '0',
+    right: '0',
+    display: 'flex',
+    justifyContent: 'center',
+    pointerEvents: 'none',
+});
+const moreAnchor = css({
+    position: 'relative',
+    w: '24px',
+    h: '24px',
+    '& > *': { position: 'absolute', right: '-10px', bottom: '-6px', pointerEvents: 'auto' },
+});
 
 const panel = css({
     flex: 1,

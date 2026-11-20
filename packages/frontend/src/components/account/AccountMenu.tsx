@@ -69,7 +69,7 @@ export function AccountMenu() {
                 aria-controls={menuId}
                 onClick={() => setOpen((v) => !v)}
             >
-                <HudIcon name="more" size={16} />
+                <HudIcon name="more" size={12} />
             </button>
             {open && (
                 <div id={menuId} role="menu" className={menu}>
@@ -136,12 +136,14 @@ const moreButton = css({
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    w: '24px',
-    h: '24px',
-    border: 'none',
+    w: '18px',
+    h: '18px',
+    // アイコンに重ねるので、縁取りでアイコンと切り分ける
+    border: '2px solid',
+    borderColor: 'primary',
     borderRadius: 'full',
-    bg: 'transparent',
-    color: 'hudTextMuted',
+    bg: 'hudAvatar',
+    color: 'hudText',
     cursor: 'pointer',
     _hover: { bg: 'hudActionHover', color: 'hudText' },
     _focusVisible: { outline: '2px solid token(colors.hudText)', outlineOffset: '1px' },
