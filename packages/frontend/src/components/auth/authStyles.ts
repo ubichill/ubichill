@@ -262,3 +262,6 @@ export const dividerStyle = css({
     _before: { content: '""', flex: 1, h: '1px', bg: 'border' },
     _after: { content: '""', flex: 1, h: '1px', bg: 'border' },
 });
+
+/** ログイン状態を確かめている間。場所は取ったまま見えなくする */
+export const pendingStyle = css({ visibility: 'hidden' });

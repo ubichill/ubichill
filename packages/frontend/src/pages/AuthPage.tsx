@@ -18,6 +18,7 @@ import {
     linkButtonStyle,
     otpInputStyle,
     passwordToggleStyle,
+    pendingStyle,
     subtitleStyle,
     successStyle,
     tabActiveStyle,
@@ -34,7 +35,7 @@ import { type FediverseSignInOptions, fetchFediverseSignInOptions } from '@/lib/
 import { useDisplayNameAvailability, useHandleAvailability } from '@/lib/account/useHandleAvailability';
 import { registerWithOTP, resendOTP, signIn, verifyOTPAndRegister } from '@/lib/auth-client';
 import { useSession } from '@/lib/session';
-import { css } from '@/styled-system/css';
+import { css, cx } from '@/styled-system/css';
 
 type AuthMode = 'login' | 'register' | 'verify';
 
@@ -194,8 +195,8 @@ export function AuthPage() {
         }
     }, [registrationId, otp]);
 
-    // ローディング中または既にログイン済みの場合
-    if (isPending || (session && !isPending)) {
+    // 既にログイン済みなら、元の画面へ移るまでの間だけ（ログイン状態を確かめている間は下のフォームが場所を取る）
+    if (session && !isPending) {
         return (
             <main className={containerStyle}>
                 <div className={cardStyle}>
@@ -309,7 +310,8 @@ export function AuthPage() {
 
     return (
         <main className={containerStyle}>
-            <div className={cardStyle}>
+            {/* ログイン状態を確かめている間も同じ大きさで場所を取り、見えなくしておく（届いた後に画面がずれない） */}
+            <div className={cx(cardStyle, isPending && pendingStyle)} aria-busy={isPending} inert={isPending}>
                 <img src="/icon.png" alt="Ubichill" width={64} height={64} className={iconStyle} />
                 <h1 className={titleStyle}>Ubichill</h1>
                 <p className={subtitleStyle}>同じ空間で、作業も会話もいっしょに。</p>
