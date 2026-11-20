@@ -185,3 +185,16 @@ export interface LoginMethods {
         usable: boolean;
     }>;
 }
+
+/** 設定の「ログイン中の端末」の 1 つ（セッション。トークンは含めない）。 */
+export interface AccountSessionView {
+    id: string;
+    createdAt: string;
+    lastActiveAt: string;
+    /** 今この画面を開いている端末 */
+    current: boolean;
+    userAgent: string | null;
+    ipAddress: string | null;
+    /** どの方法で入ったか（SSO なら外部アカウント。分からなければ null） */
+    via: { kind: 'password' } | { kind: 'fediverse'; account: string } | null;
+}

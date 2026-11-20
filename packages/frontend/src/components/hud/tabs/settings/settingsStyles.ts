@@ -59,3 +59,38 @@ export const settingsTextButton = css({
     _hover: { color: 'text' },
     _disabled: { opacity: 0.5, cursor: 'not-allowed' },
 });
+
+/** 設定の欄の 1 まとまり（パスワード・ログイン方法・ログイン中の端末）。 */
+export const settingsCard = css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '3',
+    p: '4',
+    bg: 'surface',
+    border: '1px solid',
+    borderColor: 'border',
+    borderRadius: '12px',
+});
+
+export const settingsCardTitle = css({ fontSize: 'lg', fontWeight: '700', color: 'text' });
+
+/** 枠だけのボタン（パスワードを変更・すべてログアウト）。 */
+export const settingsOutlineButton = css({
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '2',
+    w: 'full',
+    minH: '40px',
+    px: '4',
+    fontSize: '13px',
+    fontWeight: '700',
+    color: 'text',
+    bg: 'background',
+    border: '1px solid',
+    borderColor: 'border',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    _hover: { bg: 'surfaceHover' },
+    _disabled: { opacity: 0.5, cursor: 'not-allowed' },
+});

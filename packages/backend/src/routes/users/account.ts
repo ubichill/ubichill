@@ -14,6 +14,7 @@ import {
     sessionFactsOf,
     toWebHeaders,
 } from '../../middleware/auth';
+import { accountSessionService } from '../../services/auth/accountSessions';
 import { emailLinkService } from '../../services/auth/emailLinkService';
 import { loginMethodService } from '../../services/auth/loginMethods';
 import { canActAsAdmin } from '../../services/auth/sessionAssurance';
@@ -232,6 +233,26 @@ router.delete('/me', requireRecentAuth, deleteLimiter, async (req, res) => {
     const outcome = await accountDeletionService.deleteAccount(req.user.id, req.body?.handle);
     if (!outcome.ok) return res.status(outcome.status).json({ error: outcome.error });
     return res.status(204).send();
+});
+
+// ログイン中の端末（期限内のセッション。トークンは返さない）。流れは services/auth/accountSessions.ts
+router.get('/me/sessions', requireFreshAuth, async (req, res) => {
+    if (!req.user || !req.session) return res.status(401).json({ error: 'Unauthorized' });
+    res.set('Cache-Control', 'no-store');
+    return res.json({ sessions: await accountSessionService.list(req.user.id, req.session.id, new Date()) });
+});
+
+// ほかの端末を 1 つログアウトする（すべてのログアウトと同じく、パスワードを持つ人は SSO だけのログインからはできない）
+router.delete('/me/sessions/:id', requireStrongSession, async (req, res) => {
+    if (!req.user || !req.session) return res.status(401).json({ error: 'Unauthorized' });
+    switch (await accountSessionService.revoke(req.user.id, String(req.params.id), req.session.id)) {
+        case 'revoked':
+            return res.status(204).send();
+        case 'not-found':
+            return res.status(404).json({ error: 'その端末は見つかりません（もうログアウトしています）' });
+        case 'current':
+            return res.status(400).json({ error: 'この端末は、メニューからログアウトしてください' });
+    }
 });
 
 // いま使っているもの以外のログインをすべて無効にする（乗っ取りに気付いたとき。公開環境の取り消しだけでは攻撃者のログインは残る）

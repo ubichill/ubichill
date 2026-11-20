@@ -10,7 +10,13 @@ import { pushToast } from '@/lib/toast';
 import { css } from '@/styled-system/css';
 import { EmailLinkForm } from './EmailLinkForm';
 import { ReauthForm } from './ReauthForm';
-import { settingsNote, settingsTextButton, settingsWideButton } from './settingsStyles';
+import {
+    settingsCard,
+    settingsCardTitle,
+    settingsNote,
+    settingsTextButton,
+    settingsWideButton,
+} from './settingsStyles';
 
 /**
  * ログイン方法（設定の「アカウント」）。ログイン方法は連携を足すと増える: フェディバースのアカウントは認証して、
@@ -68,8 +74,8 @@ export function LoginMethodsSection({
     };
 
     return (
-        <section className={card}>
-            <h2 className={css({ fontSize: 'lg', fontWeight: '700', color: 'text' })}>ログイン方法</h2>
+        <section className={settingsCard}>
+            <h2 className={settingsCardTitle}>ログイン方法</h2>
             {adminRequiresPassword && methods.password && (
                 <div className={css({ display: 'flex', flexDirection: 'column', gap: '2' })}>
                     <p className={settingsNote}>
@@ -154,17 +160,6 @@ export function LoginMethodsSection({
         </section>
     );
 }
-
-const card = css({
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '3',
-    p: '4',
-    bg: 'surface',
-    border: '1px solid',
-    borderColor: 'border',
-    borderRadius: '12px',
-});
 
 const row = css({
     display: 'flex',

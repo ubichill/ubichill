@@ -5,6 +5,7 @@ import {
     desc,
     eq,
     getTableColumns,
+    gt,
     ilike,
     inArray,
     isNotNull,
@@ -17,11 +18,24 @@ import {
     sql,
 } from 'drizzle-orm';
 import { type Database, db } from '../index';
-import { accounts, sessions, userProfiles, users } from '../schema';
+import { accounts, externalAccountProfiles, sessions, userProfiles, users } from '../schema';
 import { type InsertCredentialUserOutcome, insertCredentialUser, type NewCredentialUser } from './credentialUser';
 import { removeUserRows } from './userRemoval';
 
 export type UserRecord = typeof users.$inferSelect;
+
+/** ログイン中の端末（セッション）。トークンは含めない。 */
+export interface AccountSessionRecord {
+    id: string;
+    createdAt: Date;
+    updatedAt: Date;
+    ipAddress: string | null;
+    userAgent: string | null;
+    passwordVerifiedAt: Date | null;
+    /** SSO で入ったときの外部アカウント（accounts.providerId・表示用のユーザー名） */
+    authProviderId: string | null;
+    authUsername: string | null;
+}
 
 /** プロフィールの項目（user_profiles）を足したユーザー。行が無ければ未設定（null・空の配列）。 */
 export type UserProfileRecord = UserRecord & {
@@ -257,6 +271,38 @@ export const userRepository = {
     },
 
     /** いま使っているもの以外のログインをすべて無効にする（乗っ取りに気付いたとき）。無効にした数を返す。 */
+    /**
+     * ログイン中の端末（期限内のセッション）。新しく使った順。SSO で入ったものは外部アカウントの表示用の情報も付ける。
+     * トークンは返さない。
+     */
+    async listSessions(userId: string, now: Date): Promise<AccountSessionRecord[]> {
+        return db
+            .select({
+                id: sessions.id,
+                createdAt: sessions.createdAt,
+                updatedAt: sessions.updatedAt,
+                ipAddress: sessions.ipAddress,
+                userAgent: sessions.userAgent,
+                passwordVerifiedAt: sessions.passwordVerifiedAt,
+                authProviderId: accounts.providerId,
+                authUsername: externalAccountProfiles.username,
+            })
+            .from(sessions)
+            .leftJoin(accounts, eq(accounts.id, sessions.authAccountId))
+            .leftJoin(externalAccountProfiles, eq(externalAccountProfiles.accountId, sessions.authAccountId))
+            .where(and(eq(sessions.userId, userId), gt(sessions.expiresAt, now)))
+            .orderBy(desc(sessions.updatedAt));
+    },
+
+    /** その人のセッションを 1 つ消す（ほかの端末をログアウトする）。無ければ false。 */
+    async deleteSession(userId: string, sessionId: string): Promise<boolean> {
+        const removed = await db
+            .delete(sessions)
+            .where(and(eq(sessions.userId, userId), eq(sessions.id, sessionId)))
+            .returning({ id: sessions.id });
+        return removed.length > 0;
+    },
+
     async revokeOtherSessions(userId: string, keepSessionId: string): Promise<number> {
         const removed = await db
             .delete(sessions)

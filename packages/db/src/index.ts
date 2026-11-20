@@ -81,6 +81,7 @@ export {
 export { type BlockRecord, userBlockRepository } from './repositories/userBlockRepository';
 export { type FriendRow, userFriendRepository } from './repositories/userFriendRepository';
 export {
+    type AccountSessionRecord,
     type ProfileFieldsInput,
     type UserProfileRecord,
     type UserRecord,
