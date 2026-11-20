@@ -5,6 +5,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { type Database, db } from '../index';
 import { authorConfirmedContents, authorKeys, remoteAuthors } from '../schema';
 import { type FetchedSigningKey, type LocalAuthorKeyRecord, localKeyOf, remoteKeyRowsOf } from './authorKeyRows';
+import { isUniqueViolation } from './pgErrors';
 
 export interface CreateLocalAuthorKeyInput {
     userId: string;
@@ -70,24 +71,29 @@ export function createAuthorKeyRepository(database: () => Database) {
         },
 
         /**
-         * 公開環境を作る。同じ鍵が自サーバーのどこかに既にあれば（取り消し済みでも、別のアカウントでも）一意制約で失敗する。
-         * 一意制約違反（同時に同じ鍵を登録）は呼び出し側で扱う。
+         * 公開環境を作る。同じ鍵が自サーバーのどこかに既にあれば（取り消し済みでも、別のアカウントでも）作らずに undefined。
+         * 先に findLocalKey で確かめても、同時に同じ鍵を登録されるとここで一意制約に当たる。
          */
-        async createLocal(input: CreateLocalAuthorKeyInput): Promise<LocalAuthorKeyRecord> {
-            const rows = await database()
-                .insert(authorKeys)
-                .values({
-                    id: randomUUID(),
-                    origin: 'local',
-                    algorithm: SIGNING_KEY_ALGORITHM,
-                    userId: input.userId,
-                    kind: input.kind,
-                    name: input.name,
-                    publicKey: requireNormalized(input.publicKey),
-                    apiTokenHash: input.apiTokenHash,
-                })
-                .returning();
-            return localKeyOf(rows[0]);
+        async createLocal(input: CreateLocalAuthorKeyInput): Promise<LocalAuthorKeyRecord | undefined> {
+            try {
+                const rows = await database()
+                    .insert(authorKeys)
+                    .values({
+                        id: randomUUID(),
+                        origin: 'local',
+                        algorithm: SIGNING_KEY_ALGORITHM,
+                        userId: input.userId,
+                        kind: input.kind,
+                        name: input.name,
+                        publicKey: requireNormalized(input.publicKey),
+                        apiTokenHash: input.apiTokenHash,
+                    })
+                    .returning();
+                return localKeyOf(rows[0]);
+            } catch (err) {
+                if (isUniqueViolation(err)) return undefined;
+                throw err;
+            }
         },
 
         /** 取り消す（本人のもので未取り消しのときだけ）。取り消しは覆らない。 */

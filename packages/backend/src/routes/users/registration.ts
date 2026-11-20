@@ -1,13 +1,13 @@
 /**
  * 登録（`/api/v1/users` の下）: 仮登録と OTP・表示名と ID が使えるかの確認。流れは lib/auth.ts（better-auth）。
  */
-import { userRepository } from '@ubichill/db';
 import { DisplayNameSchema, HandleSchema } from '@ubichill/shared';
 import { Router } from 'express';
 import { appConfig } from '../../config';
 import { createPendingRegistration, resendOTP, verifyAndRegister } from '../../lib/auth';
 import { optionalAuth } from '../../middleware/auth';
 import { displayNameAvailability } from '../../services/users/displayName';
+import { userService } from '../../services/users/userService';
 import { logger } from '../../utils/logger';
 import { createRegistrationLimiters } from './registrationLimits';
 
@@ -90,7 +90,7 @@ router.get('/check-handle', async (req, res) => {
         return res.json({ available: false, error: parsed.error.issues[0]?.message ?? 'ID が不正です' });
     }
     try {
-        const existing = await userRepository.findByHandle(parsed.data);
+        const existing = await userService.byHandle(parsed.data);
         return res.json({ available: !existing, error: existing ? 'この ID は既に使用されています' : null });
     } catch (error) {
         logger.error('Handle check error:', error);

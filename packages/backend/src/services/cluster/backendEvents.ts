@@ -123,13 +123,22 @@ export function createRedisBackendBus(deps: {
     };
 }
 
+/** 運ぶ口を付ける前に送られた知らせを取っておく数（重なったものは 1 つにする）。超えた分は TTL で揃える。 */
+const PENDING_LIMIT = 100;
+
 /**
  * プロセスの中の各モジュールが知らせを送る・受ける窓口。運ぶ口（{@link BackendBus}）は起動時に付ける。
- * 付けていなければ（Redis なし・テスト）送っても何もしない。
+ * 付ける前に送った知らせ（起動の途中で鍵を取り消した、など）は取っておき、付けたときに送る。
+ * どの知らせもキャッシュを捨てる・読み直すだけなので、遅れても重なっても害はない。
+ * 付けないまま（Redis なし・テスト）なら送らない。外した後（シャットダウン）は取っておかない。
  */
 export function createBackendEvents(log: Pick<OutageLog, 'warn'> = console) {
     const handlers = new Map<EventType, Set<(event: BackendEvent) => void | Promise<void>>>();
-    const state: { bus: BackendBus | null } = { bus: null };
+    const state: { bus: BackendBus | null; attached: boolean; pending: Map<string, BackendEvent> } = {
+        bus: null,
+        attached: false,
+        pending: new Map(),
+    };
     const dispatch = (event: BackendEvent): void => {
         for (const handler of handlers.get(event.type) ?? []) {
             Promise.resolve()
@@ -140,7 +149,11 @@ export function createBackendEvents(log: Pick<OutageLog, 'warn'> = console) {
     return {
         /** ほかの backend に知らせる。自分の状態は呼ぶ前に変えておくこと。 */
         broadcast: (event: BackendEvent): void => {
-            void state.bus?.publish(event);
+            if (state.bus) {
+                void state.bus.publish(event);
+                return;
+            }
+            if (!state.attached && state.pending.size < PENDING_LIMIT) state.pending.set(JSON.stringify(event), event);
         },
         on: <T extends EventType>(type: T, handler: Handler<T>): void => {
             const set = handlers.get(type) ?? new Set();
@@ -149,6 +162,10 @@ export function createBackendEvents(log: Pick<OutageLog, 'warn'> = console) {
         },
         attach: async (bus: BackendBus): Promise<void> => {
             state.bus = bus;
+            state.attached = true;
+            const pending = [...state.pending.values()];
+            state.pending.clear();
+            for (const event of pending) void bus.publish(event);
             await bus.subscribe(dispatch);
         },
         detach: async (): Promise<void> => {

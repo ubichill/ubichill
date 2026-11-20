@@ -162,12 +162,14 @@ describe.skipIf(!RUN)('0023 の前後でワールドの API が同じ（DB 統�
         await db.execute(sql`
             INSERT INTO users (id, name, email, handle) VALUES (${AUTHOR_ID}, 'Alice', 'mig-alice@example.com', ${HANDLE})
         `);
-        await dbModule.authorKeyRepository.createLocal({
-            userId: AUTHOR_ID,
-            kind: 'browser',
-            name: 'テスト',
-            publicKey: key.publicKey,
-        });
+        expect(
+            await dbModule.authorKeyRepository.createLocal({
+                userId: AUTHOR_ID,
+                kind: 'browser',
+                name: 'テスト',
+                publicKey: key.publicKey,
+            }),
+        ).toBeDefined();
         const json = (v: unknown) => (v === null ? null : JSON.stringify(v));
         for (const r of Object.values(rows)) {
             await db.execute(sql`
