@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../index';
 import { instances, retiredAccounts, users } from '../schema';
 import { lockHandle } from './handleLock';
+import { removeUserRows } from './userRemoval';
 
 export type RetireOutcome =
     /** roomIds: 一緒に消えた、そのユーザーが開いていた部屋（先に閉じた後に作られたもの。Go の部屋を閉じる） */
@@ -28,7 +29,7 @@ export const accountDeletionRepository = {
             // 行を押さえた後は、このユーザーの部屋は新しく作れない（instances.leader_id の FK が待つ）
             const rooms = await tx.select({ id: instances.id }).from(instances).where(eq(instances.leaderId, userId));
             await tx.insert(retiredAccounts).values({ userId, handle: user.handle });
-            await tx.delete(users).where(eq(users.id, userId));
+            await removeUserRows(tx, userId);
             return { status: 'retired' as const, handle: user.handle, roomIds: rooms.map((r) => r.id) };
         });
     },

@@ -1,7 +1,17 @@
 import { eq, like, sql } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
 import { db } from '../index';
-import { accounts, instances, retiredAccounts, sessions, userProfiles, users } from '../schema';
+import {
+    accounts,
+    instances,
+    retiredAccounts,
+    sessions,
+    userBlocks,
+    userProfiles,
+    users,
+    worlds,
+    worldVersions,
+} from '../schema';
 import { accountDeletionRepository } from './accountDeletionRepository';
 import { fediverseAccountRepository } from './fediverseAccountRepository';
 import { lockHandle } from './handleLock';
@@ -117,6 +127,39 @@ describe.skipIf(!RUN)('accountDeletionRepository (DB統合)', () => {
         await retiring;
         expect(await creating).toBe('handle-retired');
         expect(await db.select().from(users).where(eq(users.handle, handle))).toEqual([]);
+    });
+
+    it('ほかの人の部屋が自分のワールドの版を指していても退会でき、ほかの人のブロックの行も消える', async () => {
+        const author = `del-${stamp}-w`;
+        const other = `del-${stamp}-o`;
+        await db.insert(users).values([
+            { id: author, name: `W ${stamp}`, email: `${author}@example.com`, handle: `d${stamp}w` },
+            { id: other, name: `O ${stamp}`, email: `${other}@example.com`, handle: `d${stamp}o` },
+        ]);
+        await db.insert(worlds).values({ id: `w${stamp}`.slice(0, 21), authorId: author, worldName: 'w' });
+        await db.insert(worldVersions).values({
+            id: `v${stamp}`.slice(0, 21),
+            worldId: `w${stamp}`.slice(0, 21),
+            version: '1.0.0',
+            definition: {},
+            contentHash: 'sha256-x',
+        });
+        await db.insert(instances).values({
+            id: `${other}-room`,
+            worldRef: 'https://example.test/w',
+            worldVersionId: `v${stamp}`.slice(0, 21),
+            leaderId: other,
+        });
+        await db.insert(userBlocks).values({ blockerId: other, blockedId: author });
+
+        expect(await accountDeletionRepository.retire(author)).toMatchObject({ status: 'retired', roomIds: [] });
+        // ほかの人の部屋は残り、版への参照だけ外れる
+        const [room] = await db
+            .select()
+            .from(instances)
+            .where(eq(instances.id, `${other}-room`));
+        expect(room?.worldVersionId).toBeNull();
+        expect(await db.select().from(userBlocks).where(eq(userBlocks.blockedId, author))).toEqual([]);
     });
 
     it('同時に消しても 1 回だけ。いないユーザーは not-found', async () => {
