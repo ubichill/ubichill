@@ -148,6 +148,8 @@ export interface FediverseSignUpCandidate {
     username: string;
     handle: string;
     displayName: string;
+    /** 登録すると取り込むアイコン（外部のアカウントのもの） */
+    avatarUrl: string | null;
     /** ログインを押したが、まだ登録していなかった */
     notRegistered: boolean;
     registrationOpen: boolean;

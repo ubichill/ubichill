@@ -40,6 +40,7 @@ function setup(callbackOutcome: CallbackOutcome) {
                       username: 'alice',
                       handle: 'alice',
                       displayName: 'Alice',
+                      avatarUrl: null,
                       notRegistered: false,
                       registrationOpen: true,
                   }

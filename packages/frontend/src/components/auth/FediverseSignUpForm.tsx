@@ -6,6 +6,7 @@ import {
     fetchFediverseSignUpCandidate,
 } from '@/lib/account/fediverseSignIn';
 import { useDisplayNameAvailability, useHandleAvailability } from '@/lib/account/useHandleAvailability';
+import { css } from '@/styled-system/css';
 import {
     buttonStyle,
     cardStyle,
@@ -32,6 +33,7 @@ export function FediverseSignUpForm({ onCancel }: { onCancel: () => void }) {
     const [handle, setHandle] = useState('');
     const [displayName, setDisplayName] = useState('');
     const [busy, setBusy] = useState(false);
+    const [avatarFailed, setAvatarFailed] = useState(false);
     const [error, setError] = useState('');
     const ready = loaded.state === 'ready';
     const handleStatus = useHandleAvailability(handle, ready);
@@ -110,6 +112,18 @@ export function FediverseSignUpForm({ onCancel }: { onCancel: () => void }) {
     return (
         <main className={containerStyle}>
             <div className={cardStyle}>
+                {candidate.avatarUrl && !avatarFailed && (
+                    // 登録すると、このアイコンをプロフィールに取り込む（後から変えられる）
+                    <img
+                        src={candidate.avatarUrl}
+                        alt=""
+                        width={72}
+                        height={72}
+                        className={avatarStyle}
+                        referrerPolicy="no-referrer"
+                        onError={() => setAvatarFailed(true)}
+                    />
+                )}
                 <h1 className={titleStyle}>はじめまして</h1>
                 <p className={subtitleStyle}>
                     {candidate.notRegistered
@@ -191,3 +205,5 @@ export function FediverseSignUpForm({ onCancel }: { onCancel: () => void }) {
         </main>
     );
 }
+
+const avatarStyle = css({ w: '72px', h: '72px', rounded: 'full', objectFit: 'cover', bg: 'surfaceAccent' });

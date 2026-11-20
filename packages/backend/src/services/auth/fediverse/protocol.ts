@@ -31,6 +31,20 @@ export interface ExternalAccount {
     id: string;
     username: string;
     displayName: string | null;
+    /** 取り込んでよいアイコンの URL（https で、サーバーの初期アイコンでないもの） */
+    avatarUrl: string | null;
+}
+
+/**
+ * 外部のアイコンの URL のうち取り込むもの。https だけで、設定していない人に出す初期アイコン
+ * （Mastodon の missing.png・Misskey の identicon）は取り込まない。
+ */
+export function importableAvatarUrl(raw: unknown): string | null {
+    if (typeof raw !== 'string') return null;
+    const url = URL.parse(raw);
+    if (url?.protocol !== 'https:') return null;
+    if (/\/missing\.png$/.test(url.pathname) || url.pathname.startsWith('/identicon/')) return null;
+    return url.href;
 }
 
 const MASTODON_SCOPE = 'profile';
@@ -55,6 +69,8 @@ const MastodonAccountSchema = z.object({
     id: ExternalIdSchema,
     username: ExternalUsernameSchema,
     display_name: ExternalNameSchema,
+    // アイコンは見た目だけ。形が違ってもログインは止めず、取り込まないだけ（importableAvatarUrl）
+    avatar: z.unknown().optional(),
 });
 const MiAuthCheckSchema = z.object({
     ok: z.literal(true),
@@ -62,6 +78,7 @@ const MiAuthCheckSchema = z.object({
         id: ExternalIdSchema,
         username: ExternalUsernameSchema,
         name: ExternalNameSchema,
+        avatarUrl: z.unknown().optional(),
         // 他サーバーのユーザーなら host が入る（自分のサーバーの本人なら null）
         host: z.string().nullish(),
     }),
@@ -137,7 +154,12 @@ export async function fetchMastodonAccount(
             headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
         }),
     );
-    return { id: account.id, username: account.username, displayName: account.display_name ?? null };
+    return {
+        id: account.id,
+        username: account.username,
+        displayName: account.display_name ?? null,
+        avatarUrl: importableAvatarUrl(account.avatar),
+    };
 }
 
 /** 本人の確認に使ったトークンを失効させる（失効の口を持つサーバーだけ。失敗してもログインは止めない）。 */
@@ -188,5 +210,10 @@ export async function checkMiAuth(
         }),
     );
     if (checked.user.host) throw new Error('本人の情報に別のサーバーのユーザーが返りました');
-    return { id: checked.user.id, username: checked.user.username, displayName: checked.user.name ?? null };
+    return {
+        id: checked.user.id,
+        username: checked.user.username,
+        displayName: checked.user.name ?? null,
+        avatarUrl: importableAvatarUrl(checked.user.avatarUrl),
+    };
 }

@@ -130,6 +130,8 @@ export interface FediverseSignInDeps {
     };
     /** 新規登録を受け付けるか（閉じても既存ユーザーのログインと連携はできる） */
     registrationOpen(): boolean;
+    /** 登録したユーザーのアイコンに、外部のアイコンを取り込む（失敗しても登録は止めない） */
+    importAvatar(userId: string, url: string): Promise<void>;
     /** ログイン方法を足したことを本人に知らせる（乗っ取りに気付けるように。連絡先が無ければ何もしない） */
     notifyLinked(userId: string, account: string): Promise<void>;
     validate: { handle: typeof HandleSchema; displayName: typeof DisplayNameSchema };
@@ -182,6 +184,7 @@ const SignUpSchema = z.object({
     }),
     host: z.string(),
     displayName: z.string().nullable(),
+    avatarUrl: z.string().nullable().default(null),
     returnTo: z.string(),
     /** ログインを押したが、まだ登録していなかった */
     notRegistered: z.boolean(),
@@ -504,6 +507,7 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
                 identity,
                 host: server.host,
                 displayName: account.displayName,
+                avatarUrl: account.avatarUrl,
                 returnTo: state.returnTo,
                 notRegistered: state.prefer === 'sign-in',
             };
@@ -532,6 +536,7 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
                 username: pending.identity.username,
                 handle: handleCandidateOf(pending.identity.username),
                 displayName: displayNameCandidateOf(pending.displayName, pending.identity.username),
+                avatarUrl: pending.avatarUrl,
                 notRegistered: pending.notRegistered,
                 registrationOpen: deps.registrationOpen(),
             };
@@ -595,6 +600,12 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
             switch (created.status) {
                 case 'created':
                     await deps.flows.remove(identifier);
+                    if (pending.avatarUrl) {
+                        // 取り込みは待たない（相手の画像の取得・作り直しで登録を遅らせない）
+                        void deps
+                            .importAvatar(userId, pending.avatarUrl)
+                            .catch((error: unknown) => deps.warn('アイコンを取り込めませんでした', error));
+                    }
                     return { ok: true, userId, accountRowId, returnTo: pending.returnTo };
                 case 'identity-taken':
                     await deps.flows.remove(identifier);

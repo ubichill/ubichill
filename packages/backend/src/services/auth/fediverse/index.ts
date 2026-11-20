@@ -1,10 +1,18 @@
 /** 本番の依存（safeFetch・DB・設定）につないだフェディバースのログイン。 */
 import { randomBytes } from 'node:crypto';
 import { authFlowRepository, domainPolicyRepository, fediverseAccountRepository, userRepository } from '@ubichill/db';
-import { DisplayNameSchema, type DomainRestriction, HandleSchema, OFFICIAL_HANDLE, policyFor } from '@ubichill/shared';
+import {
+    DisplayNameSchema,
+    type DomainRestriction,
+    HandleSchema,
+    OFFICIAL_HANDLE,
+    PROFILE_IMAGE_MAX_BYTES,
+    policyFor,
+} from '@ubichill/shared';
 import { appConfig } from '../../../config';
 import { safeFetch } from '../../../lib/safeFetch';
 import { logger } from '../../../utils/logger';
+import { profileService } from '../../profiles/profileService';
 import { createLoginPolicy } from './loginPolicy';
 import { type FediverseHttp, HttpStatusError } from './protocol';
 import { createFediverseSignIn } from './signIn';
@@ -112,6 +120,17 @@ export function createProductionFediverseSignIn(newId: (model: 'user' | 'account
             link: (input) => fediverseAccountRepository.link(input),
         },
         registrationOpen: () => appConfig.registrationOpen,
+        importAvatar: async (userId, url) => {
+            // 画像は外部の CDN にあることが多いので、リダイレクトは少しだけ追う（資格情報は送らない）
+            const res = await safeFetch(url, { maxRedirects: 2, maxBytes: PROFILE_IMAGE_MAX_BYTES });
+            if (!res.ok) throw new HttpStatusError(res.status, url);
+            const outcome = await profileService.replaceImage(
+                userId,
+                'avatar',
+                new Uint8Array(await res.arrayBuffer()),
+            );
+            if (!outcome.ok) throw new Error(`アイコンを使えませんでした: ${outcome.error}`);
+        },
         notifyLinked: async (userId, account) => {
             const user = await userRepository.findById(userId);
             if (!user) return;

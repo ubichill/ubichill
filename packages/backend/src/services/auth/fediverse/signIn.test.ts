@@ -101,6 +101,7 @@ function setup(overrides: { routes?: Record<string, Route>; config?: Partial<Fed
         registrationOpen: true,
         warnings: [] as string[],
         notified: [] as string[],
+        avatars: [] as string[],
     };
     const key = (i: ExternalIdentity) => `${i.providerId} ${i.accountId}`;
 
@@ -114,6 +115,7 @@ function setup(overrides: { routes?: Record<string, Route>; config?: Partial<Fed
             id: '109',
             username: 'alice',
             display_name: 'Alice :blobcat:',
+            avatar: 'https://files.mastodon.example/accounts/avatars/alice.png',
         }),
         'POST https://mastodon.example/oauth/revoke': () => ({}),
         // MiAuth の確認はセッション ID ごと（* はパスの 1 段）
@@ -211,6 +213,9 @@ function setup(overrides: { routes?: Record<string, Route>; config?: Partial<Fed
             },
         },
         registrationOpen: () => state.registrationOpen,
+        importAvatar: async (userId, url) => {
+            state.avatars.push(`${userId} ${url}`);
+        },
         notifyLinked: async (userId, account) => {
             state.notified.push(`${userId} ${account}`);
         },
@@ -618,6 +623,7 @@ describe('初回登録', () => {
             handle: 'alice',
             displayName: 'Alice',
             // ログインを押して来た（まだ登録していなかった）
+            avatarUrl: 'https://files.mastodon.example/accounts/avatars/alice.png',
             notRegistered: true,
             registrationOpen: true,
         });
@@ -1025,5 +1031,72 @@ describe('レビューで見つけた穴', () => {
         const sent = t.calls.length;
         await t.signIn.lookup('https://MI.example/');
         expect(t.calls.length).toBe(sent);
+    });
+});
+
+describe('アイコンの取り込み', () => {
+    const arriveWith = async (avatar: unknown) => {
+        const t = setup({
+            routes: {
+                'GET https://mastodon.example/api/v1/accounts/verify_credentials': () => ({
+                    id: '109',
+                    username: 'alice',
+                    display_name: 'Alice',
+                    avatar,
+                }),
+            },
+        });
+        const { state, browserToken } = await t.begin('mastodon.example');
+        const outcome = await t.signIn.callback({
+            server: 'mastodon.example',
+            query: { code: 'c', state },
+            browserToken,
+            sessionId: null,
+        });
+        return { t, ticket: outcome.kind === 'sign-up' ? outcome.ticket : null };
+    };
+
+    it('新しく作ったユーザーにだけ外部のアイコンを取り込む', async () => {
+        const { t, ticket } = await arriveWith('https://files.mastodon.example/a.png');
+        const created = await t.signIn.signUp({ ticket, handle: 'alice', displayName: 'Alice' });
+        expect(created.ok && t.state.avatars).toEqual([
+            `${created.ok ? created.userId : ''} https://files.mastodon.example/a.png`,
+        ]);
+    });
+
+    it('アイコンの項目が無い応答でもログインできる', async () => {
+        const { t, ticket } = await arriveWith(undefined);
+        expect(ticket).not.toBeNull();
+        expect((await t.signIn.signUpCandidate(ticket))?.avatarUrl).toBeNull();
+    });
+
+    it('初期アイコン（missing.png・identicon）・http・形の違うものは取り込まない', async () => {
+        for (const avatar of [
+            'https://mastodon.example/avatars/original/missing.png',
+            'https://mi.example/identicon/abc',
+            'http://mastodon.example/a.png',
+            'javascript:alert(1)',
+            42,
+        ]) {
+            const { t, ticket } = await arriveWith(avatar);
+            expect((await t.signIn.signUpCandidate(ticket))?.avatarUrl).toBeNull();
+            await t.signIn.signUp({ ticket, handle: 'alice', displayName: 'Alice' });
+            expect(t.state.avatars).toEqual([]);
+        }
+    });
+
+    it('同じ外部アカウントが別の画面で登録済みなら、そのユーザーのアイコンは変えない', async () => {
+        const { t, ticket } = await arriveWith('https://files.mastodon.example/a.png');
+        t.identities.set('fediverse:https://mastodon.example 109', 'user-bob');
+        expect((await t.signIn.signUp({ ticket, handle: 'alice', displayName: 'Alice' })).ok).toBe(true);
+        expect(t.state.avatars).toEqual([]);
+    });
+
+    it('取り込みに失敗しても登録は通る', async () => {
+        const { t, ticket } = await arriveWith('https://files.mastodon.example/a.png');
+        t.deps.importAvatar = async () => {
+            throw new Error('too-large');
+        };
+        expect((await t.signIn.signUp({ ticket, handle: 'alice', displayName: 'Alice' })).ok).toBe(true);
     });
 });
