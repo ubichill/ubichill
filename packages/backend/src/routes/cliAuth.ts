@@ -7,7 +7,7 @@ import {
     SERVER_CONFIG,
 } from '@ubichill/shared';
 import { Router } from 'express';
-import { requireFreshAuth, requirePublisher } from '../middleware/auth';
+import { requireFreshAuth, requirePublisher, requireStrongSession } from '../middleware/auth';
 import { cliAuthService } from '../services/auth/cliAuthService';
 import { publishingEnvironmentService } from '../services/authors/publishingEnvironmentService';
 
@@ -58,7 +58,7 @@ router.get('/requests', requireFreshAuth, async (req, res) => {
 });
 
 // 3. 承認する（ログイン、DB のセッション）。ループバックならリダイレクト先（認可コード付き）を返す。
-router.post('/requests/:id/approve', requireFreshAuth, async (req, res) => {
+router.post('/requests/:id/approve', requireStrongSession, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const state = typeof req.body?.state === 'string' ? req.body.state : undefined;
     const outcome = await cliAuthService.approve(req.user.id, String(req.params.id), state);

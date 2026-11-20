@@ -2,6 +2,7 @@
  * 連合の部品をつなぐ（DB・Go・通知・ワールドの解決）。部品の規則はそれぞれのファイルにあり、ここは配線だけ。
  * 種（FEDERATION_KEY_SEED。開発では BETTER_AUTH_SECRET から導く）が無ければ連合しない（federation は null）。
  */
+
 import {
     actorKeyRepository,
     admissionRepository,
@@ -29,6 +30,7 @@ import { redis } from '../../lib/redis';
 import { safeFetch } from '../../lib/safeFetch';
 import { createSharedRateLimitStore } from '../../lib/sharedRateLimit';
 import { logger } from '../../utils/logger';
+import { fediverseLoginPolicyChanged } from '../auth/fediverse';
 import { backendEvents } from '../cluster/backendEvents';
 import { instanceManager } from '../instances/instanceManager';
 import { instanceRuntime } from '../instances/instanceRuntime';
@@ -384,7 +386,13 @@ export type Federation = ReturnType<typeof createFederation>;
 async function domainPolicyChanged(domain: string, policy: string | null): Promise<void> {
     await federation?.policies.reload();
     backendEvents.broadcast({ type: 'federation.policies.changed' });
-    if (policy === 'block') await severDomain(domain);
+    if (policy === 'block') {
+        await severDomain(domain);
+        // そのドメインのアカウントで入ったログインも切る（ほかの backend は定期の掃除で追いつく）
+        await fediverseLoginPolicyChanged().catch((err: unknown) =>
+            logger.error('block したサーバーのログインを切れませんでした:', err),
+        );
+    }
 }
 
 /** ほかのサーバーとの付き合い方を決める・やめる（管理者）。保存と読み直し・関係を切るのを 1 か所で行う。 */

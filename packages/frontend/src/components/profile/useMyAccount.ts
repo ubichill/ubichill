@@ -14,6 +14,7 @@ export interface MyProfile extends UserProfile {
     passwordChangeRequired?: boolean;
     passwordManagedBySecret?: boolean;
     isAdmin?: boolean;
+    adminRequiresPassword?: boolean;
 }
 
 /**
@@ -31,6 +32,12 @@ export function useMyAccount() {
     const reloadMyWorlds = useCallback(async () => {
         const res = await fetch(`${API_BASE}/api/v1/users/me/worlds`, { credentials: 'include' });
         if (res.ok) setWorlds(((await res.json()) as { worlds: OwnedWorld[] }).worlds);
+    }, []);
+
+    /** 本人確認をした後などに、自分のアカウント（管理者の権限を使えるかなど）を取り直す。 */
+    const reloadProfile = useCallback(async () => {
+        const res = await fetch(`${API_BASE}/api/v1/users/me`, { credentials: 'include', cache: 'no-store' });
+        if (res.ok) setProfile((await res.json()) as MyProfile);
     }, []);
 
     useEffect(() => {
@@ -109,6 +116,7 @@ export function useMyAccount() {
         environmentsVersion,
         signWorlds,
         reloadMyWorlds,
+        reloadProfile,
         deleteWorld,
     };
 }

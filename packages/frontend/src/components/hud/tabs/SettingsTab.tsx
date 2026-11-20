@@ -2,9 +2,11 @@ import { isPublishable } from '@ubichill/shared';
 import { HomeSettingsSection } from '@/components/home/HomeSettingsSection';
 import { useMyAccount } from '@/components/profile';
 import { PublishingSection } from '@/components/publishing/PublishingSection';
+import { useLoginMethods } from '@/lib/account/fediverseSignIn';
 import { css } from '@/styled-system/css';
 import { SplitTab, type SplitTabItem } from './SplitTab';
 import { FediverseSection } from './settings/FediverseSection';
+import { LoginMethodsSection } from './settings/LoginMethodsSection';
 import { LogoutSection } from './settings/LogoutSection';
 import { ModPermissionsSettings } from './settings/ModPermissionsSettings';
 import { PasswordSection } from './settings/PasswordSection';
@@ -41,6 +43,7 @@ export function SettingsTab({
     const current = SECTIONS.some((s) => s.id === section) ? section : 'home';
     const unsignedCount = account.worlds.filter((w) => !isPublishable(w.identity)).length;
     const needsAccount = NEEDS_ACCOUNT.has(current);
+    const loginMethods = useLoginMethods(current === 'account');
 
     return (
         <SplitTab label="設定" items={SECTIONS} current={current} onSelect={onSectionChange}>
@@ -73,7 +76,17 @@ export function SettingsTab({
                         refreshKey={account.environmentsVersion}
                     />
                 )}
-                {current === 'account' && profile && (
+                {current === 'account' && (
+                    <LoginMethodsSection
+                        methods={loginMethods.methods}
+                        adminRequiresPassword={!!profile?.adminRequiresPassword}
+                        onChanged={() => {
+                            loginMethods.reload();
+                            void account.reloadProfile();
+                        }}
+                    />
+                )}
+                {current === 'account' && profile && loginMethods.methods?.password !== false && (
                     <PasswordSection
                         required={!!profile.passwordChangeRequired}
                         managedBySecret={!!profile.passwordManagedBySecret}

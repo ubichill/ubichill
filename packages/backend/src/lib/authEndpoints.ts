@@ -13,9 +13,18 @@ const PUBLIC_AUTH_PATHS: ReadonlySet<string> = new Set([
     '/change-password',
     '/ok',
     '/error',
+    // フェディバースのログイン（lib/fediverseSignInPlugin.ts）
+    '/fediverse/options',
+    '/fediverse/start',
+    '/fediverse/sign-up',
+    '/fediverse/lookup',
 ]);
+
+/** 最後の 1 段がサーバーのホスト（`/fediverse/callback/mi.example`）のもの。ホストの形でなければ通さない。 */
+const PUBLIC_AUTH_PATH_PATTERNS: readonly RegExp[] = [/^\/fediverse\/callback\/[a-z0-9][a-z0-9.-]*(:\d{1,5})?$/];
 
 /** `/api/auth` より後ろのパス（`req.path`）が HTTP から呼んでよいものか。大文字小文字・末尾の `/` の違いでもすり抜けさせない。 */
 export function isPublicAuthPath(path: string): boolean {
-    return PUBLIC_AUTH_PATHS.has(path.replace(/\/+$/, ''));
+    const normalized = path.replace(/\/+$/, '');
+    return PUBLIC_AUTH_PATHS.has(normalized) || PUBLIC_AUTH_PATH_PATTERNS.some((pattern) => pattern.test(normalized));
 }

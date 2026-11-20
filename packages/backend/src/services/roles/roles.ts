@@ -3,6 +3,7 @@ import {
     assignedRolesOf,
     assignmentExpiryOf,
     compareRoles,
+    contactEmailOf,
     isAdministrator,
     isRootHandle,
     type PublicRole,
@@ -41,6 +42,8 @@ export interface RoleUser {
     handle: string;
     image: string | null;
     createdAt: Date;
+    email: string;
+    emailVerified: boolean;
 }
 
 /** ロールとアサインの保存（@ubichill/db の roleRepository）。 */
@@ -126,6 +129,10 @@ export function createRoleService(deps: RoleServiceDeps) {
     const findUser = async (userId: string): Promise<RoleUser | undefined> =>
         hidden.has(userId) ? undefined : deps.users.findById(userId);
 
+    // 管理者は確認済みのメールを持つ人だけ（外部のサーバーが乗っ取られても管理者の権限は渡さない・復旧の連絡先を持たせる）
+    const adminOf = (user: RoleUser, own: readonly StoredAssignment[], at: Date): boolean =>
+        isRootHandle(user.handle) || (contactEmailOf(user) !== null && isAdministrator(user.handle, own, at));
+
     const usersView = async (users: readonly RoleUser[]): Promise<AdminUserView[]> => {
         const assignments = await deps.roles.assignmentsOf(users.map((u) => u.id));
         const at = now();
@@ -138,19 +145,22 @@ export function createRoleService(deps: RoleServiceDeps) {
                 image: user.image,
                 createdAt: user.createdAt.toISOString(),
                 isRoot: isRootHandle(user.handle),
-                isAdmin: isAdministrator(user.handle, own, at),
+                isAdmin: adminOf(user, own, at),
                 roles: assignedRolesOf(own, at),
             };
         });
     };
 
     return {
-        /** このサーバーの管理者か（公式アカウントは常に。ほかは期限の切れていない管理者のロールを持つ人）。 */
+        /**
+         * このサーバーの管理者か（公式アカウントは常に。ほかは確認済みのメールがあり、期限の切れていない管理者のロールを
+         * 持つ人）。
+         */
         async isAdmin(userId: string): Promise<boolean> {
             const user = await findUser(userId);
             if (!user) return false;
             if (isRootHandle(user.handle)) return true;
-            return isAdministrator(user.handle, await deps.roles.assignmentsOf([user.id]), now());
+            return adminOf(user, await deps.roles.assignmentsOf([user.id]), now());
         },
 
         /** プロフィールに出すロール。 */
@@ -199,6 +209,9 @@ export function createRoleService(deps: RoleServiceDeps) {
             const [role, user] = await Promise.all([deps.roles.findById(roleId, at), findUser(userId)]);
             if (!role) return notFound('ロールがありません');
             if (!user) return notFound('ユーザーがいません');
+            if (role.isAdministrator && contactEmailOf(user) === null) {
+                return invalid('管理者にできるのは、メールアドレスを確認済みのユーザーだけです');
+            }
             const saved = await deps.roles.assign({ roleId, userId, expiresAt: expiry.expiresAt }, at);
             return ok(
                 memberView({

@@ -32,6 +32,16 @@ export {
 export { favoriteRepository } from './repositories/favoriteRepository';
 export * from './repositories/federation';
 export { federationPeerRepository } from './repositories/federationPeerRepository';
+export {
+    authFlowRepository,
+    type CreateFediverseUserOutcome,
+    type ExternalIdentity,
+    fediverseAccountRepository,
+    type LinkedFediverseAccount,
+    type LinkOutcome,
+    type NewFediverseUser,
+    type UnlinkOutcome,
+} from './repositories/fediverseAccountRepository';
 export { instanceRepository } from './repositories/instanceRepository';
 export { type InviteRecord, inviteRepository } from './repositories/inviteRepository';
 export {

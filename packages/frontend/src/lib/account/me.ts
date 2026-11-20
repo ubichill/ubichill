@@ -21,8 +21,10 @@ export interface MyAccount extends UserProfile {
     passwordChangeRequired: boolean;
     /** パスワードをサーバーの設定（Secret）で管理している（画面から変更できない）。 */
     passwordManagedBySecret: boolean;
-    /** このサーバーの管理者（公式アカウント）。 */
+    /** このセッションで管理者の権限を使える（管理者で、パスワードでログインか再認証をした）。 */
     isAdmin: boolean;
+    /** 管理者だが、このセッションは外部の SSO だけで入った（パスワードで本人確認をすると管理者の操作ができる）。 */
+    adminRequiresPassword?: boolean;
     /** 取り消されていない公開環境の鍵（このブラウザの鍵が登録済みかの判定に使う）。 */
     signingKeys: string[];
 }

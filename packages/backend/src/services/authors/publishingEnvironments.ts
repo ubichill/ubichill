@@ -138,17 +138,17 @@ export function authorClaimOf(args: {
     return { ok: true, environmentId: environment.id };
 }
 
-/** 鍵の持ち主（通知の宛先）。 */
+/** 鍵の持ち主（通知の宛先。確認済みの連絡先が無ければ送らない）。 */
 export interface KeyOwner {
     id: string;
     name: string;
     email: string;
+    emailVerified: boolean;
 }
 
 /** API トークンで認証した人（リクエストの user にそのまま入れる）。 */
 export interface PublisherUser extends KeyOwner {
     handle: string;
-    emailVerified: boolean;
     image?: string | null;
 }
 
@@ -182,8 +182,8 @@ export interface PublishingEnvironmentsDeps {
     ): Promise<{ ok: true } | { ok: false; reason: string }>;
     /** 鍵が増えた・取り消された（署名の作者の表示が変わるので、全 backend の解決済みワールドを捨てる） */
     keysChanged(): void;
-    /** 本人へのメール（失敗しても登録は止めない） */
-    notify(email: string, subject: string, text: string): void;
+    /** 本人へのメール（確認済みの連絡先が無ければ送らない。失敗しても登録は止めない） */
+    notify(owner: KeyOwner, subject: string, text: string): void;
     siteUrl(): string;
     now(): Date;
 }
@@ -206,7 +206,7 @@ export function createPublishingEnvironments(deps: PublishingEnvironmentsDeps) {
             siteUrl: deps.siteUrl(),
             at: created.createdAt,
         });
-        deps.notify(owner.email, notice.subject, notice.text);
+        deps.notify(owner, notice.subject, notice.text);
         return created;
     }
 

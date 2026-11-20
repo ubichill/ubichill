@@ -1,6 +1,13 @@
 import type { NextFunction, Request, Response } from 'express';
 import { auth } from '../lib/auth';
 import { bearerToken, sha256Base64Url } from '../services/auth/cliAuth';
+import {
+    canActAsAdmin,
+    isRecentlyAuthenticated,
+    isStrongSession,
+    type SessionFacts,
+    toDateOrNull,
+} from '../services/auth/sessionAssurance';
 import { publishingEnvironmentService } from '../services/authors/publishingEnvironmentService';
 import { roleService } from '../services/roles/roleService';
 import { userService } from '../services/users/userService';
@@ -22,6 +29,9 @@ declare global {
                 userId: string;
                 token: string;
                 expiresAt: Date;
+                createdAt: Date;
+                /** パスワードを確かめた時刻（null は SSO だけで入った。services/auth/sessionAssurance.ts） */
+                passwordVerifiedAt: Date | null;
             };
             /** API トークン（CLI・CI）で認証したときの公開環境。トークンで送る署名はこの環境の鍵に限る。 */
             publishingEnvironment?: { id: string; publicKey: string; kind: string };
@@ -30,6 +40,14 @@ declare global {
 }
 
 type SessionResult = Awaited<ReturnType<typeof auth.api.getSession>>;
+
+/** better-auth のセッションから、本人の確かめ方を取り出す（クッキーキャッシュでは日時が文字列で来る）。 */
+export function sessionFactsOf(session: NonNullable<SessionResult>['session']): SessionFacts {
+    return {
+        createdAt: toDateOrNull(session.createdAt) ?? new Date(0),
+        passwordVerifiedAt: toDateOrNull(session.passwordVerifiedAt),
+    };
+}
 
 function attachSession(req: Request, session: NonNullable<SessionResult>): void {
     req.user = {
@@ -44,6 +62,7 @@ function attachSession(req: Request, session: NonNullable<SessionResult>): void 
         userId: session.session.userId,
         token: session.session.token,
         expiresAt: session.session.expiresAt,
+        ...sessionFactsOf(session.session),
     };
 }
 
@@ -72,6 +91,42 @@ function authRequired(options: { fresh: boolean }) {
  * セッションはクッキーキャッシュ（最大 5 分）で確かめるので、ログアウトさせたセッションも最大 5 分は通る。
  */
 export const requireAuth = authRequired({ fresh: false });
+
+/**
+ * ログイン方法を変える操作（外部アカウントの追加・解除）の認証。DB のセッションで、直近にログインかパスワードの
+ * 再認証をしたものだけ通す。奪われたセッションでログイン手段を足され、パスワードを変えても残るのを防ぐ。
+ */
+export async function requireRecentAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
+    await requireFreshAuth(req, res, async () => {
+        const session = req.session;
+        if (!session || !req.user) return;
+        const hasPassword = await userService.hasPassword(req.user.id);
+        if (!isRecentlyAuthenticated(session, new Date(), hasPassword)) {
+            res.status(403).json({ error: 'もう一度本人確認をしてください', code: 'reauth-required' });
+            return;
+        }
+        next();
+    });
+}
+
+/**
+ * アカウントの安全に関わる操作（公開環境・CLI の承認・ほかの端末のログアウト）の認証。DB のセッションで、
+ * パスワードを持つ人はパスワードを確かめたセッションに限る（SSO だけで入ったセッションでは断る）。
+ */
+export async function requireStrongSession(req: Request, res: Response, next: NextFunction): Promise<void> {
+    await requireFreshAuth(req, res, async () => {
+        const session = req.session;
+        if (!session || !req.user) return;
+        if (!isStrongSession(session, await userService.hasPassword(req.user.id))) {
+            res.status(403).json({
+                error: 'この操作の前に、設定の「アカウント」でパスワードの本人確認をしてください',
+                code: 'password-required',
+            });
+            return;
+        }
+        next();
+    });
+}
 
 /**
  * 認証必須ミドルウェア（DB のセッションを確かめる）。公開に関わる操作（公開環境の登録・取り消し、署名つきの保存、
@@ -125,21 +180,7 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
             headers: toWebHeaders(req),
         });
 
-        if (session) {
-            req.user = {
-                id: session.user.id,
-                email: session.user.email,
-                name: session.user.name,
-                emailVerified: session.user.emailVerified,
-                image: session.user.image,
-            };
-            req.session = {
-                id: session.session.id,
-                userId: session.session.userId,
-                token: session.session.token,
-                expiresAt: session.session.expiresAt,
-            };
-        }
+        if (session) attachSession(req, session);
 
         next();
     } catch {
@@ -194,8 +235,17 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
         res.status(401).json({ error: 'Unauthorized' });
         return;
     }
-    if (!(await roleService.isAdmin(session.user.id))) {
+    const isAdminUser = await roleService.isAdmin(session.user.id);
+    if (!isAdminUser) {
         res.status(403).json({ error: 'Forbidden: 管理者のみ実行できます' });
+        return;
+    }
+    // 外部の SSO だけで入ったセッションでは管理者の権限を使わせない（外部サーバーの乗っ取りを管理者に広げない）
+    if (!canActAsAdmin(isAdminUser, sessionFactsOf(session.session))) {
+        res.status(403).json({
+            error: '管理者の操作は、パスワードでログインしたとき（または再認証した後）だけできます',
+            code: 'password-required',
+        });
         return;
     }
     next();

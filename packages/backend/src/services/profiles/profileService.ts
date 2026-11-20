@@ -1,4 +1,4 @@
-/** プロフィールの実体（DB・画像の処理・ロールをつなぐ）。規則と手順は profiles.ts。 */
+/** プロフィールの実体（DB・画像の処理・ロールをつなぐ）。規則と手順は profiles.ts。フェディバースの登録（アイコンの取り込み）でも使う。 */
 import { profileImageRepository, userRepository } from '@ubichill/db';
 import { ENV_KEYS, PROFILE_IMAGE_MAX_PIXELS, SERVER_CONFIG } from '@ubichill/shared';
 import { createJobGate } from '../../utils/jobGate';

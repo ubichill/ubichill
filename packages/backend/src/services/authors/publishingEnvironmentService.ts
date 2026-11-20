@@ -16,7 +16,7 @@ export const publishingEnvironmentService = createPublishingEnvironments({
     accountOf: selfAccount,
     verifyRegistration: (claim, signature) => verifyKeyRegistration(claim, signature, Date.now(), nodeWorldCrypto),
     keysChanged: () => worldRegistry.invalidateResolvedWorlds(),
-    notify: (email, subject, text) => void sendAccountNotice(email, subject, text),
+    notify: (owner, subject, text) => void sendAccountNotice(owner, subject, text),
     siteUrl: () => new URL('/', process.env[ENV_KEYS.PUBLIC_BASE_URL] || SERVER_CONFIG.DEV_URL).href,
     now: () => new Date(),
 });

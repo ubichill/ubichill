@@ -4,7 +4,18 @@
 import { DISPLAY_NAME_CHANGE_COOLDOWN_DAYS, OFFICIAL_HANDLE } from '@ubichill/shared';
 import { Router } from 'express';
 import { auth } from '../../lib/auth';
-import { requireAuth, requireFreshAuth, requirePublisher, toWebHeaders } from '../../middleware/auth';
+import { sharedLimiter } from '../../lib/rateLimit';
+import {
+    requireAuth,
+    requireFreshAuth,
+    requirePublisher,
+    requireRecentAuth,
+    requireStrongSession,
+    sessionFactsOf,
+    toWebHeaders,
+} from '../../middleware/auth';
+import { loginMethodService } from '../../services/auth/loginMethods';
+import { canActAsAdmin } from '../../services/auth/sessionAssurance';
 import { publishingEnvironmentService } from '../../services/authors/publishingEnvironmentService';
 import { roleService } from '../../services/roles/roleService';
 import { changeDisplayName, displayNameAvailableAtOf } from '../../services/users/displayName';
@@ -17,11 +28,13 @@ router.get('/me', requirePublisher, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const user = await userService.profileById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    const [profile, isAdmin, signingKeys] = await Promise.all([
+    const [profile, isAdminUser, signingKeys] = await Promise.all([
         publicProfileOf(user),
         roleService.isAdmin(user.id),
         publishingEnvironmentService.activePublicKeysOf(user.id),
     ]);
+    // API トークン（CLI）にはセッションが無いので、管理者の権限は使えない
+    const isAdmin = !!req.session && canActAsAdmin(isAdminUser, req.session);
     return res.json({
         // 公開プロフィールと同じ項目（プロフィールの編集の元にする）
         ...profile,
@@ -36,6 +49,8 @@ router.get('/me', requirePublisher, async (req, res) => {
         // パスワードを Secret で管理している（画面から変更できない）
         passwordManagedBySecret: user.handle === OFFICIAL_HANDLE,
         isAdmin,
+        // 管理者だが、このセッションは外部の SSO だけで入った（パスワードでログインか再認証をすると管理者の操作ができる）
+        adminRequiresPassword: isAdminUser && !isAdmin,
         // API トークン（CLI・CI）で呼んだときの公開環境（ubichill whoami で表示する）
         ...(req.publishingEnvironment
             ? { publishingEnvironment: { id: req.publishingEnvironment.id, kind: req.publishingEnvironment.kind } }
@@ -43,11 +58,46 @@ router.get('/me', requirePublisher, async (req, res) => {
     });
 });
 
-// 管理者かどうかだけ（画面が 1 分ごとに確かめる。/me は重いので分ける）
+// 管理者かどうかだけ（画面が 1 分ごとに確かめる。/me は重いので分ける）。このセッションで管理者の権限を使えるか
 router.get('/me/admin', requireAuth, async (req, res) => {
-    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    if (!req.user || !req.session) return res.status(401).json({ error: 'Unauthorized' });
     res.set('Cache-Control', 'no-store');
-    return res.json({ isAdmin: await roleService.isAdmin(req.user.id) });
+    const isAdminUser = await roleService.isAdmin(req.user.id);
+    if (!isAdminUser) return res.json({ isAdmin: false, adminRequiresPassword: false });
+    // クッキーキャッシュは再認証の前の値のことがある。管理者だけ DB のセッションで確かめ直す
+    const fresh = canActAsAdmin(true, req.session)
+        ? req.session
+        : await auth.api
+              .getSession({ headers: toWebHeaders(req), query: { disableCookieCache: true } })
+              .then((s) => (s ? sessionFactsOf(s.session) : null))
+              .catch(() => null);
+    const isAdmin = !!fresh && canActAsAdmin(true, fresh);
+    return res.json({ isAdmin, adminRequiresPassword: !isAdmin });
+});
+
+const reauthLimiter = sharedLimiter(
+    'reauthenticate',
+    15 * 60 * 1000,
+    10,
+    '本人確認の試行が多すぎます。しばらくしてから再試行してください。',
+    { keyGenerator: (req) => req.user?.id ?? '' },
+);
+
+// パスワードで本人確認をし直す（ログイン方法の変更・管理者の操作の前に）。このセッションに確かめた時刻を記録する
+router.post('/me/reauthenticate', requireFreshAuth, reauthLimiter, async (req, res) => {
+    if (!req.user || !req.session) return res.status(401).json({ error: 'Unauthorized' });
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    if (!password) return res.status(400).json({ error: 'パスワードを入力してください' });
+    if (!(await userService.hasPassword(req.user.id))) {
+        return res.status(400).json({ error: 'このアカウントにはパスワードがありません。ログインし直してください' });
+    }
+    const verified = await auth.api
+        .verifyPassword({ body: { password }, headers: toWebHeaders(req) })
+        .then((r) => r.status === true)
+        .catch(() => false);
+    if (!verified) return res.status(400).json({ error: 'パスワードが正しくありません' });
+    await loginMethodService.markPasswordVerified(req.user.id, req.session.id, new Date());
+    return res.status(204).send();
 });
 
 // パスワードを変更する。現在のパスワードの確認は better-auth に任せ、他の端末のセッションは無効にする。
@@ -104,8 +154,28 @@ router.put('/me/display-name', requireAuth, async (req, res) => {
     }
 });
 
+// ログイン方法（パスワードの有無と、追加したフェディバースのアカウント・今の設定で使えるか）
+router.get('/me/login-methods', requireFreshAuth, async (req, res) => {
+    if (!req.user || !req.session) return res.status(401).json({ error: 'Unauthorized' });
+    return res.json(await loginMethodService.of(req.user.id, req.session, new Date()));
+});
+
+// フェディバースのアカウントを外す。流れは services/auth/loginMethods.ts
+router.delete('/me/login-methods/:id', requireRecentAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const outcome = await loginMethodService.unlink(req.user.id, String(req.params.id), req.session?.id ?? null);
+    switch (outcome.status) {
+        case 'unlinked':
+            return res.status(204).send();
+        case 'not-found':
+            return res.status(404).json({ error: 'ログイン方法が見つかりません' });
+        case 'last-method':
+            return res.status(409).json({ error: 'ほかにログインする方法が無いため外せません' });
+    }
+});
+
 // いま使っているもの以外のログインをすべて無効にする（乗っ取りに気付いたとき。公開環境の取り消しだけでは攻撃者のログインは残る）
-router.post('/me/sessions/revoke-others', requireFreshAuth, async (req, res) => {
+router.post('/me/sessions/revoke-others', requireStrongSession, async (req, res) => {
     if (!req.user || !req.session) return res.status(401).json({ error: 'Unauthorized' });
     const revoked = await userService.revokeOtherSessions(req.user.id, req.session.id);
     return res.json({ revoked });

@@ -120,7 +120,7 @@ describe('loopbackRedirect', () => {
 });
 
 describe('createCliAuth', () => {
-    const user = { id: 'u1', name: 'アリス', email: 'a@example.com', handle: 'alice' };
+    const user = { id: 'u1', name: 'アリス', email: 'a@example.com', handle: 'alice', emailVerified: true };
     const hash = (value: string) => `h(${value})`;
 
     function setup(

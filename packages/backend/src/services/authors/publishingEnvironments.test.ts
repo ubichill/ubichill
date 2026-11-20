@@ -208,7 +208,7 @@ describe('createPublishingEnvironments', () => {
             keysChanged: () => {
                 log.keysChanged += 1;
             },
-            notify: (email) => void log.mails.push(email),
+            notify: (owner) => void log.mails.push(owner.email),
             siteUrl: () => 'https://a.example/',
             now: () => at('2026-10-06T00:00:00Z'),
         });

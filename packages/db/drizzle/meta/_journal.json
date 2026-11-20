@@ -267,6 +267,20 @@
       "when": 1794996617787,
       "tag": "0037_user_id_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1795069469272,
+      "tag": "0038_fediverse_sign_in",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1795073477050,
+      "tag": "0039_session_assurance",
+      "breakpoints": true
     }
   ]
 }

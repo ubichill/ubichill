@@ -2,19 +2,22 @@ import { randomBytes, randomInt } from 'node:crypto';
 import {
     accounts,
     db,
+    fediverseAccountRepository,
     pendingRegistrationRepository,
     sessions,
     userRepository,
     users,
     verifications,
 } from '@ubichill/db';
-import { displayNameKey } from '@ubichill/shared';
+import { contactEmailOf, displayNameKey, FEATURED_FEDIVERSE_SERVERS, isReservedEmail } from '@ubichill/shared';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { eq } from 'drizzle-orm';
 import { Resend } from 'resend';
 import { z } from 'zod';
 import { appConfig } from '../config';
+import { createProductionFediverseSignIn } from '../services/auth/fediverse';
+import type { FediverseSignIn } from '../services/auth/fediverse/signIn';
 import {
     createOtpHasher,
     createPendingRegistrations,
@@ -23,7 +26,9 @@ import {
 } from '../services/auth/pendingRegistrations';
 import { logger } from '../utils/logger';
 import { createAuthRateLimitStorage } from './authRateLimit';
+import { fediverseSignInPlugin } from './fediverseSignInPlugin';
 import { redis } from './redis';
+import { sessionAssuranceFields, sessionAssuranceHooks } from './sessionAssuranceOptions';
 
 // SKIP_EMAIL_VERIFICATION=true の場合はAPIキー不要なので遅延初期化
 let _resend: Resend | null = null;
@@ -40,10 +45,16 @@ const MAIL_FROM = process.env.MAIL_FROM ?? 'Ubichill <onboarding@resend.dev>';
 
 /**
  * アカウントの安全に関わる通知（新しい公開環境の追加など）をメールで送る。乗っ取りに本人が気付けるようにするため。
+ * 確認済みの連絡先が無いユーザー（フェディバースで登録したメールなしのユーザーなど）には送らない。
  * メールを送らない環境（SKIP_EMAIL_VERIFICATION・API キー未設定）ではログだけ出す。送信の失敗で操作は止めない。
  */
-export async function sendAccountNotice(to: string, subject: string, text: string): Promise<void> {
-    if (process.env.SKIP_EMAIL_VERIFICATION === 'true' || !process.env.RESEND_API_KEY) {
+export async function sendAccountNotice(
+    user: { email: string; emailVerified: boolean },
+    subject: string,
+    text: string,
+): Promise<void> {
+    const to = contactEmailOf(user);
+    if (!to || process.env.SKIP_EMAIL_VERIFICATION === 'true' || !process.env.RESEND_API_KEY) {
         logger.info(`通知（送信しない環境）: ${subject}`);
         return;
     }
@@ -74,7 +85,10 @@ export async function createPendingRegistration(
 ): Promise<{ success: boolean; error?: string; skipVerification?: boolean; registrationId?: string }> {
     const email = normalizeEmail(rawEmail);
     // 本登録は signUpEmail を通らないので、signUpEmail がしていた入力の確認をここでする
-    if (!z.email().safeParse(email).success) {
+    if (!appConfig.registrationOpen) {
+        return { success: false, error: '現在、新規登録を受け付けていません' };
+    }
+    if (!z.email().safeParse(email).success || isReservedEmail(email)) {
         return { success: false, error: 'メールアドレスの形式が正しくありません' };
     }
     const ctx = await auth.$context;
@@ -189,6 +203,8 @@ export async function verifyAndRegister(
     registrationId: string,
     otp: string,
 ): Promise<{ success: boolean; error?: string }> {
+    // 確認コードを送った後に新規登録を止めたら、本登録もさせない（コードは消費しない）
+    if (!appConfig.registrationOpen) return { success: false, error: '現在、新規登録を受け付けていません' };
     const outcome = await (await getPendingRegistrations()).verify(registrationId, otp);
     if (outcome.status === 'register-failed') logger.error('Registration error:', outcome.error);
     if (outcome.status !== 'verified') {
@@ -200,6 +216,7 @@ export async function verifyAndRegister(
 
 // OTPを再送信
 export async function resendOTP(registrationId: string): Promise<{ success: boolean; error?: string }> {
+    if (!appConfig.registrationOpen) return { success: false, error: '現在、新規登録を受け付けていません' };
     const pending = await (await getPendingRegistrations()).reissue(registrationId);
 
     if (!pending) {
@@ -270,7 +287,10 @@ export const auth = betterAuth({
             enabled: true,
             maxAge: 60 * 5, // 5 minutes
         },
+        // どこまで本人を確かめたセッションか（services/auth/sessionAssurance.ts）。書くのはサーバーだけ
+        additionalFields: sessionAssuranceFields,
     },
+    databaseHooks: sessionAssuranceHooks,
     rateLimit: {
         // better-auth の既定と同じ（本番だけ）。ログインを Redis 障害で止めるか（index.ts）もこれに合わせる
         enabled: authRateLimitEnabled,
@@ -279,6 +299,21 @@ export const auth = betterAuth({
         // secondaryStorage ではなくこちらで共有する（secondaryStorage はセッション・検証トークンの保存先も Redis に移す）
         ...(redis ? { customStorage: createAuthRateLimitStorage(redis, logger) } : {}),
     },
+    plugins: [
+        fediverseSignInPlugin({
+            getSignIn: () => getFediverseSignIn(),
+            hasPassword: (userId) => fediverseAccountRepository.hasPassword(userId),
+            options: () => ({
+                enabled: appConfig.fediverseSignIn.enabled,
+                registrationOpen: appConfig.registrationOpen,
+                // 使えるサーバーを限っているなら、それを並べる
+                featuredServers:
+                    appConfig.fediverseSignIn.allowedServers.size > 0
+                        ? [...appConfig.fediverseSignIn.allowedServers]
+                        : FEATURED_FEDIVERSE_SERVERS,
+            }),
+        }),
+    ],
     user: {
         additionalFields: {
             // drizzle adapter は「better-auth が書かない NOT NULL・既定値なしの列」があると schema mismatch で止まる。
@@ -311,6 +346,17 @@ export const getPendingRegistrations = (() => {
                 hashOtp: createOtpHasher(ctx.secret),
                 newRecordId: (model) => newBetterAuthId(ctx, model),
             }),
+        );
+        return cache.ready;
+    };
+})();
+
+/** フェディバースのログイン。ユーザー ID の作り方は better-auth と同じもの（auth.$context）を使う。 */
+const getFediverseSignIn = (() => {
+    const cache: { ready?: Promise<FediverseSignIn> } = {};
+    return (): Promise<FediverseSignIn> => {
+        cache.ready ??= auth.$context.then((ctx) =>
+            createProductionFediverseSignIn((model) => newBetterAuthId(ctx, model), sendAccountNotice),
         );
         return cache.ready;
     };

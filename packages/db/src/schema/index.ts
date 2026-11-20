@@ -8,6 +8,7 @@ export * from './directMessages';
 export * from './externalWorks';
 export * from './federation';
 export * from './federationPeers';
+export * from './fediverseSignIn';
 export * from './instanceAccessType';
 export * from './instances';
 export * from './invites';

@@ -1,4 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
+import { FediverseReturnNotice } from './components/auth/FediverseReturnNotice';
 import { NotificationsProvider } from './components/notifications';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ConfirmProvider } from './components/ui/ConfirmProvider';
@@ -79,6 +80,7 @@ export function AppRouter() {
                             />
                             <Route path="*" element={<Navigate to="/" replace />} />
                         </Routes>
+                        <FediverseReturnNotice />
                         <VersionBadge />
                         <VersionSkewGuard />
                     </ConfirmProvider>
