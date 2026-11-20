@@ -147,18 +147,18 @@ const moreButton = css({
     _focusVisible: { outline: '2px solid token(colors.hudText)', outlineOffset: '1px' },
 });
 
+// プロフィールはレールの先頭（スマホでは左端・PC では上端）なので、スマホでは下へ左揃え、PC では右へ出す
 const menu = css({
     position: 'absolute',
-    zIndex: 10,
-    top: '0',
-    left: { base: 'auto', md: 'calc(100% + 8px)' },
-    right: { base: '0', md: 'auto' },
-    mt: { base: '28px', md: '0' },
+    zIndex: 50,
+    top: { base: 'calc(100% + 6px)', md: '0' },
+    left: { base: '0', md: 'calc(100% + 8px)' },
     minW: '220px',
     display: 'flex',
     flexDirection: 'column',
     p: '1.5',
-    bg: 'hudPanel',
+    // 下の画面が透けて読みにくくならないよう、不透明にする
+    bg: 'primary',
     border: '1px solid',
     borderColor: 'hudBorder',
     borderRadius: '10px',

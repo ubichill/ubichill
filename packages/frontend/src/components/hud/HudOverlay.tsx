@@ -432,7 +432,8 @@ const rail = css({
     borderRadius: '12px',
 });
 
-const profileSlot = css({ position: 'relative', flex: 1, minW: 0, display: 'flex' });
+// 横並び（スマホ）ではほかのタブと幅を分け合い、縦並び（PC）では中身の高さのまま（伸ばすと空きを全部埋めてずれる）
+const profileSlot = css({ position: 'relative', flex: { base: 1, md: 'none' }, minW: 0, display: 'flex' });
 const moreSlot = css({ position: 'absolute', top: '0', right: '0' });
 
 const panel = css({
