@@ -1,5 +1,6 @@
 import type { db } from '../index';
 import { accounts, users } from '../schema';
+import { lockHandle } from './handleLock';
 
 /** メール・パスワードで登録する確認済みのユーザー（better-auth の signUpEmail が書くものと同じ形）。 */
 export interface NewCredentialUser {
@@ -15,12 +16,16 @@ export interface NewCredentialUser {
 
 export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
+export type InsertCredentialUserOutcome = 'created' | 'handle-retired';
+
 /**
  * users と credential の accounts を同じトランザクションで作る。better-auth の signUpEmail は users を作ってから
  * handle を書く 2 段になり（handle は NOT NULL）、accounts とも別のトランザクションなので使わない。
  * sign-in は providerId='credential' かつ accountId=user.id の行を探し、password を ctx.password.verify で確かめる。
+ * 退会した ID なら作らない（{@link lockHandle} で退会と直列にして確かめる）。
  */
-export async function insertCredentialUser(tx: Tx, user: NewCredentialUser): Promise<void> {
+export async function insertCredentialUser(tx: Tx, user: NewCredentialUser): Promise<InsertCredentialUserOutcome> {
+    if ((await lockHandle(tx, user.handle)).retired) return 'handle-retired';
     await tx.insert(users).values({
         id: user.userId,
         email: user.email,
@@ -41,4 +46,5 @@ export async function insertCredentialUser(tx: Tx, user: NewCredentialUser): Pro
         createdAt: user.now,
         updatedAt: user.now,
     });
+    return 'created';
 }

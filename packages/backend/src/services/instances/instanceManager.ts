@@ -19,7 +19,7 @@ import { appConfig } from '../../config';
 import { logger } from '../../utils/logger';
 import { friendIdsOf } from '../social/friends/friends';
 import { worldRegistry } from '../worlds/worldRegistry';
-import { instanceRuntime, type RoomPresence } from './instanceRuntime';
+import { instanceRuntime, type RoomPresence, type RuntimeOwner } from './instanceRuntime';
 
 export type CloseInstanceResult =
     | { success: true }
@@ -68,6 +68,7 @@ class InstanceManager {
             await instanceRepository.delete(dbInstance.id);
             throw error;
         }
+        if (!(await this.closeIfGone(dbInstance.id))) return { error: 'インスタンスを作れませんでした' };
 
         logger.info(`インスタンス作成: ${dbInstance.id} (world: ${world.id})`);
 
@@ -238,7 +239,7 @@ class InstanceManager {
         if (access.full) throw new InstanceJoinRejected('満員です');
         const world = await worldRegistry.getWorldByUrl(record.worldRef);
         if (!world) throw new Error('ワールドを取得できません');
-        const owner = await instanceRuntime.provision(record.id, record.maxUsers, world);
+        const owner = await this.provisionExisting(record.id, record.maxUsers, world);
         return instanceRuntime.ticket(record.id, userId, ticketName(participant.name), owner, {
             leader: access.overCapacity,
         });
@@ -253,8 +254,35 @@ class InstanceManager {
         if (!record) throw new InstanceJoinRejected('このインスタンスには入れません');
         const world = await worldRegistry.getWorldByUrl(record.worldRef);
         if (!world) throw new Error('ワールドを取得できません');
-        const owner = await instanceRuntime.provision(record.id, record.maxUsers, world);
+        const owner = await this.provisionExisting(record.id, record.maxUsers, world);
         return instanceRuntime.ticket(record.id, participant.id, ticketName(participant.name), owner, { origin });
+    }
+
+    /** DB の行が既に無い部屋（作成者の退会で消えた）を、Go で閉じる。 */
+    async closeOrphanedRoom(id: string): Promise<boolean> {
+        return instanceRuntime.close(id);
+    }
+
+    /** 入室のために Go に部屋を置く。置いている間に部屋が消えていたら（{@link closeIfGone}）入れない。 */
+    private async provisionExisting(
+        id: string,
+        maxUsers: number,
+        world: Parameters<typeof instanceRuntime.provision>[2],
+    ): Promise<RuntimeOwner> {
+        const owner = await instanceRuntime.provision(id, maxUsers, world);
+        if (!(await this.closeIfGone(id))) throw new InstanceJoinRejected('このインスタンスには入れません');
+        return owner;
+    }
+
+    /**
+     * Go に部屋を置いた後で、DB の行がまだあるか確かめる。無ければ（置いている間に終了・作成者の退会で消えた）Go の部屋も
+     * 閉じて false。消えた行の部屋は reaper も見ないので、閉じないと Go に残り続ける。
+     */
+    private async closeIfGone(id: string): Promise<boolean> {
+        if (await instanceRepository.findById(id)) return true;
+        const closed = await instanceRuntime.close(id).catch(() => false);
+        if (!closed) logger.warn(`消えたインスタンスの部屋を閉じられませんでした: ${id}`);
+        return false;
     }
 
     /**

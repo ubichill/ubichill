@@ -1,5 +1,6 @@
 import { randomBytes, randomInt } from 'node:crypto';
 import {
+    accountDeletionRepository,
     accounts,
     db,
     fediverseAccountRepository,
@@ -12,6 +13,7 @@ import {
 import { contactEmailOf, displayNameKey, FEATURED_FEDIVERSE_SERVERS, isReservedEmail } from '@ubichill/shared';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { multiSession } from 'better-auth/plugins';
 import { eq } from 'drizzle-orm';
 import { Resend } from 'resend';
 import { z } from 'zod';
@@ -25,6 +27,7 @@ import {
     type PendingRegistrations,
 } from '../services/auth/pendingRegistrations';
 import { logger } from '../utils/logger';
+import { accountSwitchPlugin } from './accountSwitchPlugin';
 import { createAuthRateLimitStorage } from './authRateLimit';
 import { fediverseSignInPlugin } from './fediverseSignInPlugin';
 import { redis } from './redis';
@@ -112,7 +115,7 @@ export async function createPendingRegistration(
     const existingHandle = await db.query.users.findFirst({
         where: eq(users.handle, handle),
     });
-    if (existingHandle) {
+    if (existingHandle || (await accountDeletionRepository.isHandleRetired(handle))) {
         return { success: false, error: 'この ID は既に使用されています' };
     }
     const nameKey = displayNameKey(displayName);
@@ -126,7 +129,7 @@ export async function createPendingRegistration(
     // メール確認をスキップする場合は直接登録
     if (SKIP_EMAIL_VERIFICATION) {
         try {
-            await userRepository.createCredentialUser({
+            const created = await userRepository.createCredentialUser({
                 userId: newBetterAuthId(ctx, 'user'),
                 accountId: newBetterAuthId(ctx, 'account'),
                 email,
@@ -136,6 +139,7 @@ export async function createPendingRegistration(
                 passwordHash: await ctx.password.hash(password),
                 now: new Date(),
             });
+            if (created === 'handle-retired') return { success: false, error: 'この ID は既に使用されています' };
 
             logger.info(`ユーザー登録完了（メール確認スキップ）: ${email}`);
             return { success: true, skipVerification: true };
@@ -196,6 +200,7 @@ const VERIFY_ERRORS = {
     'wrong-code': '認証コードが正しくありません',
     'too-many-failures': '認証コードを何度も間違えたため、この登録は無効になりました。もう一度登録してください。',
     'register-failed': '登録に失敗しました',
+    'handle-retired': 'この ID は使えなくなりました。別の ID でもう一度登録してください。',
 } as const;
 
 // OTPを検証して本登録。仮登録は申し込んだ本人に返した registrationId で引く。
@@ -300,6 +305,9 @@ export const auth = betterAuth({
         ...(redis ? { customStorage: createAuthRateLimitStorage(redis, logger) } : {}),
     },
     plugins: [
+        // ログインしたセッションを「このブラウザーのアカウント」として覚える（切り替えの口は accountSwitchPlugin）
+        multiSession({ maximumSessions: 5 }),
+        accountSwitchPlugin(),
         fediverseSignInPlugin({
             getSignIn: () => getFediverseSignIn(),
             hasPassword: (userId) => fediverseAccountRepository.hasPassword(userId),

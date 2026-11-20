@@ -33,7 +33,9 @@ router.get('/', async (req, res) => {
     }
     const user = await userService.byHandle(account.handle);
     if (!user) {
-        res.status(404).json({ error: 'Not found' });
+        // 退会した ID は 410（ほかのサーバーに、いなくなったと分からせる）
+        const gone = await userService.isHandleRetired(account.handle);
+        res.status(gone ? 410 : 404).json({ error: gone ? 'Gone' : 'Not found' });
         return;
     }
     res.set('Access-Control-Allow-Origin', '*');

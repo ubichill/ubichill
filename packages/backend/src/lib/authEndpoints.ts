@@ -18,6 +18,10 @@ const PUBLIC_AUTH_PATHS: ReadonlySet<string> = new Set([
     '/fediverse/start',
     '/fediverse/sign-up',
     '/fediverse/lookup',
+    // アカウントの切り替え（lib/accountSwitchPlugin.ts）。multiSession 自身の口はトークンを返すので開けない
+    '/account-switch/accounts',
+    '/account-switch/switch',
+    '/account-switch/sign-out',
 ]);
 
 /** 最後の 1 段がサーバーのホスト（`/fediverse/callback/mi.example`）のもの。ホストの形でなければ通さない。 */

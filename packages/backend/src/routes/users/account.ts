@@ -18,6 +18,7 @@ import { loginMethodService } from '../../services/auth/loginMethods';
 import { canActAsAdmin } from '../../services/auth/sessionAssurance';
 import { publishingEnvironmentService } from '../../services/authors/publishingEnvironmentService';
 import { roleService } from '../../services/roles/roleService';
+import { accountDeletionService } from '../../services/users/accountDeletionService';
 import { changeDisplayName, displayNameAvailableAtOf } from '../../services/users/displayName';
 import { publicProfileOf } from '../../services/users/publicProfile';
 import { userService } from '../../services/users/userService';
@@ -172,6 +173,24 @@ router.delete('/me/login-methods/:id', requireRecentAuth, async (req, res) => {
         case 'last-method':
             return res.status(409).json({ error: 'ほかにログインする方法が無いため外せません' });
     }
+});
+
+const deleteLimiter = sharedLimiter(
+    'delete-account',
+    15 * 60 * 1000,
+    5,
+    '試行が多すぎます。しばらくしてからお試しください',
+    {
+        keyGenerator: (req) => req.user?.id ?? '',
+    },
+);
+
+// アカウントを削除する（退会）。直近の本人確認と、ID の入れ直しが要る。流れは services/users/deleteAccount.ts
+router.delete('/me', requireRecentAuth, deleteLimiter, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const outcome = await accountDeletionService.deleteAccount(req.user.id, req.body?.handle);
+    if (!outcome.ok) return res.status(outcome.status).json({ error: outcome.error });
+    return res.status(204).send();
 });
 
 // いま使っているもの以外のログインをすべて無効にする（乗っ取りに気付いたとき。公開環境の取り消しだけでは攻撃者のログインは残る）

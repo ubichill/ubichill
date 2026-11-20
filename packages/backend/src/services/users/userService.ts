@@ -2,12 +2,19 @@
  * このサーバーのユーザーを引く、と本人のアカウントの小さな更新。route は DB を知らないので、ここを通す。
  * 規則のある操作（表示名・プロフィール・公開環境）はそれぞれの service にある。
  */
-import { fediverseAccountRepository, userRepository } from '@ubichill/db';
+import { accountDeletionRepository, fediverseAccountRepository, userRepository } from '@ubichill/db';
 import { OFFICIAL_HANDLE } from '@ubichill/shared';
 
 export const userService = {
     byId: (id: string) => userRepository.findById(id),
     byHandle: (handle: string) => userRepository.findByHandle(handle),
+    /** 退会した ID か（二度と使わせない。WebFinger・actor は 410） */
+    isHandleRetired: (handle: string) => accountDeletionRepository.isHandleRetired(handle),
+    isUserRetired: (id: string) => accountDeletionRepository.isUserRetired(id),
+    /** ID が使われているか（今のユーザーか、退会した ID） */
+    async isHandleTaken(handle: string): Promise<boolean> {
+        return !!(await userRepository.findByHandle(handle)) || accountDeletionRepository.isHandleRetired(handle);
+    },
     /** プロフィールの項目つき（公開プロフィール・自分の情報の元） */
     profileById: (id: string) => userRepository.findProfileById(id),
 

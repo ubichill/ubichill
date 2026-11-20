@@ -90,8 +90,8 @@ router.get('/check-handle', async (req, res) => {
         return res.json({ available: false, error: parsed.error.issues[0]?.message ?? 'ID が不正です' });
     }
     try {
-        const existing = await userService.byHandle(parsed.data);
-        return res.json({ available: !existing, error: existing ? 'この ID は既に使用されています' : null });
+        const taken = await userService.isHandleTaken(parsed.data);
+        return res.json({ available: !taken, error: taken ? 'この ID は既に使用されています' : null });
     } catch (error) {
         logger.error('Handle check error:', error);
         return res.status(500).json({ error: 'Internal server error' });

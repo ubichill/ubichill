@@ -281,6 +281,13 @@
       "when": 1795073477050,
       "tag": "0039_session_assurance",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1795158002232,
+      "tag": "0040_retired_accounts",
+      "breakpoints": true
     }
   ]
 }

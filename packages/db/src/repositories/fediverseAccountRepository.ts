@@ -1,6 +1,7 @@
 import { and, asc, eq, gte, inArray, like, lt, sql } from 'drizzle-orm';
 import { db } from '../index';
 import { accounts, externalAccountProfiles, fediverseOauthClients, sessions, users, verifications } from '../schema';
+import { lockHandle } from './handleLock';
 
 const FEDIVERSE_PROVIDER_PATTERN = 'fediverse:%';
 
@@ -106,6 +107,8 @@ export const fediverseAccountRepository = {
                     .from(accounts)
                     .where(and(eq(accounts.providerId, providerId), gte(accounts.createdAt, input.signUpLimit.since)));
                 if ((recent?.n ?? 0) >= input.signUpLimit.max) return { status: 'too-many-sign-ups' as const };
+                // 退会した ID は二度と使わせない（退会と直列にして確かめる）
+                if ((await lockHandle(tx, input.handle)).retired) return { status: 'handle-taken' as const };
                 await tx.insert(users).values({
                     id: input.userId,
                     email: input.email,

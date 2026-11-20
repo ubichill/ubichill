@@ -61,7 +61,7 @@ export interface PendingRegistrationDeps {
 
 export type VerifyOutcome =
     | { status: 'verified'; userId: string; email: string }
-    | { status: 'not-found' | 'expired' | 'wrong-code' | 'too-many-failures' }
+    | { status: 'not-found' | 'expired' | 'wrong-code' | 'too-many-failures' | 'handle-retired' }
     | { status: 'register-failed'; error: unknown };
 
 /** better-auth は users.email を小文字で保存し、ログインでも小文字で引く。仮登録も同じ形で数える・保存する。 */
@@ -155,7 +155,7 @@ export function createPendingRegistrations(deps: PendingRegistrationDeps) {
                                 return { status: 'wrong-code' };
                             case 'verified': {
                                 const userId = deps.newRecordId('user');
-                                await locked.createCredentialUser({
+                                const created = await locked.createCredentialUser({
                                     userId,
                                     accountId: deps.newRecordId('account'),
                                     email: judged.record.email,
@@ -166,6 +166,8 @@ export function createPendingRegistrations(deps: PendingRegistrationDeps) {
                                     now,
                                 });
                                 await locked.remove();
+                                // コードを送った後に、同じ ID の人が登録して退会した（この仮登録はもう完了できない）
+                                if (created === 'handle-retired') return { status: 'handle-retired' };
                                 return { status: 'verified', userId, email: judged.record.email };
                             }
                         }

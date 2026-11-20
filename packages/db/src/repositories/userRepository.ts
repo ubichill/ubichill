@@ -17,8 +17,9 @@ import {
     sql,
 } from 'drizzle-orm';
 import { type Database, db } from '../index';
-import { accounts, instances, sessions, userBlocks, userProfiles, users, worlds, worldVersions } from '../schema';
-import { insertCredentialUser, type NewCredentialUser } from './credentialUser';
+import { accounts, sessions, userProfiles, users } from '../schema';
+import { type InsertCredentialUserOutcome, insertCredentialUser, type NewCredentialUser } from './credentialUser';
+import { removeUserRows } from './userRemoval';
 
 export type UserRecord = typeof users.$inferSelect;
 
@@ -111,9 +112,9 @@ export const userRepository = {
         return results[0];
     },
 
-    /** パスワードでログインできるユーザーを作る（users と accounts を 1 トランザクションで）。 */
-    async createCredentialUser(user: NewCredentialUser): Promise<void> {
-        await db.transaction((tx) => insertCredentialUser(tx, user));
+    /** パスワードでログインできるユーザーを作る（users と accounts を 1 トランザクションで）。退会した ID なら作らない。 */
+    async createCredentialUser(user: NewCredentialUser): Promise<InsertCredentialUserOutcome> {
+        return db.transaction((tx) => insertCredentialUser(tx, user));
     },
 
     async findByDisplayNameKey(key: string): Promise<UserRecord | undefined> {
@@ -332,29 +333,9 @@ export const userRepository = {
         return results[0];
     },
 
-    /**
-     * ユーザーを削除する（ワールド・お気に入り等は FK の cascade で消える）。ほかの人のインスタンスが
-     * このユーザーのワールドの版を指していると版を消せない（RESTRICT）ので、先に参照を外す。
-     * ほかの人がこのユーザーをブロックした行は、blocked_id が actor の URL も入る列で FK が無いので、ここで消す。
-     */
+    /** ユーザーを削除する（手順は {@link removeUserRows}）。 */
     async deleteById(id: string): Promise<void> {
-        await db.transaction(async (tx) => {
-            await tx
-                .update(instances)
-                .set({ worldVersionId: null })
-                .where(
-                    inArray(
-                        instances.worldVersionId,
-                        tx
-                            .select({ id: worldVersions.id })
-                            .from(worldVersions)
-                            .innerJoin(worlds, eq(worlds.id, worldVersions.worldId))
-                            .where(eq(worlds.authorId, id)),
-                    ),
-                );
-            await tx.delete(userBlocks).where(eq(userBlocks.blockedId, id));
-            await tx.delete(users).where(eq(users.id, id));
-        });
+        await db.transaction((tx) => removeUserRows(tx, id));
     },
 
     async ensureSystemUser(systemUserId: string): Promise<UserRecord> {
