@@ -100,8 +100,6 @@ export interface FediverseSignInDeps {
     accounts: {
         /** このユーザーが SSO を使えるか（公式アカウントは使えない。外部サーバーに公式の作者の権限を渡さない） */
         ssoAllowedFor(userId: string): Promise<boolean>;
-        /** そのサーバー（providerId）の外部アカウントが、ある時刻から後に何件結び付いたか */
-        countLinkedSince(providerId: string, since: Date): Promise<number>;
         findUserByIdentity(
             identity: ExternalIdentity,
             now: Date,
@@ -115,8 +113,11 @@ export interface FediverseSignInDeps {
             displayNameKey: string;
             identity: ExternalIdentity;
             now: Date;
+            /** そのサーバーから `since` 以後の登録が `max` 件以上なら作らない（数えて作るまでを直列にする） */
+            signUpLimit: { since: Date; max: number };
         }): Promise<
             | { status: 'created' }
+            | { status: 'too-many-sign-ups' }
             | { status: 'identity-taken'; userId: string; accountRowId: string }
             | { status: 'handle-taken' }
             | { status: 'name-taken' }
@@ -571,13 +572,6 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
             if (!deps.registrationOpen()) {
                 return { ok: false, status: 400, error: '現在、新規登録を受け付けていません' };
             }
-            const recent = await deps.accounts.countLinkedSince(
-                pending.identity.providerId,
-                new Date(now.getTime() - 60 * 60 * 1000),
-            );
-            if (recent >= deps.config.signUpsPerServerPerHour) {
-                return { ok: false, status: 400, error: FEDIVERSE_SIGN_IN_ERRORS['too-many-sign-ups'] };
-            }
             const handle = deps.validate.handle.safeParse(typeof input.handle === 'string' ? input.handle.trim() : '');
             if (!handle.success)
                 return { ok: false, status: 400, error: handle.error.issues[0]?.message ?? 'ID が不正です' };
@@ -596,6 +590,10 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
                 displayNameKey: displayNameKey(name.data),
                 identity: pending.identity,
                 now,
+                signUpLimit: {
+                    since: new Date(now.getTime() - 60 * 60 * 1000),
+                    max: deps.config.signUpsPerServerPerHour,
+                },
             });
             switch (created.status) {
                 case 'created':
@@ -615,6 +613,8 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
                         accountRowId: created.accountRowId,
                         returnTo: pending.returnTo,
                     };
+                case 'too-many-sign-ups':
+                    return { ok: false, status: 400, error: FEDIVERSE_SIGN_IN_ERRORS['too-many-sign-ups'] };
                 case 'handle-taken':
                     return { ok: false, status: 409, error: 'この ID は既に使用されています' };
                 case 'name-taken':

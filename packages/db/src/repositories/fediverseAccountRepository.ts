@@ -23,10 +23,13 @@ export interface NewFediverseUser {
     displayNameKey: string;
     identity: ExternalIdentity;
     now: Date;
+    /** そのサーバー（providerId）から `since` 以後に結び付いた外部アカウントが `max` 件以上なら作らない */
+    signUpLimit: { since: Date; max: number };
 }
 
 export type CreateFediverseUserOutcome =
     | { status: 'created' }
+    | { status: 'too-many-sign-ups' }
     | { status: 'identity-taken'; userId: string; accountRowId: string }
     | { status: 'handle-taken' }
     | { status: 'name-taken' };
@@ -88,10 +91,21 @@ export const fediverseAccountRepository = {
     /**
      * メールなしのユーザーと外部アカウントを同じトランザクションで作る。同じ外部アカウントで同時に登録されたら、
      * 先に作られたユーザーを返す（同じ人が二重に押したのと同じ扱い）。
+     * サーバーごとの登録の上限は、サーバーごとに直列にしてから数えて作る（数えてから作るだけだと、同時の登録が
+     * 同じ残りの枠を見て上限を超える）。
      */
     async createUser(input: NewFediverseUser): Promise<CreateFediverseUserOutcome> {
         try {
-            await db.transaction(async (tx) => {
+            return await db.transaction(async (tx) => {
+                const { providerId } = input.identity;
+                await tx.execute(
+                    sql`select pg_advisory_xact_lock(hashtextextended(${`fediverse_sign_ups:${providerId}`}, 0))`,
+                );
+                const [recent] = await tx
+                    .select({ n: sql<number>`count(*)::int` })
+                    .from(accounts)
+                    .where(and(eq(accounts.providerId, providerId), gte(accounts.createdAt, input.signUpLimit.since)));
+                if ((recent?.n ?? 0) >= input.signUpLimit.max) return { status: 'too-many-sign-ups' as const };
                 await tx.insert(users).values({
                     id: input.userId,
                     email: input.email,
@@ -114,8 +128,8 @@ export const fediverseAccountRepository = {
                 await tx
                     .insert(externalAccountProfiles)
                     .values(profileValues(input.accountRowId, input.identity, input.now));
+                return { status: 'created' as const };
             });
-            return { status: 'created' };
         } catch (error) {
             const constraint = uniqueViolationOf(error);
             if (constraint === null) throw error;
@@ -188,15 +202,6 @@ export const fediverseAccountRepository = {
             await tx.delete(accounts).where(eq(accounts.id, accountRowId));
             return { status: 'unlinked' as const };
         });
-    },
-
-    /** そのサーバー（providerId）の外部アカウントが、ある時刻から後に何件結び付いたか（登録の量の制限に使う）。 */
-    async countLinkedSince(providerId: string, since: Date): Promise<number> {
-        const [row] = await db
-            .select({ n: sql<number>`count(*)::int` })
-            .from(accounts)
-            .where(and(eq(accounts.providerId, providerId), gte(accounts.createdAt, since)));
-        return row?.n ?? 0;
     },
 
     /**

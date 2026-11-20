@@ -190,8 +190,6 @@ function setup(overrides: { routes?: Record<string, Route>; config?: Partial<Fed
         },
         accounts: {
             ssoAllowedFor: async (userId) => userId !== 'user-official',
-            countLinkedSince: async (providerId) =>
-                [...identities.keys()].filter((k) => k.startsWith(`${providerId} `)).length,
             findUserByIdentity: async (identity) => {
                 const userId = identities.get(key(identity));
                 return userId ? { userId, accountRowId: `acc-${userId}` } : undefined;
@@ -199,6 +197,8 @@ function setup(overrides: { routes?: Record<string, Route>; config?: Partial<Fed
             createUser: async (input) => {
                 const owner = identities.get(key(input.identity));
                 if (owner) return { status: 'identity-taken', userId: owner, accountRowId: `acc-${owner}` };
+                const sameServer = [...identities.keys()].filter((k) => k.startsWith(`${input.identity.providerId} `));
+                if (sameServer.length >= input.signUpLimit.max) return { status: 'too-many-sign-ups' };
                 if ([...users.values()].some((u) => u.handle === input.handle)) return { status: 'handle-taken' };
                 users.set(input.userId, { email: input.email, handle: input.handle, name: input.name });
                 identities.set(key(input.identity), input.userId);

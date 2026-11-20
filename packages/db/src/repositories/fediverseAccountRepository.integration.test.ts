@@ -20,6 +20,7 @@ const newUser = (suffix: string, accountId = suffix): NewFediverseUser => ({
     displayNameKey: `f ${stamp} ${suffix}`,
     identity: { providerId: `fediverse:${origin}`, accountId, software: 'misskey', username: `alice${suffix}` },
     now,
+    signUpLimit: { since: new Date(0), max: 1000 },
 });
 
 describe.skipIf(!RUN)('fediverseAccountRepository (DB統合)', () => {
@@ -266,11 +267,28 @@ describe.skipIf(!RUN)('fediverseAccountRepository (DB統合)', () => {
         const left = await db.select({ id: sessions.id }).from(sessions).where(eq(sessions.userId, userId));
         expect(left.map((r) => r.id).sort()).toEqual([`s-${stamp}-w1`, `s-${stamp}-w3`]);
         expect(await fediverseAccountRepository.listLinked(userId)).toHaveLength(2);
-        expect(await fediverseAccountRepository.countLinkedSince(blockedProvider, new Date(now.getTime() - 1000))).toBe(
-            1,
+    });
+
+    it('サーバーごとの登録の上限は、同時に登録されても超えない', async () => {
+        const provider = `fediverse:https://limit-${stamp}.example`;
+        const outcomes = await Promise.all(
+            ['l1', 'l2', 'l3', 'l4', 'l5'].map((suffix) =>
+                fediverseAccountRepository.createUser({
+                    ...newUser(suffix),
+                    identity: { ...newUser(suffix).identity, providerId: provider },
+                    signUpLimit: { since: new Date(now.getTime() - 60_000), max: 2 },
+                }),
+            ),
         );
+        expect(outcomes.filter((o) => o.status === 'created')).toHaveLength(2);
+        expect(outcomes.filter((o) => o.status === 'too-many-sign-ups')).toHaveLength(3);
+        // 数えるのは期間内だけ
         expect(
-            await fediverseAccountRepository.countLinkedSince(blockedProvider, new Date(now.getTime() + 60_000)),
-        ).toBe(0);
+            await fediverseAccountRepository.createUser({
+                ...newUser('l6'),
+                identity: { ...newUser('l6').identity, providerId: provider },
+                signUpLimit: { since: new Date(now.getTime() + 60_000), max: 2 },
+            }),
+        ).toEqual({ status: 'created' });
     });
 });
