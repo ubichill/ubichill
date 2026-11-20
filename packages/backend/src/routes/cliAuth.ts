@@ -1,4 +1,3 @@
-import { authorKeyRepository, cliAuthRequestRepository, userRepository } from '@ubichill/db';
 import {
     CLI_AUTH_POLL_INTERVAL_MS,
     CLI_AUTH_REQUEST_TTL_MS,
@@ -6,27 +5,15 @@ import {
     ENV_KEYS,
     normalizeUserCode,
     SERVER_CONFIG,
-    verifyCliAuthProof,
 } from '@ubichill/shared';
 import { Router } from 'express';
-import { sendAccountNotice } from '../lib/auth';
 import { requireFreshAuth, requirePublisher } from '../middleware/auth';
-import {
-    exchangeOutcome,
-    loopbackRedirect,
-    newApiToken,
-    newUserCode,
-    randomSecret,
-    requestFlowOf,
-    sha256Base64Url,
-} from '../services/auth/cliAuth';
-import { selfAccount } from '../services/authors/authorKeys';
-import { newEnvironmentNotice, publishingEnvironmentView } from '../services/authors/publishingEnvironments';
-import { nodeWorldCrypto } from '../services/worlds/worldCrypto';
-import { worldRegistry } from '../services/worlds/worldRegistry';
+import { cliAuthService } from '../services/auth/cliAuthService';
+import { publishingEnvironmentService } from '../services/authors/publishingEnvironmentService';
 
 /**
- * CLI・CI の認可（`ubichill login` / `ubichill ci create`）。手順は docs/design/author-publishing.md §9。
+ * CLI・CI の認可（`ubichill login` / `ubichill ci create`）。手順は docs/design/author-publishing.md §9、
+ * 判定と流れは services/auth/cliAuth.ts。
  * 承認はブラウザ（ログインしたセッション）で行い、CLI は鍵の所有を証明して公開環境と API トークンを受け取る。
  */
 const router = Router();
@@ -40,26 +27,13 @@ const approveUrlOf = (query: string) =>
 router.post('/requests', async (req, res) => {
     const parsed = CliAuthRequestInputSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: '要求の形式が不正です', details: parsed.error.issues });
-    const flow = requestFlowOf(parsed.data);
-    if (typeof flow === 'object') return res.status(400).json({ error: flow.error });
-    const id = randomSecret(16);
-    const deviceCode = flow === 'device' ? randomSecret(32) : null;
-    const userCode = flow === 'device' ? newUserCode() : null;
-    await cliAuthRequestRepository.create({
-        id,
-        kind: parsed.data.kind,
-        name: parsed.data.name,
-        publicKey: parsed.data.publicKey,
-        redirectUri: parsed.data.redirectUri ?? null,
-        codeChallenge: parsed.data.codeChallenge ?? null,
-        userCode,
-        deviceCodeHash: deviceCode ? sha256Base64Url(deviceCode) : null,
-        expiresAt: new Date(Date.now() + CLI_AUTH_REQUEST_TTL_MS),
-    });
+    const created = await cliAuthService.createRequest(parsed.data);
+    if (!created.ok) return res.status(created.status).json({ error: created.error });
+    const { requestId, deviceCode, userCode } = created;
     return res.status(201).json({
-        requestId: id,
+        requestId,
         approveUrl: approveUrlOf(
-            userCode ? `code=${encodeURIComponent(userCode)}` : `request=${encodeURIComponent(id)}`,
+            userCode ? `code=${encodeURIComponent(userCode)}` : `request=${encodeURIComponent(requestId)}`,
         ),
         expiresIn: Math.floor(CLI_AUTH_REQUEST_TTL_MS / 1000),
         ...(deviceCode && userCode
@@ -68,50 +42,28 @@ router.post('/requests', async (req, res) => {
     });
 });
 
-/** 承認画面に見せる要求の内容（秘密は返さない）。 */
-const requestView = (r: NonNullable<Awaited<ReturnType<typeof cliAuthRequestRepository.findActive>>>) => ({
-    id: r.id,
-    kind: r.kind,
-    name: r.name,
-    publicKey: r.publicKey,
-    flow: r.redirectUri ? 'loopback' : 'device',
-    redirectHost: r.redirectUri ? new URL(r.redirectUri).host : null,
-    userCode: r.userCode,
-    status: r.status,
-    expiresAt: r.expiresAt.toISOString(),
-});
-
 // 2. 内容を見る（ログイン）。デバイス認可は画面で入力された user code で引く。
 router.get('/requests/:id', requireFreshAuth, async (req, res) => {
-    const request = await cliAuthRequestRepository.findActive(String(req.params.id));
+    const request = await cliAuthService.findRequest(String(req.params.id));
     if (!request) return res.status(404).json({ error: '認可の要求が見つからないか、期限が切れています' });
-    return res.json({ request: requestView(request) });
+    return res.json({ request });
 });
 
 router.get('/requests', requireFreshAuth, async (req, res) => {
     const code = normalizeUserCode(typeof req.query.userCode === 'string' ? req.query.userCode : '');
     if (!code) return res.status(400).json({ error: 'コードの形式が不正です（XXXX-XXXX）' });
-    const request = await cliAuthRequestRepository.findActiveByUserCode(code);
+    const request = await cliAuthService.findRequestByUserCode(code);
     if (!request) return res.status(404).json({ error: 'コードが見つからないか、期限が切れています' });
-    return res.json({ request: requestView(request) });
+    return res.json({ request });
 });
 
 // 3. 承認する（ログイン、DB のセッション）。ループバックならリダイレクト先（認可コード付き）を返す。
 router.post('/requests/:id/approve', requireFreshAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-    const user = await userRepository.findById(req.user.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    const request = await cliAuthRequestRepository.findActive(String(req.params.id));
-    if (request?.status !== 'pending') {
-        return res.status(404).json({ error: '承認できる要求が見つかりません（期限切れか、処理済みです）' });
-    }
-    const code = request.redirectUri ? randomSecret(32) : null;
-    const approved = await cliAuthRequestRepository.approve(request.id, user.id, code ? sha256Base64Url(code) : null);
-    if (!approved) return res.status(409).json({ error: 'この要求はすでに処理されています' });
     const state = typeof req.body?.state === 'string' ? req.body.state : undefined;
-    return res.json({
-        redirect: request.redirectUri && code ? loopbackRedirect(request.redirectUri, code, state) : null,
-    });
+    const outcome = await cliAuthService.approve(req.user.id, String(req.params.id), state);
+    if (!outcome.ok) return res.status(outcome.status).json({ error: outcome.error });
+    return res.json({ redirect: outcome.redirect });
 });
 
 // 4. 引き換える（鍵の所有の証明）。ここで公開環境と API トークンを作る。
@@ -128,42 +80,13 @@ router.post('/token', async (req, res) => {
     if (!requestId || !signature || !input) {
         return res.status(400).json({ error: 'requestId・signature と、code+codeVerifier か deviceCode が必要です' });
     }
-    const request = await cliAuthRequestRepository.findActive(requestId);
-    const outcome = exchangeOutcome(request, input, new Date());
+    const outcome = await cliAuthService.exchange(requestId, signature, input);
     if (!outcome.ok) return res.status(outcome.status).json({ error: outcome.error, code: outcome.code });
-    if (!request?.userId) return res.status(400).json({ error: '認可コードが一致しません', code: 'invalid-grant' });
-    const proved = await verifyCliAuthProof(request, signature, nodeWorldCrypto);
-    if (!proved) return res.status(400).json({ error: '鍵の所有を確認できません', code: 'invalid-proof' });
-
-    // 1 回だけ引き換えられる（同時に送られても 1 つしか通らない）
-    const consumed = await cliAuthRequestRepository.consume(request.id);
-    if (!consumed) return res.status(409).json({ error: 'この認可の要求は引き換え済みです', code: 'consumed' });
-    const user = await userRepository.findById(request.userId);
-    if (!user) return res.status(409).json({ error: '作者アカウントが見つかりません' });
-    if (await authorKeyRepository.findLocalKey(request.publicKey)) {
-        return res.status(409).json({ error: 'この鍵は登録できません（作り直してください）', code: 'taken' });
-    }
-    const token = newApiToken();
-    const environment = await authorKeyRepository.createLocal({
-        userId: user.id,
-        kind: request.kind,
-        name: request.name,
-        publicKey: request.publicKey,
-        apiTokenHash: sha256Base64Url(token),
-    });
-    worldRegistry.invalidateResolvedWorlds();
-    const notice = newEnvironmentNotice({
-        displayName: user.name,
-        environmentName: environment.name,
-        siteUrl: new URL('/', publicBaseUrl()).href,
-        at: environment.createdAt,
-    });
-    void sendAccountNotice(user.email, notice.subject, notice.text);
     return res.json({
-        token,
-        account: selfAccount(user.handle),
+        token: outcome.token,
+        account: outcome.account,
         server: new URL(publicBaseUrl()).origin,
-        environment: publishingEnvironmentView(environment),
+        environment: outcome.environment,
     });
 });
 
@@ -174,8 +97,7 @@ router.post('/logout', requirePublisher, async (req, res) => {
             .status(400)
             .json({ error: 'API トークンで呼んでください（ブラウザの公開環境は画面から取り消します）' });
     }
-    const revoked = await authorKeyRepository.revoke(req.user.id, req.publishingEnvironment.id, 'lost');
-    worldRegistry.invalidateResolvedWorlds();
+    const revoked = await publishingEnvironmentService.revoke(req.user.id, req.publishingEnvironment.id, 'lost');
     return res.json({ revoked: !!revoked });
 });
 

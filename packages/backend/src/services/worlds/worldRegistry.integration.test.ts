@@ -106,12 +106,14 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         await userRepository.create({ id: userId, name: 'リポジトリ作者', email: `${userId}@example.com`, handle });
         try {
             const key = newTestSigningKey();
-            await authorKeyRepository.createLocal({
-                userId,
-                kind: 'ci',
-                name: 'テスト',
-                publicKey: key.publicKey,
-            });
+            expect(
+                await authorKeyRepository.createLocal({
+                    userId,
+                    kind: 'ci',
+                    name: 'テスト',
+                    publicKey: key.publicKey,
+                }),
+            ).toBeDefined();
             const name = uniqueName('repo');
             const bundle = { ...bundleOf(worldDef(name, 'リポジトリ')), lock: { lockVersion: 1, mods: {} } };
             writeFileSync(path.join(worldsDir, `${name}.yaml`), yaml.stringify(bundle.definition));
@@ -402,6 +404,7 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
                 name: 'テスト',
                 publicKey: key.publicKey,
             });
+            if (!env) throw new Error('公開環境を作れません');
             worldRegistry.invalidateResolvedWorlds();
 
             const author = selfAccount(handle);
@@ -425,12 +428,14 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
             expect(renamed?.identity).toMatchObject({ status: 'verified', author });
 
             // 別の公開環境を足しても、既存の環境の署名はそのまま有効
-            await authorKeyRepository.createLocal({
-                userId,
-                kind: 'cli',
-                name: 'テスト CLI',
-                publicKey: newTestSigningKey().publicKey,
-            });
+            expect(
+                await authorKeyRepository.createLocal({
+                    userId,
+                    kind: 'cli',
+                    name: 'テスト CLI',
+                    publicKey: newTestSigningKey().publicKey,
+                }),
+            ).toBeDefined();
             worldRegistry.invalidateResolvedWorlds();
             expect((await worldRegistry.getWorld(world.id))?.identity).toMatchObject({ author });
 

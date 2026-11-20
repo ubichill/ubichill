@@ -16,6 +16,13 @@ const standardOf = (key: string): string => Buffer.from(key, 'base64url').toStri
 /** 同じ鍵の別の書き方（32 byte に入らない余りの bit を立てる）。 */
 const extraBitsOf = (key: string): string => `${key.slice(0, 42)}${BASE64URL[BASE64URL.indexOf(key[42]) + 3]}`;
 
+/** 作れたものを返す（同じ鍵が既にあると undefined なので、テストの前提として作れることを確かめる）。 */
+async function createLocal(input: Parameters<typeof authorKeyRepository.createLocal>[0]) {
+    const created = await authorKeyRepository.createLocal(input);
+    if (!created) throw new Error('公開環境を作れません');
+    return created;
+}
+
 describe.skipIf(!RUN)('authorKeyRepository (DB統合)', () => {
     const alice = `ak_alice_${stamp}`;
     const bob = `ak_bob_${stamp}`;
@@ -37,7 +44,7 @@ describe.skipIf(!RUN)('authorKeyRepository (DB統合)', () => {
 
     it('鍵は正規化して保存し、どの書き方でも同じ鍵として引ける', async () => {
         const key = newKey();
-        const created = await authorKeyRepository.createLocal({
+        const created = await createLocal({
             userId: bob,
             kind: 'browser',
             name: 'Chrome on Mac',
@@ -52,24 +59,29 @@ describe.skipIf(!RUN)('authorKeyRepository (DB統合)', () => {
 
     it('同じ鍵を同じアカウントに登録し直せない（取り消した後でも、書き方を変えても）', async () => {
         const key = newKey();
-        const created = await authorKeyRepository.createLocal({
+        const created = await createLocal({
             userId: alice,
             kind: 'cli',
             name: 'cli',
             publicKey: key,
         });
         const again = { userId: alice, kind: 'browser', name: 'again', publicKey: extraBitsOf(key) };
-        await expect(authorKeyRepository.createLocal(again)).rejects.toThrow();
+        expect(await authorKeyRepository.createLocal(again)).toBeUndefined();
         await authorKeyRepository.revoke(alice, created.id, 'lost');
-        await expect(authorKeyRepository.createLocal({ ...again, publicKey: standardOf(key) })).rejects.toThrow();
+        expect(await authorKeyRepository.createLocal({ ...again, publicKey: standardOf(key) })).toBeUndefined();
     });
 
     it('別の自サーバーのアカウントに同じ鍵を登録できない', async () => {
         const key = newKey();
-        await authorKeyRepository.createLocal({ userId: alice, kind: 'browser', name: 'a', publicKey: key });
-        await expect(
-            authorKeyRepository.createLocal({ userId: bob, kind: 'browser', name: 'b', publicKey: standardOf(key) }),
-        ).rejects.toThrow();
+        await createLocal({ userId: alice, kind: 'browser', name: 'a', publicKey: key });
+        expect(
+            await authorKeyRepository.createLocal({
+                userId: bob,
+                kind: 'browser',
+                name: 'b',
+                publicKey: standardOf(key),
+            }),
+        ).toBeUndefined();
     });
 
     it('正規形でない鍵は DB が受け付けない（リポジトリを通さずに書いても）', async () => {
@@ -96,7 +108,7 @@ describe.skipIf(!RUN)('authorKeyRepository (DB統合)', () => {
             const lostAt = new Date('2026-10-01T00:00:00.000Z');
             const [k1, k2, k3] = await Promise.all(
                 ['browser', 'cli', 'ci'].map((kind) =>
-                    authorKeyRepository.createLocal({
+                    createLocal({
                         userId: user,
                         kind,
                         name: kind,
@@ -133,7 +145,7 @@ describe.skipIf(!RUN)('authorKeyRepository (DB統合)', () => {
     it('他サーバーが自サーバーの鍵を名乗ると、行は保存するが名乗った鍵として返す', async () => {
         const localKey = newKey();
         const ownKey = newKey();
-        await authorKeyRepository.createLocal({ userId: alice, kind: 'browser', name: 'x', publicKey: localKey });
+        await createLocal({ userId: alice, kind: 'browser', name: 'x', publicKey: localKey });
         const result = await authorKeyRepository.saveRemoteAuthor(remoteA, {
             keys: [{ publicKey: extraBitsOf(localKey) }, { publicKey: ownKey }],
             displayName: 'A',

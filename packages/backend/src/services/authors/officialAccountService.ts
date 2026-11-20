@@ -3,6 +3,7 @@ import { authorKeyRepository, externalWorkRepository, userRepository, worldRepos
 import { auth, newBetterAuthId } from '../../lib/auth';
 import { logger } from '../../utils/logger';
 import { ensureOfficialAccount, officialAccountConfig } from './officialAccount';
+import { publishingEnvironmentService } from './publishingEnvironmentService';
 
 export async function bootstrapOfficialAccount(): Promise<void> {
     const ctx = await auth.$context;
@@ -42,7 +43,7 @@ export async function bootstrapOfficialAccount(): Promise<void> {
         },
         revokeCredentials: async (userId) => {
             await userRepository.revokeSessions(userId);
-            return authorKeyRepository.revokeAllForUser(userId, 'compromised');
+            return publishingEnvironmentService.revokeAll(userId, 'compromised');
         },
         isDisplayNameTaken: async (key) => !!(await userRepository.findByDisplayNameKey(key)),
         initialize: (id, fields) => userRepository.initializeAccount(id, fields),

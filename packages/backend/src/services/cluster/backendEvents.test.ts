@@ -102,6 +102,56 @@ describe('createBackendEvents', () => {
         expect(warn).toHaveBeenCalledTimes(1);
     });
 
+    it('運ぶ口を付ける前に送った知らせは、付けたときに 1 回ずつ送る（起動の途中の鍵の取り消しなど）', async () => {
+        const hub = createMemoryBusHub();
+        const a = createBackendEvents({ warn: vi.fn() });
+        const b = createBackendEvents({ warn: vi.fn() });
+        await b.attach(hub.connect());
+        const stale = vi.fn();
+        const dropped: string[] = [];
+        b.on('worlds.resolved-stale', stale);
+        b.on('world.changed', ({ worldId }) => void dropped.push(worldId));
+        a.broadcast({ type: 'worlds.resolved-stale' });
+        a.broadcast({ type: 'worlds.resolved-stale' });
+        a.broadcast({ type: 'world.changed', worldId: 'w1' });
+        a.broadcast({ type: 'world.changed', worldId: 'w2' });
+        await sleep(10);
+        expect(stale).not.toHaveBeenCalled();
+        await a.attach(hub.connect());
+        await sleep(10);
+        expect(stale).toHaveBeenCalledTimes(1);
+        expect(dropped.sort()).toEqual(['w1', 'w2']);
+    });
+
+    it('付ける前に取っておくのは上限まで（Redis なしで動き続けても増え続けない）', async () => {
+        const hub = createMemoryBusHub();
+        const a = createBackendEvents({ warn: vi.fn() });
+        const b = createBackendEvents({ warn: vi.fn() });
+        await b.attach(hub.connect());
+        const dropped: string[] = [];
+        b.on('world.changed', ({ worldId }) => void dropped.push(worldId));
+        for (const i of Array.from({ length: 150 }, (_, n) => n))
+            a.broadcast({ type: 'world.changed', worldId: `w${i}` });
+        await a.attach(hub.connect());
+        await sleep(10);
+        expect(dropped).toHaveLength(100);
+    });
+
+    it('外した後に送った知らせは取っておかない（付け直しても送らない）', async () => {
+        const hub = createMemoryBusHub();
+        const a = createBackendEvents({ warn: vi.fn() });
+        const b = createBackendEvents({ warn: vi.fn() });
+        await a.attach(hub.connect());
+        await b.attach(hub.connect());
+        const got = vi.fn();
+        b.on('worlds.reload', got);
+        await a.detach();
+        a.broadcast({ type: 'worlds.reload' });
+        await a.attach(hub.connect());
+        await sleep(10);
+        expect(got).not.toHaveBeenCalled();
+    });
+
     it('外したら届かない', async () => {
         const hub = createMemoryBusHub();
         const a = createBackendEvents({ warn: vi.fn() });

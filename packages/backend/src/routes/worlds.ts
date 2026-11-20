@@ -1,4 +1,3 @@
-import { authorKeyRepository, userRepository } from '@ubichill/db';
 import { LIMITS, ModLockSchema } from '@ubichill/shared';
 import type { NextFunction, Request, Response } from 'express';
 import { Router } from 'express';
@@ -6,7 +5,7 @@ import yaml from 'yaml';
 import { perUserLimiter } from '../lib/rateLimit';
 import { optionalAuth, requireAdmin, requireAuth, requirePublisher } from '../middleware/auth';
 import { bearerToken } from '../services/auth/cliAuth';
-import { selfAccount } from '../services/authors/authorKeys';
+import { publishingEnvironmentService } from '../services/authors/publishingEnvironmentService';
 import { federation } from '../services/federation';
 import { worldRegistry } from '../services/worlds/worldRegistry';
 import { logger } from '../utils/logger';
@@ -40,44 +39,6 @@ function parseBundle(body: unknown): ParsedBundle {
     })();
     if (definition === undefined) return { ok: false, status: 400, error: 'YAML を読めません' };
     return { ok: true, definition, lock: lock ?? null, signature };
-}
-
-type AuthorClaim = { error: string } | { environmentId?: string };
-
-/**
- * 署名には作者アカウントが要り、それはアップロードした本人のアカウントで、鍵はその有効な公開環境でなければならない。
- * （作者が付かない署名は保存しても公開されないので、黙って非公開にせず保存の時点で弾く。取り消し済みの鍵もここで止まる）
- * 通った場合は署名に使った公開環境の ID を返す（最終利用の記録に使う）。
- */
-async function checkAuthorClaim(
-    rawSignature: unknown,
-    userId: string,
-    tokenEnvironment?: { id: string; publicKey: string },
-): Promise<AuthorClaim> {
-    const { author: claimed, publicKey } = (rawSignature ?? {}) as { author?: unknown; publicKey?: unknown };
-    if (claimed === undefined)
-        return { error: '署名に作者アカウントがありません（作者の付かない署名では公開されません）' };
-    const user = await userRepository.findById(userId);
-    const own = user ? selfAccount(user.handle) : null;
-    if (claimed !== own) return { error: `署名の作者（${String(claimed)}）があなたのアカウントと一致しません` };
-    const env = typeof publicKey === 'string' ? await authorKeyRepository.findLocalKey(publicKey) : undefined;
-    // API トークンで送る署名は、そのトークンの公開環境の鍵で署名したものに限る（盗まれたトークンで別の鍵の署名を通させない）
-    if (tokenEnvironment && env?.id !== tokenEnvironment.id) {
-        return { error: 'API トークンで送る署名は、そのトークンの公開環境の鍵で署名してください' };
-    }
-    if (!env || env.userId !== userId || env.revokedAt) {
-        return {
-            error: 'この署名の鍵はあなたの有効な公開環境ではありません（取り消し済みか未登録）。画面を読み込み直して公開し直してください',
-        };
-    }
-    return { environmentId: env.id };
-}
-
-/** 公開に使った公開環境の最終利用を記録する（使われなくなった環境を一覧で見分けるため）。失敗しても公開は止めない。 */
-async function markEnvironmentUsed(claim: AuthorClaim): Promise<void> {
-    if ('environmentId' in claim && claim.environmentId) {
-        await authorKeyRepository.touch(claim.environmentId).catch(() => undefined);
-    }
 }
 
 /**
@@ -279,11 +240,16 @@ router.put('/', requireSaver, saveLimiter, async (req, res) => {
             res.status(bundle.status).json({ error: bundle.error });
             return;
         }
+        // 署名の作者は保存の前に確かめる（作者の付かない署名は公開されないので、黙って非公開にせず弾く）
         const claim =
             bundle.signature === undefined
-                ? {}
-                : await checkAuthorClaim(bundle.signature, req.user.id, req.publishingEnvironment);
-        if ('error' in claim) {
+                ? null
+                : await publishingEnvironmentService.checkAuthorClaim(
+                      bundle.signature,
+                      req.user.id,
+                      req.publishingEnvironment?.id,
+                  );
+        if (claim && !claim.ok) {
             res.status(422).json({ error: claim.error });
             return;
         }
@@ -305,7 +271,7 @@ router.put('/', requireSaver, saveLimiter, async (req, res) => {
             res.status(status).json({ error: saveFailureMessage(result.reason, result.message), code: result.reason });
             return;
         }
-        await markEnvironmentUsed(claim);
+        if (claim) await publishingEnvironmentService.markUsed(claim.environmentId);
         federation?.featuredChanged(req.user.id);
         res.json({ id: result.world.id, url: result.world.url, saved: result.saved, identity: result.world.identity });
     } catch (error) {

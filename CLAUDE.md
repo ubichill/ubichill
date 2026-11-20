@@ -39,6 +39,11 @@ modは `@ubichill/sdk` のみに依存する。Host/本体との直接結合は�
 - `@ubichill/e2e`: プレビュー環境・ローカルに対するスモークテスト。
 - `@ubichill/sdk`: mod開発者向けAPI。`@ubichill/shared` や `@ubichill/ecs` の必要な定数・型・計算ロジックを内部にインラインバンドルし、外部依存ゼロ（zero-dependency）で提供する。
 
+### backend の層（詳細と理由は `packages/backend/src/README.md` の「層の規則」）
+- `routes/`・`middleware/` は `@ubichill/db` を値で import しない（型だけ可）。DB を 1 回引くだけでも services を呼ぶ。CI の `pnpm check:architecture` が落とす。
+- 手順は services の `createX(deps)` に書いてテストする（deps は使う側が要る分だけ宣言）。本物の repository をつなぐのは `<単数>Service.ts`。
+- 同じデータを書く手順は 1 か所。後始末（キャッシュの破棄・通知）が要る書き込みを書き写さない。トランザクションは repository に閉じ込め、service に `tx` を渡さない。
+
 ## ubisdkについては`@ubichill/sdk`を確認すること
 ubi.uiなどでmodが操作できる
 

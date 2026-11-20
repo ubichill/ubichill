@@ -18,10 +18,10 @@ const mocks = vi.hoisted(() => ({
     },
 }));
 
-vi.mock('@ubichill/db', () => ({
-    authorKeyRepository: {},
-    userRepository: { findById: vi.fn(async (id: string) => ({ id, handle: id })) },
+vi.mock('../services/users/userService', () => ({
+    userService: { byId: vi.fn(async (id: string) => ({ id, handle: id })) },
 }));
+vi.mock('../services/authors/publishingEnvironmentService', () => ({ publishingEnvironmentService: {} }));
 vi.mock('../lib/redis', () => ({ redis: null }));
 vi.mock('../middleware/auth', () => ({
     optionalAuth: mocks.signedIn,

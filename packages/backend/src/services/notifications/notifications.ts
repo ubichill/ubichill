@@ -365,6 +365,20 @@ export function createNotificationService(deps: {
             return { ok: true, notification };
         },
 
+        /** 保存期間内のお知らせ（新しい順に 1 ページ分。お知らせの一覧の画面）。 */
+        async recentAnnouncements(): Promise<Array<{ id: string; title: string; content: string; published: string }>> {
+            const rows = await deps.announcements.listPage({
+                since: retentionStart(),
+                limit: NOTIFICATION_LIMITS.MAX_PAGE_SIZE,
+            });
+            return rows.map((r) => ({
+                id: r.id,
+                title: r.title,
+                content: r.content,
+                published: r.publishedAt.toISOString(),
+            }));
+        },
+
         async listFeed(userId: string, options: { cursor?: string; limit?: number }): Promise<FeedResult> {
             const before = options.cursor ? decodeFeedCursor(options.cursor) : undefined;
             if (options.cursor && !before) return { ok: false, error: 'bad-cursor' };
