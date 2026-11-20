@@ -12,6 +12,7 @@ import { ModPermissionsSettings } from './settings/ModPermissionsSettings';
 import { PasswordSection } from './settings/PasswordSection';
 import { PrivacySection } from './settings/PrivacySection';
 import { SessionsSection } from './settings/SessionsSection';
+import { TwoFactorSection } from './settings/TwoFactorSection';
 
 export type SettingsSection = 'home' | 'privacy' | 'fediverse' | 'publishing' | 'account' | 'mods';
 
@@ -79,7 +80,7 @@ export function SettingsTab({
                 )}
                 {current === 'account' && (
                     <p className={css({ fontSize: '13px', color: 'textMuted', lineHeight: '1.6' })}>
-                        パスワード・ログイン方法・ログイン中の端末など、アカウントの安全に関わる設定です。
+                        パスワード・二段階認証・ログイン方法・ログイン中の端末など、アカウントの安全に関わる設定です。
                     </p>
                 )}
                 {current === 'account' && profile && loginMethods.methods?.password !== false && (
@@ -88,6 +89,9 @@ export function SettingsTab({
                         managedBySecret={!!profile.passwordManagedBySecret}
                         onChanged={() => account.setProfile({ ...profile, passwordChangeRequired: false })}
                     />
+                )}
+                {current === 'account' && (
+                    <TwoFactorSection methods={loginMethods.methods} onReauthenticated={loginMethods.reload} />
                 )}
                 {current === 'account' && (
                     <LoginMethodsSection

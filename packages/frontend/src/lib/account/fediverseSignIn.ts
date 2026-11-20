@@ -78,12 +78,16 @@ export async function fetchFediverseSignUpCandidate(): Promise<FediverseSignUpCa
     return authRequest('/fediverse/sign-up');
 }
 
-export async function completeFediverseSignUp(input: { handle: string; displayName: string }): Promise<string> {
-    const { returnTo } = await authRequest<{ returnTo: string }>('/fediverse/sign-up', {
+/** 登録する。登録済みだった（認証の後にほかの画面で登録した）ときは、二段階認証を求められることがある。 */
+export async function completeFediverseSignUp(input: {
+    handle: string;
+    displayName: string;
+}): Promise<{ returnTo: string; twoFactorRequired: boolean }> {
+    const body = await authRequest<{ returnTo: string; twoFactorRequired?: boolean }>('/fediverse/sign-up', {
         method: 'POST',
         body: JSON.stringify(input),
     });
-    return returnTo;
+    return { returnTo: body.returnTo, twoFactorRequired: body.twoFactorRequired === true };
 }
 
 /** 登録をやめる（途中の状態を消す。共用の端末で別の人が続きから登録できないように）。 */

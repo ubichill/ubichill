@@ -1,3 +1,4 @@
+import { isTwoFactorRequired, safeReturnTo } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import {
@@ -30,6 +31,7 @@ import {
 } from '@/components/auth/authStyles';
 import { FediverseSignInButton, FediverseSignInPanel } from '@/components/auth/FediverseSignInPanel';
 import { FediverseSignUpForm } from '@/components/auth/FediverseSignUpForm';
+import { TwoFactorSignInForm } from '@/components/auth/TwoFactorSignInForm';
 import { readFediverseReturn, returnPathOf } from '@/lib/account/fediverseReturn';
 import { type FediverseSignInOptions, fetchFediverseSignInOptions } from '@/lib/account/fediverseSignIn';
 import { useDisplayNameAvailability, useHandleAvailability } from '@/lib/account/useHandleAvailability';
@@ -47,6 +49,8 @@ export function AuthPage() {
     const fediverseReturn = readFediverseReturn(location.search);
     // ログインしたまま別のアカウントを足す（アカウントのメニューの「アカウントを追加」）
     const adding = new URLSearchParams(location.search).get('add') === '1';
+    // ログインの二段階目（パスワードの後、またはフェディバースの認証から ?two_factor=1 で戻った）
+    const [twoFactor, setTwoFactor] = useState(new URLSearchParams(location.search).get('two_factor') === '1');
     // null は読み込み中。読み込み中もボタンの場所を取っておき、届いた後に画面がずれないようにする
     const [fediverseOptions, setFediverseOptions] = useState<FediverseSignInOptions | null>(null);
     const [fediverseOpen, setFediverseOpen] = useState(false);
@@ -134,6 +138,9 @@ export function AuthPage() {
 
                 if (result.error) {
                     setError(result.error.message || 'ログインに失敗しました');
+                } else if (isTwoFactorRequired(result.data)) {
+                    setPassword('');
+                    setTwoFactor(true);
                 } else if (adding) {
                     // 前のアカウントの状態を持ち越さないよう、画面ごと読み直す
                     window.location.assign(from);
@@ -206,6 +213,25 @@ export function AuthPage() {
             <main className={containerStyle}>
                 <div className={cardStyle}>
                     <p>読み込み中...</p>
+                </div>
+            </main>
+        );
+    }
+
+    if (twoFactor) {
+        return (
+            <main className={containerStyle}>
+                <div className={cardStyle}>
+                    <TwoFactorSignInForm
+                        // セッションを読み直すため、画面ごと移る
+                        onSignedIn={(returnTo) => window.location.assign(safeReturnTo(returnTo ?? from))}
+                        onRestart={(message) => {
+                            setTwoFactor(false);
+                            setMode('login');
+                            setError(message ?? '');
+                            navigate(`/auth${adding ? '?add=1' : ''}`, { replace: true, state: location.state });
+                        }}
+                    />
                 </div>
             </main>
         );

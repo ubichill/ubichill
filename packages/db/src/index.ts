@@ -78,6 +78,14 @@ export {
     type RoleWithCountRecord,
     roleRepository,
 } from './repositories/roleRepository';
+export {
+    type LockedTwoFactor,
+    type TwoFactorChallengeRecord,
+    type TwoFactorPatch,
+    type TwoFactorRecord,
+    twoFactorChallengeRepository,
+    twoFactorRepository,
+} from './repositories/twoFactorRepository';
 export { type BlockRecord, userBlockRepository } from './repositories/userBlockRepository';
 export { type FriendRow, userFriendRepository } from './repositories/userFriendRepository';
 export {

@@ -8,10 +8,10 @@
  */
 import type { BetterAuthPlugin, GenericEndpointContext } from 'better-auth';
 import { APIError, createAuthEndpoint, getSessionFromCtx } from 'better-auth/api';
-import { setSessionCookie } from 'better-auth/cookies';
 import { z } from 'zod';
 import type { FediverseSignIn } from '../services/auth/fediverse/signIn';
 import { SIGN_UP_TTL_MS, STATE_TTL_MS } from '../services/auth/fediverse/signIn';
+import { type SecondFactorGate, signInOrChallenge } from './twoFactorPlugin';
 
 const STATUS = { 400: 'BAD_REQUEST', 404: 'NOT_FOUND', 409: 'CONFLICT' } as const;
 
@@ -40,21 +40,38 @@ function clearCookie(ctx: EndpointContext, name: string) {
     ctx.setCookie(cookieName, '', { ...attributes, maxAge: 0 });
 }
 
-/** SSO でのログイン。どの外部アカウントで入ったかをセッションに残す（外部アカウントを外すとこのセッションも消える）。 */
-async function signInAs(ctx: EndpointContext, userId: string, accountRowId: string): Promise<void> {
-    const user = await ctx.context.internalAdapter.findUserById(userId);
-    if (!user) throw new Error('ユーザーが見つかりません');
-    const session = await ctx.context.internalAdapter.createSession(userId, false, { authAccountId: accountRowId });
-    await setSessionCookie(ctx, { session, user });
+/**
+ * SSO でのログイン。どの外部アカウントで入ったかをセッションに残す（外部アカウントを外すとこのセッションも消える）。
+ * 二段階認証が有効なら、セッションを作らずに二段階目を求める。
+ */
+const signInAs = (
+    ctx: EndpointContext,
+    gate: SecondFactorGate,
+    input: { userId: string; accountRowId: string; returnTo: string },
+) =>
+    signInOrChallenge(ctx, gate, {
+        userId: input.userId,
+        passwordVerified: false,
+        authAccountId: input.accountRowId,
+        remember: true,
+        returnTo: input.returnTo,
+    });
+
+/** 二段階目を求めるとき、認証から戻る先（ログイン画面でコードを入れ、通ったら元の戻り先へ）。 */
+function twoFactorRedirect(redirectTo: string): { url: string; returnTo: string } {
+    const url = new URL(redirectTo);
+    return { url: `${url.origin}/auth?two_factor=1`, returnTo: `${url.pathname}${url.search}${url.hash}` };
 }
 
 export interface FediverseSignInPluginOptions {
     getSignIn: () => Promise<FediverseSignIn>;
+    /** ログインの二段階目（lib/twoFactorPlugin.ts） */
+    secondFactor: SecondFactorGate;
     /** ログイン画面に出す設定（使えるか・新規登録を受け付けるか・並べるサーバー） */
     options: () => Promise<{ enabled: boolean; registrationOpen: boolean; featuredServers: readonly string[] }>;
 }
 
-export function fediverseSignInPlugin({ getSignIn, options }: FediverseSignInPluginOptions) {
+export function fediverseSignInPlugin({ getSignIn, secondFactor, options }: FediverseSignInPluginOptions) {
     return {
         id: 'fediverse-sign-in',
         endpoints: {
@@ -123,7 +140,15 @@ export function fediverseSignInPlugin({ getSignIn, options }: FediverseSignInPlu
                         sessionId: current?.session.id ?? null,
                     });
                     clearCookie(ctx, FLOW_COOKIE);
-                    if (outcome.kind === 'signed-in') await signInAs(ctx, outcome.userId, outcome.accountRowId);
+                    if (outcome.kind === 'signed-in') {
+                        const next = twoFactorRedirect(outcome.redirectTo);
+                        const signedIn = await signInAs(ctx, secondFactor, {
+                            userId: outcome.userId,
+                            accountRowId: outcome.accountRowId,
+                            returnTo: next.returnTo,
+                        });
+                        if (signedIn === 'two-factor') throw ctx.redirect(next.url);
+                    }
                     if (outcome.kind === 'sign-up') {
                         const { name, attributes } = cookie(ctx, SIGN_UP_COOKIE, SIGN_UP_TTL_MS);
                         await ctx.setSignedCookie(name, outcome.ticket, ctx.context.secret, attributes);
@@ -154,8 +179,17 @@ export function fediverseSignInPlugin({ getSignIn, options }: FediverseSignInPlu
                     });
                     if (!outcome.ok) throw APIError.fromStatus(STATUS[outcome.status], { message: outcome.error });
                     clearCookie(ctx, SIGN_UP_COOKIE);
-                    await signInAs(ctx, outcome.userId, outcome.accountRowId);
-                    return ctx.json({ returnTo: outcome.returnTo });
+                    // 登録済みだった（認証の後にほかの画面で登録した）ときは、二段階認証を求めることがある
+                    const signedIn = await signInAs(ctx, secondFactor, {
+                        userId: outcome.userId,
+                        accountRowId: outcome.accountRowId,
+                        returnTo: outcome.returnTo,
+                    });
+                    return ctx.json(
+                        signedIn === 'two-factor'
+                            ? { returnTo: outcome.returnTo, twoFactorRequired: true }
+                            : { returnTo: outcome.returnTo },
+                    );
                 },
             ),
 

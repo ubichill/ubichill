@@ -9,6 +9,7 @@ import {
     notificationRepository,
     pendingRegistrationRepository,
     roleRepository,
+    twoFactorChallengeRepository,
 } from '@ubichill/db';
 import { LIMITS, MESSAGE_LIMITS, NOTIFICATION_LIMITS } from '@ubichill/shared';
 import cors from 'cors';
@@ -152,6 +153,11 @@ app.use(
         skip: (req) => req.method !== 'POST',
     }),
 );
+// ログインの二段階目の IP ごとの制限（ユーザーごとの回数の上限は services/auth/twoFactor/twoFactor.ts）
+app.use(
+    '/api/auth/two-factor/verify',
+    sharedLimiter('two-factor-verify', 15 * 60_000, 30, 'コードの入力が多すぎます。しばらくしてからお試しください'),
+);
 // ログインだけは Redis が使えない間も通さない（総当たりの上限を外さない）。ほかの認証の口は制限なしで通す
 app.use('/api/auth/sign-in/email', requireSharedRateLimitForLogin(redis, authRateLimitEnabled));
 app.use('/api/auth', toNodeHandler(auth));
@@ -258,6 +264,9 @@ async function startServer() {
                 emailLinkRepository
                     .deleteExpired()
                     .catch((err: unknown) => logger.error('メールアドレスの追加の確認待ちの掃除に失敗:', err)),
+                twoFactorChallengeRepository
+                    .deleteExpired()
+                    .catch((err: unknown) => logger.error('ログインの二段階目の途中の状態の掃除に失敗:', err)),
                 authFlowRepository
                     .deleteExpired(FEDIVERSE_FLOW_PREFIX, new Date())
                     .catch((err: unknown) => logger.error('フェディバースのログインの途中の状態の掃除に失敗:', err)),
