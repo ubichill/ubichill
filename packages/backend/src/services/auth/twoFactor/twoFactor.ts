@@ -2,9 +2,8 @@
  * 二段階認証（認証アプリとバックアップコード）の設定と、コードの確かめ。
  * - 有効にするには、認証アプリに鍵を登録し、表示されたコードを 1 回入れる（鍵を正しく登録できたことを確かめる）。
  * - 無効にする・バックアップコードを作り直すには、今のコード（かバックアップコード）を求める。奪われたセッションだけでは外せない。
- * - ログインで続けて間違えると、しばらくログインを止める（6 桁の総当たりを防ぐ）。止めるたびに長くする。
- *   設定での間違い（無効にする・作り直す）は数えない（奪われたセッションで本人のログインを止めさせない。
- *   回数は routes の制限で絞る）。
+ * - 続けて間違えると、しばらく止める（6 桁の総当たりを防ぐ）。止めるたびに長くする。
+ *   ログインと設定（無効にする・作り直す）は別に数え、奪われたセッションでの間違いで本人のログインを止めさせない。
  * 保存先・暗号化・HMAC・通知は注入する（本番は twoFactorService.ts）。
  */
 import type { LockedTwoFactor, TwoFactorRecord } from '@ubichill/db';
@@ -13,19 +12,37 @@ import type { SecretBox } from '../../../lib/secretBox';
 import { newBackupCodes, normalizeBackupCode } from './backupCodes';
 import { base32Encode, matchTotp, otpauthUri } from './totp';
 
-export interface TwoFactorLimits {
-    /** ログインで続けて間違えられる回数。超えるたびに止める */
+export interface LockLimits {
+    /** 続けて間違えられる回数。超えるたびに止める */
     maxFailures: number;
     /** 最初に止める長さ。続けて止めるたびに倍にする（maxLockMs まで） */
     lockMs: number;
     maxLockMs: number;
 }
 
+export interface TwoFactorLimits {
+    signIn: LockLimits;
+    /** 設定はセッションを持つ人だけが試せるので、少ない回数で長めに止める */
+    settings: LockLimits;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 export const TWO_FACTOR_LIMITS: TwoFactorLimits = {
-    maxFailures: 10,
-    lockMs: 15 * 60 * 1000,
-    maxLockMs: 24 * 60 * 60 * 1000,
+    signIn: { maxFailures: 10, lockMs: 15 * 60 * 1000, maxLockMs: DAY_MS },
+    settings: { maxFailures: 5, lockMs: 60 * 60 * 1000, maxLockMs: DAY_MS },
 };
+
+type Purpose = keyof TwoFactorLimits;
+
+/** 目的ごとの間違いの回数と止めている期限 */
+const countersOf = (record: TwoFactorRecord, purpose: Purpose) =>
+    purpose === 'signIn'
+        ? { failures: record.failures, lockedUntil: record.lockedUntil }
+        : { failures: record.settingsFailures, lockedUntil: record.settingsLockedUntil };
+
+const countersPatch = (purpose: Purpose, failures: number, lockedUntil: Date | null) =>
+    purpose === 'signIn' ? { failures, lockedUntil } : { settingsFailures: failures, settingsLockedUntil: lockedUntil };
 
 /** 認証アプリの鍵の長さ（RFC 4226 が勧める 160 ビット） */
 const SECRET_BYTES = 20;
@@ -67,14 +84,17 @@ const fail = <T>(status: 400 | 404 | 409 | 429, error: string): TwoFactorOutcome
 
 export function createTwoFactor(deps: TwoFactorDeps) {
     const limits = deps.limits ?? TWO_FACTOR_LIMITS;
-    const lockedError = 'コードを何度も間違えたため、しばらくログインできません。時間をおいてからお試しください';
+    const lockedError: Record<Purpose, string> = {
+        signIn: 'コードを何度も間違えたため、しばらくログインできません。時間をおいてからお試しください',
+        settings: 'コードを何度も間違えたため、しばらくこの操作はできません。時間をおいてからお試しください',
+    };
 
     /** 続けて間違えた回数が maxFailures の何倍目かで、止める長さを倍にしていく */
-    const lockMsFor = (failures: number) =>
-        Math.min(limits.lockMs * 2 ** (Math.floor(failures / limits.maxFailures) - 1), limits.maxLockMs);
+    const lockMsFor = (failures: number, rule: LockLimits) =>
+        Math.min(rule.lockMs * 2 ** (Math.floor(failures / rule.maxFailures) - 1), rule.maxLockMs);
 
     /**
-     * 行を押さえた中でコードを確かめ、使ったコード・間違えた回数を書く。間違いを数えて止めるのはログインだけ。
+     * 行を押さえた中でコードを確かめ、使ったコード・間違えた回数を書く（ログインと設定は別に数える）。
      * `lockedFor` は今回で止めた長さ（止めなければ null）。
      */
     const check = async (
@@ -82,19 +102,19 @@ export function createTwoFactor(deps: TwoFactorDeps) {
         record: TwoFactorRecord | undefined,
         locked: LockedTwoFactor,
         code: string,
-        purpose: 'sign-in' | 'settings',
+        purpose: Purpose,
     ): Promise<{ result: CodeCheck; lockedFor: number | null }> => {
         const now = deps.now();
-        const signIn = purpose === 'sign-in';
         if (!record?.enabledAt) return { result: { ok: false, reason: 'not-enabled' }, lockedFor: null };
-        if (signIn && record.lockedUntil && record.lockedUntil > now) {
+        const counters = countersOf(record, purpose);
+        if (counters.lockedUntil && counters.lockedUntil > now) {
             return { result: { ok: false, reason: 'locked' }, lockedFor: null };
         }
         const secret = deps.box.open(record.secret, userId);
         if (!secret) deps.warn(`二段階認証の鍵を開けませんでした（サーバーの秘密を外した？）: ${userId}`);
         const step = secret ? matchTotp(secret, code.replace(/\s/g, ''), now, record.lastUsedStep) : null;
-        // 本人がコードを持っていると分かったので、ログインを止めていたら戻す
-        const cleared = { failures: 0, lockedUntil: null };
+        // 本人がコードを持っていると分かったので、止めていたものはどちらも戻す
+        const cleared = { ...countersPatch('signIn', 0, null), ...countersPatch('settings', 0, null) };
         if (step !== null) {
             await locked.update({ lastUsedStep: step, ...cleared });
             return {
@@ -111,13 +131,16 @@ export function createTwoFactor(deps: TwoFactorDeps) {
             await locked.update({ backupCodeHashes: left, ...cleared });
             return { result: { ok: true, via: 'backup-code', backupCodesLeft: left.length }, lockedFor: null };
         }
-        if (!signIn) return { result: { ok: false, reason: 'invalid-code' }, lockedFor: null };
-        const failures = record.failures + 1;
-        const lockedFor = failures % limits.maxFailures === 0 ? lockMsFor(failures) : null;
-        await locked.update({
-            failures,
-            lockedUntil: lockedFor === null ? record.lockedUntil : new Date(now.getTime() + lockedFor),
-        });
+        const rule = limits[purpose];
+        const failures = counters.failures + 1;
+        const lockedFor = failures % rule.maxFailures === 0 ? lockMsFor(failures, rule) : null;
+        await locked.update(
+            countersPatch(
+                purpose,
+                failures,
+                lockedFor === null ? counters.lockedUntil : new Date(now.getTime() + lockedFor),
+            ),
+        );
         return { result: { ok: false, reason: lockedFor === null ? 'invalid-code' : 'locked' }, lockedFor };
     };
 
@@ -125,7 +148,7 @@ export function createTwoFactor(deps: TwoFactorDeps) {
     const verifyThen = async <T>(
         userId: string,
         code: unknown,
-        purpose: 'sign-in' | 'settings',
+        purpose: Purpose,
         onValid: (locked: LockedTwoFactor, checked: CodeCheck & { ok: true }) => Promise<T>,
     ): Promise<{ checked: CodeCheck; value?: T }> => {
         const presented = typeof code === 'string' ? code.slice(0, 64) : '';
@@ -134,13 +157,17 @@ export function createTwoFactor(deps: TwoFactorDeps) {
             return { result, lockedFor, value: result.ok ? await onValid(locked, result) : undefined };
         });
         if (outcome.lockedFor !== null) {
+            const duration = durationText(outcome.lockedFor);
             await deps.notify(
                 userId,
                 '二段階認証のコードが続けて間違えられました',
-                `ログインのときに二段階認証のコードが続けて間違えられたため、${durationText(outcome.lockedFor)}` +
-                    '新しいログインを止めました。\n\n' +
-                    '心当たりが無い場合は、パスワードかフェディバースのアカウントが他人に使われているかもしれません。' +
-                    'パスワードを変更し、設定の「アカウント」でログイン中の端末を確かめてください。',
+                purpose === 'signIn'
+                    ? `ログインのときに二段階認証のコードが続けて間違えられたため、${duration}新しいログインを止めました。\n\n` +
+                          '心当たりが無い場合は、パスワードかフェディバースのアカウントが他人に使われているかもしれません。' +
+                          'パスワードを変更し、設定の「アカウント」でログイン中の端末を確かめてください。'
+                    : `設定で二段階認証のコードが続けて間違えられたため、${duration}二段階認証の変更を止めました。\n\n` +
+                          '心当たりが無い場合は、ログイン中の端末が他人に使われているかもしれません。' +
+                          '設定の「アカウント」で知らない端末をログアウトし、パスワードを変更してください。',
             );
         }
         return { checked: outcome.result, value: outcome.value };
@@ -151,7 +178,7 @@ export function createTwoFactor(deps: TwoFactorDeps) {
             case 'not-enabled':
                 return fail(409, '二段階認証は有効になっていません');
             case 'locked':
-                return fail(429, lockedError);
+                return fail(429, lockedError.settings);
             case 'invalid-code':
                 return fail(400, 'コードが正しくありません');
         }
@@ -166,7 +193,7 @@ export function createTwoFactor(deps: TwoFactorDeps) {
     };
 
     return {
-        lockedError,
+        lockedError: lockedError.signIn,
 
         async status(userId: string): Promise<TwoFactorStatus> {
             const record = await deps.repository.find(userId);
@@ -256,7 +283,7 @@ export function createTwoFactor(deps: TwoFactorDeps) {
 
         /** ログインの二段階目。バックアップコードを使ったときは知らせる（残りが少ないことに気付けるように）。 */
         async verifyForSignIn(userId: string, code: unknown): Promise<CodeCheck> {
-            const { checked } = await verifyThen(userId, code, 'sign-in', async () => undefined);
+            const { checked } = await verifyThen(userId, code, 'signIn', async () => undefined);
             if (checked.ok && checked.via === 'backup-code') {
                 await deps.notify(
                     userId,

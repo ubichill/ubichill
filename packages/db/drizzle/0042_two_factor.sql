@@ -17,6 +17,8 @@ CREATE TABLE "user_two_factors" (
 	"backup_code_hashes" text[] DEFAULT '{}' NOT NULL,
 	"failures" integer DEFAULT 0 NOT NULL,
 	"locked_until" timestamp with time zone,
+	"settings_failures" integer DEFAULT 0 NOT NULL,
+	"settings_locked_until" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint

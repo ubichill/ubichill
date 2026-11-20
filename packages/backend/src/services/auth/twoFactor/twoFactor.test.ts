@@ -23,6 +23,8 @@ function memoryRepository() {
                 backupCodeHashes: [],
                 failures: 0,
                 lockedUntil: null,
+                settingsFailures: 0,
+                settingsLockedUntil: null,
                 createdAt: now,
             });
             return 'started' as const;
@@ -196,14 +198,16 @@ describe('ログインの二段階目のコード', () => {
         const t = setup();
         await t.enabled('alice');
         const results = await Promise.all(
-            Array.from({ length: TWO_FACTOR_LIMITS.maxFailures }, () => t.twoFactor.verifyForSignIn('alice', '000000')),
+            Array.from({ length: TWO_FACTOR_LIMITS.signIn.maxFailures }, () =>
+                t.twoFactor.verifyForSignIn('alice', '000000'),
+            ),
         );
         expect(results.filter((r) => !r.ok && r.reason === 'locked')).toHaveLength(1);
         expect(await t.twoFactor.verifyForSignIn('alice', t.codeOf('alice'))).toEqual({ ok: false, reason: 'locked' });
         expect(t.notices.filter((n) => n.subject.includes('続けて間違えられました'))).toHaveLength(1);
         expect(t.notices[0]?.text).toContain('15 分間');
 
-        t.advance(TWO_FACTOR_LIMITS.lockMs + 1);
+        t.advance(TWO_FACTOR_LIMITS.signIn.lockMs + 1);
         expect(await t.twoFactor.verifyForSignIn('alice', t.codeOf('alice'))).toMatchObject({ ok: true });
     });
 
@@ -212,7 +216,7 @@ describe('ログインの二段階目のコード', () => {
         await t.enabled('alice');
         const lockRound = async () => {
             await Promise.all(
-                Array.from({ length: TWO_FACTOR_LIMITS.maxFailures }, () =>
+                Array.from({ length: TWO_FACTOR_LIMITS.signIn.maxFailures }, () =>
                     t.twoFactor.verifyForSignIn('alice', '000000'),
                 ),
             );
@@ -230,22 +234,43 @@ describe('ログインの二段階目のコード', () => {
         expect(t.notices.at(-1)?.text).toContain('24 時間');
     });
 
-    it('設定での間違いはログインを止める回数に数えない（奪われたセッションで本人のログインを止めさせない）', async () => {
+    it('設定での間違いはログインとは別に数える。5 回で 1 時間止め（正しいコードも通さない）、知らせる。ログインは止めない', async () => {
+        const t = setup();
+        await t.enabled('alice');
+        const { maxFailures } = TWO_FACTOR_LIMITS.settings;
+        const results = await Promise.all(
+            Array.from({ length: maxFailures }, () => t.twoFactor.disable('alice', '000000')),
+        );
+        expect(results.filter((r) => !r.ok && r.status === 429)).toHaveLength(1);
+        expect(await t.twoFactor.disable('alice', t.codeOf('alice'))).toMatchObject({ ok: false, status: 429 });
+        expect(await t.twoFactor.isEnabled('alice')).toBe(true);
+        expect(t.repository.rows.get('alice')).toMatchObject({ failures: 0, lockedUntil: null });
+        expect(t.notices.map((n) => n.text).join('\n')).toContain('1 時間二段階認証の変更を止めました');
+        // ログインはできる（本人の新しいログインを止めさせない）。通れば設定の止めも戻す
+        expect(await t.twoFactor.verifyForSignIn('alice', t.codeOf('alice'))).toMatchObject({ ok: true });
+        expect(t.repository.rows.get('alice')).toMatchObject({ settingsFailures: 0, settingsLockedUntil: null });
+    });
+
+    it('ログインで止められていても、設定での間違いの回数は別（設定の回数でログインの止めは延びない）', async () => {
         const t = setup();
         await t.enabled('alice');
         await Promise.all(
-            Array.from({ length: TWO_FACTOR_LIMITS.maxFailures * 2 }, () => t.twoFactor.disable('alice', '000000')),
+            Array.from({ length: TWO_FACTOR_LIMITS.signIn.maxFailures }, () =>
+                t.twoFactor.verifyForSignIn('alice', '000000'),
+            ),
         );
-        expect(t.repository.rows.get('alice')).toMatchObject({ failures: 0, lockedUntil: null });
-        expect(await t.twoFactor.verifyForSignIn('alice', t.codeOf('alice'))).toMatchObject({ ok: true });
-        expect(t.notices).toHaveLength(0);
+        const lockedUntil = t.repository.rows.get('alice')?.lockedUntil;
+        await t.twoFactor.disable('alice', '000000');
+        expect(t.repository.rows.get('alice')).toMatchObject({ lockedUntil, settingsFailures: 1 });
     });
 
     it('ログインが止まっていても、設定で正しいコードを入れれば止めたのを戻せる（本人だと分かるので）', async () => {
         const t = setup();
         await t.enabled('alice');
         await Promise.all(
-            Array.from({ length: TWO_FACTOR_LIMITS.maxFailures }, () => t.twoFactor.verifyForSignIn('alice', '000000')),
+            Array.from({ length: TWO_FACTOR_LIMITS.signIn.maxFailures }, () =>
+                t.twoFactor.verifyForSignIn('alice', '000000'),
+            ),
         );
         expect(await t.twoFactor.regenerateBackupCodes('alice', t.codeOf('alice'))).toMatchObject({ ok: true });
         t.advance(30_000);
@@ -257,9 +282,9 @@ describe('ログインの二段階目のコード', () => {
         await t.enabled('alice');
         const wrong = (n: number) =>
             Promise.all(Array.from({ length: n }, () => t.twoFactor.verifyForSignIn('alice', '000000')));
-        await wrong(TWO_FACTOR_LIMITS.maxFailures - 1);
+        await wrong(TWO_FACTOR_LIMITS.signIn.maxFailures - 1);
         expect(await t.twoFactor.verifyForSignIn('alice', t.codeOf('alice'))).toMatchObject({ ok: true });
-        const after = await wrong(TWO_FACTOR_LIMITS.maxFailures - 1);
+        const after = await wrong(TWO_FACTOR_LIMITS.signIn.maxFailures - 1);
         expect(after.every((r) => !r.ok && r.reason === 'invalid-code')).toBe(true);
     });
 

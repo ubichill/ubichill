@@ -15,9 +15,12 @@ export const userTwoFactors = pgTable('user_two_factors', {
     /** 最後に受け付けたコードの時間の区切り。同じコードを 2 回使わせない */
     lastUsedStep: bigint('last_used_step', { mode: 'number' }),
     backupCodeHashes: text('backup_code_hashes').array().notNull().default([]),
-    /** 続けて間違えた回数（ログイン・設定の両方で数える）。成功で 0 に戻す */
+    /** ログインで続けて間違えた回数。成功で 0 に戻す */
     failures: integer('failures').notNull().default(0),
     lockedUntil: timestamp('locked_until', { withTimezone: true }),
+    /** 設定（無効にする・作り直す）で続けて間違えた回数。ログインとは別に数える（奪われたセッションでログインを止めさせない） */
+    settingsFailures: integer('settings_failures').notNull().default(0),
+    settingsLockedUntil: timestamp('settings_locked_until', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

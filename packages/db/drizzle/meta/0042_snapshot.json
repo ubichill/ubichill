@@ -1,5 +1,5 @@
 {
-  "id": "f18b5ce7-e6dd-4209-9e13-639daa932bab",
+  "id": "129ff9b7-1a12-48c5-97a3-bdd6f61a786b",
   "prevId": "540da748-0801-4103-b83f-9bf6bde26685",
   "version": "7",
   "dialect": "postgresql",
@@ -3285,6 +3285,19 @@
         },
         "locked_until": {
           "name": "locked_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "settings_failures": {
+          "name": "settings_failures",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "settings_locked_until": {
+          "name": "settings_locked_until",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false

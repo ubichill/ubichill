@@ -5,7 +5,16 @@ import { twoFactorChallenges, userTwoFactors } from '../schema';
 export type TwoFactorRecord = typeof userTwoFactors.$inferSelect;
 
 export type TwoFactorPatch = Partial<
-    Pick<TwoFactorRecord, 'enabledAt' | 'lastUsedStep' | 'backupCodeHashes' | 'failures' | 'lockedUntil'>
+    Pick<
+        TwoFactorRecord,
+        | 'enabledAt'
+        | 'lastUsedStep'
+        | 'backupCodeHashes'
+        | 'failures'
+        | 'lockedUntil'
+        | 'settingsFailures'
+        | 'settingsLockedUntil'
+    >
 >;
 
 /** 行ロックを取った二段階認証に対してできること（同じトランザクション）。 */
@@ -37,6 +46,8 @@ export const twoFactorRepository = {
                     backupCodeHashes: [],
                     failures: 0,
                     lockedUntil: null,
+                    settingsFailures: 0,
+                    settingsLockedUntil: null,
                     createdAt: now,
                 },
                 setWhere: isNull(userTwoFactors.enabledAt),
