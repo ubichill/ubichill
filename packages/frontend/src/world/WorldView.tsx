@@ -18,6 +18,7 @@ import type { ModSource } from './modSource';
 import { type PortalNavigate, PortalNavigationProvider } from './portalNavigation';
 import { ServerNoticeToasts } from './ServerNoticeToasts';
 import { useInstanceLoading } from './useInstanceLoading';
+import { useUnknownCoreNotice } from './useUnknownCoreNotice';
 import { WorldStage } from './WorldStage';
 
 export const ENTRY_DECLINED_MESSAGE = '作者を確認できないワールドのため、入室を取りやめました';
@@ -76,6 +77,7 @@ export function WorldView({
 }: WorldViewProps) {
     const { isConnected, isConnecting, error, sessionReplaced, currentUser, joinWorld, leaveWorld } = useSocket();
     const { resetWorld, modLock } = useWorld();
+    useUnknownCoreNotice();
 
     const joinedIdRef = useRef<string | null>(null);
     const leaveWorldRef = useRef(leaveWorld);

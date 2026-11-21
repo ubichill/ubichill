@@ -1,4 +1,4 @@
-import { PortalDataSchema, parsePortalTarget } from '@ubichill/core-components';
+import { PortalDataSchema, parsePortalTarget, readCoreData } from '@ubichill/core-components';
 import type { ComponentInstance } from '@ubichill/shared';
 import type React from 'react';
 import { css } from '@/styled-system/css';
@@ -13,7 +13,7 @@ const DEFAULT_LABEL = '入口';
  */
 export const CorePortal: React.FC<{ entity: ComponentInstance }> = ({ entity }) => {
     const go = usePortalNavigation();
-    const parsed = PortalDataSchema.safeParse(entity.data ?? {});
+    const parsed = readCoreData(PortalDataSchema, entity.data ?? {});
     const entityId = entity.entityId ?? entity.id;
     const label = (parsed.success && parsed.data.label.trim()) || DEFAULT_LABEL;
     const target = parsed.success ? parsePortalTarget(parsed.data.world) : null;

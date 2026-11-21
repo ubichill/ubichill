@@ -8,7 +8,16 @@
  * 署名には `ubichill login`（CI は UBICHILL_CREDENTIALS）の鍵と作者アカウントを使う。
  */
 import { basename, join } from 'node:path';
-import { signWorld, unpinnedModsOf, type WorldDocument, type WorldSigningKey, worldShareUrl } from '@ubichill/shared';
+import {
+    describeCoreComponentProblem,
+    findCoreComponentProblems,
+    signWorld,
+    unpinnedModsOf,
+    WorldDefinitionSchema,
+    type WorldDocument,
+    type WorldSigningKey,
+    worldShareUrl,
+} from '@ubichill/shared';
 import type { Logger } from '@ubichill/terminal';
 import type { Credential } from './credentials.ts';
 import { normalizePublicUrl, registerExternalWorks } from './registerWorks.ts';
@@ -56,6 +65,13 @@ export function unpublishableReason(doc: WorldDocument): string | null {
     const unpinned = unpinnedModsOf(doc);
     if (unpinned === null) return 'ワールド定義を解釈できないため mod の固定を確認できません';
     if (unpinned.length > 0) return `lock に固定されていない mod があります: ${unpinned.join(', ')}`;
+    // 読む側は知らない部品を黙って使わないので、書き間違いのまま公開させない
+    const parsed = WorldDefinitionSchema.safeParse(doc.definition);
+    const problems = parsed.success ? findCoreComponentProblems(parsed.data.spec.initialEntities) : [];
+    if (problems.length > 0)
+        return `この版の ubichill に無い部品・項目があります。書き間違いを直すか、CLI を新しくしてください: ${problems
+            .map((problem) => `${problem.entityId}: ${describeCoreComponentProblem(problem)}`)
+            .join(' / ')}`;
     return null;
 }
 

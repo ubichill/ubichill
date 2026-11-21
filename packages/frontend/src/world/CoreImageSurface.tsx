@@ -1,4 +1,4 @@
-import { ImageDataSchema } from '@ubichill/core-components';
+import { ImageDataSchema, readCoreData } from '@ubichill/core-components';
 import type { ComponentInstance } from '@ubichill/shared';
 import type React from 'react';
 import { css, cva } from '@/styled-system/css';
@@ -6,7 +6,7 @@ import { surfacePlacement } from './surfacePlacement';
 
 /** `core:image` の面。ワールド作者が置いた画像を描く。画像がまだ無ければ枠だけ出す（置き忘れに気づけるように）。 */
 export const CoreImageSurface: React.FC<{ entity: ComponentInstance }> = ({ entity }) => {
-    const parsed = ImageDataSchema.safeParse(entity.data ?? {});
+    const parsed = readCoreData(ImageDataSchema, entity.data ?? {});
     const entityId = entity.entityId ?? entity.id;
     const data = parsed.success ? parsed.data : null;
     return (
