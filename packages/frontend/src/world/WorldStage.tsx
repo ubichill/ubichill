@@ -11,6 +11,7 @@ import {
 import type { ComponentInstance } from '@ubichill/shared';
 import { useMemo } from 'react';
 import { Z_INDEX } from '@/styles/layers';
+import { backgroundImageStyle } from './backgroundImage';
 import { EntityRenderer } from './EntityRenderer';
 import { useModRegistry } from './ModRegistryContext';
 
@@ -110,6 +111,8 @@ const InstanceSurface: React.FC = () => {
                         height: worldHeight,
                         minWidth: '100%',
                         minHeight: '100%',
+                        // 背景の画像はワールドといっしょに動く（スクロールで景色が流れる）
+                        ...backgroundImageStyle(environment),
                     }}
                 >
                     {renderEntities}

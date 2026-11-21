@@ -37,15 +37,25 @@ const reject = (code: ImageRejectionCode, message: string): ProcessImageResult =
 
 export const imageHashOf = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('base64url');
 
-/**
- * 送られた画像を、配信してよい形（向きを直し・メタデータを消し・決まった大きさの WebP）に作り直す。
- * 送られたバイト列はそのまま配らない（位置情報などの EXIF・細工したファイルを他人に渡さない）。
- */
-export async function processProfileImage(
+/** プロフィールの画像（アイコン・ヘッダー）。決まった大きさに切り抜く。 */
+export function processProfileImage(
     input: Uint8Array,
     kind: ProfileImageKind,
     codec: ImageCodec,
     limits: ProcessImageLimits = DEFAULT_LIMITS,
+): Promise<ProcessImageResult> {
+    return processImage(input, PROFILE_IMAGE_SIZES[kind], codec, limits);
+}
+
+/**
+ * 送られた画像を、配信してよい形（向きを直し・メタデータを消した WebP）に作り直す。
+ * 送られたバイト列はそのまま配らない（位置情報などの EXIF・細工したファイルを他人に渡さない）。
+ */
+export async function processImage(
+    input: Uint8Array,
+    target: { width: number; height: number; fit?: 'cover' | 'inside' },
+    codec: ImageCodec,
+    limits: ProcessImageLimits,
 ): Promise<ProcessImageResult> {
     if (input.byteLength === 0) return reject('empty', '画像が空です');
     if (input.byteLength > limits.maxBytes) {
@@ -59,7 +69,7 @@ export async function processProfileImage(
     if (probe.width * probe.height > limits.maxPixels) {
         return reject('too-many-pixels', '画像の画素数が多すぎます。小さくしてから選んでください');
     }
-    const rendered = await codec.render(input, PROFILE_IMAGE_SIZES[kind]).catch(() => null);
+    const rendered = await codec.render(input, target).catch(() => null);
     if (!rendered) return reject('undecodable', '画像として読めません（壊れているか、対応していない形式です）');
     return {
         ok: true,

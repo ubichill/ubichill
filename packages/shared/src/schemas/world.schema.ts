@@ -172,8 +172,19 @@ export function worldSourceLabel(source: WorldSource): string {
 // World Environment（環境設定）
 // ============================================
 
+/** 背景の画像の敷き方。cover はワールドの広さいっぱいに広げ、tile は元の大きさで並べる。 */
+export const BACKGROUND_IMAGE_FITS = ['cover', 'tile'] as const;
+
+const BackgroundImageUrl = z
+    .string()
+    .max(2048)
+    .refine((value) => z.url({ protocol: /^https?$/ }).safeParse(value).success, 'http(s) の URL を入れてください');
+
 export const WorldEnvironmentSchema = z.object({
     backgroundColor: HexColor.default('#F0F8FF'),
+    // 既定値を持たせない（足す前のワールドの解釈を変えない）。無ければ背景は色だけ
+    backgroundImage: BackgroundImageUrl.optional(),
+    backgroundImageFit: z.enum(BACKGROUND_IMAGE_FITS).optional(),
     worldSize: z
         .object({
             width: z.number().positive().default(2000),

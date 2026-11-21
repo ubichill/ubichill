@@ -98,6 +98,12 @@ export {
     userRepository,
 } from './repositories/userRepository';
 export { userSettingsRepository } from './repositories/userSettingsRepository';
+export {
+    type AddWorldAssetOutcome,
+    type WorldAssetBlob,
+    type WorldAssetRecord,
+    worldAssetRepository,
+} from './repositories/worldAssetRepository';
 export { type PublishOutcome, type WorldTarget, worldRepository } from './repositories/worldRepository';
 export { editorWorldOf, type ServedWorld, servedWorldOf, versionsToPrune } from './repositories/worldRows';
 export { backfillWorldContentHashes, versionContentHash } from './worldContentHashBackfill';

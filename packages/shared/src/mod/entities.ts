@@ -209,6 +209,10 @@ export interface WorldEnvironmentData {
      * スクロールコンテナの初期サイズのヒントに過ぎず、強制力は無い。
      */
     worldSize: { width: number; height: number };
+    /** 背景の画像（http(s) の URL）。無ければ色だけ */
+    backgroundImage?: string;
+    /** cover はワールドの広さいっぱいに広げ、tile は元の大きさで並べる */
+    backgroundImageFit?: 'cover' | 'tile';
 }
 
 /**

@@ -26,6 +26,7 @@ import { sharedRateLimit } from './lib/sharedRateLimit';
 import { blockOfficialPasswordChange } from './middleware/auth';
 import { requireBotCheck } from './middleware/botCheck';
 import { router as adminRouter } from './routes/admin';
+import { router as assetsRouter } from './routes/assets';
 import { router as authorsRouter } from './routes/authors';
 import { router as cliAuthRouter } from './routes/cliAuth';
 import { federationApiRouter, isFederationInboundPath, mountFederationInbound } from './routes/federation';
@@ -204,6 +205,7 @@ app.use('/api/v1/federation', federationApiRouter);
 app.use('/api/v1/service-tokens', serviceTokensRouter);
 app.use('/api/v1/admin', adminRouter);
 app.use('/api/v1/server', serverRouter);
+app.use('/api/v1/assets', assetsRouter);
 app.use('/.well-known/webfinger', webfingerRouter);
 
 // HTTPサーバーを作成

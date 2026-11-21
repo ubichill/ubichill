@@ -1,3 +1,5 @@
+import type { PortalTarget } from '@ubichill/core-components';
+import { useSocket } from '@ubichill/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { InstanceHUD } from '@/components/hud/InstanceHUD';
@@ -10,6 +12,7 @@ import { useBlocks } from '@/lib/social/blocks';
 import { blockedAuthorsOf, blockedIdsOf } from '@/lib/social/blocksState';
 import { dismissToast, pushToast } from '@/lib/toast';
 import { fetchInstance } from '@/lib/worlds/instancesApi';
+import { portalPath } from '@/lib/worlds/portalPath';
 import { useRemoteVisit } from '@/lib/worlds/useRemoteVisit';
 import { type InstanceFailure, WorldView } from '@/world';
 
@@ -117,6 +120,17 @@ export function InstancePage() {
         [failure?.replaced, toHome],
     );
 
+    // 入口（core:portal）: 確かめてから部屋を出て、行き先のワールドのページへ（そこで入室まで進む）
+    const { leaveWorld } = useSocket();
+    const goThroughPortal = useCallback(
+        async (target: PortalTarget, label: string) => {
+            if (!(await confirm(`「${label}」からほかのワールドへ移りますか？今の部屋から退出します。`))) return;
+            await leaveWorld();
+            navigate(portalPath(target));
+        },
+        [confirm, leaveWorld, navigate],
+    );
+
     if (!id) return null;
     return (
         <WorldView
@@ -132,6 +146,7 @@ export function InstancePage() {
             recovery={recovery}
             onFailed={handleFailed}
             onEntered={handleEntered}
+            onPortal={(target, label) => void goThroughPortal(target, label)}
         >
             <InstanceHUD />
         </WorldView>

@@ -19,6 +19,7 @@ export function defaultForType(spec: DataFieldSpec): unknown {
     switch (spec.type) {
         case 'string':
         case 'url':
+        case 'image':
             return '';
         case 'number':
             return 0;

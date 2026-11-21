@@ -15,6 +15,7 @@ import { InstanceLoadingScreen } from './InstanceLoadingScreen';
 import { type InstanceFailure, InstanceNotFoundError } from './instanceFailure';
 import { ModRegistryProvider } from './ModRegistryContext';
 import type { ModSource } from './modSource';
+import { type PortalNavigate, PortalNavigationProvider } from './portalNavigation';
 import { ServerNoticeToasts } from './ServerNoticeToasts';
 import { useInstanceLoading } from './useInstanceLoading';
 import { WorldStage } from './WorldStage';
@@ -50,6 +51,8 @@ export interface WorldViewProps {
     onFailed?: (failure: InstanceFailure) => void;
     /** 部屋に入れたとき（入るたびに 1 回）。 */
     onEntered?: () => void;
+    /** 入口（core:portal）を押したときの移り方（SNS だけ）。無ければ入口は押せない。 */
+    onPortal?: PortalNavigate;
     /** 入室できたあとに重ねる UI（HUD など）。 */
     children?: ReactNode;
 }
@@ -68,6 +71,7 @@ export function WorldView({
     recovery,
     onFailed,
     onEntered,
+    onPortal,
     children,
 }: WorldViewProps) {
     const { isConnected, isConnecting, error, sessionReplaced, currentUser, joinWorld, leaveWorld } = useSocket();
@@ -204,7 +208,9 @@ export function WorldView({
                         blockedAuthors={blocks?.modAuthors}
                     >
                         <WorkerLoadingProvider onStatusChange={setWorkers}>
-                            <WorldStage />
+                            <PortalNavigationProvider value={onPortal ?? null}>
+                                <WorldStage />
+                            </PortalNavigationProvider>
                         </WorkerLoadingProvider>
                     </ModRegistryProvider>
                     {children}

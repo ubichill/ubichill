@@ -18,8 +18,11 @@ export interface ImageCodec {
     /** ヘッダだけを読む。画像として読めなければ null。 */
     probe(input: Uint8Array): Promise<ImageProbe | null>;
     /**
-     * EXIF の向きを反映し、指定の大きさに cover で切り抜いて WebP にする。メタデータ（EXIF・ICC・XMP）は残さない。
-     * 動く画像は最初のコマだけ使う。読めなければ例外。
+     * EXIF の向きを反映して WebP にする。メタデータ（EXIF・ICC・XMP）は残さない。動く画像は最初のコマだけ使う。読めなければ例外。
+     * fit が cover（既定）なら指定の大きさに切り抜き、inside なら縦横比を保って収める（小さい画像は大きくしない）。
      */
-    render(input: Uint8Array, size: { width: number; height: number }): Promise<RenderedImage>;
+    render(
+        input: Uint8Array,
+        size: { width: number; height: number; fit?: 'cover' | 'inside' },
+    ): Promise<RenderedImage>;
 }

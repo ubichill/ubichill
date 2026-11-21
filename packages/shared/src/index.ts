@@ -290,6 +290,7 @@ export * from './social/messageReactions';
 export * from './social/messages';
 export * from './social/presence';
 export * from './social/userSearch';
+export * from './world/assets';
 export * from './world/devEvents';
 export * from './world/identity';
 export * from './world/instanceDefinition';

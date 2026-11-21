@@ -7,6 +7,7 @@ import { ENTITY_DRAG_MIME } from '../../lib/dnd';
 import { resolveEntityIdByPathKey } from '../../lib/entityTree';
 import { refTargetError } from '../../lib/referenceProblems';
 import { CloseIcon } from '../hierarchy/hierarchyIcons';
+import { ImageUrlInput } from '../ImageUrlInput';
 import { defaultForType, displayedFieldValue } from './fieldValues';
 import { ColorInput, NumberInput } from './primitives';
 import { detectType, inputStyle, textareaStyle } from './shared';
@@ -208,6 +209,9 @@ function DeclaredInput({
                 className={inputStyle}
             />
         );
+    }
+    if (spec.type === 'image') {
+        return <ImageUrlInput name={name} value={String(value ?? '')} onChange={onChange} />;
     }
     if (spec.type === 'url') {
         return (
