@@ -11,7 +11,7 @@ import {
     roleRepository,
     twoFactorChallengeRepository,
 } from '@ubichill/db';
-import { LIMITS, MESSAGE_LIMITS, NOTIFICATION_LIMITS } from '@ubichill/shared';
+import { BOT_CHECK_ACTIONS, LIMITS, MESSAGE_LIMITS, NOTIFICATION_LIMITS } from '@ubichill/shared';
 import cors from 'cors';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
@@ -24,6 +24,7 @@ import { sharedLimiter } from './lib/rateLimit';
 import { connectSubscriber, redis, redisHealth } from './lib/redis';
 import { sharedRateLimit } from './lib/sharedRateLimit';
 import { blockOfficialPasswordChange } from './middleware/auth';
+import { requireBotCheck } from './middleware/botCheck';
 import { router as adminRouter } from './routes/admin';
 import { router as authorsRouter } from './routes/authors';
 import { router as cliAuthRouter } from './routes/cliAuth';
@@ -41,6 +42,7 @@ import { router as socialRouter } from './routes/social';
 import { router as usersRouter } from './routes/users';
 import { router as webfingerRouter } from './routes/webfinger';
 import { router as worldsRouter } from './routes/worlds';
+import { botProtectionService } from './services/auth/botProtection/botProtectionService';
 import { FEDIVERSE_FLOW_PREFIX, fediverseLoginPolicyChanged } from './services/auth/fediverse';
 import { bootstrapOfficialAccount } from './services/authors/officialAccountService';
 import { backendEvents, createRedisBackendBus } from './services/cluster/backendEvents';
@@ -153,6 +155,11 @@ app.use(
         skip: (req) => req.method !== 'POST',
     }),
 );
+// フェディバースのアカウントでの新規登録（ID と表示名を決めて作る）のボット対策。末尾の / などの違いでも外さないよう use で前方一致にする
+const fediverseSignUpBotCheck = requireBotCheck(BOT_CHECK_ACTIONS.fediverseSignUp);
+app.use('/api/auth/fediverse/sign-up', (req, res, next) =>
+    req.method === 'POST' ? fediverseSignUpBotCheck(req, res, next) : next(),
+);
 // ログインの二段階目の IP ごとの制限（ユーザーごとの回数の上限は services/auth/twoFactor/twoFactor.ts）
 app.use(
     '/api/auth/two-factor/verify',
@@ -160,6 +167,19 @@ app.use(
 );
 // ログインだけは Redis が使えない間も通さない（総当たりの上限を外さない）。ほかの認証の口は制限なしで通す
 app.use('/api/auth/sign-in/email', requireSharedRateLimitForLogin(redis, authRateLimitEnabled));
+// ボット対策を使っている間は、検証 API を呼ぶ前に IP ごとに絞る（better-auth の制限はボット対策より後ろにあり、
+// 断った要求は数えない。負荷試験はボット対策を使わないので掛からない）
+app.use(
+    '/api/auth/sign-in/email',
+    sharedLimiter('sign-in-bot-check', 15 * 60_000, 60, 'ログインが多すぎます。しばらくしてからお試しください', {
+        skip: async (req) => req.method !== 'POST' || (await botProtectionService.config().catch(() => null)) === null,
+    }),
+);
+// パスワードでのログインのボット対策（ID でのログインも同じ口）
+const signInBotCheck = requireBotCheck(BOT_CHECK_ACTIONS.signIn);
+app.use('/api/auth/sign-in/email', (req, res, next) =>
+    req.method === 'POST' ? signInBotCheck(req, res, next) : next(),
+);
 app.use('/api/auth', toNodeHandler(auth));
 
 // ============================================

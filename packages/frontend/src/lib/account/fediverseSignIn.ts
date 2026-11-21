@@ -1,13 +1,16 @@
 import {
+    BOT_CHECK_ERRORS,
     FEDIVERSE_SIGN_IN_ERRORS,
     type FediverseServerInfo,
     type FediverseSignInIntent,
     type FediverseSignUpCandidate,
+    isBotCheckError,
     isFediverseSignInError,
     type LoginMethods,
 } from '@ubichill/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { API_BASE, requestApi } from '@/lib/api';
+import { botCheckHeaders } from './botProtection';
 
 /** 認証の API の失敗。`code` は shared の FEDIVERSE_SIGN_IN_ERRORS のキー（本人確認が要るかの判定などに使う）。 */
 export class FediverseRequestError extends Error {
@@ -39,7 +42,9 @@ async function authRequest<T>(path: string, init?: RequestInit): Promise<T> {
         throw new FediverseRequestError(
             isFediverseSignInError(code)
                 ? FEDIVERSE_SIGN_IN_ERRORS[code]
-                : `うまくいきませんでした。時間をおいてもう一度お試しください（HTTP ${res.status}${code ? ` ${code}` : ''}）`,
+                : isBotCheckError(code)
+                  ? BOT_CHECK_ERRORS[code]
+                  : `うまくいきませんでした。時間をおいてもう一度お試しください（HTTP ${res.status}${code ? ` ${code}` : ''}）`,
             code,
         );
     }
@@ -79,13 +84,15 @@ export async function fetchFediverseSignUpCandidate(): Promise<FediverseSignUpCa
 }
 
 /** 登録する。登録済みだった（認証の後にほかの画面で登録した）ときは、二段階認証を求められることがある。 */
-export async function completeFediverseSignUp(input: {
-    handle: string;
-    displayName: string;
-}): Promise<{ returnTo: string; twoFactorRequired: boolean }> {
+export async function completeFediverseSignUp(
+    input: { handle: string; displayName: string },
+    /** ボット対策を確かめたトークン（使わないサーバーでは null） */
+    botToken: string | null,
+): Promise<{ returnTo: string; twoFactorRequired: boolean }> {
     const body = await authRequest<{ returnTo: string; twoFactorRequired?: boolean }>('/fediverse/sign-up', {
         method: 'POST',
         body: JSON.stringify(input),
+        headers: botCheckHeaders(botToken),
     });
     return { returnTo: body.returnTo, twoFactorRequired: body.twoFactorRequired === true };
 }

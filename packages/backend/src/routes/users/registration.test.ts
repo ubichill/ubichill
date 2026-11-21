@@ -24,6 +24,22 @@ vi.mock('../../lib/auth', () => ({
 vi.mock('../../middleware/auth', () => ({
     optionalAuth: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
+// ボット対策: `x-bot-check: ok` だけ通す（つなぎ方を確かめる。判定は services/auth/botProtection のテスト）
+vi.mock('../../middleware/botCheck', () => ({
+    requireBotCheck:
+        (action: string) =>
+        (
+            req: { get(name: string): string | undefined },
+            res: { status(code: number): { json(body: unknown): void } },
+            next: () => void,
+        ) => {
+            if (action === 'sign-up' && req.get('x-bot-check') === 'ok') return next();
+            res.status(400).json({ code: 'bot-check-required', error: 'ボットでないことの確認を済ませてください' });
+        },
+}));
+vi.mock('../../services/auth/botProtection/botProtectionService', () => ({
+    botProtectionService: { config: async () => ({ provider: 'turnstile', siteKey: 'site' }) },
+}));
 vi.mock('../../services/users/displayName', () => ({ displayNameAvailability: vi.fn() }));
 
 import { router } from './registration';
@@ -48,10 +64,14 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-const post = async (path: string, body: unknown, ip = `10.0.0.${state.ip}`) => {
+const post = async (path: string, body: unknown, ip = `10.0.0.${state.ip}`, botCheck: string | null = 'ok') => {
     const res = await fetch(`${state.base}${path}`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-forwarded-for': ip },
+        headers: {
+            'content-type': 'application/json',
+            'x-forwarded-for': ip,
+            ...(botCheck === null ? {} : { 'x-bot-check': botCheck }),
+        },
         body: JSON.stringify(body),
     });
     return { status: res.status, body: (await res.json()) as { error?: string } };
@@ -106,6 +126,16 @@ describe('POST /resend-otp', () => {
 });
 
 describe('POST /register', () => {
+    it('ボットでないことを確かめられなければ、メールを送らず、メールアドレスの数にも入れない', async () => {
+        for (const botCheck of [null, 'bad', null, 'bad']) {
+            const res = await post('/register', registration('dave@example.com'), undefined, botCheck);
+            expect(res.status).toBe(400);
+            expect(res.body.error).toBe('ボットでないことの確認を済ませてください');
+        }
+        expect(mocks.createPendingRegistration).not.toHaveBeenCalled();
+        expect((await post('/register', registration('dave@example.com'))).status).toBe(200);
+    });
+
     it('同じメールアドレスへは 1 時間に 3 通まで（大文字小文字・IP を変えても同じ）', async () => {
         const statuses = [];
         for (const [n, email] of [
@@ -145,5 +175,13 @@ describe('POST /verify', () => {
         expect(statuses.slice(0, 60).every((status) => status === 400)).toBe(true);
         expect(statuses[60]).toBe(429);
         expect(mocks.verifyAndRegister).toHaveBeenCalledTimes(60);
+    });
+});
+
+describe('GET /bot-protection', () => {
+    it('登録の画面に出すボット対策（サイトキーだけ）を返す', async () => {
+        const res = await fetch(`${state.base}/bot-protection`);
+        expect(res.headers.get('cache-control')).toBe('no-store');
+        expect(await res.json()).toEqual({ config: { provider: 'turnstile', siteKey: 'site' } });
     });
 });

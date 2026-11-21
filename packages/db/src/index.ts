@@ -16,6 +16,7 @@ export {
     type RemoteAuthorRecord,
 } from './repositories/authorKeyRepository';
 export type { FetchedSigningKey, LocalAuthorKeyRecord } from './repositories/authorKeyRows';
+export { type BotProtectionRecord, botProtectionRepository } from './repositories/botProtectionRepository';
 export {
     type CliAuthRequestRecord,
     type CreateCliAuthRequestInput,

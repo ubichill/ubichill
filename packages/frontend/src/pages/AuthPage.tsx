@@ -1,4 +1,4 @@
-import { isTwoFactorRequired, safeReturnTo } from '@ubichill/shared';
+import { BOT_CHECK_ACTIONS, type BotProtectionConfig, isTwoFactorRequired, safeReturnTo } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import {
@@ -29,9 +29,11 @@ import {
     verifyInfoStyle,
     verifyListStyle,
 } from '@/components/auth/authStyles';
+import { BotCheck } from '@/components/auth/BotCheck';
 import { FediverseSignInButton, FediverseSignInPanel } from '@/components/auth/FediverseSignInPanel';
 import { FediverseSignUpForm } from '@/components/auth/FediverseSignUpForm';
 import { TwoFactorSignInForm } from '@/components/auth/TwoFactorSignInForm';
+import { botCheckHeaders, fetchBotProtection, rejectedByBotCheck } from '@/lib/account/botProtection';
 import { readFediverseReturn, returnPathOf } from '@/lib/account/fediverseReturn';
 import { type FediverseSignInOptions, fetchFediverseSignInOptions } from '@/lib/account/fediverseSignIn';
 import { useDisplayNameAvailability, useHandleAvailability } from '@/lib/account/useHandleAvailability';
@@ -69,11 +71,21 @@ export function AuthPage() {
     const [registrationId, setRegistrationId] = useState('');
     const handleStatus = useHandleAvailability(handle, mode === 'register');
     const displayNameStatus = useDisplayNameAvailability(displayName, mode === 'register');
+    // 新規登録・ログインのボット対策（使わないなら null）。トークンは 1 回しか使えないので、送るたびに round を変えて作り直す
+    const [botProtection, setBotProtection] = useState<BotProtectionConfig | null>(null);
+    const [botToken, setBotToken] = useState<string | null>(null);
+    const [botRound, setBotRound] = useState(0);
+    // パスワードを入れ始めたらウィジェットを出す。一度出したら、パスワードを消しても作り直さない（確かめ直させない）
+    const [botCheckStarted, setBotCheckStarted] = useState(false);
 
     useEffect(() => {
         fetchFediverseSignInOptions()
             .then(setFediverseOptions)
             .catch(() => setFediverseOptions({ enabled: false, registrationOpen: false, featuredServers: [] }));
+        // 読めなければ出さない（使っているなら、登録の応答が理由を返す）
+        fetchBotProtection()
+            .then(setBotProtection)
+            .catch(() => setBotProtection(null));
     }, []);
 
     // クールダウンタイマー
@@ -109,7 +121,13 @@ export function AuthPage() {
                 }
 
                 // 仮登録（OTP送信）
-                const result = await registerWithOTP(email, password, displayName.trim(), handle.trim());
+                const result = await registerWithOTP(email, password, displayName.trim(), handle.trim(), botToken);
+                if (botProtection) setBotRound((n) => n + 1);
+                if (rejectedByBotCheck(result.code)) {
+                    await fetchBotProtection()
+                        .then(setBotProtection)
+                        .catch(() => {});
+                }
 
                 if (!result.success) {
                     setError(result.error || '登録に失敗しました');
@@ -131,14 +149,21 @@ export function AuthPage() {
                     setError('登録に失敗しました');
                 }
             } else {
-                // ログイン
+                // ログイン（メールアドレスの代わりに ID でもよい）
                 const result = await signIn.email({
-                    email,
+                    email: email.trim(),
                     password,
+                    fetchOptions: { headers: botCheckHeaders(botToken) },
                 });
+                if (botProtection) setBotRound((n) => n + 1);
+                if (result.error && rejectedByBotCheck(result.error.code)) {
+                    await fetchBotProtection()
+                        .then(setBotProtection)
+                        .catch(() => {});
+                }
 
                 if (result.error) {
-                    setError(result.error.message || 'ログインに失敗しました');
+                    setError(signInErrorMessage(result.error));
                 } else if (isTwoFactorRequired(result.data)) {
                     setPassword('');
                     setTwoFactor(true);
@@ -456,19 +481,20 @@ export function AuthPage() {
 
                     <div className={fieldStyle}>
                         <label htmlFor="email" className={labelStyle}>
-                            メールアドレス
+                            {mode === 'login' ? 'メールアドレスまたは ID' : 'メールアドレス'}
                         </label>
                         <input
                             id="email"
-                            type="email"
+                            type={mode === 'login' ? 'text' : 'email'}
                             inputMode="email"
                             autoCapitalize="none"
+                            autoCorrect="off"
                             spellCheck={false}
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            placeholder="example@email.com"
+                            placeholder={mode === 'login' ? 'example@email.com または ID' : 'example@email.com'}
                             className={inputStyle}
-                            autoComplete="email"
+                            autoComplete={mode === 'login' ? 'username' : 'email'}
                             required
                         />
                     </div>
@@ -483,7 +509,10 @@ export function AuthPage() {
                                 type={showPassword ? 'text' : 'password'}
                                 data-password
                                 value={password}
-                                onChange={(e) => setPassword(e.target.value)}
+                                onChange={(e) => {
+                                    setPassword(e.target.value);
+                                    if (e.target.value !== '') setBotCheckStarted(true);
+                                }}
                                 placeholder="8文字以上"
                                 className={inputStyle}
                                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
@@ -503,6 +532,18 @@ export function AuthPage() {
                         </div>
                     </div>
 
+                    {/* パスワードを入れ始めてから出す（画面を見ただけ・フェディバースで入る人には外部のスクリプトを読ませない） */}
+                    {botProtection && botCheckStarted && (
+                        <BotCheck
+                            // ログインと登録で action が違うので、タブを替えたら作り直す
+                            key={`${mode}:${botRound}`}
+                            provider={botProtection.provider}
+                            siteKey={botProtection.siteKey}
+                            action={mode === 'login' ? BOT_CHECK_ACTIONS.signIn : BOT_CHECK_ACTIONS.signUp}
+                            onToken={setBotToken}
+                        />
+                    )}
+
                     {error && (
                         <p role="alert" className={errorStyle}>
                             {error}
@@ -519,6 +560,7 @@ export function AuthPage() {
                         className={buttonStyle}
                         disabled={
                             isLoading ||
+                            (botProtection !== null && botToken === null) ||
                             (mode === 'register' &&
                                 (handleStatus.state === 'checking' || displayNameStatus.state === 'checking'))
                         }
@@ -551,4 +593,17 @@ export function AuthPage() {
             </div>
         </main>
     );
+}
+
+/** better-auth のログインの失敗を、画面の言葉にする */
+function signInErrorMessage(error: { code?: string; message?: string }): string {
+    switch (error.code) {
+        case 'INVALID_EMAIL_OR_PASSWORD':
+            return 'メールアドレス（または ID）かパスワードが違います';
+        // `@` を含むとメールアドレスとして扱う。フェディバースの書き方（@alice）で入れた人に向けて
+        case 'INVALID_EMAIL':
+            return 'メールアドレスの形が正しくありません。ID は @ を付けずに入れてください';
+        default:
+            return error.message || 'ログインに失敗しました';
+    }
 }
