@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router';
 import { ConsolePanel } from '@/components/console/ConsolePanel';
 import { ConsoleStatusBar } from '@/components/console/ConsoleStatusBar';
 import { useConsoleEntries } from '@/components/console/useConsoleEntries';
+import { signInPath } from '@/lib/account/authEntry';
 import { consoleCounts } from '@/lib/console/console';
 import { appConsole, logConsole } from '@/lib/console/consoleStore';
 import { useSession } from '@/lib/session';
@@ -177,7 +178,7 @@ export function WorldEditorPage() {
 
     // 認証ガード
     useEffect(() => {
-        if (!isPending && !session) navigate('/auth');
+        if (!isPending && !session) navigate(signInPath(`${window.location.pathname}${window.location.search}`));
     }, [isPending, session, navigate]);
 
     const flatNodes = useMemo(

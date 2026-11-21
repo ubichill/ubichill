@@ -57,10 +57,10 @@ const signInAs = (
         returnTo: input.returnTo,
     });
 
-/** 二段階目を求めるとき、認証から戻る先（ログイン画面でコードを入れ、通ったら元の戻り先へ）。 */
+/** 二段階目を求めるとき、認証から戻る先（ログインの入り口 `/` のダイアログでコードを入れ、通ったら元の戻り先へ）。 */
 function twoFactorRedirect(redirectTo: string): { url: string; returnTo: string } {
     const url = new URL(redirectTo);
-    return { url: `${url.origin}/auth?two_factor=1`, returnTo: `${url.pathname}${url.search}${url.hash}` };
+    return { url: `${url.origin}/?two_factor=1`, returnTo: `${url.pathname}${url.search}${url.hash}` };
 }
 
 export interface FediverseSignInPluginOptions {

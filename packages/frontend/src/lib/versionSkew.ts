@@ -5,6 +5,8 @@
  * 読み込み直して更新できるかは、フロントのビルドに同梱した version.json で確かめる。
  */
 
+import { signingInProgress } from './account/authEntry';
+
 const UNKNOWN = 'unknown';
 
 /** 開いている版と配信中の版がずれているか。どちらかが分からない（開発・取得失敗）ならずれていないとみなす。 */
@@ -15,7 +17,7 @@ export function isVersionSkewed(frontCommit: string | undefined, publishedCommit
 }
 
 /**
- * 自動で読み込み直してよい画面（読み込み直しても失うものが無い画面）。ここに無い画面（インスタンス・ワールドの編集・ログイン・
+ * 自動で読み込み直してよい画面（読み込み直しても失うものが無い画面）。ここに無い画面（インスタンス・ワールドの編集・
  * CLI の承認など、今後増える画面を含む）は、知らせて利用者が選んだときに読み込み直す。
  */
 const SAFE_TO_RELOAD: readonly RegExp[] = [
@@ -35,9 +37,15 @@ const SAFE_TO_RELOAD: readonly RegExp[] = [
  * 同じ配信版のために自動で読み込み直すのはタブごとに 1 回まで（`reloadedFor`）。デプロイの途中でフロントが
  * まだ古い間に読み込み直しを繰り返さないように、2 回目からは知らせるだけにする。
  */
-export function skewAction(pathname: string, publishedCommit: string, reloadedFor: string | null): 'reload' | 'prompt' {
+export function skewAction(
+    place: { pathname: string; search: string },
+    publishedCommit: string,
+    reloadedFor: string | null,
+): 'reload' | 'prompt' {
     if (reloadedFor === publishedCommit) return 'prompt';
-    return SAFE_TO_RELOAD.some((re) => re.test(pathname)) ? 'reload' : 'prompt';
+    // `/` でも、ログイン・新規登録のダイアログを開いている間は入れている途中のものが消える
+    if (signingInProgress(place.search)) return 'prompt';
+    return SAFE_TO_RELOAD.some((re) => re.test(place.pathname)) ? 'reload' : 'prompt';
 }
 
 /** このタブで、どの配信版のために自動で読み込み直したかを覚える（読み込み直しても消えない sessionStorage）。 */

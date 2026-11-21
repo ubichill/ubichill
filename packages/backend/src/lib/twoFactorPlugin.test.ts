@@ -97,7 +97,7 @@ function setup(options: { enabled?: string[]; callback?: CallbackOutcome } = {})
             multiSession({ maximumSessions: 5 }),
             fediverseSignInPlugin({
                 getSignIn: async () =>
-                    fakeFediverse(options.callback ?? { kind: 'error', error: 'expired', redirectTo: `${BASE}/auth` }),
+                    fakeFediverse(options.callback ?? { kind: 'error', error: 'expired', redirectTo: `${BASE}/` }),
                 secondFactor: gate,
                 options: async () => ({ enabled: true, registrationOpen: true, featuredServers: [] }),
             }),
@@ -295,7 +295,7 @@ describe('twoFactorPlugin（フェディバースのログイン）', () => {
         });
         const callback = await t.request('/fediverse/callback/mi.example?code=c&state=s');
         expect(callback.status).toBe(302);
-        expect(callback.headers.get('location')).toBe(`${BASE}/auth?two_factor=1`);
+        expect(callback.headers.get('location')).toBe(`${BASE}/?two_factor=1`);
         expect(t.db.session).toHaveLength(0);
         expect([...t.rows.values()][0]).toMatchObject({
             userId: 'u-sso',

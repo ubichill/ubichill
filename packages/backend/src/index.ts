@@ -84,7 +84,7 @@ app.get('/health', (_req, res) => {
 // レート制限
 // 認証(/api/auth)・バージョン・ヘルスは除外する。
 // 特に /api/auth はセッション確認で高頻度に叩かれるため、ここで 429 を返すと
-// 認証ループ（セッション失敗→/auth→再確認）に陥りバックエンドが実質ダウンする。
+// 認証ループ（セッション失敗→ログインの画面→再確認）に陥りバックエンドが実質ダウンする。
 const limiter = rateLimit({
     windowMs: appConfig.rateLimit.windowMs,
     max: appConfig.rateLimit.maxRequests,

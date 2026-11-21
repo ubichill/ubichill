@@ -1,37 +1,7 @@
 import { css } from '@/styled-system/css';
-import { flex, vstack } from '@/styled-system/patterns';
+import { vstack } from '@/styled-system/patterns';
 
-/** ログイン・登録の画面の見た目（AuthPage とフェディバースのログインで共用）。 */
-export const containerStyle = flex({
-    minH: '100dvh',
-    px: { base: '4', sm: '6' },
-    py: '6',
-    alignItems: 'center',
-    justifyContent: 'center',
-    bg: 'background',
-});
-
-export const cardStyle = vstack({
-    gap: '6',
-    p: { base: '6', sm: '8' },
-    bg: 'white',
-    rounded: 'lg',
-    border: '1px solid',
-    borderColor: 'border',
-    w: 'full',
-    maxW: '400px',
-});
-
-export const iconStyle = css({
-    borderRadius: '14px',
-});
-
-export const titleStyle = css({
-    fontSize: { base: '2xl', sm: '3xl' },
-    fontWeight: 'bold',
-    color: 'text',
-    wordBreak: 'auto-phrase',
-});
+// ログイン・登録のダイアログの見た目（メールアドレス・二段階目・フェディバースでの登録・紹介のページで共用）
 
 export const subtitleStyle = css({
     fontSize: 'sm',
@@ -225,6 +195,3 @@ export const dividerStyle = css({
     _before: { content: '""', flex: 1, h: '1px', bg: 'border' },
     _after: { content: '""', flex: 1, h: '1px', bg: 'border' },
 });
-
-/** ログイン状態を確かめている間。場所は取ったまま見えなくする */
-export const pendingStyle = css({ visibility: 'hidden' });

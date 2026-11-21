@@ -1,6 +1,7 @@
 import { type Instance, isFullFor, type WorldListItem, WorldSourceKind, worldSourceLabel } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
+import { signInPath } from '@/lib/account/authEntry';
 import { useSession } from '@/lib/session';
 import { createInstance, fetchInstances, fetchWorld } from '@/lib/worlds/instancesApi';
 import { localWorldPagePath } from '@/lib/worlds/worldRef';
@@ -88,7 +89,7 @@ export function WorldPage() {
     const requireAuthThenGo = (next: () => void) => {
         if (isPending) return;
         if (!session) {
-            navigate('/auth', { state: { from: `${location.pathname}${location.search}` }, replace: false });
+            navigate(signInPath(`${location.pathname}${location.search}`));
             return;
         }
         next();
@@ -101,7 +102,7 @@ export function WorldPage() {
     const handleCreate = async () => {
         if (!worldRef || creating) return;
         if (!session) {
-            navigate('/auth', { state: { from: `${location.pathname}${location.search}` }, replace: false });
+            navigate(signInPath(`${location.pathname}${location.search}`));
             return;
         }
         setCreating(true);
