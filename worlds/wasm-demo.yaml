@@ -6,6 +6,7 @@ metadata:
 spec:
   displayName: WASM デモ
   description: "mod に同梱した WASM で、同梱アセットと外部から取得したバイト列のチェックサムを計算するサンプル"
+  thumbnail: https://ubichill.com/world-thumbnails/wasm-demo.png
   environment:
     worldSize:
       width: 800

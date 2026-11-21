@@ -20,6 +20,7 @@ metadata:
   version: 1.0.0
 spec:
   displayName: テスト
+  thumbnail: https://example.com/thumbnail.png
   capacity: { default: 2, max: 4 }
   initialEntities: []
 `;
@@ -119,6 +120,15 @@ describe('publish（本体へ）', () => {
         await expect(failure).rejects.toThrow(/core:txt/);
         await expect(failure).rejects.toThrow(/colour/);
         expect(requests).toEqual([]);
+    });
+
+    it('サムネイルが無ければ、サーバーに送る前に止める（外部ホスト向けも同じ）', async () => {
+        const noThumbnail = worldYaml.replace('  thumbnail: https://example.com/thumbnail.png\n', '');
+        for (const options of [{}, { outDir: 'out' }]) {
+            const { deps, requests } = fakeDeps({ 'w.yaml': noThumbnail }, () => ({ status: 200, body: {} }));
+            await expect(publish(deps, { worldPath: 'w.yaml', credential, ...options })).rejects.toThrow(/サムネイル/);
+            expect(requests).toEqual([]);
+        }
     });
 
     it('サーバーが断ったら、その理由で失敗する（取り消し済みの鍵など）', async () => {

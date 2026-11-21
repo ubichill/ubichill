@@ -19,7 +19,7 @@ interface PublishPanelProps {
 
 /**
  * コントロールパネルの下端。直すことの一覧・最後の失敗・保存と公開のボタンをまとめる。
- * 止める項目（error）があるうちは保存も公開も押せない。
+ * 止める項目（error）があるうちは押せない（公開だけに要るもの、たとえばサムネイルは下書きを止めない）。
  */
 export function PublishPanel({
     isEdit,
@@ -33,8 +33,8 @@ export function PublishPanel({
     onSaveDraft,
     onPublish,
 }: PublishPanelProps) {
-    const blockers = blockingChecks(checks);
-    const blockedReason = blockers[0]?.message;
+    const draftBlockedReason = blockingChecks(checks, 'draft')[0]?.message;
+    const blockedReason = blockingChecks(checks, 'publish')[0]?.message;
     return (
         <div className={css({ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' })}>
             {failure && (
@@ -135,8 +135,8 @@ export function PublishPanel({
                     <button
                         type="button"
                         onClick={onSaveDraft}
-                        disabled={saving || !!blockedReason || (isEdit && !dirty)}
-                        title={blockedReason ?? '公開中の版は変わりません。Cmd/Ctrl+S'}
+                        disabled={saving || !!draftBlockedReason || (isEdit && !dirty)}
+                        title={draftBlockedReason ?? '公開中の版は変わりません。Cmd/Ctrl+S'}
                         className={editorButton({ intent: 'secondary', size: 'lg' })}
                     >
                         {isEdit ? '下書き保存' : '下書きとして作成'}

@@ -194,7 +194,8 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
         kind: CORE_COMPONENT_TYPES.portal,
         displayName: '入口',
         suggestSize: true,
-        defaultTransform: { w: 200, h: 56 },
+        // 行き先のサムネイルの丸い窓（幅いっぱい）と、その上の名前
+        defaultTransform: { w: 180, h: 228 },
         dataFields: {
             world: {
                 type: 'string',
@@ -206,8 +207,9 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
             label: {
                 type: 'string',
                 default: '',
-                placeholder: '入口',
+                placeholder: '行き先のワールドの名前',
                 label: `名前（${PORTAL_LABEL_MAX_LENGTH} 文字まで）`,
+                help: '空なら、行き先のワールドの名前を出します。',
             },
         },
         viewKind: 'jsx',

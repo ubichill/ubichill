@@ -32,6 +32,7 @@ import {
     type WorldSignatureInvalidReason,
     type WorldSource,
     WorldSourceKind,
+    worldPublishProblem,
 } from '@ubichill/shared';
 import yaml from 'yaml';
 import { assertPublicUrl, safeFetch } from '../../lib/safeFetch';
@@ -98,6 +99,7 @@ export type SaveBundleResult =
               | 'name-taken'
               | 'author-not-found'
               | 'version-conflict'
+              | 'thumbnail-required'
               | WorldSignatureInvalidReason;
           message: string;
       };
@@ -748,6 +750,9 @@ class WorldRegistry {
                 message: `ワールドの定義が不正です: ${issue?.path.join('.') ?? ''} ${issue?.message ?? ''}`,
             };
         }
+        // 公開（署名付き）だけに求める。下書き・署名なしの保存はサムネイルが無くてもよい
+        const publishProblem = bundle.signature === undefined ? null : worldPublishProblem(parsed.data.spec);
+        if (publishProblem) return { ok: false, reason: 'thumbnail-required', message: publishProblem };
         const worldName = parsed.data.metadata.name;
         const handle = (await userRepository.findById(authorId))?.handle;
         if (!handle) return { ok: false, reason: 'author-not-found', message: '作者のアカウントが見つかりません' };

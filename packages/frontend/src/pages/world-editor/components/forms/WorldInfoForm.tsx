@@ -254,7 +254,7 @@ function Field({ label, required, children }: { label: string; required?: boolea
     );
 }
 
-/** 右上のサムネイル。画像を押すと、画像を上げるか URL を入れて替えられる（空にすると外れる）。 */
+/** 右上のサムネイル。画像を押すと、画像を上げるか URL を入れて替えられる（空にすると外れる）。公開に必要で、一覧と入口に出る。 */
 function ThumbnailPicker({ url, onChange }: { url: string | undefined; onChange: (url: string | undefined) => void }) {
     const [editing, setEditing] = useState(false);
     const [failedUrl, setFailedUrl] = useState<string | null>(null);
@@ -297,7 +297,7 @@ function ThumbnailPicker({ url, onChange }: { url: string | undefined; onChange:
                 ) : (
                     <>
                         <ImageIcon />
-                        {url ? '画像を読み込めません' : 'サムネイル'}
+                        {url ? '画像を読み込めません' : 'サムネイル（公開に必要）'}
                     </>
                 )}
             </button>

@@ -5,6 +5,7 @@ spec:
     default: 10
   displayName: Ubichill Home
   description: "Ubichill公式のホームワールド"
+  thumbnail: https://ubichill.com/world-thumbnails/home.png
   environment:
     worldSize:
       width: 2000

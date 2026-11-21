@@ -1,20 +1,25 @@
-import { checkWorldCompatibility, type WorldRequirements } from '@ubichill/shared';
+import { checkWorldCompatibility, type WorldRequirements, worldPublishProblem } from '@ubichill/shared';
 import type { ControlPanelTab } from '../hooks/useEditorModals';
 
 /** 確認項目から直しに行く先。タブはコントロールパネルのタブ、entity はヒエラルキーで選ぶ。 */
 export type CheckTarget = { kind: 'tab'; tab: ControlPanelTab } | { kind: 'entity'; entityId: string };
 
-/** error は保存・公開を止める。warning は止めずに知らせる。 */
+/** error は保存・公開を止める（publishOnly なら公開だけ止め、下書きは保存できる）。warning は止めずに知らせる。 */
 export interface EditorCheck {
     id: string;
     severity: 'error' | 'warning';
+    publishOnly?: boolean;
     message: string;
     target?: CheckTarget;
 }
 
+/** 止めるかを決める操作。下書きは公開に要るもの（サムネイルなど）が揃っていなくても保存できる。 */
+export type EditorAction = 'draft' | 'publish';
+
 export interface EditorCheckInput {
     displayName: string;
     worldName: string;
+    thumbnail?: string;
     /** YAML タブで書きかけのまま反映できていない内容があるときの理由 */
     yamlError: string;
     referenceProblems: ReadonlyArray<{ entityId: string; message: string }>;
@@ -41,6 +46,7 @@ export function editorChecks(input: EditorCheckInput): EditorCheck[] {
         input.worldName
             ? null
             : { id: 'worldName', severity: 'error', message: '名前（URL）を決めてください', target: infoTab },
+        thumbnailCheck(input.thumbnail),
         input.packagesError
             ? {
                   id: 'packages',
@@ -65,15 +71,22 @@ export function editorChecks(input: EditorCheckInput): EditorCheck[] {
 
 const infoTab: CheckTarget = { kind: 'tab', tab: 'info' };
 
+function thumbnailCheck(thumbnail: string | undefined): EditorCheck | null {
+    const problem = worldPublishProblem({ thumbnail });
+    return problem
+        ? { id: 'thumbnail', severity: 'error', publishOnly: true, message: problem, target: infoTab }
+        : null;
+}
+
 /** ワールドがこの Host で一部動かない可能性があるときの知らせ（無ければ空）。 */
 export function compatibilityMessage(requires: WorldRequirements | undefined, hostProtocol?: number): string {
     const result = checkWorldCompatibility(requires, hostProtocol);
     return result.level === 'ok' ? '' : result.message;
 }
 
-/** 保存・公開を止める項目。 */
-export function blockingChecks(checks: readonly EditorCheck[]): EditorCheck[] {
-    return checks.filter((check) => check.severity === 'error');
+/** その操作を止める項目。 */
+export function blockingChecks(checks: readonly EditorCheck[], action: EditorAction = 'publish'): EditorCheck[] {
+    return checks.filter((check) => check.severity === 'error' && (action === 'publish' || !check.publishOnly));
 }
 
 /** コントロールパネルのボタンに出す印。失敗や直すことがあるときだけ。 */
