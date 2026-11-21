@@ -26,6 +26,7 @@ import {
     normalizeEmail,
     type PendingRegistrations,
 } from '../services/auth/pendingRegistrations';
+import { createSignInEmailResolver } from '../services/auth/signInEmail';
 import { createProductionTwoFactor, type ProductionTwoFactor } from '../services/auth/twoFactor';
 import { logger } from '../utils/logger';
 import { accountSwitchPlugin } from './accountSwitchPlugin';
@@ -34,6 +35,7 @@ import { fediverseSignInPlugin } from './fediverseSignInPlugin';
 import { createMailer, mailTransportFrom } from './mail';
 import { redis } from './redis';
 import { sessionAssuranceFields, sessionAssuranceHooks } from './sessionAssuranceOptions';
+import { signInIdentifierPlugin } from './signInIdentifierPlugin';
 import { type SecondFactorGate, twoFactorPlugin } from './twoFactorPlugin';
 
 // 認証メールの送信元。組織固有ドメインを直書きせず env で差し替え可能にする
@@ -340,6 +342,12 @@ export const auth = betterAuth({
         ...(redis ? { customStorage: createAuthRateLimitStorage(redis, logger) } : {}),
     },
     plugins: [
+        // パスワードのログインで ID も受け付ける（better-auth に入る前にメールアドレスへ置き換える）
+        signInIdentifierPlugin({
+            resolveEmail: createSignInEmailResolver({
+                findEmailByHandle: async (handle) => (await userRepository.findByHandle(handle))?.email ?? null,
+            }),
+        }),
         // ログインの二段階目。パスワードのログインの後始末（セッションを消す）を multiSession より先に行うため最初に置く
         twoFactorPlugin({ gate: secondFactorGate }),
         // ログインしたセッションを「このブラウザーのアカウント」として覚える（切り替えの口は accountSwitchPlugin）

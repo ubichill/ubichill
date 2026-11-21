@@ -35,7 +35,7 @@ const KEY_PAGES: Readonly<Record<BotProtectionProvider, { url: string; label: st
 const SETTLE_MS = 600;
 
 /**
- * ボット対策（管理者）。新規登録（メールアドレス・フェディバース）で、ボットでないことを Turnstile か hCaptcha で
+ * ボット対策（管理者）。新規登録（メールアドレス・フェディバース）とパスワードでのログインで、ボットでないことを Turnstile か hCaptcha で
  * 確かめる。保存の前に、入れた鍵の組でウィジェットを通してもらい、サーバーで確かめてから保存する。
  */
 export function BotProtectionSection() {
@@ -122,10 +122,12 @@ export function BotProtectionSection() {
     return (
         <section className={section}>
             <h2 className={heading}>ボット対策</h2>
-            <p className={lead}>新規登録（メールアドレス・フェディバース）で、ボットでないことを確かめます。</p>
+            <p className={lead}>
+                新規登録（メールアドレス・フェディバース）とパスワードでのログインで、ボットでないことを確かめます。
+            </p>
             {!settings.secretReadable && (
                 <p className={adminError} role="alert">
-                    保存したシークレットキーを読めないため、新規登録を止めています（サーバーの秘密を入れ替えたときなど）。シークレットキーを入れ直すか、使わないにしてください。
+                    保存したシークレットキーを読めないため、新規登録とパスワードでのログインを止めています（サーバーの秘密を入れ替えたときなど）。シークレットキーを入れ直すか、使わないにしてください。
                 </p>
             )}
             <form

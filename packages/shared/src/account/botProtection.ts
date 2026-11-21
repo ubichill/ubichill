@@ -1,5 +1,5 @@
 /**
- * ボット対策（新規登録で、ボットでないことを外部のサービスで確かめる）の、画面と backend が共有する形。
+ * ボット対策（新規登録とパスワードでのログインで、ボットでないことを外部のサービスで確かめる）の、画面と backend が共有する形。
  * 管理者がコントロールパネルで、使うサービスとその鍵を決める。
  */
 
@@ -42,6 +42,8 @@ export const BOT_CHECK_HEADER = 'x-bot-check';
  * 英数字・`-`・`_` で 32 文字まで（Turnstile の制約）。
  */
 export const BOT_CHECK_ACTIONS = {
+    /** パスワードでのログイン */
+    signIn: 'sign-in',
     signUp: 'sign-up',
     fediverseSignUp: 'fediverse-sign-up',
     /** コントロールパネルで、鍵の組が使えるかを確かめる */
@@ -54,7 +56,7 @@ export const BOT_CHECK_ERRORS = {
     'bot-check-required': 'ボットでないことの確認を済ませてください',
     'bot-check-failed': 'ボットでないことを確かめられませんでした。もう一度お試しください',
     'bot-check-unavailable': 'ボット対策のサービスに接続できませんでした。しばらくしてからもう一度お試しください',
-    'bot-check-misconfigured': 'ボット対策の設定に問題があり、登録できません。管理者に連絡してください',
+    'bot-check-misconfigured': 'ボット対策の設定に問題があり、続けられません。管理者に連絡してください',
 } as const;
 
 export type BotCheckError = keyof typeof BOT_CHECK_ERRORS;

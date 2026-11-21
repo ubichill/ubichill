@@ -166,6 +166,11 @@ app.use(
 );
 // ログインだけは Redis が使えない間も通さない（総当たりの上限を外さない）。ほかの認証の口は制限なしで通す
 app.use('/api/auth/sign-in/email', requireSharedRateLimitForLogin(redis, authRateLimitEnabled));
+// パスワードでのログインのボット対策（ID でのログインも同じ口）
+const signInBotCheck = requireBotCheck(BOT_CHECK_ACTIONS.signIn);
+app.use('/api/auth/sign-in/email', (req, res, next) =>
+    req.method === 'POST' ? signInBotCheck(req, res, next) : next(),
+);
 app.use('/api/auth', toNodeHandler(auth));
 
 // ============================================
