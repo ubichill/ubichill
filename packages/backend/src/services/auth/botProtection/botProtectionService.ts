@@ -32,11 +32,12 @@ const cachedSettings = (): Promise<BotProtectionRecord | null> => {
     return value;
 };
 
-// 未設定の値を既定の URL（localhost）で埋めない（本番で localhost のトークンを受け付けない）
+// 本番では、設定していない値を appConfig の既定の URL（localhost）で埋めない（localhost で取ったトークンを受け付けない）
 const hostnames = publicHostnames([
-    appConfig.auth.url,
     process.env[ENV_KEYS.PUBLIC_BASE_URL] ?? '',
-    ...(Array.isArray(appConfig.cors.origin) ? appConfig.cors.origin : []),
+    ...(appConfig.isProduction
+        ? [process.env.BETTER_AUTH_URL ?? '', ...(process.env.CORS_ORIGIN ?? '').split(',').map((o) => o.trim())]
+        : [appConfig.auth.url, ...(Array.isArray(appConfig.cors.origin) ? appConfig.cors.origin : [])]),
 ]);
 
 const ready: { value?: Promise<BotProtection> } = {};

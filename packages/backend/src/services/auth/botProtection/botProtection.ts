@@ -162,11 +162,14 @@ export function createBotProtection(deps: BotProtectionDeps) {
         }): Promise<BotCheckOutcome> {
             const current = await active();
             if (!current) return { ok: true };
+            // 鍵が壊れているときも、パスワードでのログインは通す（管理者が入って直せるように。新規登録は止める）
+            const misconfigured = (detail: string): BotCheckOutcome => {
+                const signIn = input.action === BOT_CHECK_ACTIONS.signIn;
+                deps.warn(`ボット対策: ${detail}。${signIn ? 'ログインは確かめずに通している' : '登録を止めている'}`);
+                return signIn ? { ok: true } : { ok: false, status: 503, code: 'bot-check-misconfigured' };
+            };
             if (current.config === null || current.secret === null) {
-                deps.warn(
-                    'ボット対策: 保存した設定を読めない（サーバーの秘密の入れ替え・知らないサービス）。登録を止めている',
-                );
-                return { ok: false, status: 503, code: 'bot-check-misconfigured' };
+                return misconfigured('保存した設定を読めない（サーバーの秘密の入れ替え・知らないサービス）');
             }
             const token = input.token?.trim() ?? '';
             if (!token) return { ok: false, status: 400, code: 'bot-check-required' };
@@ -178,8 +181,7 @@ export function createBotProtection(deps: BotProtectionDeps) {
                     return { ok: false, status: 503, code: 'bot-check-unavailable' };
                 case 'misconfigured':
                 case 'testing-key':
-                    deps.warn(`ボット対策: 鍵が使えない（${verdict.reason}）。登録を止めている`);
-                    return { ok: false, status: 503, code: 'bot-check-misconfigured' };
+                    return misconfigured(`鍵が使えない（${verdict.reason}）`);
                 case 'wrong-hostname':
                     deps.warn(`ボット対策: 確かめたページのホスト名が違う（${verdict.hostname ?? '無し'}）`);
                     return { ok: false, status: 400, code: 'bot-check-failed' };

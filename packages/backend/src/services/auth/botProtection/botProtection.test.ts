@@ -142,6 +142,36 @@ describe('ボット対策の確認（check）', () => {
         expect(warn).toHaveBeenCalledTimes(2);
     });
 
+    it('鍵が壊れていても、パスワードでのログインは通す（管理者が入って直せるように）。つながらないときは止める', async () => {
+        const { bot, store, warn } = setup();
+        await bot.update(enable());
+        const saved = store.row as StoredBotProtection;
+        // シークレットキーを開けない
+        store.row = { ...saved, siteKey: 'other-site' };
+        expect(await bot.check({ token: undefined, action: 'sign-in', remoteIp: undefined })).toEqual({ ok: true });
+        expect(warn).toHaveBeenLastCalledWith(expect.stringContaining('ログインは確かめずに通している'));
+        // 検証サービスが鍵を受け付けない
+        store.row = {
+            ...saved,
+            secret: createSecretBox(keys, 'bot-protection/secret').seal(
+                new TextEncoder().encode('revoked-secret'),
+                'bot-protection\nturnstile\nsite-key',
+            ),
+        };
+        expect(await bot.check({ token: 'ok-sign-in', action: 'sign-in', remoteIp: undefined })).toEqual({ ok: true });
+        // 鍵が正しいときは、ログインでもトークンを確かめる
+        store.row = saved;
+        expect(await bot.check({ token: undefined, action: 'sign-in', remoteIp: undefined })).toMatchObject({
+            ok: false,
+            code: 'bot-check-required',
+        });
+        expect(await bot.check({ token: 'down', action: 'sign-in', remoteIp: undefined })).toMatchObject({
+            ok: false,
+            status: 503,
+            code: 'bot-check-unavailable',
+        });
+    });
+
     it('知らないサービスが保存されていたら（版を戻したなど）、画面には出さず登録を止める', async () => {
         const { bot, store } = setup();
         store.row = { provider: 'recaptcha', siteKey: 's', secret: 'x', updatedAt: new Date() };

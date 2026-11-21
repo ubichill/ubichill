@@ -47,7 +47,8 @@ export function BotCheck({
             .then((api) => {
                 if (widget.cancelled) return;
                 widget.api = api;
-                widget.id = api.render(element, botWidgetOptions({ provider, siteKey }, action, handlers));
+                widget.id = api.render(element, botWidgetOptions({ provider, siteKey }, action, handlers)) ?? null;
+                if (widget.id === null) setFailed(true);
             })
             .catch(() => {
                 if (!widget.cancelled) setFailed(true);
