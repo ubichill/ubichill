@@ -270,6 +270,7 @@ export * from './schemas';
 export { createModLock, lockedMods } from './schemas/modLock.schema';
 export * from './schemas/url.schema';
 export { withoutWorldLock } from './schemas/world.schema';
+export * from './server/serverInfo';
 export {
     confirmEnvelopeAuthor,
     type EnvelopeInvalidReason,

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_SERVER_INFO, UBICHILL_REPOSITORY_URL } from '../server/serverInfo';
 import {
     buildFriendOffer,
     buildInvite,
@@ -361,6 +362,31 @@ describe('nodeinfo・protocol', () => {
             federationVersion: null,
         });
         expect(nodeInfoUrlFrom(nodeInfoLinks('https://a.example'))).toBe('https://a.example/nodeinfo/2.1');
+    });
+
+    it('サーバーの情報を metadata に入れ、ソースコードの URL は書いたものを使う', () => {
+        const info = buildNodeInfo({
+            version: '4.2.0',
+            openRegistrations: false,
+            server: {
+                ...DEFAULT_SERVER_INFO,
+                name: 'ようかんの Ubichill',
+                maintainerName: 'ようかん',
+                repositoryUrl: 'https://example.com/fork',
+            },
+        });
+        expect(info).toMatchObject({
+            software: { repository: 'https://example.com/fork' },
+            openRegistrations: false,
+            metadata: {
+                nodeName: 'ようかんの Ubichill',
+                maintainer: { name: 'ようかん', email: null },
+                ubichill: { federation: { version: 1 } },
+            },
+        });
+        expect(buildNodeInfo({ version: '4.2.0', openRegistrations: true })).toMatchObject({
+            software: { repository: UBICHILL_REPOSITORY_URL },
+        });
     });
 
     it('鍵の id と actor の id', () => {

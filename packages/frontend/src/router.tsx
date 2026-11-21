@@ -12,6 +12,7 @@ import { HomePage } from './pages/HomePage';
 import { InstancePage } from './pages/InstancePage';
 import { ModPage } from './pages/ModPage';
 import { UserPage } from './pages/UserPage';
+import { VisitorPage } from './pages/VisitorPage';
 import { WorldPage } from './pages/WorldPage';
 import { WorldEditorPage } from './pages/world-editor';
 
@@ -23,11 +24,11 @@ export function AppRouter() {
                     <ConfirmProvider>
                         <Routes>
                             <Route path="/auth" element={<AuthPage />} />
-                            {/* ロビーは無い。ログインしたらホームの部屋へそのまま移る */}
+                            {/* ロビーは無い。ログインしたらホームの部屋へそのまま移る。ログインしていなければサーバーの紹介 */}
                             <Route
                                 path="/"
                                 element={
-                                    <ProtectedRoute>
+                                    <ProtectedRoute guest={<VisitorPage />}>
                                         <HomePage />
                                     </ProtectedRoute>
                                 }

@@ -4,6 +4,8 @@ import { isUnauthorized, useSession } from '@/lib/session';
 
 interface ProtectedRouteProps {
     children: ReactNode;
+    /** ログインしていない人に出すもの（無ければ /auth へ） */
+    guest?: ReactNode;
 }
 
 const Loading = () => (
@@ -20,16 +22,17 @@ const Loading = () => (
  *   - 取得中 → ローディング
  *   - セッションあり → 子を表示
  *   - セッション未確立かつ一過性エラー（401 以外）→ provider が再試行中なので待つ
- *   - それ以外（明示的な未認証 / 401）→ /auth へ
+ *   - それ以外（明示的な未認証 / 401）→ guest があればそれ、無ければ /auth へ
  * とするだけでよい。
  */
-export function ProtectedRoute({ children }: ProtectedRouteProps) {
+export function ProtectedRoute({ children, guest }: ProtectedRouteProps) {
     const { data: session, isPending, error } = useSession();
     const location = useLocation();
 
     if (isPending) return <Loading />;
     if (session) return <>{children}</>;
     if (error && !isUnauthorized(error)) return <Loading />;
+    if (guest) return <>{guest}</>;
 
     return <Navigate to="/auth" state={{ from: location }} replace />;
 }

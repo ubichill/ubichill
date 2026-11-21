@@ -37,6 +37,7 @@ import { router as messagesRouter } from './routes/messages';
 import { router as modsRouter } from './routes/mods';
 import { router as notificationsRouter } from './routes/notifications';
 import { router as profilesRouter } from './routes/profiles';
+import { router as serverRouter } from './routes/server';
 import { router as serviceTokensRouter } from './routes/serviceTokens';
 import { router as socialRouter } from './routes/social';
 import { router as usersRouter } from './routes/users';
@@ -202,6 +203,7 @@ app.use('/api/v1/cli-auth', cliAuthRouter);
 app.use('/api/v1/federation', federationApiRouter);
 app.use('/api/v1/service-tokens', serviceTokensRouter);
 app.use('/api/v1/admin', adminRouter);
+app.use('/api/v1/server', serverRouter);
 app.use('/.well-known/webfinger', webfingerRouter);
 
 // HTTPサーバーを作成
