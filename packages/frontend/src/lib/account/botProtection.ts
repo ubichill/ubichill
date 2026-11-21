@@ -31,7 +31,8 @@ export const botCheckHeaders = (token: string | null): Record<string, string> =>
 
 /** Turnstile と hCaptcha のスクリプトが置く口（使う分だけ）。 */
 export interface BotWidgetApi {
-    render(container: HTMLElement, options: Record<string, unknown>): string;
+    /** 作れなければ undefined を返すことがある（Turnstile） */
+    render(container: HTMLElement, options: Record<string, unknown>): string | undefined;
     reset(widgetId: string): void;
     remove(widgetId: string): void;
 }
@@ -93,8 +94,10 @@ export function loadBotWidget(provider: BotProtectionProvider): Promise<BotWidge
         script.async = true;
         script.onload = () => {
             const loaded = api();
-            if (loaded) resolve(loaded);
-            else reject(new Error('ボット対策のスクリプトが読み込めませんでした'));
+            if (loaded) return resolve(loaded);
+            // 読み直すときにタグを重ねない
+            script.remove();
+            reject(new Error('ボット対策のスクリプトが読み込めませんでした'));
         };
         script.onerror = () => {
             script.remove();

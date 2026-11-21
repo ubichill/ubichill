@@ -43,6 +43,7 @@ import { router as socialRouter } from './routes/social';
 import { router as usersRouter } from './routes/users';
 import { router as webfingerRouter } from './routes/webfinger';
 import { router as worldsRouter } from './routes/worlds';
+import { botProtectionService } from './services/auth/botProtection/botProtectionService';
 import { FEDIVERSE_FLOW_PREFIX, fediverseLoginPolicyChanged } from './services/auth/fediverse';
 import { bootstrapOfficialAccount } from './services/authors/officialAccountService';
 import { backendEvents, createRedisBackendBus } from './services/cluster/backendEvents';
@@ -167,6 +168,14 @@ app.use(
 );
 // ログインだけは Redis が使えない間も通さない（総当たりの上限を外さない）。ほかの認証の口は制限なしで通す
 app.use('/api/auth/sign-in/email', requireSharedRateLimitForLogin(redis, authRateLimitEnabled));
+// ボット対策を使っている間は、検証 API を呼ぶ前に IP ごとに絞る（better-auth の制限はボット対策より後ろにあり、
+// 断った要求は数えない。負荷試験はボット対策を使わないので掛からない）
+app.use(
+    '/api/auth/sign-in/email',
+    sharedLimiter('sign-in-bot-check', 15 * 60_000, 60, 'ログインが多すぎます。しばらくしてからお試しください', {
+        skip: async (req) => req.method !== 'POST' || (await botProtectionService.config().catch(() => null)) === null,
+    }),
+);
 // パスワードでのログインのボット対策（ID でのログインも同じ口）
 const signInBotCheck = requireBotCheck(BOT_CHECK_ACTIONS.signIn);
 app.use('/api/auth/sign-in/email', (req, res, next) =>

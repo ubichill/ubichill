@@ -84,6 +84,8 @@ export function AuthPage() {
     const [botRound, setBotRound] = useState(0);
     // サーバーの名前（コントロールパネルの「全般」）。null は読み込み中
     const [serverName, setServerName] = useState<string | null>(null);
+    // パスワードを入れ始めたらウィジェットを出す。一度出したら、パスワードを消しても作り直さない（確かめ直させない）
+    const [botCheckStarted, setBotCheckStarted] = useState(false);
 
     useEffect(() => {
         fetchFediverseSignInOptions()
@@ -175,11 +177,7 @@ export function AuthPage() {
                 }
 
                 if (result.error) {
-                    setError(
-                        result.error.code === 'INVALID_EMAIL_OR_PASSWORD'
-                            ? 'メールアドレス（または ID）かパスワードが違います'
-                            : result.error.message || 'ログインに失敗しました',
-                    );
+                    setError(signInErrorMessage(result.error));
                 } else if (isTwoFactorRequired(result.data)) {
                     setPassword('');
                     setTwoFactor(true);
@@ -513,7 +511,10 @@ export function AuthPage() {
                                 type={showPassword ? 'text' : 'password'}
                                 data-password
                                 value={password}
-                                onChange={(e) => setPassword(e.target.value)}
+                                onChange={(e) => {
+                                    setPassword(e.target.value);
+                                    if (e.target.value !== '') setBotCheckStarted(true);
+                                }}
                                 placeholder="8文字以上"
                                 className={inputStyle}
                                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
@@ -534,7 +535,7 @@ export function AuthPage() {
                     </div>
 
                     {/* パスワードを入れ始めてから出す（画面を見ただけ・フェディバースで入る人には外部のスクリプトを読ませない） */}
-                    {botProtection && password !== '' && (
+                    {botProtection && botCheckStarted && (
                         <BotCheck
                             // ログインと登録で action が違うので、替えたら作り直す
                             key={`${mode}:${botRound}`}
@@ -632,3 +633,16 @@ const switchModeButtonStyle = css({
     cursor: 'pointer',
     _disabled: { opacity: 0.6, cursor: 'not-allowed' },
 });
+
+/** better-auth のログインの失敗を、画面の言葉にする */
+function signInErrorMessage(error: { code?: string; message?: string }): string {
+    switch (error.code) {
+        case 'INVALID_EMAIL_OR_PASSWORD':
+            return 'メールアドレス（または ID）かパスワードが違います';
+        // `@` を含むとメールアドレスとして扱う。フェディバースの書き方（@alice）で入れた人に向けて
+        case 'INVALID_EMAIL':
+            return 'メールアドレスの形が正しくありません。ID は @ を付けずに入れてください';
+        default:
+            return error.message || 'ログインに失敗しました';
+    }
+}
