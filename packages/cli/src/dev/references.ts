@@ -4,8 +4,10 @@
  */
 import {
     type DataFieldsLike,
+    describeCoreComponentProblem,
     describeReferenceProblem,
     fieldLabel,
+    findCoreComponentProblems,
     findReferenceProblems,
     type RefCheckEntity,
 } from '@ubichill/shared';
@@ -29,9 +31,14 @@ export function manifestFieldsOf(mods: Iterable<Pick<ModArtifacts, 'files'>>): F
     return (type) => byType.get(type);
 }
 
-/** 参照の問題を、ターミナルに出す説明の列にする。 */
+/** 参照の問題と、この版に無い本体の部品・項目を、ターミナルに出す説明の列にする。 */
 export function referenceWarnings(entities: readonly RefCheckEntity[], fieldsOf: FieldsOf): string[] {
-    return findReferenceProblems(entities, fieldsOf).map((problem) =>
-        describeReferenceProblem(problem, fieldLabel(fieldsOf(problem.componentType), problem.field)),
-    );
+    return [
+        ...findReferenceProblems(entities, fieldsOf).map((problem) =>
+            describeReferenceProblem(problem, fieldLabel(fieldsOf(problem.componentType), problem.field)),
+        ),
+        ...findCoreComponentProblems(entities).map(
+            (problem) => `${problem.entityId}: ${describeCoreComponentProblem(problem)}`,
+        ),
+    ];
 }

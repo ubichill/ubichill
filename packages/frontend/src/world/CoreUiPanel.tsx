@@ -1,4 +1,4 @@
-import { UiDataSchema } from '@ubichill/core-components';
+import { readCoreData, UiDataSchema } from '@ubichill/core-components';
 import { ModUIMount } from '@ubichill/react';
 import type { ComponentInstance } from '@ubichill/shared';
 import { parseUiMarkup } from '@ubichill/ui-renderer';
@@ -14,7 +14,7 @@ const ignoreAction = (): void => {};
  * 許可リスト・URL と style の検査）で描く。リンクを押せるよう、面は入力を受け取る。
  */
 export const CoreUiPanel: React.FC<{ entity: ComponentInstance }> = ({ entity }) => {
-    const parsed = UiDataSchema.safeParse(entity.data ?? {});
+    const parsed = readCoreData(UiDataSchema, entity.data ?? {});
     const markup = parsed.success ? parsed.data.markup : '';
     const vnode = useMemo(() => parseUiMarkup(markup), [markup]);
     const entityId = entity.entityId ?? entity.id;

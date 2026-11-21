@@ -4,6 +4,7 @@ import {
     DependencySourceSchema,
     InitialEntitiesSchema,
     type InitialEntity,
+    requiredLockModIds,
     type WorldSource,
     WorldSourceKind,
     worldOriginDomain,
@@ -136,8 +137,17 @@ describe('core:collider world validation', () => {
         expect(() => InitialEntitiesSchema.parse(input)).not.toThrow();
     });
 
-    it('未知のcore namespaceと不正なCollider dataを拒否する', () => {
-        expect(() => InitialEntitiesSchema.parse([entity({ type: 'core:unknown', data: {} })])).toThrow();
+    it('この版が知らない core の部品は、断らずに data ごと残し、mod として数えない', () => {
+        const input = [entity({ type: 'core:switch', data: { targets: ['door'] } })];
+        expect(InitialEntitiesSchema.parse(input)[0]?.components[0]).toMatchObject({
+            type: 'core:switch',
+            data: { targets: ['door'] },
+        });
+        expect(collectModIds(input)).toEqual([]);
+        expect(requiredLockModIds({ initialEntities: input })).toEqual([]);
+    });
+
+    it('知っている部品の値の誤りは断る', () => {
         expect(() =>
             InitialEntitiesSchema.parse([
                 entity({ type: 'core:collider', data: { shape: 'rect', size: { w: -1, h: 1 } } }),
@@ -161,14 +171,14 @@ describe('core:media world validation', () => {
         expect(collectModIds(input)).toEqual([]);
     });
 
-    it('fit は contain / cover だけ。未知のキー（URL など再生の中身）は持てない', () => {
+    it('fit は contain / cover だけ。知らない項目（URL など）は読む側では残すだけ', () => {
         expect(() =>
             InitialEntitiesSchema.parse([entity({ type: 'core:media', data: { fit: 'cover' } })]),
         ).not.toThrow();
         expect(() => InitialEntitiesSchema.parse([entity({ type: 'core:media', data: { fit: 'stretch' } })])).toThrow();
         expect(() =>
             InitialEntitiesSchema.parse([entity({ type: 'core:media', data: { url: 'https://example.com/a.mp4' } })]),
-        ).toThrow();
+        ).not.toThrow();
     });
 });
 
@@ -187,11 +197,11 @@ describe('core:ui world validation', () => {
         expect(collectModIds(input)).toEqual([]);
     });
 
-    it('長すぎる UI データ・文字列でない値・未知のキーは拒否する', () => {
+    it('長すぎる UI データ・文字列でない値は拒否する。知らない項目は読む側では残すだけ', () => {
         const parse = (data: Record<string, unknown>) => () =>
             InitialEntitiesSchema.parse([entity({ type: 'core:ui', data })]);
         expect(parse({ markup: 'x'.repeat(20_001) })).toThrow();
         expect(parse({ markup: 42 })).toThrow();
-        expect(parse({ markup: '', script: 'alert(1)' })).toThrow();
+        expect(parse({ markup: '', script: 'alert(1)' })).not.toThrow();
     });
 });
