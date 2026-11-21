@@ -14,7 +14,6 @@ export function BotCheck({
     action,
     onToken,
     failureHint,
-    deferred = false,
 }: {
     provider: BotProtectionProvider;
     siteKey: string;
@@ -22,8 +21,6 @@ export function BotCheck({
     onToken: (token: string | null) => void;
     /** 読み込めない・ウィジェットが失敗したときに添える説明 */
     failureHint?: string;
-    /** まだ読み込まない（場所だけ取っておく）。外部のスクリプトは要るときまで読まない */
-    deferred?: boolean;
 }) {
     const container = useRef<HTMLDivElement>(null);
     const [failed, setFailed] = useState(false);
@@ -32,7 +29,7 @@ export function BotCheck({
     // biome-ignore lint/correctness/useExhaustiveDependencies: attempt は「もう一度」で作り直すためだけに見る
     useEffect(() => {
         const element = container.current;
-        if (!element || deferred) return;
+        if (!element) return;
         const widget: { cancelled: boolean; api: BotWidgetApi | null; id: string | null } = {
             cancelled: false,
             api: null,
@@ -60,7 +57,7 @@ export function BotCheck({
             onToken(null);
             if (widget.api && widget.id !== null) widget.api.remove(widget.id);
         };
-    }, [provider, siteKey, action, onToken, attempt, deferred]);
+    }, [provider, siteKey, action, onToken, attempt]);
 
     return (
         <div className={css({ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5', w: 'full' })}>
@@ -89,16 +86,13 @@ export function BotCheck({
     );
 }
 
-/**
- * 読み込む前から場所を取っておく（届いた後に画面がずれない）。高さはサービスのウィジェットに合わせる。
- * Turnstile は幅いっぱいに広がる（size: flexible）。hCaptcha は幅が決まっているので真ん中に置く
- */
+/** Turnstile は幅いっぱいに広がる（size: flexible）。hCaptcha は幅が決まっているので真ん中に置く */
 const widgetBox = cva({
     base: { w: 'full' },
     variants: {
         provider: {
-            turnstile: { display: 'block', minH: '68px' },
-            hcaptcha: { display: 'flex', justifyContent: 'center', minH: '78px' },
+            turnstile: { display: 'block' },
+            hcaptcha: { display: 'flex', justifyContent: 'center' },
         },
     },
 });

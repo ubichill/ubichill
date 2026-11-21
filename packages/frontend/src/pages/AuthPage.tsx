@@ -1,5 +1,5 @@
 import { BOT_CHECK_ACTIONS, type BotProtectionConfig, isTwoFactorRequired, safeReturnTo } from '@ubichill/shared';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import {
     buttonStyle,
@@ -13,6 +13,7 @@ import {
     formStyle,
     hintStyle,
     iconStyle,
+    identifierRowStyle,
     inputErrorStyle,
     inputStyle,
     labelStyle,
@@ -20,6 +21,7 @@ import {
     otpInputStyle,
     passwordToggleStyle,
     pendingStyle,
+    stepEnterStyle,
     subtitleStyle,
     successStyle,
     tabActiveStyle,
@@ -42,6 +44,8 @@ import { useSession } from '@/lib/session';
 import { css, cx } from '@/styled-system/css';
 
 type AuthMode = 'login' | 'register' | 'verify';
+/** ログインは ID（メールアドレス）を入れてから、パスワードの段に移る */
+type LoginStep = 'identifier' | 'password';
 
 export function AuthPage() {
     const navigate = useNavigate();
@@ -57,6 +61,10 @@ export function AuthPage() {
     const [fediverseOptions, setFediverseOptions] = useState<FediverseSignInOptions | null>(null);
     const [fediverseOpen, setFediverseOpen] = useState(false);
     const [mode, setMode] = useState<AuthMode>('login');
+    const [loginStep, setLoginStep] = useState<LoginStep>('identifier');
+    // 段を替えた向き（最初に開いたときは動かさない）
+    const [stepFrom, setStepFrom] = useState<'end' | 'start' | null>(null);
+    const passwordInput = useRef<HTMLInputElement>(null);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -86,6 +94,11 @@ export function AuthPage() {
             .catch(() => setBotProtection(null));
     }, []);
 
+    // パスワードの段に移ったら、すぐ打てるように
+    useEffect(() => {
+        if (mode === 'login' && loginStep === 'password') passwordInput.current?.focus();
+    }, [mode, loginStep]);
+
     // クールダウンタイマー
     useEffect(() => {
         if (resendCooldown > 0) {
@@ -106,6 +119,14 @@ export function AuthPage() {
         e.preventDefault();
         setError('');
         setSuccess('');
+        if (mode === 'login' && loginStep === 'identifier') {
+            // ここでは問い合わせない（ID があるかを教えない）。間違いはパスワードと一緒に返す
+            if (email.trim() !== '') {
+                setLoginStep('password');
+                setStepFrom('end');
+            }
+            return;
+        }
         setIsLoading(true);
 
         try {
@@ -284,6 +305,26 @@ export function AuthPage() {
         );
     }
 
+    // タブを替えたら、ログインは ID の段から。パスワードはログインと登録で意味が違うので持ち越さない
+    const switchMode = (next: 'login' | 'register') => {
+        if (next === mode) return;
+        setMode(next);
+        setLoginStep('identifier');
+        setStepFrom(null);
+        setPassword('');
+        setError('');
+        setSuccess('');
+        setShowPassword(false);
+    };
+
+    const backToIdentifier = () => {
+        setLoginStep('identifier');
+        setStepFrom('start');
+        setPassword('');
+        setError('');
+        setShowPassword(false);
+    };
+
     const handleBackToRegister = () => {
         setMode('register');
         setOtp('');
@@ -367,6 +408,11 @@ export function AuthPage() {
         );
     }
 
+    const showIdentifier = mode === 'register' || loginStep === 'identifier';
+    const showPasswordField = mode === 'register' || loginStep === 'password';
+    // 外部のスクリプトは、パスワードでログイン・登録しようとしてから読む（画面を見ただけ・フェディバースで入る人には読ませない）
+    const showBotCheck = botProtection !== null && (mode === 'login' ? loginStep === 'password' : password !== '');
+
     return (
         <main className={containerStyle}>
             {/* ログイン状態を確かめている間も同じ大きさで場所を取り、見えなくしておく（届いた後に画面がずれない） */}
@@ -381,12 +427,7 @@ export function AuthPage() {
                     <button
                         type="button"
                         className={mode === 'login' ? tabActiveStyle : tabStyle}
-                        onClick={() => {
-                            setMode('login');
-                            setError('');
-                            setSuccess('');
-                            setShowPassword(false);
-                        }}
+                        onClick={() => switchMode('login')}
                         aria-pressed={mode === 'login'}
                         disabled={isLoading}
                     >
@@ -395,12 +436,7 @@ export function AuthPage() {
                     <button
                         type="button"
                         className={mode === 'register' ? tabActiveStyle : tabStyle}
-                        onClick={() => {
-                            setMode('register');
-                            setError('');
-                            setSuccess('');
-                            setShowPassword(false);
-                        }}
+                        onClick={() => switchMode('register')}
                         aria-pressed={mode === 'register'}
                         disabled={isLoading}
                     >
@@ -408,7 +444,13 @@ export function AuthPage() {
                     </button>
                 </div>
 
-                <form onSubmit={handleSubmit} className={formStyle} aria-busy={isLoading}>
+                <form
+                    // 段を替えたら作り直して、横から入れる
+                    key={mode === 'login' ? loginStep : mode}
+                    onSubmit={handleSubmit}
+                    className={cx(formStyle, stepFrom && stepEnterStyle({ from: stepFrom }))}
+                    aria-busy={isLoading}
+                >
                     {mode === 'register' && (
                         <>
                             <div className={fieldStyle}>
@@ -481,57 +523,71 @@ export function AuthPage() {
                         </>
                     )}
 
-                    <div className={fieldStyle}>
-                        <label htmlFor="email" className={labelStyle}>
-                            {mode === 'login' ? 'メールアドレスまたは ID' : 'メールアドレス'}
-                        </label>
-                        <input
-                            id="email"
-                            type={mode === 'login' ? 'text' : 'email'}
-                            inputMode="email"
-                            autoCapitalize="none"
-                            autoCorrect="off"
-                            spellCheck={false}
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder={mode === 'login' ? 'example@email.com または ID' : 'example@email.com'}
-                            className={inputStyle}
-                            autoComplete={mode === 'login' ? 'username' : 'email'}
-                            required
-                        />
-                    </div>
-
-                    <div className={fieldStyle}>
-                        <label htmlFor="password" className={labelStyle}>
-                            パスワード
-                        </label>
-                        <div className={css({ position: 'relative', w: 'full' })}>
+                    {showIdentifier ? (
+                        <div className={fieldStyle}>
+                            <label htmlFor="email" className={labelStyle}>
+                                {mode === 'login' ? 'メールアドレスまたは ID' : 'メールアドレス'}
+                            </label>
                             <input
-                                id="password"
-                                type={showPassword ? 'text' : 'password'}
-                                data-password
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                placeholder="8文字以上"
+                                id="email"
+                                type={mode === 'login' ? 'text' : 'email'}
+                                inputMode="email"
+                                autoCapitalize="none"
+                                autoCorrect="off"
+                                spellCheck={false}
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                placeholder={mode === 'login' ? 'example@email.com または ID' : 'example@email.com'}
                                 className={inputStyle}
-                                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                                minLength={8}
+                                autoComplete={mode === 'login' ? 'username' : 'email'}
                                 required
                             />
-                            <button
-                                type="button"
-                                className={passwordToggleStyle}
-                                aria-label={showPassword ? 'パスワードを隠す' : 'パスワードを表示'}
-                                aria-controls="password"
-                                aria-pressed={showPassword}
-                                onClick={() => setShowPassword((value) => !value)}
-                            >
-                                {showPassword ? '隠す' : '表示'}
+                        </div>
+                    ) : (
+                        <div className={identifierRowStyle}>
+                            {/* パスワードの管理ツールが、どのアカウントのパスワードかを分かるように */}
+                            <input type="hidden" name="username" autoComplete="username" value={email.trim()} />
+                            <span>{email.trim()}</span>
+                            <button type="button" className={changeIdentifierStyle} onClick={backToIdentifier}>
+                                変更
                             </button>
                         </div>
-                    </div>
+                    )}
 
-                    {botProtection && (
+                    {showPasswordField && (
+                        <div className={fieldStyle}>
+                            <label htmlFor="password" className={labelStyle}>
+                                パスワード
+                            </label>
+                            <div className={css({ position: 'relative', w: 'full' })}>
+                                <input
+                                    id="password"
+                                    ref={passwordInput}
+                                    type={showPassword ? 'text' : 'password'}
+                                    data-password
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    placeholder="8文字以上"
+                                    className={inputStyle}
+                                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                                    minLength={8}
+                                    required
+                                />
+                                <button
+                                    type="button"
+                                    className={passwordToggleStyle}
+                                    aria-label={showPassword ? 'パスワードを隠す' : 'パスワードを表示'}
+                                    aria-controls="password"
+                                    aria-pressed={showPassword}
+                                    onClick={() => setShowPassword((value) => !value)}
+                                >
+                                    {showPassword ? '隠す' : '表示'}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {botProtection && showBotCheck && (
                         <BotCheck
                             // ログインと登録で action が違うので、タブを替えたら作り直す
                             key={`${mode}:${botRound}`}
@@ -539,8 +595,6 @@ export function AuthPage() {
                             siteKey={botProtection.siteKey}
                             action={mode === 'login' ? BOT_CHECK_ACTIONS.signIn : BOT_CHECK_ACTIONS.signUp}
                             onToken={setBotToken}
-                            // パスワードを入れ始めてから確かめる（画面を見ただけ・フェディバースで入る人には外部のスクリプトを読ませない）
-                            deferred={password === ''}
                         />
                     )}
 
@@ -560,12 +614,18 @@ export function AuthPage() {
                         className={buttonStyle}
                         disabled={
                             isLoading ||
-                            (botProtection !== null && botToken === null) ||
+                            (showBotCheck && botToken === null) ||
                             (mode === 'register' &&
                                 (handleStatus.state === 'checking' || displayNameStatus.state === 'checking'))
                         }
                     >
-                        {isLoading ? '処理中...' : mode === 'login' ? 'ログイン' : '登録'}
+                        {isLoading
+                            ? '処理中...'
+                            : mode === 'register'
+                              ? '登録'
+                              : loginStep === 'identifier'
+                                ? '続ける'
+                                : 'ログイン'}
                     </button>
                 </form>
 
@@ -594,3 +654,11 @@ export function AuthPage() {
         </main>
     );
 }
+
+const changeIdentifierStyle = css({
+    flexShrink: 0,
+    fontSize: 'sm',
+    color: 'primary',
+    textDecoration: 'underline',
+    cursor: 'pointer',
+});

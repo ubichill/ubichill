@@ -1,4 +1,4 @@
-import { css } from '@/styled-system/css';
+import { css, cva } from '@/styled-system/css';
 import { flex, vstack } from '@/styled-system/patterns';
 
 /** ログイン・登録の画面の見た目（AuthPage とフェディバースのログインで共用）。 */
@@ -82,6 +82,36 @@ export const tabActiveStyle = css({
 export const formStyle = vstack({
     gap: '4',
     w: 'full',
+});
+
+/** ログインの段（ID → パスワード）を替えたときに横から入れる */
+export const stepEnterStyle = cva({
+    base: {
+        animationDuration: '0.2s',
+        animationTimingFunction: 'ease-out',
+        _motionReduce: { animation: 'none' },
+    },
+    variants: {
+        from: {
+            end: { animationName: 'slideFromEnd' },
+            start: { animationName: 'slideFromStart' },
+        },
+    },
+});
+
+/** パスワードの段で、入れた ID（メールアドレス）と「変更」 */
+export const identifierRowStyle = flex({
+    w: 'full',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '2',
+    px: '3',
+    py: '2',
+    bg: 'surfaceHover',
+    rounded: 'md',
+    fontSize: 'sm',
+    color: 'text',
+    overflowWrap: 'anywhere',
 });
 
 export const fieldStyle = vstack({
