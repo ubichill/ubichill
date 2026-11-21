@@ -3,22 +3,22 @@ import {
     accountDeletionRepository,
     accounts,
     db,
-    fediverseAccountRepository,
     pendingRegistrationRepository,
     sessions,
     userRepository,
     users,
     verifications,
 } from '@ubichill/db';
-import { contactEmailOf, displayNameKey, FEATURED_FEDIVERSE_SERVERS, isReservedEmail } from '@ubichill/shared';
+import { contactEmailOf, displayNameKey, isReservedEmail } from '@ubichill/shared';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { multiSession } from 'better-auth/plugins';
 import { eq } from 'drizzle-orm';
-import { Resend } from 'resend';
 import { z } from 'zod';
 import { appConfig } from '../config';
 import { createProductionFediverseSignIn } from '../services/auth/fediverse';
+import { featuredServerList } from '../services/auth/fediverse/featuredServerList';
+import { featuredServersFor } from '../services/auth/fediverse/featuredServers';
 import type { FediverseSignIn } from '../services/auth/fediverse/signIn';
 import {
     createOtpHasher,
@@ -30,26 +30,25 @@ import { logger } from '../utils/logger';
 import { accountSwitchPlugin } from './accountSwitchPlugin';
 import { createAuthRateLimitStorage } from './authRateLimit';
 import { fediverseSignInPlugin } from './fediverseSignInPlugin';
+import { createMailer, mailTransportFrom } from './mail';
 import { redis } from './redis';
 import { sessionAssuranceFields, sessionAssuranceHooks } from './sessionAssuranceOptions';
-
-// SKIP_EMAIL_VERIFICATION=true の場合はAPIキー不要なので遅延初期化
-let _resend: Resend | null = null;
-function getResend(): Resend {
-    if (!_resend) {
-        _resend = new Resend(process.env.RESEND_API_KEY);
-    }
-    return _resend;
-}
 
 // 認証メールの送信元。組織固有ドメインを直書きせず env で差し替え可能にする
 // （OSS としてセルフホスト時に自分の検証済みドメインを使えるように）。
 const MAIL_FROM = process.env.MAIL_FROM ?? 'Ubichill <onboarding@resend.dev>';
 
+/** メールの送り方（SMTP_URL か RESEND_API_KEY。lib/mail.ts） */
+const mailer = createMailer(
+    mailTransportFrom({ smtpUrl: appConfig.email.smtpUrl, resendApiKey: appConfig.email.resendApiKey }),
+    MAIL_FROM,
+);
+const sendMail = (input: { to: string; subject: string; text: string }) => mailer.send(input);
+
 /**
  * アカウントの安全に関わる通知（新しい公開環境の追加など）をメールで送る。乗っ取りに本人が気付けるようにするため。
  * 確認済みの連絡先が無いユーザー（フェディバースで登録したメールなしのユーザーなど）には送らない。
- * メールを送らない環境（SKIP_EMAIL_VERIFICATION・API キー未設定）ではログだけ出す。送信の失敗で操作は止めない。
+ * メールを送らない環境（SKIP_EMAIL_VERIFICATION・送り方が未設定）ではログだけ出す。送信の失敗で操作は止めない。
  */
 export async function sendAccountNotice(
     user: { email: string; emailVerified: boolean },
@@ -57,15 +56,32 @@ export async function sendAccountNotice(
     text: string,
 ): Promise<void> {
     const to = contactEmailOf(user);
-    if (!to || process.env.SKIP_EMAIL_VERIFICATION === 'true' || !process.env.RESEND_API_KEY) {
+    if (!to || appConfig.email.skipVerification || !mailer.configured) {
         logger.info(`通知（送信しない環境）: ${subject}`);
         return;
     }
     try {
-        await getResend().emails.send({ from: MAIL_FROM, to, subject: `【Ubichill】${subject}`, text });
+        await sendMail({ to, subject: `【Ubichill】${subject}`, text });
     } catch (error) {
         logger.error(`通知メールの送信に失敗しました: ${subject}`, error);
     }
+}
+
+/** メールアドレスの追加の確認コードを送る（送れなければ投げる）。 */
+export async function sendEmailLinkCode(to: string, otp: string): Promise<void> {
+    logger.info(`メールアドレスの追加のコード: ${to} OTP=${otpForLog(otp)}`);
+    await sendMail({
+        to,
+        subject: '【Ubichill】メールアドレスの確認コード',
+        text: `Ubichill のアカウントにこのメールアドレスを追加するための確認コード:
+
+${otp}
+
+このコードは10分間有効です。
+
+---
+心当たりがない場合は、このメールを無視してください。アドレスは追加されません。`,
+    });
 }
 
 // OTPを生成（暗号学的に安全な乱数を使用）
@@ -167,8 +183,7 @@ export async function createPendingRegistration(
     // OTPをメールで送信
     logger.info(`OTP送信: ${email} OTP=${otpForLog(otp)}`);
     try {
-        const result = await getResend().emails.send({
-            from: MAIL_FROM,
+        await sendMail({
             to: email,
             subject: `【Ubichill】${displayName} さんの認証コード`,
             text: `${displayName} さん、Ubichill へようこそ！
@@ -183,7 +198,7 @@ ${otp}
 このメールは ${email} 宛に送信されました。
 心当たりがない場合は、このメールを無視してください。`,
         });
-        logger.info(`OTP送信成功: ${email}`, result);
+        logger.info(`OTP送信成功: ${email}`);
         return { success: true, registrationId };
     } catch (error) {
         logger.error(`OTP送信失敗: ${email}`, error);
@@ -232,8 +247,7 @@ export async function resendOTP(registrationId: string): Promise<{ success: bool
 
     logger.info(`OTP再送信: ${email} OTP=${otpForLog(otp)}`);
     try {
-        await getResend().emails.send({
-            from: MAIL_FROM,
+        await sendMail({
             to: email,
             subject: `【Ubichill】${pending.displayName} さんの認証コード（再送信）`,
             text: `${pending.displayName} さん
@@ -259,7 +273,7 @@ ${otp}
 logger.debug(
     [
         'Better Auth 初期化中',
-        `RESEND_API_KEY=${process.env.RESEND_API_KEY ? '設定済み' : '未設定'}`,
+        `メールの送り方=${mailer.kind}`,
         `BETTER_AUTH_URL=${process.env.BETTER_AUTH_URL || 'http://localhost:3001'}`,
         `CORS_ORIGIN=${process.env.CORS_ORIGIN || 'http://localhost:3000'}`,
         `SKIP_EMAIL_VERIFICATION=${SKIP_EMAIL_VERIFICATION ? '有効' : '無効'}`,
@@ -310,15 +324,13 @@ export const auth = betterAuth({
         accountSwitchPlugin(),
         fediverseSignInPlugin({
             getSignIn: () => getFediverseSignIn(),
-            hasPassword: (userId) => fediverseAccountRepository.hasPassword(userId),
-            options: () => ({
+            options: async () => ({
                 enabled: appConfig.fediverseSignIn.enabled,
                 registrationOpen: appConfig.registrationOpen,
-                // 使えるサーバーを限っているなら、それを並べる
-                featuredServers:
-                    appConfig.fediverseSignIn.allowedServers.size > 0
-                        ? [...appConfig.fediverseSignIn.allowedServers]
-                        : FEATURED_FEDIVERSE_SERVERS,
+                featuredServers: featuredServersFor(
+                    await featuredServerList.get(),
+                    appConfig.fediverseSignIn.allowedServers,
+                ),
             }),
         }),
     ],
@@ -369,3 +381,6 @@ const getFediverseSignIn = (() => {
         return cache.ready;
     };
 })();
+
+/** サーバーの公開情報とログインに使えるか（コントロールパネルで並べるサーバーを足すときの確認）。 */
+export const lookupFediverseServerInfo = async (host: string) => (await getFediverseSignIn()).lookup(host);

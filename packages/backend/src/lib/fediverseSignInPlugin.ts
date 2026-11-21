@@ -12,7 +12,6 @@ import { setSessionCookie } from 'better-auth/cookies';
 import { z } from 'zod';
 import type { FediverseSignIn } from '../services/auth/fediverse/signIn';
 import { SIGN_UP_TTL_MS, STATE_TTL_MS } from '../services/auth/fediverse/signIn';
-import { isRecentlyAuthenticated, toDateOrNull } from '../services/auth/sessionAssurance';
 
 const STATUS = { 400: 'BAD_REQUEST', 404: 'NOT_FOUND', 409: 'CONFLICT' } as const;
 
@@ -51,18 +50,16 @@ async function signInAs(ctx: EndpointContext, userId: string, accountRowId: stri
 
 export interface FediverseSignInPluginOptions {
     getSignIn: () => Promise<FediverseSignIn>;
-    /** パスワードを持つユーザーか（連携の開始に求める本人確認を決める） */
-    hasPassword: (userId: string) => Promise<boolean>;
     /** ログイン画面に出す設定（使えるか・新規登録を受け付けるか・並べるサーバー） */
-    options: () => { enabled: boolean; registrationOpen: boolean; featuredServers: readonly string[] };
+    options: () => Promise<{ enabled: boolean; registrationOpen: boolean; featuredServers: readonly string[] }>;
 }
 
-export function fediverseSignInPlugin({ getSignIn, hasPassword, options }: FediverseSignInPluginOptions) {
+export function fediverseSignInPlugin({ getSignIn, options }: FediverseSignInPluginOptions) {
     return {
         id: 'fediverse-sign-in',
         endpoints: {
             fediverseOptions: createAuthEndpoint('/fediverse/options', { method: 'GET' }, async (ctx) =>
-                ctx.json(options()),
+                ctx.json(await options()),
             ),
 
             fediverseStart: createAuthEndpoint(
@@ -77,25 +74,12 @@ export function fediverseSignInPlugin({ getSignIn, hasPassword, options }: Fediv
                     }),
                 },
                 async (ctx) => {
+                    // 連携は DB のセッションで確かめる（取り消したログインのクッキーキャッシュでは足させない）。
+                    // パスワードの入れ直しは求めない。足したことは連絡先に知らせ、設定の一覧で外せる
                     const current =
                         ctx.body.intent === 'link'
                             ? await getSessionFromCtx(ctx, { disableCookieCache: true, disableRefresh: true })
                             : null;
-                    // 奪われたセッションでログイン方法を足されないよう、直近に本人確認をしたセッションに限る
-                    // （パスワードを持つ人はパスワードで。SSO で入った直後のセッションだけでは足せない）
-                    if (
-                        current &&
-                        !isRecentlyAuthenticated(
-                            {
-                                createdAt: toDateOrNull(current.session.createdAt) ?? new Date(0),
-                                passwordVerifiedAt: toDateOrNull(current.session.passwordVerifiedAt),
-                            },
-                            new Date(),
-                            await hasPassword(current.user.id),
-                        )
-                    ) {
-                        throw APIError.fromStatus('FORBIDDEN', { code: 'reauth-required', message: 'reauth-required' });
-                    }
                     const started = await (await getSignIn()).start({
                         server: ctx.body.server,
                         intent: ctx.body.intent,

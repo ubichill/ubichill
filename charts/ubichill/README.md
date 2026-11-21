@@ -20,8 +20,9 @@ helm install ubichill ubichill/ubichill \
 - DB は同梱の PostgreSQL がパスワードを自動生成するため指定不要（自前 DB を使うなら
   `postgresql.auth.password` か `postgresql.auth.existingSecret`）。スキーマは backend Pod の
   **migrate init container** が起動時に適用する。
-- メール認証を使うなら `backend.secretEnv.RESEND_API_KEY` と `backend.env.MAIL_FROM`、
-  使わないなら `backend.env.SKIP_EMAIL_VERIFICATION=true`。
+- メール認証を使うなら、送り方として `backend.secretEnv.SMTP_URL`（`smtps://ユーザー:パスワード@ホスト:465`、
+  または STARTTLS の `smtp://…:587`）か `backend.secretEnv.RESEND_API_KEY` と、送信元の `backend.env.MAIL_FROM`。
+  両方あれば SMTP を使う。使わないなら `backend.env.SKIP_EMAIL_VERIFICATION=true`。
 
 環境別 values の例は [`values-dev.yaml`](values-dev.yaml) / [`values-prod.yaml`](values-prod.yaml) を参照。
 

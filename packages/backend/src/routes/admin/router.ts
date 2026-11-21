@@ -1,14 +1,18 @@
 import { type RequestHandler, type Response, Router } from 'express';
-import type { RoleOutcome, RoleService } from '../../services/roles/roles';
+import type { FeaturedServers } from '../../services/auth/fediverse/featuredServers';
+import type { RoleService } from '../../services/roles/roles';
 
 export interface AdminRouterDeps {
     requireAuth: RequestHandler;
     requireAdmin: RequestHandler;
     roles: RoleService;
+    featuredServers: FeaturedServers;
 }
 
+type Outcome<T> = { ok: true; value: T } | { ok: false; status: number; error: string };
+
 /** 失敗はその状態で返す。本文が null なら 204。 */
-const send = <T>(res: Response, outcome: RoleOutcome<T>, view: (value: T) => object | null, status = 200): void => {
+const send = <T>(res: Response, outcome: Outcome<T>, view: (value: T) => object | null, status = 200): void => {
     res.set('Cache-Control', 'no-store');
     if (!outcome.ok) {
         res.status(outcome.status).json({ error: outcome.error });
@@ -27,6 +31,8 @@ const same = <T extends object | null>(value: T): T => value;
  * - `GET /roles/:roleId/members`・`PUT /roles/:roleId/members/:userId`（本文 `{ expiresAt }`）・
  *   `DELETE /roles/:roleId/members/:userId`: アサイン
  * - `GET /users?q=`: ユーザーとロール（検索語が無ければ新しく登録した順）
+ * - `GET /fediverse-servers`・`POST /fediverse-servers`（本文 `{ server }`）・`PUT /fediverse-servers/order`
+ *   （本文 `{ servers }`）・`DELETE /fediverse-servers/:host`: ログイン画面に並べるサーバー（応答は変えた後の一覧）
  * 連合の設定は `/api/v1/federation`、お知らせは `/api/v1/notifications/announcements`。
  */
 export function createAdminRouter(deps: AdminRouterDeps): Router {
@@ -64,6 +70,22 @@ export function createAdminRouter(deps: AdminRouterDeps): Router {
     router.get('/users', async (req, res) => {
         const q = typeof req.query.q === 'string' ? req.query.q : '';
         send(res, await deps.roles.searchUsers(q), (users) => ({ users }));
+    });
+
+    router.get('/fediverse-servers', async (_req, res) => {
+        send(res, await deps.featuredServers.list(), same);
+    });
+
+    router.post('/fediverse-servers', async (req, res) => {
+        send(res, await deps.featuredServers.add(req.body?.server), same, 201);
+    });
+
+    router.put('/fediverse-servers/order', async (req, res) => {
+        send(res, await deps.featuredServers.reorder(req.body), same);
+    });
+
+    router.delete('/fediverse-servers/:host', async (req, res) => {
+        send(res, await deps.featuredServers.remove(req.params.host), same);
     });
 
     return router;

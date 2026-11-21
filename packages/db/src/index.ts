@@ -29,11 +29,18 @@ export {
     type MessageReactionRecord,
 } from './repositories/directMessageRepository';
 export {
+    type EmailLinkRecord,
+    emailLinkRepository,
+    type LinkEmailOutcome,
+    type LockedEmailLink,
+} from './repositories/emailLinkRepository';
+export {
     type ExternalWorkKey,
     type ExternalWorkRecord,
     externalWorkRepository,
 } from './repositories/externalWorkRepository';
 export { favoriteRepository } from './repositories/favoriteRepository';
+export { type AddFeaturedServerOutcome, featuredServerRepository } from './repositories/featuredServerRepository';
 export * from './repositories/federation';
 export { federationPeerRepository } from './repositories/federationPeerRepository';
 export {
@@ -74,6 +81,7 @@ export {
 export { type BlockRecord, userBlockRepository } from './repositories/userBlockRepository';
 export { type FriendRow, userFriendRepository } from './repositories/userFriendRepository';
 export {
+    type AccountSessionRecord,
     type ProfileFieldsInput,
     type UserProfileRecord,
     type UserRecord,

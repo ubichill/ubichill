@@ -11,6 +11,7 @@ import { LoginMethodsSection } from './settings/LoginMethodsSection';
 import { ModPermissionsSettings } from './settings/ModPermissionsSettings';
 import { PasswordSection } from './settings/PasswordSection';
 import { PrivacySection } from './settings/PrivacySection';
+import { SessionsSection } from './settings/SessionsSection';
 
 export type SettingsSection = 'home' | 'privacy' | 'fediverse' | 'publishing' | 'account' | 'mods';
 
@@ -28,7 +29,7 @@ const NEEDS_ACCOUNT: ReadonlySet<SettingsSection> = new Set(['publishing', 'acco
 
 /**
  * 設定タブ。ホーム・プライバシー（だれに何を見せるか）・フェディバース（フォローの受け方とフォロワー）・
- * 公開（公開環境）・アカウント（パスワード・ログアウト）・mod の権限を、左で切り替える。
+ * 公開（公開環境）・アカウント（パスワード・ログイン方法・ログイン中の端末・削除）・mod の権限を、左で切り替える。
  * プロフィールはプロフィールの画面でその場で編集する。管理者の設定（連合・お知らせ）はコントロールパネル。
  */
 export function SettingsTab({
@@ -77,6 +78,18 @@ export function SettingsTab({
                     />
                 )}
                 {current === 'account' && (
+                    <p className={css({ fontSize: '13px', color: 'textMuted', lineHeight: '1.6' })}>
+                        パスワード・ログイン方法・ログイン中の端末など、アカウントの安全に関わる設定です。
+                    </p>
+                )}
+                {current === 'account' && profile && loginMethods.methods?.password !== false && (
+                    <PasswordSection
+                        required={!!profile.passwordChangeRequired}
+                        managedBySecret={!!profile.passwordManagedBySecret}
+                        onChanged={() => account.setProfile({ ...profile, passwordChangeRequired: false })}
+                    />
+                )}
+                {current === 'account' && (
                     <LoginMethodsSection
                         methods={loginMethods.methods}
                         adminRequiresPassword={!!profile?.adminRequiresPassword}
@@ -86,13 +99,7 @@ export function SettingsTab({
                         }}
                     />
                 )}
-                {current === 'account' && profile && loginMethods.methods?.password !== false && (
-                    <PasswordSection
-                        required={!!profile.passwordChangeRequired}
-                        managedBySecret={!!profile.passwordManagedBySecret}
-                        onChanged={() => account.setProfile({ ...profile, passwordChangeRequired: false })}
-                    />
-                )}
+                {current === 'account' && <SessionsSection />}
                 {current === 'account' && profile && (
                     <DeleteAccountSection
                         handle={profile.handle}

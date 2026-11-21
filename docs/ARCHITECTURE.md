@@ -7,6 +7,8 @@ TypeScript backendはSNSのDB、認証、フレンド、ワールド解決と参
 ブラウザはSNSから接続先と短期チケットを取得し、Goへ直接WebSocket接続する。
 ゲストモードではGoと定義ファイルだけで起動し、SNSのセッションを必要としない。
 
+Mastodon・Misskey ログインと管理者向け認証設定の設計は [フェディバースログインと認証設定](design/fediverse-sign-in.md) を参照。
+
 HTTPは `protocol/instance/openapi.json` からGo/TypeScriptの型を生成する。
 リアルタイム通信は `protocol/instance/asyncapi.json` と `protocol/instance/README.md` を参照。
 状態は現在メモリのみで、再起動時は初期状態へ戻る。確定更新の応答はDB保存を意味しない。

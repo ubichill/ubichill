@@ -4,6 +4,7 @@ import {
     authFlowRepository,
     cliAuthRequestRepository,
     directMessageRepository,
+    emailLinkRepository,
     inviteRepository,
     notificationRepository,
     pendingRegistrationRepository,
@@ -254,6 +255,9 @@ async function startServer() {
                 pendingRegistrationRepository
                     .deleteExpired()
                     .catch((err: unknown) => logger.error('仮登録の掃除に失敗:', err)),
+                emailLinkRepository
+                    .deleteExpired()
+                    .catch((err: unknown) => logger.error('メールアドレスの追加の確認待ちの掃除に失敗:', err)),
                 authFlowRepository
                     .deleteExpired(FEDIVERSE_FLOW_PREFIX, new Date())
                     .catch((err: unknown) => logger.error('フェディバースのログインの途中の状態の掃除に失敗:', err)),

@@ -99,7 +99,25 @@ export async function removeLoginMethod(id: string): Promise<void> {
     await requestApi(`/users/me/login-methods/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
-/** パスワードで本人確認をし直す（ログイン方法の変更・管理者の操作の前に）。 */
+/**
+ * メールアドレスを足す（メールなしで登録した人）。確認コードを送る。メール確認を省くサーバーでは、その場で足して
+ * 'linked' を返す。
+ */
+export async function startEmailLink(input: { email: string; password: string }): Promise<'sent' | 'linked'> {
+    return (
+        await requestApi<{ status: 'sent' | 'linked' }>('/users/me/email', {
+            method: 'POST',
+            body: JSON.stringify(input),
+        })
+    ).status;
+}
+
+/** 届いた確認コードで、メールアドレスとパスワードをログイン方法に足す。 */
+export async function verifyEmailLink(code: string): Promise<void> {
+    await requestApi('/users/me/email/verify', { method: 'POST', body: JSON.stringify({ code }) });
+}
+
+/** パスワードで本人確認をし直す（管理者の操作・アカウントの削除の前に）。 */
 export async function reauthenticate(password: string): Promise<void> {
     await requestApi('/users/me/reauthenticate', { method: 'POST', body: JSON.stringify({ password }) });
 }

@@ -12,6 +12,7 @@ import {
 import { appConfig } from '../../../config';
 import { safeFetch } from '../../../lib/safeFetch';
 import { logger } from '../../../utils/logger';
+import { backendEvents } from '../../cluster/backendEvents';
 import { profileService } from '../../profiles/profileService';
 import { createLoginPolicy } from './loginPolicy';
 import { type FediverseHttp, HttpStatusError } from './protocol';
@@ -58,6 +59,11 @@ function loadBlockedHosts(): Promise<(host: string) => boolean> {
     blockedHostsCache.value = value;
     return value;
 }
+
+// ほかの backend で block したら、覚えた方針をすぐ捨てる（そのサーバーのセッションは変えた backend が消してある）
+backendEvents.on('federation.policies.changed', () => {
+    blockedHostsCache.value = null;
+});
 
 /** 連合のドメインの方針を変えたとき。覚えた方針を捨て、使えなくなったサーバーで入ったセッションを消す。 */
 export async function fediverseLoginPolicyChanged(): Promise<number> {

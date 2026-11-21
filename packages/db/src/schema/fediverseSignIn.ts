@@ -1,4 +1,4 @@
-import { pgTable, primaryKey, text, timestamp } from 'drizzle-orm/pg-core';
+import { integer, pgTable, primaryKey, text, timestamp, varchar } from 'drizzle-orm/pg-core';
 import { accounts } from './users';
 
 /**
@@ -30,4 +30,15 @@ export const externalAccountProfiles = pgTable('external_account_profiles', {
     software: text('software').notNull(),
     username: text('username').notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * ログイン画面に並べるサーバー（コントロールパネルの「認証」で管理者が決める）。並べる順は position の小さい順。
+ * 並べないサーバーでも、ログイン画面の「その他のサーバー」から使える（ここは入口の候補で、許可の一覧ではない）。
+ */
+export const featuredFediverseServers = pgTable('featured_fediverse_servers', {
+    /** shared の parseFediverseServer で正規化したホスト */
+    host: varchar('host', { length: 253 }).primaryKey(),
+    position: integer('position').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });

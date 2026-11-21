@@ -12,6 +12,7 @@ const account = (id: string, usable = true) => ({
 });
 const methods = (password: boolean, ...fediverse: LoginMethods['fediverse']): LoginMethods => ({
     password,
+    email: password ? 'alice@example.com' : null,
     recentlyAuthenticated: true,
     fediverse,
 });

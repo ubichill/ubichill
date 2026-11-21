@@ -103,6 +103,8 @@ const PATHS = {
     ),
     back: <path d="m15 18-6-6 6-6" />,
     chevron: <path d="m9 18 6-6-6-6" />,
+    chevronUp: <path d="m18 15-6-6-6 6" />,
+    chevronDown: <path d="m6 9 6 6 6-6" />,
     userPlus: (
         <>
             <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />

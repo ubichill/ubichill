@@ -120,7 +120,7 @@ backend:
   #   TRUST_PROXY: "true"               # Ingress 経由で X-Forwarded-* を信用 (rate limit IP 正確化)
   #   DEBUG: "true"                     # logger.debug を有効化
   #   NODE_ENV: "development"           # OTP コードをログに出す等
-  #   MAIL_FROM: "Ubichill <noreply@your-domain.example>"  # 認証メールの送信元 (Resend で検証済みのドメイン)。未設定なら resend.dev サンドボックス送信元
+  #   MAIL_FROM: "Ubichill <noreply@your-domain.example>"  # 認証メールの送信元 (送信に使うサービスで検証済みのドメイン)。未設定なら resend.dev サンドボックス送信元
   env:
     NODE_ENV: "production"
     PORT: "3001"
@@ -132,6 +132,9 @@ backend:
   secretEnv:
     BETTER_AUTH_SECRET: ""
     RESEND_API_KEY: ""
+    # SMTP で送るとき（smtps://ユーザー:パスワード@ホスト:465 か、STARTTLS の smtp://…:587）。あれば Resend より優先する。
+    # ユーザー名・パスワードの記号は URL エンコードする（@ は %40）。
+    SMTP_URL: ""
     # 公式アカウント（ID ubichill。公式ワールドの作者とこのサーバーの管理者を兼ねる）のパスワード。
     # この値が常に正で、起動のたびにアカウントのパスワードを合わせる（画面からは変更できない）。
     # 変更はこの値を差し替えて再デプロイする（値が変わると既存のログインは無効になる）。空なら作らない（警告のみ）。
