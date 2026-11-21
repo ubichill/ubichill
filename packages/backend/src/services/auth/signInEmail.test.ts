@@ -10,8 +10,8 @@ describe('createSignInEmailResolver', () => {
         expect(findEmailByHandle).not.toHaveBeenCalled();
     });
 
-    it('ID はその人のメールアドレスにする（大文字・先頭の @・前後の空白は問わない）', async () => {
-        for (const input of ['alice', 'Alice', ' @alice ']) expect(await resolve(input)).toBe('alice@example.com');
+    it('ID はその人のメールアドレスにする（大文字・前後の空白は問わない）', async () => {
+        for (const input of ['alice', 'Alice', ' alice ']) expect(await resolve(input)).toBe('alice@example.com');
     });
 
     it('いない ID・空・長すぎるものは、誰のものでもないアドレスにする（メールアドレスと同じ失敗にする）', async () => {

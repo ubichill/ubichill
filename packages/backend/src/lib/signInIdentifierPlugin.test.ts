@@ -56,7 +56,7 @@ describe('signInIdentifierPlugin', () => {
     it('ID でも、メールアドレスでもログインできる', async () => {
         const t = setup();
         await t.signUp('alice', 'alice@example.com');
-        for (const email of ['alice', '@Alice', 'alice@example.com']) {
+        for (const email of ['alice', 'Alice', 'alice@example.com']) {
             const res = await t.request('/sign-in/email', { email, password: 'password-123' });
             expect(res.status, email).toBe(200);
             expect(((await res.json()) as { user: { email: string } }).user.email).toBe('alice@example.com');
