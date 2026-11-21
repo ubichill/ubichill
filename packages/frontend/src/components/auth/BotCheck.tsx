@@ -14,6 +14,7 @@ export function BotCheck({
     action,
     onToken,
     failureHint,
+    deferred = false,
 }: {
     provider: BotProtectionProvider;
     siteKey: string;
@@ -21,6 +22,8 @@ export function BotCheck({
     onToken: (token: string | null) => void;
     /** 読み込めない・ウィジェットが失敗したときに添える説明 */
     failureHint?: string;
+    /** まだ読み込まない（場所だけ取っておく）。外部のスクリプトは要るときまで読まない */
+    deferred?: boolean;
 }) {
     const container = useRef<HTMLDivElement>(null);
     const [failed, setFailed] = useState(false);
@@ -29,7 +32,7 @@ export function BotCheck({
     // biome-ignore lint/correctness/useExhaustiveDependencies: attempt は「もう一度」で作り直すためだけに見る
     useEffect(() => {
         const element = container.current;
-        if (!element) return;
+        if (!element || deferred) return;
         const widget: { cancelled: boolean; api: BotWidgetApi | null; id: string | null } = {
             cancelled: false,
             api: null,
@@ -57,7 +60,7 @@ export function BotCheck({
             onToken(null);
             if (widget.api && widget.id !== null) widget.api.remove(widget.id);
         };
-    }, [provider, siteKey, action, onToken, attempt]);
+    }, [provider, siteKey, action, onToken, attempt, deferred]);
 
     return (
         <div className={css({ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5', w: 'full' })}>
@@ -94,7 +97,7 @@ const widgetBox = cva({
     base: { w: 'full' },
     variants: {
         provider: {
-            turnstile: { display: 'block', minH: '65px' },
+            turnstile: { display: 'block', minH: '68px' },
             hcaptcha: { display: 'flex', justifyContent: 'center', minH: '78px' },
         },
     },

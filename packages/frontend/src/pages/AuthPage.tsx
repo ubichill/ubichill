@@ -539,6 +539,8 @@ export function AuthPage() {
                             siteKey={botProtection.siteKey}
                             action={mode === 'login' ? BOT_CHECK_ACTIONS.signIn : BOT_CHECK_ACTIONS.signUp}
                             onToken={setBotToken}
+                            // パスワードを入れ始めてから確かめる（画面を見ただけ・フェディバースで入る人には外部のスクリプトを読ませない）
+                            deferred={password === ''}
                         />
                     )}
 
