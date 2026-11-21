@@ -22,6 +22,7 @@ import { useBlocks } from '@/lib/social/blocks';
 import { blockedAuthorsOf } from '@/lib/social/blocksState';
 import { css } from '@/styled-system/css';
 import { buildWorldLock, EntityRenderer, ModRegistryProvider, useModRegistry } from '@/world';
+import { backgroundImageStyle } from '@/world/backgroundImage';
 
 const FALLBACK_ENTITY: ComponentInstance = {
     id: '',
@@ -79,8 +80,10 @@ export function EditorPreview({
         () => ({
             backgroundColor: env?.backgroundColor ?? '#F0F8FF',
             worldSize: env?.worldSize ?? { width: 2000, height: 1500 },
+            backgroundImage: env?.backgroundImage,
+            backgroundImageFit: env?.backgroundImageFit,
         }),
-        [env?.backgroundColor, env?.worldSize],
+        [env?.backgroundColor, env?.worldSize, env?.backgroundImage, env?.backgroundImageFit],
     );
 
     const entities = useMemo(() => {
@@ -360,6 +363,7 @@ function PreviewStage({
                 height,
                 minWidth: '100%',
                 minHeight: '100%',
+                ...backgroundImageStyle(environment),
             }}
         >
             {/* ワールド範囲の境界 + (snap ON 時のみ) グリッド線 */}

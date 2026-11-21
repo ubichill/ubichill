@@ -4,7 +4,10 @@ import { EMPTY_ENTITY_TYPE, OVERLAY_FILL, resolveOverlayMode } from '@ubichill/s
 import type React from 'react';
 import { useEffect, useRef } from 'react';
 import { Z_INDEX } from '@/styles/layers';
+import { CoreImageSurface } from './CoreImageSurface';
 import { CoreMediaSurface } from './CoreMediaSurface';
+import { CorePortal } from './CorePortal';
+import { CoreTextSign } from './CoreTextSign';
 import { CoreUiPanel } from './CoreUiPanel';
 import { HeldEntityPositionRegistry } from './HeldEntityPositionRegistry';
 import { readHeldOffset } from './heldOffset';
@@ -50,6 +53,9 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
     if (!entity) return null;
     if (entity.type === CORE_COMPONENT_TYPES.media) return <CoreMediaSurface entity={entity} />;
     if (entity.type === CORE_COMPONENT_TYPES.ui) return <CoreUiPanel entity={entity} />;
+    if (entity.type === CORE_COMPONENT_TYPES.image) return <CoreImageSurface entity={entity} />;
+    if (entity.type === CORE_COMPONENT_TYPES.text) return <CoreTextSign entity={entity} />;
+    if (entity.type === CORE_COMPONENT_TYPES.portal) return <CorePortal entity={entity} />;
     if (isCoreComponentType(entity.type)) return null;
     if (!mod) return null;
     // singleton は WorldStage 側で起動するためここではスキップ

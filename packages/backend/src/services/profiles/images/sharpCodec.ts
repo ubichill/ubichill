@@ -31,7 +31,13 @@ export function createSharpCodec({ maxPixels, timeoutSeconds }: SharpCodecOption
                 autoOrient: true,
                 pages: 1,
             })
-                .resize(size.width, size.height, { fit: 'cover', position: 'centre' })
+                .resize(
+                    size.width,
+                    size.height,
+                    size.fit === 'inside'
+                        ? { fit: 'inside', withoutEnlargement: true }
+                        : { fit: 'cover', position: 'centre' },
+                )
                 .webp({ quality: 82 })
                 .timeout({ seconds: timeoutSeconds })
                 .toBuffer({ resolveWithObject: true });

@@ -182,6 +182,9 @@ export function mapToResolved(
         environment: {
             backgroundColor: env.backgroundColor ?? DEFAULTS.WORLD_ENVIRONMENT.backgroundColor,
             worldSize: env.worldSize ?? DEFAULTS.WORLD_ENVIRONMENT.worldSize,
+            ...(env.backgroundImage
+                ? { backgroundImage: env.backgroundImage, backgroundImageFit: env.backgroundImageFit ?? 'cover' }
+                : {}),
         },
         capacity: def.spec.capacity,
         dependencies: def.spec.dependencies?.map((d) => ({ name: d.name, source: d.source })),
