@@ -228,6 +228,7 @@ export const SERVER_CONFIG = {
 // Re-export Schemas and Mods
 // ============================================
 
+export * from './account/botProtection';
 export * from './account/displayNameChange';
 export * from './account/favoritesVisibility';
 export * from './account/fediverseSignIn';

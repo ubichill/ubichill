@@ -1,6 +1,7 @@
 import {
     AdminUsersSection,
     AnnouncementSection,
+    BotProtectionSection,
     FediverseServersSection,
     RolesSection,
     ServerPoliciesSection,
@@ -32,7 +33,12 @@ export function ControlPanelTab({
             <div className={css({ display: 'flex', flexDirection: 'column', gap: '6', maxW: '720px' })}>
                 {section === 'users' && <AdminUsersSection />}
                 {section === 'roles' && <RolesSection />}
-                {section === 'auth' && <FediverseServersSection />}
+                {section === 'auth' && (
+                    <>
+                        <FediverseServersSection />
+                        <BotProtectionSection />
+                    </>
+                )}
                 {section === 'federation' && (
                     <>
                         <ServerPoliciesSection />

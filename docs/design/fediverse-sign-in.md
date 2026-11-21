@@ -10,7 +10,7 @@ Ubichill のユーザー ID が、引き続きワールド、作者鍵、プロ�
 | --- | --- | --- |
 | A（このブランチ） | SSO の登録・ログイン・連携・解除、メールなしユーザー、管理者はメール必須 | 環境変数 |
 | B | ログイン画面に並べるサーバーをコントロールパネルで決める、メールアドレスの追加（連携として足す）、ログイン方法の追加・解除でパスワードを求めない | Postgres |
-| C | メール送信の差し替え（SMTP）と Bot 保護（まず Turnstile） | Postgres |
+| C | メール送信の差し替え（SMTP）と Bot 保護（[ボット対策](bot-protection.md)。Turnstile と hCaptcha） | Postgres |
 
 A だけで招待からの登録は通る。B・C はログインを止める障害の原因を増やすので、A を本番で使ってから必要な分だけ足す。
 
@@ -259,11 +259,7 @@ SMTP のパスワードや API キーなどの秘密は、DB にはデプロイ�
 
 ### Bot 保護
 
-Bot 保護はまず Cloudflare Turnstile だけにする。reCAPTCHA は GCP プロジェクトと評価 API が要り、障害点が増えるので、必要になってから足す。 [Turnstile のサーバー検証](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)
-
-- 検証はサーバーで行い、`hostname` と `action` を照合する。トークンは一度だけ使えるようにする。
-- 検証サービスが応答しないときは保護対象の新規操作を止め、再試行できるエラーを返す。
-- Bot 保護の有無にかかわらず、ログイン試行・SSO 開始・OTP のレート制限は適用する。
+[ボット対策](bot-protection.md) に分けた。新規登録（メールアドレス・フェディバース）だけを守り、ログインには求めない。ログイン試行・SSO 開始・OTP のレート制限は、ボット対策の有無にかかわらず適用する。
 
 ## 確認
 

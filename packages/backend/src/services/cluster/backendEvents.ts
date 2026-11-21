@@ -24,6 +24,8 @@ const BackendEventSchema = z.discriminatedUnion('type', [
     z.object({ type: z.literal('federation.policies.changed') }),
     /** ログイン画面に並べるサーバーが変わった（コントロールパネルの「認証」）。 */
     z.object({ type: z.literal('auth.featured-servers.changed') }),
+    /** ボット対策の設定が変わった（コントロールパネルの「認証」）。 */
+    z.object({ type: z.literal('auth.bot-protection.changed') }),
     /** 公開のお気に入りが変わった。 */
     z.object({ type: z.literal('favorites.changed'), userId: z.string().min(1) }),
 ]);

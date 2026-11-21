@@ -3,6 +3,7 @@ import type { AddressInfo } from 'node:net';
 import type { RoleFields } from '@ubichill/shared';
 import express, { type RequestHandler } from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createBotProtection } from '../../services/auth/botProtection/botProtection';
 import { createFeaturedServers } from '../../services/auth/fediverse/featuredServers';
 import { createRoleService, type RoleStore, type StoredRole } from '../../services/roles/roles';
 import { createAdminRouter } from './router';
@@ -127,9 +128,39 @@ const featuredServers = createFeaturedServers({
     max: 2,
 });
 
+/** ボット対策（偽の保存先と検証 API。トークン `ok` だけ通る） */
+const bot = { row: null as { provider: string; siteKey: string; secret: string; updatedAt: Date } | null };
+const botProtection = createBotProtection({
+    cached: async () => bot.row,
+    repository: {
+        get: async () => bot.row,
+        put: async (input) => {
+            bot.row = { ...input, updatedAt: new Date('2026-11-21T00:00:00Z') };
+        },
+        clear: async () => {
+            bot.row = null;
+        },
+    },
+    box: { seal: (plain) => `sealed:${new TextDecoder().decode(plain)}`, open: () => null },
+    siteVerify: async (_provider, input) => ({
+        success: input.token === 'ok',
+        hostname: 'ubichill.example',
+        action: 'bot-protection-settings',
+        testing: false,
+        errorCodes: [],
+    }),
+    hostnames: new Set(['ubichill.example']),
+    allowTestingKeys: false,
+    changed: () => {},
+    warn: () => {},
+});
+
 const app = express();
 app.use(express.json());
-app.use('/api/v1/admin', createAdminRouter({ requireAuth, requireAdmin, roles: service, featuredServers }));
+app.use(
+    '/api/v1/admin',
+    createAdminRouter({ requireAuth, requireAdmin, roles: service, featuredServers, botProtection }),
+);
 const server = createServer(app);
 const url = (path: string) => `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/admin${path}`;
 
@@ -158,6 +189,8 @@ const ENDPOINTS: ReadonlyArray<[string, string]> = [
     ['PUT', '/roles/r1/members/alice'],
     ['DELETE', '/roles/r1/members/alice'],
     ['GET', '/users'],
+    ['GET', '/bot-protection'],
+    ['PUT', '/bot-protection'],
     ['GET', '/fediverse-servers'],
     ['POST', '/fediverse-servers'],
     ['PUT', '/fediverse-servers/order'],
@@ -269,6 +302,31 @@ describe('コントロールパネルの API', () => {
             featured.hosts = ['misskey.example'];
             expect(await (await call('DELETE', '/fediverse-servers/misskey.example')).json()).toEqual({ servers: [] });
             expect((await call('DELETE', '/fediverse-servers/misskey.example')).status).toBe(404);
+        });
+    });
+
+    describe('ボット対策', () => {
+        it('確かめて通った鍵だけ保存し、シークレットキーは返さない。キャッシュさせない', async () => {
+            const body = { provider: 'turnstile', siteKey: 'site', secret: 'top-secret', token: 'bad' };
+            const refused = await call('PUT', '/bot-protection', body);
+            expect(refused.status).toBe(400);
+            expect(bot.row).toBeNull();
+
+            const saved = await call('PUT', '/bot-protection', { ...body, token: 'ok' });
+            expect(saved.headers.get('cache-control')).toBe('no-store');
+            const text = await saved.text();
+            expect(text).not.toContain('top-secret');
+            expect(JSON.parse(text)).toMatchObject({ config: { provider: 'turnstile', siteKey: 'site' } });
+            expect(bot.row?.secret).toBe('sealed:top-secret');
+
+            const current = await call('GET', '/bot-protection');
+            expect(current.headers.get('cache-control')).toBe('no-store');
+            expect(await current.text()).not.toContain('top-secret');
+
+            expect(await (await call('PUT', '/bot-protection', { provider: null })).json()).toMatchObject({
+                config: null,
+            });
+            expect(bot.row).toBeNull();
         });
     });
 });

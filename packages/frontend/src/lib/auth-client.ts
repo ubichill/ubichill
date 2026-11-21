@@ -1,4 +1,5 @@
 import { createAuthClient } from 'better-auth/react';
+import { botCheckHeaders } from '@/lib/account/botProtection';
 import { getApiBase } from '@/lib/api';
 
 const API_BASE = getApiBase();
@@ -17,9 +18,13 @@ export const registerWithOTP = async (
     password: string,
     displayName: string,
     handle: string,
+    /** ボット対策を確かめたトークン（使わないサーバーでは null） */
+    botToken: string | null,
 ): Promise<{
     success: boolean;
     error?: string;
+    /** 失敗の種類（ボット対策の失敗なら shared の BOT_CHECK_ERRORS のキー） */
+    code?: string;
     skipVerification?: boolean;
     message?: string;
     /** 確認と再送信に使う。仮登録はメールアドレスではなくこの ID で引く。 */
@@ -28,12 +33,12 @@ export const registerWithOTP = async (
     try {
         const res = await fetch(`${API_BASE}/api/v1/users/register`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...botCheckHeaders(botToken) },
             body: JSON.stringify({ email, password, displayName, handle }),
         });
         const data = await res.json();
         if (!res.ok) {
-            return { success: false, error: data.error || '登録に失敗しました' };
+            return { success: false, error: data.error || '登録に失敗しました', code: data.code };
         }
         return {
             success: true,

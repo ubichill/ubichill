@@ -1,8 +1,10 @@
-import type { FediverseSignUpCandidate } from '@ubichill/shared';
+import { BOT_CHECK_ACTIONS, type BotProtectionConfig, type FediverseSignUpCandidate } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
+import { fetchBotProtection, rejectedByBotCheck } from '@/lib/account/botProtection';
 import {
     cancelFediverseSignUp,
     completeFediverseSignUp,
+    FediverseRequestError,
     fetchFediverseSignUpCandidate,
 } from '@/lib/account/fediverseSignIn';
 import { useDisplayNameAvailability, useHandleAvailability } from '@/lib/account/useHandleAvailability';
@@ -24,6 +26,7 @@ import {
     subtitleStyle,
     titleStyle,
 } from './authStyles';
+import { BotCheck } from './BotCheck';
 
 type Loaded = { state: 'loading' } | { state: 'ready'; candidate: FediverseSignUpCandidate } | { state: 'expired' };
 
@@ -38,8 +41,15 @@ export function FediverseSignUpForm({ onCancel }: { onCancel: () => void }) {
     const ready = loaded.state === 'ready';
     const handleStatus = useHandleAvailability(handle, ready);
     const displayNameStatus = useDisplayNameAvailability(displayName, ready);
+    // ボット対策（使わないなら null）。トークンは 1 回しか使えないので、送るたびに round を変えて作り直す
+    const [botProtection, setBotProtection] = useState<BotProtectionConfig | null>(null);
+    const [botToken, setBotToken] = useState<string | null>(null);
+    const [botRound, setBotRound] = useState(0);
 
     useEffect(() => {
+        fetchBotProtection()
+            .then(setBotProtection)
+            .catch(() => setBotProtection(null));
         fetchFediverseSignUpCandidate()
             .then((candidate) => {
                 setLoaded({ state: 'ready', candidate });
@@ -59,14 +69,20 @@ export function FediverseSignUpForm({ onCancel }: { onCancel: () => void }) {
         setBusy(true);
         setError('');
         try {
-            const { returnTo, twoFactorRequired } = await completeFediverseSignUp({
-                handle: handle.trim(),
-                displayName: displayName.trim(),
-            });
+            const { returnTo, twoFactorRequired } = await completeFediverseSignUp(
+                { handle: handle.trim(), displayName: displayName.trim() },
+                botToken,
+            );
             // セッションを読み直すため、画面ごと移る（二段階認証が要るときはコードを入れる画面へ）
             window.location.assign(twoFactorRequired ? '/auth?two_factor=1' : returnTo);
         } catch (err) {
             setError(err instanceof Error ? err.message : '登録に失敗しました');
+            if (botProtection) setBotRound((n) => n + 1);
+            if (err instanceof FediverseRequestError && rejectedByBotCheck(err.code)) {
+                await fetchBotProtection()
+                    .then(setBotProtection)
+                    .catch(() => {});
+            }
             setBusy(false);
         }
     };
@@ -188,6 +204,15 @@ export function FediverseSignUpForm({ onCancel }: { onCancel: () => void }) {
                             英小文字・数字・_ の 3〜30 文字。あとから変更できません
                         </p>
                     </div>
+                    {botProtection && (
+                        <BotCheck
+                            key={botRound}
+                            provider={botProtection.provider}
+                            siteKey={botProtection.siteKey}
+                            action={BOT_CHECK_ACTIONS.fediverseSignUp}
+                            onToken={setBotToken}
+                        />
+                    )}
                     {error && (
                         <p role="alert" className={errorStyle}>
                             {error}
@@ -196,7 +221,12 @@ export function FediverseSignUpForm({ onCancel }: { onCancel: () => void }) {
                     <button
                         type="submit"
                         className={buttonStyle}
-                        disabled={busy || handleStatus.state === 'checking' || displayNameStatus.state === 'checking'}
+                        disabled={
+                            busy ||
+                            handleStatus.state === 'checking' ||
+                            displayNameStatus.state === 'checking' ||
+                            (botProtection !== null && botToken === null)
+                        }
                     >
                         {busy ? '登録中...' : '登録して入る'}
                     </button>

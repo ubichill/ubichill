@@ -11,7 +11,7 @@ import {
     roleRepository,
     twoFactorChallengeRepository,
 } from '@ubichill/db';
-import { LIMITS, MESSAGE_LIMITS, NOTIFICATION_LIMITS } from '@ubichill/shared';
+import { BOT_CHECK_ACTIONS, LIMITS, MESSAGE_LIMITS, NOTIFICATION_LIMITS } from '@ubichill/shared';
 import cors from 'cors';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
@@ -24,6 +24,7 @@ import { sharedLimiter } from './lib/rateLimit';
 import { connectSubscriber, redis, redisHealth } from './lib/redis';
 import { sharedRateLimit } from './lib/sharedRateLimit';
 import { blockOfficialPasswordChange } from './middleware/auth';
+import { requireBotCheck } from './middleware/botCheck';
 import { router as adminRouter } from './routes/admin';
 import { router as authorsRouter } from './routes/authors';
 import { router as cliAuthRouter } from './routes/cliAuth';
@@ -152,6 +153,11 @@ app.use(
     sharedLimiter('fediverse-sign-up', 15 * 60_000, 10, '登録が多すぎます。しばらくしてからお試しください', {
         skip: (req) => req.method !== 'POST',
     }),
+);
+// フェディバースのアカウントでの新規登録（ID と表示名を決めて作る）のボット対策。末尾の / などの違いでも外さないよう use で前方一致にする
+const fediverseSignUpBotCheck = requireBotCheck(BOT_CHECK_ACTIONS.fediverseSignUp);
+app.use('/api/auth/fediverse/sign-up', (req, res, next) =>
+    req.method === 'POST' ? fediverseSignUpBotCheck(req, res, next) : next(),
 );
 // ログインの二段階目の IP ごとの制限（ユーザーごとの回数の上限は services/auth/twoFactor/twoFactor.ts）
 app.use(

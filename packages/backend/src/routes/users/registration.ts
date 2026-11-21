@@ -1,11 +1,13 @@
 /**
- * 登録（`/api/v1/users` の下）: 仮登録と OTP・表示名と ID が使えるかの確認。流れは lib/auth.ts（better-auth）。
+ * 登録（`/api/v1/users` の下）: 仮登録と OTP・表示名と ID が使えるかの確認・ボット対策の設定。流れは lib/auth.ts（better-auth）。
  */
-import { DisplayNameSchema, HandleSchema } from '@ubichill/shared';
+import { BOT_CHECK_ACTIONS, DisplayNameSchema, HandleSchema } from '@ubichill/shared';
 import { Router } from 'express';
 import { appConfig } from '../../config';
 import { createPendingRegistration, resendOTP, verifyAndRegister } from '../../lib/auth';
 import { optionalAuth } from '../../middleware/auth';
+import { requireBotCheck } from '../../middleware/botCheck';
+import { botProtectionService } from '../../services/auth/botProtection/botProtectionService';
 import { displayNameAvailability } from '../../services/users/displayName';
 import { userService } from '../../services/users/userService';
 import { logger } from '../../utils/logger';
@@ -15,8 +17,13 @@ export const router = Router();
 
 const limiters = createRegistrationLimiters({ disabled: appConfig.email.skipVerification });
 
-// 仮登録（OTP送信）
-router.post('/register', ...limiters.register, async (req, res) => {
+// 登録の画面に出すボット対策（使わないなら config は null）
+router.get('/bot-protection', async (_req, res) => {
+    res.set('Cache-Control', 'no-store').json({ config: await botProtectionService.config() });
+});
+
+// 仮登録（OTP送信）。回数の制限で断ってから確かめる（検証 API を無駄に呼ばない）
+router.post('/register', ...limiters.register, requireBotCheck(BOT_CHECK_ACTIONS.signUp), async (req, res) => {
     const { email, password, displayName, handle } = req.body as {
         email?: string;
         password?: string;

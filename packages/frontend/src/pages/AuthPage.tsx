@@ -1,4 +1,4 @@
-import { isTwoFactorRequired, safeReturnTo } from '@ubichill/shared';
+import { BOT_CHECK_ACTIONS, type BotProtectionConfig, isTwoFactorRequired, safeReturnTo } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import {
@@ -29,9 +29,11 @@ import {
     verifyInfoStyle,
     verifyListStyle,
 } from '@/components/auth/authStyles';
+import { BotCheck } from '@/components/auth/BotCheck';
 import { FediverseSignInButton, FediverseSignInPanel } from '@/components/auth/FediverseSignInPanel';
 import { FediverseSignUpForm } from '@/components/auth/FediverseSignUpForm';
 import { TwoFactorSignInForm } from '@/components/auth/TwoFactorSignInForm';
+import { fetchBotProtection, rejectedByBotCheck } from '@/lib/account/botProtection';
 import { readFediverseReturn, returnPathOf } from '@/lib/account/fediverseReturn';
 import { type FediverseSignInOptions, fetchFediverseSignInOptions } from '@/lib/account/fediverseSignIn';
 import { useDisplayNameAvailability, useHandleAvailability } from '@/lib/account/useHandleAvailability';
@@ -69,11 +71,19 @@ export function AuthPage() {
     const [registrationId, setRegistrationId] = useState('');
     const handleStatus = useHandleAvailability(handle, mode === 'register');
     const displayNameStatus = useDisplayNameAvailability(displayName, mode === 'register');
+    // 新規登録のボット対策（使わないなら null）。トークンは 1 回しか使えないので、送るたびに round を変えて作り直す
+    const [botProtection, setBotProtection] = useState<BotProtectionConfig | null>(null);
+    const [botToken, setBotToken] = useState<string | null>(null);
+    const [botRound, setBotRound] = useState(0);
 
     useEffect(() => {
         fetchFediverseSignInOptions()
             .then(setFediverseOptions)
             .catch(() => setFediverseOptions({ enabled: false, registrationOpen: false, featuredServers: [] }));
+        // 読めなければ出さない（使っているなら、登録の応答が理由を返す）
+        fetchBotProtection()
+            .then(setBotProtection)
+            .catch(() => setBotProtection(null));
     }, []);
 
     // クールダウンタイマー
@@ -109,7 +119,13 @@ export function AuthPage() {
                 }
 
                 // 仮登録（OTP送信）
-                const result = await registerWithOTP(email, password, displayName.trim(), handle.trim());
+                const result = await registerWithOTP(email, password, displayName.trim(), handle.trim(), botToken);
+                if (botProtection) setBotRound((n) => n + 1);
+                if (rejectedByBotCheck(result.code)) {
+                    await fetchBotProtection()
+                        .then(setBotProtection)
+                        .catch(() => {});
+                }
 
                 if (!result.success) {
                     setError(result.error || '登録に失敗しました');
@@ -503,6 +519,16 @@ export function AuthPage() {
                         </div>
                     </div>
 
+                    {mode === 'register' && botProtection && (
+                        <BotCheck
+                            key={botRound}
+                            provider={botProtection.provider}
+                            siteKey={botProtection.siteKey}
+                            action={BOT_CHECK_ACTIONS.signUp}
+                            onToken={setBotToken}
+                        />
+                    )}
+
                     {error && (
                         <p role="alert" className={errorStyle}>
                             {error}
@@ -520,7 +546,9 @@ export function AuthPage() {
                         disabled={
                             isLoading ||
                             (mode === 'register' &&
-                                (handleStatus.state === 'checking' || displayNameStatus.state === 'checking'))
+                                (handleStatus.state === 'checking' ||
+                                    displayNameStatus.state === 'checking' ||
+                                    (botProtection !== null && botToken === null)))
                         }
                     >
                         {isLoading ? '処理中...' : mode === 'login' ? 'ログイン' : '登録'}
