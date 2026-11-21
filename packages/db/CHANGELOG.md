@@ -1,5 +1,31 @@
 # @ubichill/db
 
+## 1.10.0
+
+### Minor Changes
+
+- 0b57c73: アカウントの削除（退会）とアカウントの切り替えを足す。削除は直近の本人確認と ID の入れ直しを求め、開いている部屋を閉じてからユーザーを消す。退会した ID は `retired_accounts`（migration 0040）に残して二度と使わせず、WebFinger と actor は 410 を返す。切り替えは better-auth の multiSession でこのブラウザーのアカウントを覚え、トークンを画面に返さない口（`/account-switch/*`）で切り替え・このアカウントだけのログアウトをする。
+- a50fc27: ボット対策をコントロールパネルで設定できるようにする。Cloudflare Turnstile か hCaptcha を選び、鍵の組で確かめてから保存する。使うと、メールアドレスとフェディバースでの新規登録と、パスワードでのログインで、ボットでないことを確かめる。パスワードでのログインは、メールアドレスの代わりに ID でもできるようにする。シークレットキーはサーバーの秘密で暗号化して置く（マイグレーション 0043）。
+- cc6767c: ログイン画面に並べるフェディバースのサーバーを、コントロールパネルの「認証」で管理者が決められるようにする（`featured_fediverse_servers`、migration 0041）。メールなしで登録した人が、設定の「ログイン方法」でメールアドレスとパスワードを足せるようにする（確認コード、`email_link_requests`）。ログイン方法の追加・解除でパスワードの入れ直しを求めず、代わりに連絡先メールに知らせる。block したとき、ほかの backend も覚えた方針をすぐ捨てる。shared の `FEATURED_FEDIVERSE_SERVERS` は `MAX_FEATURED_FEDIVERSE_SERVERS` に置き換え、`LoginMethods` に `email` を足す。 設定の「アカウント」に、ログイン中の端末の一覧と 1 台ずつのログアウトを足す（`GET/DELETE /api/v1/users/me/sessions`）。メールは `SMTP_URL` があれば SMTP、無ければ Resend で送る。
+- 5fba65a: 二段階認証（認証アプリとバックアップコード）を足す（`user_two_factors`・`two_factor_challenges`、migration 0042）。有効にすると、パスワードでもフェディバースでもログインのたびにコードを求め、コードを確かめてからセッションを作る（`POST /api/auth/two-factor/verify`）。設定の口は `/api/v1/users/me/two-factor`（状態・始める・有効にする・無効にする・バックアップコードの作り直し）。鍵の暗号化とバックアップコードの HMAC はどの秘密で作ったかを残し、`BETTER_AUTH_SECRETS` で秘密を入れ替えても古い秘密が残っている間は読める。shared に `TwoFactorStatus` などの型と `isTwoFactorRequired` を足す。
+- 251f987: Mastodon・Misskey のアカウントで登録・ログイン・連携できるようにする（メールなしで登録できる）。ログインの前に使うサーバーを選んで確かめられる。外部アカウントは `accounts` の `(provider_id, account_id)` で一意にし、アプリの登録と表示用の情報の表、セッションの `password_verified_at`・`auth_account_id` を足す（migration 0038・0039）。管理者は確認済みのメールを持つユーザーだけにし、管理者の権限はパスワードで確かめたセッションだけで使える。ログイン方法の追加・解除には直近の本人確認が要る。`REGISTRATION=closed` で新規登録を止められる。
+- 64af1db: サーバーの情報（名前・紹介・管理者・利用規約などの URL）をコントロールパネルの「全般」で設定できるようにし、ログインしていない人が `/` を開くと出る紹介のページと NodeInfo に出す（マイグレーション 0044）。新規登録を終えたら、そのままログインする。
+- 26c5bbc: mod を書かなくてもワールドに置ける本体の部品を足す: 画像（`core:image`）・文字（`core:text`）・ほかのワールドへの入口（`core:portal`）。ワールドの背景に画像を敷けるようにする（`environment.backgroundImage`・`backgroundImageFit`）。ワールドの作者は画像をこのサーバーに上げられる（`POST /api/v1/assets`。作り直した WebP を中身のハッシュの URL で配る。1 人 200 枚・200 MB まで。マイグレーション 0045）。
+
+  mod に埋め込まれる本体の部品の一覧が増えたので、公式ワールド（弾幕）の mod danmaku を 1.0.5 に上げる。
+
+### Patch Changes
+
+- 84bf659: routes・middleware から DB を直接呼ばないようにし、手順を services に移した。CLI の認可で同時に同じ鍵を登録したときに 500 になるのを 409 にした。起動の途中で送ったキャッシュの破棄の知らせ（公式アカウントの鍵の取り消しなど）が、ほかの backend に届かずに捨てられていたのを、繋いだときに送るようにした。`authorKeyRepository.createLocal` は同じ鍵がもうあれば例外ではなく `undefined` を返す。
+- Updated dependencies [a50fc27]
+- Updated dependencies [cc6767c]
+- Updated dependencies [5fba65a]
+- Updated dependencies [251f987]
+- Updated dependencies [b33fa19]
+- Updated dependencies [64af1db]
+- Updated dependencies [26c5bbc]
+  - @ubichill/shared@1.18.0
+
 ## 1.9.3
 
 ### Patch Changes
