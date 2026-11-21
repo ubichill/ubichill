@@ -239,6 +239,7 @@ export * from './account/profileLanguages';
 export * from './account/profileLinks';
 export * from './account/richText';
 export * from './account/roles';
+export * from './account/twoFactor';
 export * from './federation';
 export type { components as InstanceAPI } from './generated/instance';
 export * from './mod/capability';

@@ -26,6 +26,7 @@ import {
     normalizeEmail,
     type PendingRegistrations,
 } from '../services/auth/pendingRegistrations';
+import { createProductionTwoFactor, type ProductionTwoFactor } from '../services/auth/twoFactor';
 import { logger } from '../utils/logger';
 import { accountSwitchPlugin } from './accountSwitchPlugin';
 import { createAuthRateLimitStorage } from './authRateLimit';
@@ -33,6 +34,7 @@ import { fediverseSignInPlugin } from './fediverseSignInPlugin';
 import { createMailer, mailTransportFrom } from './mail';
 import { redis } from './redis';
 import { sessionAssuranceFields, sessionAssuranceHooks } from './sessionAssuranceOptions';
+import { type SecondFactorGate, twoFactorPlugin } from './twoFactorPlugin';
 
 // 認証メールの送信元。組織固有ドメインを直書きせず env で差し替え可能にする
 // （OSS としてセルフホスト時に自分の検証済みドメインを使えるように）。
@@ -280,6 +282,25 @@ logger.debug(
     ].join(' '),
 );
 
+/**
+ * 二段階認証（services/auth/twoFactor）。鍵の暗号化とバックアップコードの HMAC の鍵はサーバーの秘密（auth.$context の
+ * secretConfig。BETTER_AUTH_SECRETS で入れ替えられる）から作る。
+ * better-auth の設定より前に要るので、使うときに初めて作る。
+ */
+export const getTwoFactor = (() => {
+    const cache: { ready?: Promise<ProductionTwoFactor> } = {};
+    return (): Promise<ProductionTwoFactor> => {
+        cache.ready ??= auth.$context.then((ctx) => createProductionTwoFactor(ctx.secretConfig, sendAccountNotice));
+        return cache.ready;
+    };
+})();
+
+const secondFactorGate: SecondFactorGate = {
+    required: async (userId) => (await getTwoFactor()).twoFactor.isEnabled(userId),
+    issue: async (first) => (await getTwoFactor()).challenges.issue(first),
+    complete: async (token, code) => (await getTwoFactor()).challenges.complete(token, code),
+};
+
 /** better-auth のレート制限を有効にするか。 */
 export const authRateLimitEnabled = appConfig.isProduction;
 
@@ -319,11 +340,14 @@ export const auth = betterAuth({
         ...(redis ? { customStorage: createAuthRateLimitStorage(redis, logger) } : {}),
     },
     plugins: [
+        // ログインの二段階目。パスワードのログインの後始末（セッションを消す）を multiSession より先に行うため最初に置く
+        twoFactorPlugin({ gate: secondFactorGate }),
         // ログインしたセッションを「このブラウザーのアカウント」として覚える（切り替えの口は accountSwitchPlugin）
         multiSession({ maximumSessions: 5 }),
         accountSwitchPlugin(),
         fediverseSignInPlugin({
             getSignIn: () => getFediverseSignIn(),
+            secondFactor: secondFactorGate,
             options: async () => ({
                 enabled: appConfig.fediverseSignIn.enabled,
                 registrationOpen: appConfig.registrationOpen,

@@ -18,6 +18,8 @@ const PUBLIC_AUTH_PATHS: ReadonlySet<string> = new Set([
     '/fediverse/start',
     '/fediverse/sign-up',
     '/fediverse/lookup',
+    // ログインの二段階目（lib/twoFactorPlugin.ts）
+    '/two-factor/verify',
     // アカウントの切り替え（lib/accountSwitchPlugin.ts）。multiSession 自身の口はトークンを返すので開けない
     '/account-switch/accounts',
     '/account-switch/switch',

@@ -81,6 +81,12 @@ function setup(callbackOutcome: CallbackOutcome) {
         plugins: [
             fediverseSignInPlugin({
                 getSignIn: async () => signIn,
+                // 二段階認証の流れは twoFactorPlugin.test.ts
+                secondFactor: {
+                    required: async () => false,
+                    issue: async () => 'unused',
+                    complete: async () => ({ ok: false, error: 'challenge-expired', message: '' }),
+                },
                 options: async () => ({ enabled: true, registrationOpen: true, featuredServers: ['mi.example'] }),
             }),
         ],

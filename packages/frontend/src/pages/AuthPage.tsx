@@ -1,3 +1,4 @@
+import { isTwoFactorRequired, safeReturnTo } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import {
@@ -30,6 +31,7 @@ import {
 } from '@/components/auth/authStyles';
 import { FediverseSignInButton, FediverseSignInPanel } from '@/components/auth/FediverseSignInPanel';
 import { FediverseSignUpForm } from '@/components/auth/FediverseSignUpForm';
+import { TwoFactorSignInForm } from '@/components/auth/TwoFactorSignInForm';
 import { readFediverseReturn, returnPathOf } from '@/lib/account/fediverseReturn';
 import { type FediverseSignInOptions, fetchFediverseSignInOptions } from '@/lib/account/fediverseSignIn';
 import { useDisplayNameAvailability, useHandleAvailability } from '@/lib/account/useHandleAvailability';
@@ -47,6 +49,8 @@ export function AuthPage() {
     const fediverseReturn = readFediverseReturn(location.search);
     // ログインしたまま別のアカウントを足す（アカウントのメニューの「アカウントを追加」）
     const adding = new URLSearchParams(location.search).get('add') === '1';
+    // ログインの二段階目（パスワードの後、またはフェディバースの認証から ?two_factor=1 で戻った）
+    const [twoFactor, setTwoFactor] = useState(new URLSearchParams(location.search).get('two_factor') === '1');
     // null は読み込み中。読み込み中もボタンの場所を取っておき、届いた後に画面がずれないようにする
     const [fediverseOptions, setFediverseOptions] = useState<FediverseSignInOptions | null>(null);
     const [fediverseOpen, setFediverseOpen] = useState(false);
@@ -82,10 +86,11 @@ export function AuthPage() {
 
     // Redirect if already logged in
     useEffect(() => {
-        if (session && !isPending && !adding) {
+        // 二段階目の途中は移らない（アカウントの追加では、元のアカウントのセッションが残っている）
+        if (session && !isPending && !adding && !twoFactor) {
             navigate(from, { replace: true });
         }
-    }, [session, isPending, navigate, from, adding]);
+    }, [session, isPending, navigate, from, adding, twoFactor]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -134,6 +139,9 @@ export function AuthPage() {
 
                 if (result.error) {
                     setError(result.error.message || 'ログインに失敗しました');
+                } else if (isTwoFactorRequired(result.data)) {
+                    setPassword('');
+                    setTwoFactor(true);
                 } else if (adding) {
                     // 前のアカウントの状態を持ち越さないよう、画面ごと読み直す
                     window.location.assign(from);
@@ -201,11 +209,30 @@ export function AuthPage() {
     }, [registrationId, otp]);
 
     // 既にログイン済みなら、元の画面へ移るまでの間だけ（ログイン状態を確かめている間は下のフォームが場所を取る）
-    if (session && !isPending && !adding) {
+    if (session && !isPending && !adding && !twoFactor) {
         return (
             <main className={containerStyle}>
                 <div className={cardStyle}>
                     <p>読み込み中...</p>
+                </div>
+            </main>
+        );
+    }
+
+    if (twoFactor) {
+        return (
+            <main className={containerStyle}>
+                <div className={cardStyle}>
+                    <TwoFactorSignInForm
+                        // セッションを読み直すため、画面ごと移る
+                        onSignedIn={(returnTo) => window.location.assign(safeReturnTo(returnTo ?? from))}
+                        onRestart={(message) => {
+                            setTwoFactor(false);
+                            setMode('login');
+                            setError(message ?? '');
+                            navigate(`/auth${adding ? '?add=1' : ''}`, { replace: true, state: location.state });
+                        }}
+                    />
                 </div>
             </main>
         );

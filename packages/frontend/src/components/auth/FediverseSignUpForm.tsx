@@ -59,9 +59,12 @@ export function FediverseSignUpForm({ onCancel }: { onCancel: () => void }) {
         setBusy(true);
         setError('');
         try {
-            const returnTo = await completeFediverseSignUp({ handle: handle.trim(), displayName: displayName.trim() });
-            // セッションを読み直すため、画面ごと移る
-            window.location.assign(returnTo);
+            const { returnTo, twoFactorRequired } = await completeFediverseSignUp({
+                handle: handle.trim(),
+                displayName: displayName.trim(),
+            });
+            // セッションを読み直すため、画面ごと移る（二段階認証が要るときはコードを入れる画面へ）
+            window.location.assign(twoFactorRequired ? '/auth?two_factor=1' : returnTo);
         } catch (err) {
             setError(err instanceof Error ? err.message : '登録に失敗しました');
             setBusy(false);

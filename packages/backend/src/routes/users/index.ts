@@ -9,8 +9,9 @@ import { router as privacy } from './privacy';
 import { router as publicUser } from './public';
 import { router as publishingEnvironments } from './publishingEnvironments';
 import { router as registration } from './registration';
+import { router as twoFactor } from './twoFactor';
 import { router as works } from './works';
 
 export const router = Router();
 
-router.use(registration, account, publishingEnvironments, works, favorites, privacy, publicUser);
+router.use(registration, account, twoFactor, publishingEnvironments, works, favorites, privacy, publicUser);
