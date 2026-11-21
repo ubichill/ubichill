@@ -17,7 +17,7 @@ import {
     type WorldEnvironmentData,
 } from '@ubichill/shared';
 import type React from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type Ref, useEffect, useMemo, useRef, useState } from 'react';
 import { HOST_MOD_SOURCE, MOD_CDN_URL } from '@/lib/mods/modCdn';
 import { useSession } from '@/lib/session';
 import { useBlocks } from '@/lib/social/blocks';
@@ -63,6 +63,13 @@ interface EditorPreviewProps {
     gridStep?: number;
     /** プレビュー領域の背景（mod UI なし）クリック時のハンドラ */
     onBackgroundMouseDown?: () => void;
+    /**
+     * 部屋で見える通りに描く（サムネイルを撮るとき）。ワールドの境界・最初の場所の印・最初は見えない Entity と、
+     * 画面に固定した Entity（mod の道具の欄など。ワールドの絵ではない）を出さない。
+     */
+    roomLook?: boolean;
+    /** 描いたワールド全体（背景色を含む）の要素 */
+    rootRef?: Ref<HTMLDivElement>;
 }
 
 /**
@@ -80,6 +87,8 @@ export function EditorPreview({
     hiddenIndices,
     gridStep,
     onBackgroundMouseDown,
+    roomLook = false,
+    rootRef,
 }: EditorPreviewProps) {
     const env = definition.spec.environment;
     const environment: WorldEnvironmentData = useMemo(
@@ -259,6 +268,7 @@ export function EditorPreview({
 
     return (
         <div
+            ref={rootRef}
             style={{
                 position: 'relative',
                 height: fillContainer ? '100%' : '70vh',
@@ -272,7 +282,7 @@ export function EditorPreview({
         >
             <SocketContext.Provider value={socketValue}>
                 <WorldContext.Provider value={worldValue}>
-                    <EditorPreviewProvider value={true}>
+                    <EditorPreviewProvider value={!roomLook}>
                         <PortalLookupProvider value={portalLookup}>
                             {/* lock に固定されていない mod は実行しないので、試し用の lock ができてから mod を読み込む */}
                             {previewLock && !blocksPending && (
@@ -296,12 +306,13 @@ export function EditorPreview({
                                             environment={environment}
                                             overlay={overlay}
                                             gridStep={gridStep}
+                                            showBounds={!roomLook}
                                             onBackgroundMouseDown={onBackgroundMouseDown}
                                         />
                                     </div>
                                     {/* overlay: true の Entity 専用レイヤー。上のスクロール領域の外側に置くことで
                             実行画面 (InstanceRenderer の ENTITY_OVERLAY レイヤー) と配置が一致する。 */}
-                                    <EditorOverlayStage entities={entities} />
+                                    <EditorOverlayStage entities={entities} hidden={roomLook} />
                                 </ModRegistryProvider>
                             )}
                         </PortalLookupProvider>
@@ -316,7 +327,7 @@ export function EditorPreview({
  * overlay: true の Entity だけを、ワールドスクロール領域の外側（画面固定）に描画する。
  * 実行時の InstanceRenderer.tsx における ENTITY_OVERLAY レイヤーのプレビュー相当。
  */
-function EditorOverlayStage({ entities }: { entities: Map<string, ComponentInstance> }) {
+function EditorOverlayStage({ entities, hidden }: { entities: Map<string, ComponentInstance>; hidden: boolean }) {
     const overlayEntityIds = useMemo(
         () =>
             Array.from(entities.entries())
@@ -326,7 +337,17 @@ function EditorOverlayStage({ entities }: { entities: Map<string, ComponentInsta
     );
     if (overlayEntityIds.length === 0) return null;
     return (
-        <div data-ubi-mod-surface style={{ position: 'absolute', inset: 0, zIndex: 99000, pointerEvents: 'none' }}>
+        <div
+            data-ubi-mod-surface
+            style={{
+                position: 'absolute',
+                inset: 0,
+                zIndex: 99000,
+                pointerEvents: 'none',
+                // 外すと mod の Worker が作り直されるので、見えなくするだけにする
+                visibility: hidden ? 'hidden' : undefined,
+            }}
+        >
             {overlayEntityIds.map((id) => (
                 <EntityRenderer key={id} entityId={id} />
             ))}
@@ -343,12 +364,14 @@ function PreviewStage({
     environment,
     overlay,
     gridStep,
+    showBounds,
     onBackgroundMouseDown,
 }: {
     entities: Map<string, ComponentInstance>;
     environment: WorldEnvironmentData;
     overlay?: React.ReactNode;
     gridStep?: number;
+    showBounds: boolean;
     onBackgroundMouseDown?: () => void;
 }) {
     const { modMap } = useModRegistry();
@@ -390,24 +413,26 @@ function PreviewStage({
             }}
         >
             {/* ワールド範囲の境界 + (snap ON 時のみ) グリッド線 */}
-            <div
-                aria-hidden
-                style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: 0,
-                    width,
-                    height,
-                    border: '2px dashed rgba(27, 42, 68, 0.35)',
-                    pointerEvents: 'none',
-                    zIndex: 98999,
-                    backgroundImage:
-                        gridStep && gridStep > 0
-                            ? `linear-gradient(to right, rgba(27,42,68,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(27,42,68,0.12) 1px, transparent 1px)`
-                            : undefined,
-                    backgroundSize: gridStep && gridStep > 0 ? `${gridStep}px ${gridStep}px` : undefined,
-                }}
-            />
+            {showBounds && (
+                <div
+                    aria-hidden
+                    style={{
+                        position: 'absolute',
+                        left: 0,
+                        top: 0,
+                        width,
+                        height,
+                        border: '2px dashed rgba(27, 42, 68, 0.35)',
+                        pointerEvents: 'none',
+                        zIndex: 98999,
+                        backgroundImage:
+                            gridStep && gridStep > 0
+                                ? `linear-gradient(to right, rgba(27,42,68,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(27,42,68,0.12) 1px, transparent 1px)`
+                                : undefined,
+                        backgroundSize: gridStep && gridStep > 0 ? `${gridStep}px ${gridStep}px` : undefined,
+                    }}
+                />
+            )}
             {renderEntities}
             {singletonWorkerMods.map((mod) => {
                 if (!isWorkerMod(mod)) return null;

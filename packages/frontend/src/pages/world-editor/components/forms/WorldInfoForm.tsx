@@ -2,12 +2,16 @@ import type { WorldDefinition } from '@ubichill/shared';
 import { useState } from 'react';
 import { toWorldName, WORLD_NAME_MAX_LENGTH } from '@/lib/worlds/worldName';
 import { css } from '@/styled-system/css';
+import { editorButton } from '../../recipes/button';
+import { CameraIcon } from '../hierarchy/hierarchyIcons';
 import { ImageUrlInput } from '../ImageUrlInput';
 
 interface WorldInfoFormProps {
     /** 編集中の definition。親 (WorldEditorPage) が状態を持ち、ここでは直接更新する。 */
     definition: WorldDefinition;
     onChange: (next: WorldDefinition) => void;
+    /** エディタの画面からサムネイルを撮り始める（コントロールパネルを閉じて、撮る枠を出す） */
+    onShootThumbnail: () => void;
 }
 
 /**
@@ -17,7 +21,7 @@ interface WorldInfoFormProps {
  * 編集は親の definition を直接更新する（即時反映・ローカル）。サーバーへの保存は
  * 「閉じる」「Cmd/Ctrl+S」で行う。公開設定・mod 管理はそれぞれ別タブの責務。
  */
-export function WorldInfoForm({ definition, onChange }: WorldInfoFormProps) {
+export function WorldInfoForm({ definition, onChange, onShootThumbnail }: WorldInfoFormProps) {
     const onUpdateSpec = (patch: Partial<WorldDefinition['spec']>) =>
         onChange({ ...definition, spec: { ...definition.spec, ...patch } });
     const onUpdateMetadata = (patch: Partial<WorldDefinition['metadata']>) =>
@@ -82,7 +86,11 @@ export function WorldInfoForm({ definition, onChange }: WorldInfoFormProps) {
                         />
                     </Field>
                 </div>
-                <ThumbnailPicker url={spec.thumbnail} onChange={(thumbnail) => onUpdateSpec({ thumbnail })} />
+                <ThumbnailPicker
+                    url={spec.thumbnail}
+                    onChange={(thumbnail) => onUpdateSpec({ thumbnail })}
+                    onShoot={onShootThumbnail}
+                />
             </div>
 
             <div className={css({ display: 'flex', flexDirection: 'column', gap: '4' })}>
@@ -254,8 +262,19 @@ function Field({ label, required, children }: { label: string; required?: boolea
     );
 }
 
-/** 右上のサムネイル。画像を押すと、画像を上げるか URL を入れて替えられる（空にすると外れる）。公開に必要で、一覧と入口に出る。 */
-function ThumbnailPicker({ url, onChange }: { url: string | undefined; onChange: (url: string | undefined) => void }) {
+/**
+ * 右上のサムネイル。エディタの画面から撮るか、画像を押して、画像を上げるか URL を入れて替えられる（空にすると外れる）。
+ * 公開に必要で、一覧と入口に出る。
+ */
+function ThumbnailPicker({
+    url,
+    onChange,
+    onShoot,
+}: {
+    url: string | undefined;
+    onChange: (url: string | undefined) => void;
+    onShoot: () => void;
+}) {
     const [editing, setEditing] = useState(false);
     const [failedUrl, setFailedUrl] = useState<string | null>(null);
     const showImage = !!url && failedUrl !== url;
@@ -300,6 +319,10 @@ function ThumbnailPicker({ url, onChange }: { url: string | undefined; onChange:
                         {url ? '画像を読み込めません' : 'サムネイル（公開に必要）'}
                     </>
                 )}
+            </button>
+            <button type="button" onClick={onShoot} className={editorButton({ intent: 'secondary', size: 'md' })}>
+                <CameraIcon />
+                画面から撮る
             </button>
             {editing && (
                 <ImageUrlInput

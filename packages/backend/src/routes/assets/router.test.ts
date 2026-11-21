@@ -84,6 +84,7 @@ describe('assets router', () => {
         expect(res.headers.get('content-security-policy')).toContain('sandbox');
         expect(res.headers.get('x-content-type-options')).toBe('nosniff');
         expect(res.headers.get('cross-origin-resource-policy')).toBe('cross-origin');
+        expect(res.headers.get('access-control-allow-origin')).toBe('*');
         const missing = await fetch(url(`/${'c'.repeat(43)}.webp`));
         expect(missing.status).toBe(404);
         expect(missing.headers.get('cache-control')).toBe('no-store');

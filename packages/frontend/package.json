@@ -24,6 +24,7 @@
         "@ubichill/ui-renderer": "workspace:*",
         "better-auth": "catalog:",
         "icojs": "^1.0.1",
+        "modern-screenshot": "^4.7.0",
         "perfect-freehand": "^1.2.3",
         "react": "catalog:",
         "react-dom": "catalog:",

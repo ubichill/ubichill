@@ -27,6 +27,7 @@ import { PanelSection } from './components/PanelSection';
 import { PrefabControls } from './components/PrefabControls';
 import { PublishPanel } from './components/PublishPanel';
 import { PublishSetupDialog } from './components/PublishSetupDialog';
+import type { ThumbnailTaken } from './components/ThumbnailCamera';
 import { useAvailableEntityKinds } from './hooks/useAvailableEntityKinds';
 import { useDefinition } from './hooks/useDefinition';
 import { useLogNewWarnings } from './hooks/useEditorConsole';
@@ -49,6 +50,7 @@ import {
 import { findEntityPath, flattenForStage, getEntityAt, updateEntityAt } from './lib/entityTree';
 import { editorCoreProblems, editorReferenceProblems, problemsByEntity } from './lib/referenceProblems';
 import { guardsUnload, withSavedFields } from './lib/savedDefinition';
+import { missingImagesNotice } from './lib/thumbnailShot';
 import { editorButton } from './recipes/button';
 
 export function WorldEditorPage() {
@@ -242,6 +244,31 @@ export function WorldEditorPage() {
         [modals.switchTab, modals.closeControlPanel, definition.spec.initialEntities, selection.selectEntity],
     );
 
+    // サムネイルを撮る間はコントロールパネルを閉じ、撮り終えたら（やめたら）ワールド情報に戻る。
+    // 選んだ Entity は外す（撮る間は枠が見えないので、Delete などで気づかずに消さないように）
+    const [shooting, setShooting] = useState(false);
+    const startShooting = useCallback(() => {
+        selection.selectEntity(null);
+        modals.closeControlPanel();
+        setShooting(true);
+    }, [selection.selectEntity, modals.closeControlPanel]);
+    const camera = useMemo(() => {
+        if (!shooting) return null;
+        const finish = () => {
+            setShooting(false);
+            modals.openControlPanel('info');
+        };
+        return {
+            onTaken: ({ url, missingImages }: ThumbnailTaken) => {
+                setDefinition((prev) => ({ ...prev, spec: { ...prev.spec, thumbnail: url } }));
+                const notice = missingImagesNotice(missingImages);
+                if (notice) logConsole({ level: 'warning', source: 'サムネイル', message: notice });
+                finish();
+            },
+            onCancel: finish,
+        };
+    }, [shooting, setDefinition, modals.openControlPanel]);
+
     const showConsole = useCallback(() => {
         setBottomTab('console');
         modals.closeControlPanel();
@@ -338,7 +365,10 @@ export function WorldEditorPage() {
                     snapEnabled={mobile.snapEnabled}
                     onToggleSnap={mobile.toggleSnap}
                     onBack={handleBack}
-                    onOpenControlPanel={() => modals.openControlPanel()}
+                    onOpenControlPanel={() => {
+                        setShooting(false);
+                        modals.openControlPanel();
+                    }}
                     publishState={isEdit ? publishState : null}
                     alert={headerAlert}
                 />
@@ -386,6 +416,7 @@ export function WorldEditorPage() {
                     onSelect={selection.selectEntity}
                     onPatchTransform={ops.patchEntityTransform}
                     onDropComponent={ops.handleAddComponentToEntity}
+                    camera={camera}
                 />
             </div>
 
@@ -518,7 +549,9 @@ export function WorldEditorPage() {
                 }
             >
                 <ControlPanelTabs active={modals.activeTab} onChange={modals.switchTab} />
-                {modals.activeTab === 'info' && <WorldInfoForm definition={definition} onChange={setDefinition} />}
+                {modals.activeTab === 'info' && (
+                    <WorldInfoForm definition={definition} onChange={setDefinition} onShootThumbnail={startShooting} />
+                )}
                 {modals.activeTab === 'mods' && (
                     <>
                         {packagesError && <p role="alert">{packagesError}</p>}

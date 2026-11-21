@@ -20,6 +20,13 @@ describe('staticAssetHeaders', () => {
         );
     });
 
+    it('公式ワールドのサムネイルは、どのオリジンからも読める（ほかのサーバーのエディタが撮る）。ほかの画像は今まで通り', () => {
+        expect(staticAssetHeaders('/app/frontend/dist/world-thumbnails/home.png')).toEqual({
+            'Access-Control-Allow-Origin': '*',
+        });
+        expect(staticAssetHeaders('/app/frontend/dist/icon.png')).toEqual({});
+    });
+
     it('/mods 配下は no-cache、ハッシュ付きファイルは immutable（従来どおり）', () => {
         expect(staticAssetHeaders('/dist/mods/pen/v2.0.0/pen/index.df9fd0ce.js')).toEqual({
             'Cache-Control': 'public, no-cache',
