@@ -26,6 +26,8 @@ export const registerWithOTP = async (
     /** 失敗の種類（ボット対策の失敗なら shared の BOT_CHECK_ERRORS のキー） */
     code?: string;
     skipVerification?: boolean;
+    /** そのままログインした（メール確認を飛ばしたとき） */
+    signedIn?: boolean;
     message?: string;
     /** 確認と再送信に使う。仮登録はメールアドレスではなくこの ID で引く。 */
     registrationId?: string;
@@ -33,6 +35,8 @@ export const registerWithOTP = async (
     try {
         const res = await fetch(`${API_BASE}/api/v1/users/register`, {
             method: 'POST',
+            // メール確認を飛ばすサーバーでは、そのままログインする（セッションのクッキーを受け取る）
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json', ...botCheckHeaders(botToken) },
             body: JSON.stringify({ email, password, displayName, handle }),
         });
@@ -43,6 +47,7 @@ export const registerWithOTP = async (
         return {
             success: true,
             skipVerification: data.skipVerification,
+            signedIn: data.signedIn === true,
             message: data.message,
             registrationId: data.registrationId,
         };
@@ -51,14 +56,15 @@ export const registerWithOTP = async (
     }
 };
 
-// カスタム登録フロー: OTP検証して本登録
+// カスタム登録フロー: OTP検証して本登録し、そのままログインする
 export const verifyOTPAndRegister = async (
     registrationId: string,
     otp: string,
-): Promise<{ success: boolean; error?: string }> => {
+): Promise<{ success: boolean; error?: string; signedIn?: boolean }> => {
     try {
         const res = await fetch(`${API_BASE}/api/v1/users/verify`, {
             method: 'POST',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ registrationId, otp }),
         });
@@ -66,7 +72,7 @@ export const verifyOTPAndRegister = async (
         if (!res.ok) {
             return { success: false, error: data.error || '認証に失敗しました' };
         }
-        return { success: true };
+        return { success: true, signedIn: data.signedIn === true };
     } catch {
         return { success: false, error: '通信エラーが発生しました' };
     }

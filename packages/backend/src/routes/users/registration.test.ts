@@ -9,8 +9,16 @@ const mocks = vi.hoisted(() => ({
             ? { success: false, error: 'この表示名は既に使用されています' }
             : { success: true, registrationId: 'reg' },
     ),
-    verifyAndRegister: vi.fn(async () => ({ success: false, error: '認証コードが正しくありません' })),
+    verifyAndRegister: vi.fn(
+        async (): Promise<{ success: true; userId: string } | { success: false; error: string }> => ({
+            success: false,
+            error: '認証コードが正しくありません',
+        }),
+    ),
     resendOTP: vi.fn(async () => ({ success: true })),
+    signInRegisteredUser: vi.fn(
+        async (): Promise<string[] | null> => ['better-auth.session_token=s; Path=/; HttpOnly'],
+    ),
 }));
 
 vi.mock('../../services/users/userService', () => ({ userService: {} }));
@@ -20,9 +28,11 @@ vi.mock('../../lib/auth', () => ({
     createPendingRegistration: mocks.createPendingRegistration,
     verifyAndRegister: mocks.verifyAndRegister,
     resendOTP: mocks.resendOTP,
+    signInRegisteredUser: mocks.signInRegisteredUser,
 }));
 vi.mock('../../middleware/auth', () => ({
     optionalAuth: (_req: unknown, _res: unknown, next: () => void) => next(),
+    toWebHeaders: () => new Headers(),
 }));
 // ボット対策: `x-bot-check: ok` だけ通す（つなぎ方を確かめる。判定は services/auth/botProtection のテスト）
 vi.mock('../../middleware/botCheck', () => ({
@@ -175,6 +185,27 @@ describe('POST /verify', () => {
         expect(statuses.slice(0, 60).every((status) => status === 400)).toBe(true);
         expect(statuses[60]).toBe(429);
         expect(mocks.verifyAndRegister).toHaveBeenCalledTimes(60);
+    });
+});
+
+describe('POST /verify のあとのログイン', () => {
+    it('本登録できたら、そのままログインさせる（セッションのクッキーを付ける）', async () => {
+        mocks.verifyAndRegister.mockResolvedValueOnce({ success: true, userId: 'u1' });
+        const res = await fetch(`${state.base}/verify`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-forwarded-for': `10.0.0.${state.ip}` },
+            body: JSON.stringify({ registrationId: 'reg', otp: '123456' }),
+        });
+        expect(await res.json()).toEqual({ success: true, signedIn: true });
+        expect(res.headers.getSetCookie()).toEqual(['better-auth.session_token=s; Path=/; HttpOnly']);
+        expect(mocks.signInRegisteredUser).toHaveBeenCalledWith('u1', expect.any(Headers));
+    });
+
+    it('ログインさせられなくても、登録はできたと返す（画面がログインし直してもらう）', async () => {
+        mocks.verifyAndRegister.mockResolvedValueOnce({ success: true, userId: 'u1' });
+        mocks.signInRegisteredUser.mockResolvedValueOnce(null);
+        const res = await post('/verify', { registrationId: 'reg', otp: '123456' });
+        expect(res).toEqual({ status: 200, body: { success: true, signedIn: false } });
     });
 });
 

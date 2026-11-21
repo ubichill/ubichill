@@ -42,43 +42,6 @@ export const subtitleStyle = css({
     overflowWrap: 'anywhere',
 });
 
-export const tabContainerStyle = flex({
-    w: 'full',
-    gap: '2',
-    bg: 'surfaceHover',
-    p: '1',
-    rounded: 'lg',
-});
-
-export const tabStyle = css({
-    flex: 1,
-    whiteSpace: 'nowrap',
-    minH: '44px',
-    py: '2',
-    px: '4',
-    fontSize: 'sm',
-    fontWeight: 'medium',
-    color: 'textMuted',
-    rounded: 'md',
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-    _hover: { color: 'text' },
-});
-
-export const tabActiveStyle = css({
-    flex: 1,
-    whiteSpace: 'nowrap',
-    minH: '44px',
-    py: '2',
-    px: '4',
-    fontSize: 'sm',
-    fontWeight: 'medium',
-    color: 'textOnPrimary',
-    bg: 'primaryHover',
-    rounded: 'md',
-    cursor: 'pointer',
-});
-
 export const formStyle = vstack({
     gap: '4',
     w: 'full',

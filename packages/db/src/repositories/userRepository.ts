@@ -374,6 +374,15 @@ export const userRepository = {
             .limit(options.limit);
     },
 
+    /** 登録している人の数（システムのアカウントを除く） */
+    async countPeople(): Promise<number> {
+        const [row] = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(users)
+            .where(ne(users.handle, SYSTEM_USER_HANDLE));
+        return row?.count ?? 0;
+    },
+
     async findByHandle(handle: string): Promise<UserRecord | undefined> {
         const results = await db.select().from(users).where(eq(users.handle, handle));
         return results[0];

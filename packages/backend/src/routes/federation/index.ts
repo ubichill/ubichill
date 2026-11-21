@@ -5,6 +5,7 @@
 import { FEDERATION_LIMITS } from '@ubichill/shared';
 import express, { type Express } from 'express';
 import { federation } from '../../services/federation';
+import { serverInfoService } from '../../services/server/serverInfoService';
 import { createActivityPubRouter } from './activitypub';
 import { createFederationAdminRouter } from './admin';
 import { createNodeInfoRouters } from './nodeinfo';
@@ -23,7 +24,7 @@ export function mountFederationInbound(app: Express): void {
     const raw = express.raw({ type: () => true, limit: FEDERATION_LIMITS.INBOX_BODY_BYTES });
     app.use('/ap', raw, createActivityPubRouter(federation));
     app.use('/federation/v1', raw, createRpcRouter(federation));
-    const nodeinfo = createNodeInfoRouters(federation);
+    const nodeinfo = createNodeInfoRouters(federation, serverInfoService);
     app.use('/.well-known/nodeinfo', nodeinfo.wellKnown);
     app.use('/nodeinfo', nodeinfo.document);
 }

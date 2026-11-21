@@ -1,6 +1,12 @@
-import { BOT_CHECK_ACTIONS, type BotProtectionConfig, isTwoFactorRequired, safeReturnTo } from '@ubichill/shared';
+import {
+    BOT_CHECK_ACTIONS,
+    type BotProtectionConfig,
+    DEFAULT_SERVER_NAME,
+    isTwoFactorRequired,
+    safeReturnTo,
+} from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import {
     buttonStyle,
     cardStyle,
@@ -22,9 +28,6 @@ import {
     pendingStyle,
     subtitleStyle,
     successStyle,
-    tabActiveStyle,
-    tabContainerStyle,
-    tabStyle,
     titleStyle,
     verifyInfoStyle,
     verifyListStyle,
@@ -38,6 +41,7 @@ import { readFediverseReturn, returnPathOf } from '@/lib/account/fediverseReturn
 import { type FediverseSignInOptions, fetchFediverseSignInOptions } from '@/lib/account/fediverseSignIn';
 import { useDisplayNameAvailability, useHandleAvailability } from '@/lib/account/useHandleAvailability';
 import { registerWithOTP, resendOTP, signIn, verifyOTPAndRegister } from '@/lib/auth-client';
+import { fetchServerOverview } from '@/lib/server/serverInfo';
 import { useSession } from '@/lib/session';
 import { css, cx } from '@/styled-system/css';
 
@@ -56,7 +60,10 @@ export function AuthPage() {
     // null は読み込み中。読み込み中もボタンの場所を取っておき、届いた後に画面がずれないようにする
     const [fediverseOptions, setFediverseOptions] = useState<FediverseSignInOptions | null>(null);
     const [fediverseOpen, setFediverseOpen] = useState(false);
-    const [mode, setMode] = useState<AuthMode>('login');
+    // 紹介のページの「新規登録」からは ?mode=register で来る
+    const [mode, setMode] = useState<AuthMode>(
+        new URLSearchParams(location.search).get('mode') === 'register' ? 'register' : 'login',
+    );
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -75,6 +82,8 @@ export function AuthPage() {
     const [botProtection, setBotProtection] = useState<BotProtectionConfig | null>(null);
     const [botToken, setBotToken] = useState<string | null>(null);
     const [botRound, setBotRound] = useState(0);
+    // サーバーの名前（コントロールパネルの「全般」）。null は読み込み中
+    const [serverName, setServerName] = useState<string | null>(null);
 
     useEffect(() => {
         fetchFediverseSignInOptions()
@@ -84,6 +93,9 @@ export function AuthPage() {
         fetchBotProtection()
             .then(setBotProtection)
             .catch(() => setBotProtection(null));
+        fetchServerOverview()
+            .then((overview) => setServerName(overview.info.name))
+            .catch(() => setServerName(DEFAULT_SERVER_NAME));
     }, []);
 
     // クールダウンタイマー
@@ -129,9 +141,11 @@ export function AuthPage() {
 
                 if (!result.success) {
                     setError(result.error || '登録に失敗しました');
+                } else if (result.skipVerification && result.signedIn) {
+                    // メール確認を飛ばすサーバーでは、そのままログインしている（セッションを読み直すため画面ごと移る）
+                    window.location.assign(from);
                 } else if (result.skipVerification) {
-                    // メール確認をスキップした場合は直接ログインへ
-                    setSuccess(result.message || '登録が完了しました。ログインしてください。');
+                    setSuccess('登録が完了しました。ログインしてください。');
                     // 1.5秒後にログイン画面に遷移
                     setTimeout(() => {
                         setMode('login');
@@ -216,8 +230,11 @@ export function AuthPage() {
             const result = await verifyOTPAndRegister(registrationId, otp);
             if (!result.success) {
                 setError(result.error || '認証コードが正しくありません');
+            } else if (result.signedIn) {
+                // そのままログインしている（セッションを読み直すため画面ごと移る）
+                window.location.assign(from);
             } else {
-                setSuccess('登録が完了しました！ログインしてください。');
+                setSuccess('登録が完了しました。ログインしてください。');
                 // 確認完了後、ログイン画面に戻る
                 setTimeout(() => {
                     setMode('login');
@@ -233,7 +250,7 @@ export function AuthPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [registrationId, otp]);
+    }, [registrationId, otp, from]);
 
     // 既にログイン済みなら、元の画面へ移るまでの間だけ（ログイン状態を確かめている間は下のフォームが場所を取る）
     if (session && !isPending && !adding && !twoFactor) {
@@ -283,6 +300,19 @@ export function AuthPage() {
             </main>
         );
     }
+
+    // ログインと新規登録を替える（読み込み直しても同じ方を開くよう、URL にも残す）
+    const switchMode = (next: 'login' | 'register') => {
+        setMode(next);
+        setError('');
+        setSuccess('');
+        setShowPassword(false);
+        const params = new URLSearchParams(location.search);
+        if (next === 'register') params.set('mode', 'register');
+        else params.delete('mode');
+        const query = params.toString();
+        navigate(`/auth${query ? `?${query}` : ''}`, { replace: true, state: location.state });
+    };
 
     const handleBackToRegister = () => {
         setMode('register');
@@ -371,42 +401,13 @@ export function AuthPage() {
         <main className={containerStyle}>
             {/* ログイン状態を確かめている間も同じ大きさで場所を取り、見えなくしておく（届いた後に画面がずれない） */}
             <div className={cx(cardStyle, isPending && pendingStyle)} aria-busy={isPending} inert={isPending}>
-                <img src="/icon.png" alt="Ubichill" width={64} height={64} className={iconStyle} />
-                <h1 className={titleStyle}>Ubichill</h1>
-                <p className={subtitleStyle}>
-                    {adding ? '追加するアカウントでログインしてください' : '同じ空間で、作業も会話もいっしょに。'}
-                </p>
-
-                <div className={tabContainerStyle} role="group" aria-label="アカウントへのアクセス">
-                    <button
-                        type="button"
-                        className={mode === 'login' ? tabActiveStyle : tabStyle}
-                        onClick={() => {
-                            setMode('login');
-                            setError('');
-                            setSuccess('');
-                            setShowPassword(false);
-                        }}
-                        aria-pressed={mode === 'login'}
-                        disabled={isLoading}
-                    >
-                        ログイン
-                    </button>
-                    <button
-                        type="button"
-                        className={mode === 'register' ? tabActiveStyle : tabStyle}
-                        onClick={() => {
-                            setMode('register');
-                            setError('');
-                            setSuccess('');
-                            setShowPassword(false);
-                        }}
-                        aria-pressed={mode === 'register'}
-                        disabled={isLoading}
-                    >
-                        新規登録
-                    </button>
-                </div>
+                <Link to="/" aria-label="サーバーの紹介へ">
+                    <img src="/icon.png" alt="" width={64} height={64} className={iconStyle} />
+                </Link>
+                <h1 className={cx(titleStyle, serverName === null && pendingStyle)}>
+                    {serverName ?? DEFAULT_SERVER_NAME}
+                </h1>
+                {adding && <p className={subtitleStyle}>追加するアカウントでログインしてください</p>}
 
                 <form onSubmit={handleSubmit} className={formStyle} aria-busy={isLoading}>
                     {mode === 'register' && (
@@ -496,7 +497,8 @@ export function AuthPage() {
                             onChange={(e) => setEmail(e.target.value)}
                             placeholder={mode === 'login' ? 'example@email.com または ID' : 'example@email.com'}
                             className={inputStyle}
-                            autoComplete={mode === 'login' ? 'username' : 'email'}
+                            // パスワードの管理ツールに、メールアドレスをアカウントの名前として覚えさせる
+                            autoComplete="username"
                             required
                         />
                     </div>
@@ -534,7 +536,7 @@ export function AuthPage() {
                     {/* パスワードを入れ始めてから出す（画面を見ただけ・フェディバースで入る人には外部のスクリプトを読ませない） */}
                     {botProtection && password !== '' && (
                         <BotCheck
-                            // ログインと登録で action が違うので、タブを替えたら作り直す
+                            // ログインと登録で action が違うので、替えたら作り直す
                             key={`${mode}:${botRound}`}
                             provider={botProtection.provider}
                             siteKey={botProtection.siteKey}
@@ -589,7 +591,44 @@ export function AuthPage() {
                         />
                     </>
                 )}
+
+                {mode === 'login' && fediverseOptions?.registrationOpen !== false && (
+                    <p className={switchModeStyle}>
+                        アカウントをお持ちでない方は
+                        <button
+                            type="button"
+                            className={switchModeButtonStyle}
+                            onClick={() => switchMode('register')}
+                            disabled={isLoading}
+                        >
+                            新規登録
+                        </button>
+                    </p>
+                )}
+                {mode === 'register' && (
+                    <p className={switchModeStyle}>
+                        アカウントをお持ちの方は
+                        <button
+                            type="button"
+                            className={switchModeButtonStyle}
+                            onClick={() => switchMode('login')}
+                            disabled={isLoading}
+                        >
+                            ログイン
+                        </button>
+                    </p>
+                )}
             </div>
         </main>
     );
 }
+
+const switchModeStyle = css({ fontSize: 'sm', color: 'textMuted' });
+const switchModeButtonStyle = css({
+    ml: '1',
+    color: 'text',
+    fontWeight: 'medium',
+    textDecoration: 'underline',
+    cursor: 'pointer',
+    _disabled: { opacity: 0.6, cursor: 'not-allowed' },
+});

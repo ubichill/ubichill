@@ -4,8 +4,8 @@
 import { BOT_CHECK_ACTIONS, DisplayNameSchema, HandleSchema } from '@ubichill/shared';
 import { Router } from 'express';
 import { appConfig } from '../../config';
-import { createPendingRegistration, resendOTP, verifyAndRegister } from '../../lib/auth';
-import { optionalAuth } from '../../middleware/auth';
+import { createPendingRegistration, resendOTP, signInRegisteredUser, verifyAndRegister } from '../../lib/auth';
+import { optionalAuth, toWebHeaders } from '../../middleware/auth';
 import { requireBotCheck } from '../../middleware/botCheck';
 import { botProtectionService } from '../../services/auth/botProtection/botProtectionService';
 import { displayNameAvailability } from '../../services/users/displayName';
@@ -46,13 +46,11 @@ router.post('/register', ...limiters.register, requireBotCheck(BOT_CHECK_ACTIONS
     }
     const result = await createPendingRegistration(email, password, parsedName.data, parsedHandle.data);
     if (!result.success) return res.status(400).json({ error: result.error });
-    // メール確認をスキップした場合
-    if (result.skipVerification) {
-        return res.json({
-            success: true,
-            skipVerification: true,
-            message: '登録が完了しました。ログインしてください。',
-        });
+    // メール確認をスキップした場合（開発環境）。そのままログインさせる
+    if (result.skipVerification && result.userId) {
+        const cookies = await signInRegisteredUser(result.userId, toWebHeaders(req));
+        if (cookies) res.append('Set-Cookie', cookies);
+        return res.json({ success: true, skipVerification: true, signedIn: cookies !== null });
     }
     return res.json({
         success: true,
@@ -61,7 +59,7 @@ router.post('/register', ...limiters.register, requireBotCheck(BOT_CHECK_ACTIONS
     });
 });
 
-// OTP検証して本登録
+// OTP検証して本登録し、そのままログインさせる
 router.post('/verify', ...limiters.verify, async (req, res) => {
     const { registrationId, otp } = req.body as { registrationId?: unknown; otp?: unknown };
     if (typeof registrationId !== 'string' || typeof otp !== 'string' || !registrationId || !otp) {
@@ -69,7 +67,10 @@ router.post('/verify', ...limiters.verify, async (req, res) => {
     }
     const result = await verifyAndRegister(registrationId, otp);
     if (!result.success) return res.status(400).json({ error: result.error });
-    return res.json({ success: true, message: '登録が完了しました' });
+    // そのままログインさせる（作れなければ、画面がログインし直してもらう）
+    const cookies = await signInRegisteredUser(result.userId, toWebHeaders(req));
+    if (cookies) res.append('Set-Cookie', cookies);
+    return res.json({ success: true, signedIn: cookies !== null });
 });
 
 // OTP再送信

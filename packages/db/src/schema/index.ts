@@ -19,6 +19,7 @@ export * from './pendingRegistrations';
 export * from './profileImages';
 export * from './retiredAccounts';
 export * from './roles';
+export * from './serverInfo';
 export * from './twoFactor';
 export * from './users';
 export * from './worlds';

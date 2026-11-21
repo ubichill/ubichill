@@ -79,6 +79,7 @@ export {
     type RoleWithCountRecord,
     roleRepository,
 } from './repositories/roleRepository';
+export { type ServerInfoRecord, serverInfoRepository } from './repositories/serverInfoRepository';
 export {
     type LockedTwoFactor,
     type TwoFactorChallengeRecord,

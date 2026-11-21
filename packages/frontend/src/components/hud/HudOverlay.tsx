@@ -96,7 +96,7 @@ export function HudOverlay({ onClose, currentInstanceId, initialTab }: HudOverla
     const [worldsSection, setWorldsSection] = useState<WorldsSection>('local');
     const [socialSection, setSocialSection] = useState<SocialSection>('locations');
     const [settingsSection, setSettingsSection] = useState<SettingsSection>('home');
-    const [controlSection, setControlSection] = useState<ControlPanelSection>('users');
+    const [controlSection, setControlSection] = useState<ControlPanelSection>('general');
     const [visible, setVisible] = useState(false);
     const instance = useCurrentInstance(currentInstanceId);
     const isHome = !!instance && isHomeInstance(instance, home, session?.user.id);

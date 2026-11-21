@@ -1,11 +1,12 @@
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import type { RoleFields } from '@ubichill/shared';
+import { DEFAULT_SERVER_INFO, type RoleFields, type ServerInfo } from '@ubichill/shared';
 import express, { type RequestHandler } from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createBotProtection } from '../../services/auth/botProtection/botProtection';
 import { createFeaturedServers } from '../../services/auth/fediverse/featuredServers';
 import { createRoleService, type RoleStore, type StoredRole } from '../../services/roles/roles';
+import { createServerInfo } from '../../services/server/serverInfo';
 import { createAdminRouter } from './router';
 
 /** 偽の roleRepository（このテストで使う分だけ）。 */
@@ -155,11 +156,23 @@ const botProtection = createBotProtection({
     warn: () => {},
 });
 
+const serverRow: { value: (ServerInfo & { updatedAt: Date }) | null } = { value: null };
+const serverInfo = createServerInfo({
+    repository: {
+        get: async () => serverRow.value,
+        put: async (info) => {
+            serverRow.value = { ...info, updatedAt: new Date('2026-11-21T00:00:00Z') };
+        },
+    },
+    countPeople: async () => 0,
+    registrationOpen: true,
+});
+
 const app = express();
 app.use(express.json());
 app.use(
     '/api/v1/admin',
-    createAdminRouter({ requireAuth, requireAdmin, roles: service, featuredServers, botProtection }),
+    createAdminRouter({ requireAuth, requireAdmin, roles: service, featuredServers, botProtection, serverInfo }),
 );
 const server = createServer(app);
 const url = (path: string) => `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/admin${path}`;
@@ -195,6 +208,8 @@ const ENDPOINTS: ReadonlyArray<[string, string]> = [
     ['POST', '/fediverse-servers'],
     ['PUT', '/fediverse-servers/order'],
     ['DELETE', '/fediverse-servers/misskey.example'],
+    ['GET', '/server-info'],
+    ['PUT', '/server-info'],
 ];
 
 describe('コントロールパネルの API', () => {
@@ -213,6 +228,7 @@ describe('コントロールパネルの API', () => {
             expect((await call(method, path, body, { 'x-user': 'alice' })).status, `${method} ${path}`).toBe(403);
         }
         expect(await service.listRoles()).toEqual([]);
+        expect(serverRow.value).toBeNull();
     });
 
     it('作ると 201、変えると 200、消すと 204。どれも cache させない', async () => {
@@ -327,6 +343,23 @@ describe('コントロールパネルの API', () => {
                 config: null,
             });
             expect(bot.row).toBeNull();
+        });
+    });
+
+    describe('サーバーの情報', () => {
+        it('確かめてから保存し、変えた後の設定を返す。キャッシュさせない', async () => {
+            const initial = await call('GET', '/server-info');
+            expect(initial.headers.get('cache-control')).toBe('no-store');
+            expect(await initial.json()).toEqual({ info: DEFAULT_SERVER_INFO, updatedAt: null });
+
+            const refused = await call('PUT', '/server-info', { ...DEFAULT_SERVER_INFO, name: '' });
+            expect(refused.status).toBe(400);
+            expect(await refused.json()).toEqual({ error: 'サーバー名を入れてください' });
+            expect(serverRow.value).toBeNull();
+
+            const saved = await call('PUT', '/server-info', { ...DEFAULT_SERVER_INFO, name: 'ようかん' });
+            expect(saved.status).toBe(200);
+            expect(await saved.json()).toMatchObject({ info: { name: 'ようかん' } });
         });
     });
 });

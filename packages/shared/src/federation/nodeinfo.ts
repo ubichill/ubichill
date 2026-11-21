@@ -3,6 +3,7 @@
  * 機能は Application actor の implements（FEP-844e）で告知する（NodeInfo の列挙を機能の判定に使わない。FEP-f1d5）。
  */
 import { z } from 'zod';
+import { type ServerInfo, UBICHILL_REPOSITORY_URL } from '../server/serverInfo';
 import { FEDERATION_PATHS, FEDERATION_VERSION } from './protocol';
 
 export const NODEINFO_SCHEMA = 'http://nodeinfo.diaspora.software/ns/schema/2.1';
@@ -23,20 +24,34 @@ export function buildNodeInfo(input: {
     version: string;
     openRegistrations: boolean;
     users?: number;
+    /** コントロールパネルの「全般」。metadata は Misskey・Mastodon が読む名前に合わせる */
+    server?: ServerInfo;
 }): Record<string, unknown> {
+    const server = input.server;
     return {
         version: '2.1',
         software: {
             name: 'ubichill',
             version: input.version,
-            repository: 'https://github.com/ubichill/ubichill',
+            repository: server?.repositoryUrl ?? UBICHILL_REPOSITORY_URL,
             homepage: 'https://ubichill.com',
         },
         protocols: ['activitypub'],
         services: { inbound: [], outbound: [] },
         openRegistrations: input.openRegistrations,
         usage: { users: input.users === undefined ? {} : { total: input.users } },
-        metadata: { ubichill: { federation: { version: FEDERATION_VERSION } } },
+        metadata: {
+            ...(server && {
+                nodeName: server.name,
+                nodeDescription: server.description,
+                maintainer: { name: server.maintainerName, email: server.maintainerEmail },
+                tosUrl: server.tosUrl,
+                privacyPolicyUrl: server.privacyPolicyUrl,
+                inquiryUrl: server.inquiryUrl,
+                impressumUrl: server.impressumUrl,
+            }),
+            ubichill: { federation: { version: FEDERATION_VERSION } },
+        },
     };
 }
 

@@ -34,6 +34,7 @@ import { createAuthRateLimitStorage } from './authRateLimit';
 import { fediverseSignInPlugin } from './fediverseSignInPlugin';
 import { createMailer, mailTransportFrom } from './mail';
 import { redis } from './redis';
+import { registrationSignInPlugin } from './registrationSignInPlugin';
 import { sessionAssuranceFields, sessionAssuranceHooks } from './sessionAssuranceOptions';
 import { signInIdentifierPlugin } from './signInIdentifierPlugin';
 import { type SecondFactorGate, twoFactorPlugin } from './twoFactorPlugin';
@@ -105,7 +106,14 @@ export async function createPendingRegistration(
     password: string,
     displayName: string,
     handle: string,
-): Promise<{ success: boolean; error?: string; skipVerification?: boolean; registrationId?: string }> {
+): Promise<{
+    success: boolean;
+    error?: string;
+    skipVerification?: boolean;
+    registrationId?: string;
+    /** メール確認を飛ばして本登録したユーザー */
+    userId?: string;
+}> {
     const email = normalizeEmail(rawEmail);
     // 本登録は signUpEmail を通らないので、signUpEmail がしていた入力の確認をここでする
     if (!appConfig.registrationOpen) {
@@ -148,9 +156,10 @@ export async function createPendingRegistration(
 
     // メール確認をスキップする場合は直接登録
     if (SKIP_EMAIL_VERIFICATION) {
+        const userId = newBetterAuthId(ctx, 'user');
         try {
             const created = await userRepository.createCredentialUser({
-                userId: newBetterAuthId(ctx, 'user'),
+                userId,
                 accountId: newBetterAuthId(ctx, 'account'),
                 email,
                 name: displayName,
@@ -162,7 +171,7 @@ export async function createPendingRegistration(
             if (created === 'handle-retired') return { success: false, error: 'この ID は既に使用されています' };
 
             logger.info(`ユーザー登録完了（メール確認スキップ）: ${email}`);
-            return { success: true, skipVerification: true };
+            return { success: true, skipVerification: true, userId };
         } catch (error) {
             logger.error(`登録に失敗しました（メール確認スキップ）: ${email}`, error);
             return { success: false, error: '登録に失敗しました' };
@@ -226,7 +235,7 @@ const VERIFY_ERRORS = {
 export async function verifyAndRegister(
     registrationId: string,
     otp: string,
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: true; userId: string } | { success: false; error: string }> {
     // 確認コードを送った後に新規登録を止めたら、本登録もさせない（コードは消費しない）
     if (!appConfig.registrationOpen) return { success: false, error: '現在、新規登録を受け付けていません' };
     const outcome = await (await getPendingRegistrations()).verify(registrationId, otp);
@@ -235,7 +244,7 @@ export async function verifyAndRegister(
         return { success: false, error: VERIFY_ERRORS[outcome.status] };
     }
     logger.info(`ユーザー登録完了: ${outcome.email}`);
-    return { success: true };
+    return { success: true, userId: outcome.userId };
 }
 
 // OTPを再送信
@@ -353,6 +362,8 @@ export const auth = betterAuth({
         // ログインしたセッションを「このブラウザーのアカウント」として覚える（切り替えの口は accountSwitchPlugin）
         multiSession({ maximumSessions: 5 }),
         accountSwitchPlugin(),
+        // 登録を終えた人をそのままログインさせる（サーバーの中からだけ呼ぶ）
+        registrationSignInPlugin({ gate: secondFactorGate }),
         fediverseSignInPlugin({
             getSignIn: () => getFediverseSignIn(),
             secondFactor: secondFactorGate,
@@ -377,6 +388,24 @@ export const auth = betterAuth({
 });
 
 export type Session = typeof auth.$Infer.Session;
+
+/**
+ * 登録を終えた人をそのままログインさせ、応答に付けるクッキーを返す（このブラウザーでログインしているほかのアカウントは残す）。
+ * 作れなければ null（登録はできているので、ログインし直してもらう）。
+ */
+export async function signInRegisteredUser(userId: string, requestHeaders: Headers): Promise<string[] | null> {
+    try {
+        const { headers, response } = await auth.api.registrationSignIn({
+            body: { userId },
+            headers: requestHeaders,
+            returnHeaders: true,
+        });
+        return response.signedIn ? headers.getSetCookie() : null;
+    } catch (error) {
+        logger.error('登録の後のログインに失敗しました', error);
+        return null;
+    }
+}
 
 /** users・accounts を better-auth の adapter を通さずに作るときの ID（better-auth と同じ作り方）。 */
 export function newBetterAuthId(ctx: Awaited<typeof auth.$context>, model: 'user' | 'account'): string {

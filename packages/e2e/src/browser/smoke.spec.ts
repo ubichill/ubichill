@@ -6,7 +6,8 @@ import { type ConsoleEntry, fatalConsoleEntries, formatConsole } from './console
 
 /**
  * ブラウザのスモーク。src/cli.ts から SMOKE_ORIGIN・SMOKE_RUN_ID・SMOKE_WORLD を渡して走らせる。
- * ログイン画面から登録・ログインし、ホームの部屋へ自動で入り、同梱 mod（pen）の Worker が動くことを確かめる。
+ * 紹介のページから登録し（そのままログインする）、ホームの部屋へ自動で入り、同梱 mod（pen）の Worker が動くことを確かめる。
+ * パスワードでのログインは、2 つ目の試験（CLI の承認）で確かめる。
  * SMOKE_WORLD が既定のワールドでなければ、ホームをそのワールドに変えて `/` を開き直す（ホームの変更も確かめる）。
  */
 const origin = requiredEnv('SMOKE_ORIGIN');
@@ -17,7 +18,7 @@ const worldId = process.env.SMOKE_WORLD ?? DEFAULT_WORLD;
 
 test.use({ baseURL: origin, screenshot: 'only-on-failure', trace: 'retain-on-failure' });
 
-test('登録・ログインし、ホームに入って pen の Worker が動く', async ({ page }, testInfo) => {
+test('紹介のページから登録してそのままログインし、ホームに入って pen の Worker が動く', async ({ page }, testInfo) => {
     const account = smokeAccount(runId, 'w');
     const consoleEntries: ConsoleEntry[] = [];
     // Worker の console も page の console に届く
@@ -28,9 +29,10 @@ test('登録・ログインし、ホームに入って pen の Worker が動く'
     const created: string[] = [];
 
     try {
-        await test.step('登録', async () => {
-            await page.goto('/auth');
-            await page.getByRole('button', { name: '新規登録', exact: true }).click();
+        await test.step('紹介のページから登録する', async () => {
+            await page.goto('/');
+            await page.getByRole('link', { name: '新規登録', exact: true }).click();
+            await expect(page).toHaveURL(/\/auth\?mode=register$/);
             await page.getByLabel('表示名').fill(account.displayName);
             await page.getByLabel('ID', { exact: true }).fill(account.handle);
             await page.getByLabel('メールアドレス').fill(account.email);
@@ -39,11 +41,6 @@ test('登録・ログインし、ホームに入って pen の Worker が動く'
             await expect(page.getByText('この表示名は使用できます')).toBeVisible();
             await expect(page.getByText('この ID は使用できます')).toBeVisible();
             await page.locator('form').getByRole('button', { name: '登録', exact: true }).click();
-            await expect(page.getByText(/登録が完了しました/)).toBeVisible();
-        });
-
-        await test.step('ログイン', async () => {
-            await login(page, account);
         });
 
         await test.step('ロビーを通らず、ホームの部屋へ自動で入る', async () => {
