@@ -57,3 +57,4 @@ export const insertInstanceSchema = createInsertSchema(instances, {
 export const selectInstanceSchema = createSelectSchema(instances, {
     accessTags: z.array(z.string()).nullable(),
 });
+export * from './worldAssets';

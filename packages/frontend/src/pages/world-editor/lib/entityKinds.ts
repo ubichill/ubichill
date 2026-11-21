@@ -1,4 +1,11 @@
-import { CORE_COMPONENT_TYPES, MEDIA_FITS } from '@ubichill/core-components';
+import {
+    CORE_COMPONENT_TYPES,
+    IMAGE_FITS,
+    MEDIA_FITS,
+    PORTAL_LABEL_MAX_LENGTH,
+    TEXT_ALIGNS,
+    TEXT_SIZE_RANGE,
+} from '@ubichill/core-components';
 import { createDefaultColliderData } from '@ubichill/runtime';
 import type { OverlayMode } from '@ubichill/shared';
 import { type PreviewImageSource, previewImageSource } from '../../../lib/mods/previewImage';
@@ -20,6 +27,8 @@ export type DataFieldSpec =
     | { type: 'boolean'; default?: boolean; label?: string; help?: string }
     | { type: 'color'; default?: string; label?: string; help?: string }
     | { type: 'url'; default?: string; placeholder?: string; label?: string; help?: string }
+    // 画像の URL。このサーバーに画像を上げるボタンも出す（core:image）
+    | { type: 'image'; default?: string; label?: string; help?: string }
     | { type: 'enum'; default?: string; options: string[]; label?: string; help?: string }
     | { type: 'json'; default?: unknown; label?: string; help?: string }
     // 配列: 各要素を item スキーマで編集する。エディタは「行リスト＋追加/削除」で描画する。
@@ -121,6 +130,81 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
                 multiline: true,
                 label: 'UI データ（HTML 風）',
                 help: '看板・説明・リンクなど。使えるタグ・属性は mod の UI と同じ（script やイベント属性は動かない）。リンクは新しいタブで開く。',
+            },
+        },
+        viewKind: 'jsx',
+    },
+    {
+        modName: 'core',
+        kind: CORE_COMPONENT_TYPES.image,
+        displayName: '画像',
+        suggestSize: true,
+        defaultTransform: { w: 320, h: 240 },
+        dataFields: {
+            src: {
+                type: 'image',
+                default: '',
+                label: '画像',
+                help: '画像を選んで上げるか、http(s) の URL を入れる。',
+            },
+            fit: {
+                type: 'enum',
+                options: [...IMAGE_FITS],
+                default: 'contain',
+                label: '収め方',
+                help: 'contain は全体を見せる、cover は枠を埋める（端が切れる）、fill は枠に合わせて伸ばす。',
+            },
+            alt: { type: 'string', default: '', label: '説明', help: '読み上げや、読み込めないときに出す。' },
+        },
+        viewKind: 'jsx',
+    },
+    {
+        modName: 'core',
+        kind: CORE_COMPONENT_TYPES.text,
+        displayName: '文字',
+        suggestSize: true,
+        defaultTransform: { w: 320, h: 80 },
+        dataFields: {
+            text: { type: 'string', multiline: true, default: 'ようこそ', label: '文字' },
+            size: {
+                type: 'number',
+                default: 24,
+                min: TEXT_SIZE_RANGE.min,
+                max: TEXT_SIZE_RANGE.max,
+                step: 1,
+                label: '大きさ（px）',
+            },
+            color: { type: 'color', default: '#1b2a44', label: '文字の色' },
+            background: {
+                type: 'string',
+                default: 'transparent',
+                label: '背景の色',
+                help: '#RRGGBB か transparent（背景なし）。',
+            },
+            align: { type: 'enum', options: [...TEXT_ALIGNS], default: 'left', label: '揃え' },
+            bold: { type: 'boolean', default: false, label: '太字' },
+        },
+        viewKind: 'jsx',
+    },
+    {
+        modName: 'core',
+        kind: CORE_COMPONENT_TYPES.portal,
+        displayName: '入口',
+        suggestSize: true,
+        defaultTransform: { w: 200, h: 56 },
+        dataFields: {
+            world: {
+                type: 'string',
+                default: '',
+                placeholder: '@ID/名前',
+                label: '行き先のワールド',
+                help: 'ワールドのページの @ID/名前、このサーバーのワールドの ID、ワールドの URL のどれか。',
+            },
+            label: {
+                type: 'string',
+                default: '',
+                placeholder: '入口',
+                label: `名前（${PORTAL_LABEL_MAX_LENGTH} 文字まで）`,
             },
         },
         viewKind: 'jsx',

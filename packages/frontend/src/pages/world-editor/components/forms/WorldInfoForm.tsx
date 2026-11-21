@@ -2,6 +2,7 @@ import type { WorldDefinition } from '@ubichill/shared';
 import { useState } from 'react';
 import { toWorldName, WORLD_NAME_MAX_LENGTH } from '@/lib/worlds/worldName';
 import { css } from '@/styled-system/css';
+import { ImageUrlInput } from '../ImageUrlInput';
 
 interface WorldInfoFormProps {
     /** 編集中の definition。親 (WorldEditorPage) が状態を持ち、ここでは直接更新する。 */
@@ -193,6 +194,35 @@ export function WorldInfoForm({ definition, onChange }: WorldInfoFormProps) {
                         />
                     </div>
                 </Field>
+                <Field label="背景の画像">
+                    <ImageUrlInput
+                        name="world-bgImage"
+                        label="背景の画像の URL"
+                        value={env.backgroundImage ?? ''}
+                        onChange={(next) =>
+                            onUpdateSpec({ environment: { ...env, backgroundImage: next.trim() || undefined } })
+                        }
+                    />
+                    {env.backgroundImage && (
+                        <select
+                            name="world-bgImageFit"
+                            aria-label="背景の画像の敷き方"
+                            value={env.backgroundImageFit ?? 'cover'}
+                            onChange={(e) =>
+                                onUpdateSpec({
+                                    environment: {
+                                        ...env,
+                                        backgroundImageFit: e.target.value === 'tile' ? 'tile' : 'cover',
+                                    },
+                                })
+                            }
+                            className={inputStyle}
+                        >
+                            <option value="cover">ワールドいっぱいに広げる</option>
+                            <option value="tile">元の大きさで並べる</option>
+                        </select>
+                    )}
+                </Field>
             </div>
         </div>
     );
@@ -224,7 +254,7 @@ function Field({ label, required, children }: { label: string; required?: boolea
     );
 }
 
-/** 右上のサムネイル。画像を押すと URL を入れ替えられる（空にすると外れる）。 */
+/** 右上のサムネイル。画像を押すと、画像を上げるか URL を入れて替えられる（空にすると外れる）。 */
 function ThumbnailPicker({ url, onChange }: { url: string | undefined; onChange: (url: string | undefined) => void }) {
     const [editing, setEditing] = useState(false);
     const [failedUrl, setFailedUrl] = useState<string | null>(null);
@@ -272,22 +302,11 @@ function ThumbnailPicker({ url, onChange }: { url: string | undefined; onChange:
                 )}
             </button>
             {editing && (
-                <input
-                    type="url"
+                <ImageUrlInput
                     name="world-thumbnail"
-                    // biome-ignore lint/a11y/noAutofocus: 画像を押した直後に入力するため
-                    autoFocus
-                    defaultValue={url ?? ''}
-                    placeholder="https://..."
-                    onBlur={(e) => {
-                        onChange(e.target.value.trim() || undefined);
-                        setEditing(false);
-                    }}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter') e.currentTarget.blur();
-                        if (e.key === 'Escape') setEditing(false);
-                    }}
-                    className={inputStyle}
+                    label="サムネイルの URL"
+                    value={url ?? ''}
+                    onChange={(next) => onChange(next.trim() || undefined)}
                 />
             )}
         </div>

@@ -28,6 +28,8 @@ spec:
     max: 20                 # 上限人数
   environment:              # 任意
     backgroundColor: "#F0F8FF"   # HEX
+    backgroundImage: https://.../bg.webp  # 任意（http(s) の URL）。ワールドといっしょに動く
+    backgroundImageFit: cover # 任意。cover（既定・広さいっぱいに広げる）か tile（元の大きさで並べる）
     worldSize: { width: 2000, height: 1500 }
   initialEntities: []       # 後述（既定 []）
 ```
@@ -87,6 +89,11 @@ Host が持つ Component。mod を読み込まずに使え、`dependencies` に�
 | `core:collider` | 当たり判定の形 | `shape: rect`（`size: { w, h }` か `entity`）または `shape: circle`（`radius`）。`offset`・`isTrigger`・`layer`・`mask` |
 | `core:media` | 動画を描く場所（Unity の MeshRenderer に当たる）。何を再生するかは、参照フィールドでこの Entity を指した mod が決める。1 つの面を指せる出力は 1 つだけ（2 つ以上が指す・1 Entity に 2 つ置くと何も描かない）。描けるのはワールド定義に置いた Component の出力だけ（部屋の中で作られた Component は数えない） | `fit: contain`（既定・全体を見せる）か `cover`（枠を埋める） |
 | `core:ui` | 作者が書く UI（看板・説明・リンクなど）。mod を作らずに置ける | `markup`: HTML 風の文字列（2 万文字まで） |
+| `core:image` | 画像（絵・写真・看板の絵）。大きさは `transform` の `w`・`h` | `src`: http(s) の URL（エディタの「画像を上げる」でこのサーバーに置ける）。`fit`: `contain`（既定）・`cover`・`fill`。`alt`: 説明（200 文字まで） |
+| `core:text` | 文字（看板・案内）。改行はそのまま出す | `text`（2,000 文字まで）。`size`: px（8〜200、既定 24）。`color`: `#RRGGBB`。`background`: `#RRGGBB` か `transparent`（既定）。`align`: `left`・`center`・`right`。`bold` |
+| `core:portal` | 押すと、ほかのワールドへ移る入口（確かめてから今の部屋を出る） | `world`: 行き先（`@ID/名前`・このサーバーのワールドの ID・ワールドの http(s) URL）。`label`: 入口の名前（60 文字まで。空なら「入口」） |
+
+`core:image`・`core:text`・`core:portal` と背景の画像は、足した後の版の Ubichill でしか開けない（古いサーバーは定義の検査で断る）。
 
 ```yaml
 - id: tv
@@ -128,6 +135,31 @@ Host が持つ Component。mod を読み込まずに使え、`dependencies` に�
             <p>ルールは<a href="https://example.com/rules">こちら</a></p>
           </div>
 ```
+
+```yaml
+- id: welcome
+  transform: { x: 120, y: 80, w: 480, h: 64 }
+  components:
+    - type: core:text
+      data: { text: "ようこそ", size: 40, bold: true, align: center }
+- id: photo
+  transform: { x: 120, y: 160, w: 480, h: 320 }
+  components:
+    - type: core:image
+      data: { src: "https://ubichill.example/api/v1/assets/<hash>.webp", fit: cover, alt: "海の写真" }
+- id: to-cafe
+  transform: { x: 640, y: 160, w: 200, h: 56 }
+  components:
+    - type: core:portal
+      data: { world: "@alice/cafe", label: "カフェへ" }
+```
+
+### 画像の置き場所
+
+エディタの「画像を上げる」で、画像をこのサーバーに置ける（`POST /api/v1/assets`）。サーバーは画像を作り直し（向きを直し・位置情報などのメタデータを消し・長い辺を 2048px に縮めた WebP）、中身のハッシュの URL（`/api/v1/assets/<hash>.webp`）で配る。
+
+- 1 人 200 枚・200 MB まで。送れるのは 10 MB までの JPEG・PNG・WebP・GIF（最初のコマ）・AVIF。
+- だれでも読める（ほかのサーバーで開いたワールドからも）。同じ URL の中身は変わらない。
 
 ## その他の `spec` フィールド（任意）
 
