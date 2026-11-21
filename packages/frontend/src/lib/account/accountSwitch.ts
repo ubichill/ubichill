@@ -46,4 +46,4 @@ export async function deleteMyAccount(handle: string): Promise<void> {
 }
 
 /** 別のアカウントでログインする画面（今のアカウントのまま開く）。 */
-export const ADD_ACCOUNT_PATH = '/auth?add=1';
+export const ADD_ACCOUNT_PATH = '/?add=1';

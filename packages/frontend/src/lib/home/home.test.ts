@@ -121,7 +121,7 @@ describe('homeInstanceEntry', () => {
 
     it('入れなかった部屋を引き継ぐ（部屋の URL でなければ捨てる）', () => {
         expect(homeInstanceEntry(response('i1'), { retryPath: '/instance/x' }).retryPath).toBe('/instance/x');
-        expect(homeInstanceEntry(response('i1'), { retryPath: '/auth' })).not.toHaveProperty('retryPath');
+        expect(homeInstanceEntry(response('i1'), { retryPath: '/world/abc' })).not.toHaveProperty('retryPath');
     });
 });
 

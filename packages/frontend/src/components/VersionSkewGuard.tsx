@@ -23,9 +23,7 @@ export function VersionSkewGuard() {
             const publishedCommit = await fetchFrontendCommit(import.meta.env.BASE_URL);
             if (cancelled || !isVersionSkewed(FRONT_COMMIT, publishedCommit) || typeof publishedCommit !== 'string')
                 return;
-            if (
-                skewAction(window.location.pathname, publishedCommit, memory.reloadedFor(publishedCommit)) === 'reload'
-            ) {
+            if (skewAction(window.location, publishedCommit, memory.reloadedFor(publishedCommit)) === 'reload') {
                 memory.remember(publishedCommit);
                 window.location.reload();
                 return;

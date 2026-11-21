@@ -31,16 +31,17 @@ test('紹介のページから登録してそのままログインし、ホー�
     try {
         await test.step('紹介のページから登録する', async () => {
             await page.goto('/');
-            await page.getByRole('link', { name: '新規登録', exact: true }).click();
-            await expect(page).toHaveURL(/\/auth\?mode=register$/);
-            await page.getByLabel('表示名').fill(account.displayName);
-            await page.getByLabel('ID', { exact: true }).fill(account.handle);
-            await page.getByLabel('メールアドレス').fill(account.email);
-            await page.getByLabel('パスワード', { exact: true }).fill(account.password);
+            await page.getByRole('button', { name: '新規登録', exact: true }).click();
+            await expect(page).toHaveURL(/\/\?mode=register$/);
+            const dialog = page.getByRole('dialog', { name: '新規登録' });
+            await dialog.getByLabel('表示名').fill(account.displayName);
+            await dialog.getByLabel('ID', { exact: true }).fill(account.handle);
+            await dialog.getByLabel('メールアドレス').fill(account.email);
+            await dialog.getByLabel('パスワード', { exact: true }).fill(account.password);
             // 表示名・ID の重複の確認が終わるまで登録できない
-            await expect(page.getByText('この表示名は使用できます')).toBeVisible();
-            await expect(page.getByText('この ID は使用できます')).toBeVisible();
-            await page.locator('form').getByRole('button', { name: '登録', exact: true }).click();
+            await expect(dialog.getByText('この表示名は使用できます')).toBeVisible();
+            await expect(dialog.getByText('この ID は使用できます')).toBeVisible();
+            await dialog.locator('form').getByRole('button', { name: '登録', exact: true }).click();
         });
 
         await test.step('ロビーを通らず、ホームの部屋へ自動で入る', async () => {
@@ -108,10 +109,12 @@ test('セッション取得が一時的に失敗しても、CLI 承認画面で�
     });
 
     const approvePath = '/cli/authorize';
+    // ログインの入り口（/）。ログインしたら承認画面へ戻る
+    const signInUrl = /\/\?next=%2Fcli%2Fauthorize$/;
     const switchAccount = page.getByRole('button', { name: '別のアカウントで承認する' });
     await test.step('1 人目で承認画面を開く', async () => {
         await page.goto(approvePath);
-        await expect(page).toHaveURL(/\/auth$/);
+        await expect(page).toHaveURL(signInUrl);
         await login(page, first);
         await expect(page).toHaveURL(/\/cli\/authorize$/);
         await expect(page.getByText(first.displayName, { exact: true })).toBeVisible();
@@ -126,8 +129,8 @@ test('セッション取得が一時的に失敗しても、CLI 承認画面で�
             ),
             switchAccount.click(),
         ]);
-        await expect(page).toHaveURL(/\/auth$/);
-        await expect(page.locator('form').getByRole('button', { name: 'ログイン', exact: true })).toBeVisible();
+        await expect(page).toHaveURL(signInUrl);
+        await openLogin(page);
         await page.unroute(sessionRoute);
     });
 
@@ -139,12 +142,19 @@ test('セッション取得が一時的に失敗しても、CLI 承認画面で�
     });
 });
 
+/** 紹介のページの「ログイン」でダイアログを開く（開いていればそのまま）。 */
+async function openLogin(page: Page) {
+    const dialog = page.getByRole('dialog', { name: 'ログイン' });
+    if (!(await dialog.isVisible())) await page.getByRole('button', { name: 'ログイン', exact: true }).click();
+    await expect(dialog.locator('form').getByRole('button', { name: 'ログイン', exact: true })).toBeVisible();
+    return dialog;
+}
+
 async function login(page: Page, account: SmokeAccount): Promise<void> {
-    const submit = page.locator('form').getByRole('button', { name: 'ログイン', exact: true });
-    await expect(submit).toBeVisible();
-    await page.getByLabel('メールアドレス').fill(account.email);
-    await page.getByLabel('パスワード', { exact: true }).fill(account.password);
-    await submit.click();
+    const dialog = await openLogin(page);
+    await dialog.getByLabel('メールアドレス').fill(account.email);
+    await dialog.getByLabel('パスワード', { exact: true }).fill(account.password);
+    await dialog.locator('form').getByRole('button', { name: 'ログイン', exact: true }).click();
 }
 
 function penHost(page: Page) {

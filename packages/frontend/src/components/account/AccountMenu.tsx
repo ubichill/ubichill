@@ -109,7 +109,12 @@ export function AccountMenu() {
                         role="menuitem"
                         className={item({ danger: true })}
                         disabled={busy}
-                        onClick={() => void run(async () => ((await signOutThisAccount()) ? '/' : '/auth'))}
+                        onClick={() =>
+                            void run(async () => {
+                                await signOutThisAccount();
+                                return '/';
+                            })
+                        }
                     >
                         <HudIcon name="logout" size={18} />
                         ログアウト

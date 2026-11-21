@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fetchFrontendCommit, isVersionSkewed, reloadMemory, skewAction } from './versionSkew';
 
+const at = (pathname: string, search = '') => ({ pathname, search });
+
 describe('isVersionSkewed', () => {
     it('開いているフロントと配信中のフロントの版が違えばずれている', () => {
         expect(isVersionSkewed('abc1234', 'def5678')).toBe(true);
@@ -27,25 +29,38 @@ describe('skewAction', () => {
 
     it('失うものが無い画面（ロビー・ユーザーページ・ワールドの詳細）は、すぐ読み込み直す', () => {
         for (const path of ['/', '/@youkan', '/user/abc', '/world', '/world/abc', '/@youkan/chillwa']) {
-            expect(skewAction(path, SERVER, null)).toBe('reload');
+            expect(skewAction(at(path), SERVER, null)).toBe('reload');
         }
     });
 
-    it('作業中の画面（インスタンス・ワールドの新規作成と編集・ログイン・CLI の承認）は知らせるだけ', () => {
-        for (const path of ['/instance/abc', '/worlds/new', '/world/abc/edit', '/auth', '/cli/authorize']) {
-            expect(skewAction(path, SERVER, null)).toBe('prompt');
+    it('作業中の画面（インスタンス・ワールドの新規作成と編集・CLI の承認）は知らせるだけ', () => {
+        for (const path of ['/instance/abc', '/worlds/new', '/world/abc/edit', '/cli/authorize']) {
+            expect(skewAction(at(path), SERVER, null)).toBe('prompt');
         }
+    });
+
+    it('/ でも、ログイン・新規登録のダイアログを開いている・アカウントを足している間は知らせるだけ', () => {
+        for (const search of [
+            '?mode=login',
+            '?mode=register&next=%2Fx',
+            '?two_factor=1',
+            '?fediverse=sign-up',
+            '?add=1',
+        ]) {
+            expect(skewAction(at('/', search), SERVER, null)).toBe('prompt');
+        }
+        expect(skewAction(at('/', '?next=%2Fx'), SERVER, null)).toBe('reload');
     });
 
     it('知らない画面（今後増える画面）は、消えて困らないと分かるまで知らせるだけ', () => {
-        expect(skewAction('/something/new', SERVER, null)).toBe('prompt');
-        expect(skewAction('/world/abc/settings', SERVER, null)).toBe('prompt');
+        expect(skewAction(at('/something/new'), SERVER, null)).toBe('prompt');
+        expect(skewAction(at('/world/abc/settings'), SERVER, null)).toBe('prompt');
     });
 
     it('同じ配信版のために一度読み込み直したタブは、もう自動では読み込み直さない（デプロイの途中で繰り返さない）', () => {
-        expect(skewAction('/', SERVER, SERVER)).toBe('prompt');
+        expect(skewAction(at('/'), SERVER, SERVER)).toBe('prompt');
         // 配信中のフロントがさらに新しくなったら、もう一度だけ読み込み直してよい
-        expect(skewAction('/', 'newer99', SERVER)).toBe('reload');
+        expect(skewAction(at('/'), 'newer99', SERVER)).toBe('reload');
     });
 });
 
@@ -68,7 +83,7 @@ describe('reloadMemory', () => {
         };
         const memory = reloadMemory(broken);
         expect(() => memory.remember('def5678')).not.toThrow();
-        expect(skewAction('/', 'def5678', memory.reloadedFor('def5678'))).toBe('prompt');
+        expect(skewAction(at('/'), 'def5678', memory.reloadedFor('def5678'))).toBe('prompt');
     });
 });
 
@@ -109,7 +124,7 @@ describe('fetchFrontendCommit', () => {
         const fetcher = vi.fn(async () => Response.json({ commitHash: 'next123' })) as unknown as typeof fetch;
         const published = await fetchFrontendCommit('/', fetcher);
         expect(isVersionSkewed('976fb86', published)).toBe(true);
-        expect(skewAction('/auth', 'next123', null)).toBe('prompt');
+        expect(skewAction(at('/', '?mode=login'), 'next123', null)).toBe('prompt');
         expect(isVersionSkewed('next123', published)).toBe(false);
     });
 

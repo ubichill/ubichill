@@ -11,8 +11,6 @@ import { useDisplayNameAvailability, useHandleAvailability } from '@/lib/account
 import { css } from '@/styled-system/css';
 import {
     buttonStyle,
-    cardStyle,
-    containerStyle,
     errorStyle,
     fieldErrorStyle,
     fieldStyle,
@@ -24,13 +22,15 @@ import {
     labelStyle,
     linkButtonStyle,
     subtitleStyle,
-    titleStyle,
 } from './authStyles';
 import { BotCheck } from './BotCheck';
 
 type Loaded = { state: 'loading' } | { state: 'ready'; candidate: FediverseSignUpCandidate } | { state: 'expired' };
 
-/** フェディバースのアカウントで初めて来た人に、Ubichill の ID と表示名を決めてもらう（候補は外部の名前から）。 */
+/**
+ * フェディバースのアカウントで初めて来た人に、Ubichill の ID と表示名を決めてもらう（候補は外部の名前から）。
+ * 見出し（はじめまして）は、出す側のダイアログが付ける。`onCancel` は登録の途中の状態を消した後に呼ぶ。
+ */
 export function FediverseSignUpForm({ onCancel }: { onCancel: () => void }) {
     const [loaded, setLoaded] = useState<Loaded>({ state: 'loading' });
     const [handle, setHandle] = useState('');
@@ -74,7 +74,7 @@ export function FediverseSignUpForm({ onCancel }: { onCancel: () => void }) {
                 botToken,
             );
             // セッションを読み直すため、画面ごと移る（二段階認証が要るときはコードを入れる画面へ）
-            window.location.assign(twoFactorRequired ? '/auth?two_factor=1' : returnTo);
+            window.location.assign(twoFactorRequired ? '/?two_factor=1' : returnTo);
         } catch (err) {
             setError(err instanceof Error ? err.message : '登録に失敗しました');
             if (botProtection) setBotRound((n) => n + 1);
@@ -89,20 +89,18 @@ export function FediverseSignUpForm({ onCancel }: { onCancel: () => void }) {
 
     if (loaded.state !== 'ready') {
         return (
-            <main className={containerStyle}>
-                <div className={cardStyle}>
-                    <p className={subtitleStyle}>
-                        {loaded.state === 'loading'
-                            ? '読み込み中...'
-                            : '登録の期限が切れました。もう一度フェディバースで続けてください。'}
-                    </p>
-                    {loaded.state === 'expired' && (
-                        <button type="button" className={linkButtonStyle} onClick={onCancel}>
-                            ログイン画面に戻る
-                        </button>
-                    )}
-                </div>
-            </main>
+            <>
+                <p className={subtitleStyle}>
+                    {loaded.state === 'loading'
+                        ? '読み込み中...'
+                        : '登録の期限が切れました。もう一度 Mastodon・Misskey のアカウントで続けてください。'}
+                </p>
+                {loaded.state === 'expired' && (
+                    <button type="button" className={linkButtonStyle} onClick={onCancel}>
+                        閉じる
+                    </button>
+                )}
+            </>
         );
     }
 
@@ -115,128 +113,128 @@ export function FediverseSignUpForm({ onCancel }: { onCancel: () => void }) {
 
     if (!candidate.registrationOpen) {
         return (
-            <main className={containerStyle}>
-                <div className={cardStyle}>
-                    <p className={subtitleStyle}>
-                        {account} はまだ登録されていません。現在、新規登録は受け付けていません。
-                    </p>
-                    <button type="button" className={linkButtonStyle} onClick={cancel}>
-                        ログイン画面に戻る
-                    </button>
-                </div>
-            </main>
+            <>
+                <p className={subtitleStyle}>
+                    {account} はまだ登録されていません。現在、新規登録は受け付けていません。
+                </p>
+                <button type="button" className={linkButtonStyle} onClick={cancel}>
+                    閉じる
+                </button>
+            </>
         );
     }
 
     return (
-        <main className={containerStyle}>
-            <div className={cardStyle}>
-                {candidate.avatarUrl && !avatarFailed && (
-                    // 登録すると、このアイコンをプロフィールに取り込む（後から変えられる）
-                    <img
-                        src={candidate.avatarUrl}
-                        alt=""
-                        width={72}
-                        height={72}
-                        className={avatarStyle}
-                        referrerPolicy="no-referrer"
-                        onError={() => setAvatarFailed(true)}
+        <>
+            {candidate.avatarUrl && !avatarFailed && (
+                // 登録すると、このアイコンをプロフィールに取り込む（後から変えられる）
+                <img
+                    src={candidate.avatarUrl}
+                    alt=""
+                    width={72}
+                    height={72}
+                    className={avatarStyle}
+                    referrerPolicy="no-referrer"
+                    onError={() => setAvatarFailed(true)}
+                />
+            )}
+            <p className={subtitleStyle}>
+                {candidate.notRegistered
+                    ? `${account} はまだ登録されていません。ID と表示名を決めると、このまま登録できます。`
+                    : `${account} で登録します。Ubichill での ID と表示名を決めてください。`}
+            </p>
+            <form onSubmit={submit} className={formStyle} aria-busy={busy}>
+                <div className={fieldStyle}>
+                    <label htmlFor="fediverse-display-name" className={labelStyle}>
+                        表示名
+                    </label>
+                    <input
+                        id="fediverse-display-name"
+                        type="text"
+                        autoComplete="nickname"
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value.slice(0, 30))}
+                        aria-invalid={'error' in displayNameStatus}
+                        aria-describedby="fediverse-display-name-status"
+                        className={'error' in displayNameStatus ? inputErrorStyle : inputStyle}
+                        required
+                    />
+                    <div id="fediverse-display-name-status" role="status">
+                        {displayNameStatus.state === 'checking' && <p className={hintStyle}>確認中...</p>}
+                        {'error' in displayNameStatus && <p className={fieldErrorStyle}>{displayNameStatus.error}</p>}
+                        {displayNameStatus.state === 'available' && (
+                            <p className={fieldSuccessStyle}>この表示名は使用できます</p>
+                        )}
+                    </div>
+                </div>
+                <div className={fieldStyle}>
+                    <label htmlFor="fediverse-handle" className={labelStyle}>
+                        ID
+                    </label>
+                    <input
+                        id="fediverse-handle"
+                        type="text"
+                        autoComplete="off"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        value={handle}
+                        onChange={(e) => setHandle(e.target.value.toLowerCase().slice(0, 30))}
+                        aria-invalid={'error' in handleStatus}
+                        aria-describedby="fediverse-handle-status fediverse-handle-hint"
+                        className={'error' in handleStatus ? inputErrorStyle : inputStyle}
+                        required
+                    />
+                    <div id="fediverse-handle-status" role="status">
+                        {handleStatus.state === 'checking' && <p className={hintStyle}>確認中...</p>}
+                        {'error' in handleStatus && <p className={fieldErrorStyle}>{handleStatus.error}</p>}
+                        {handleStatus.state === 'available' && (
+                            <p className={fieldSuccessStyle}>この ID は使用できます</p>
+                        )}
+                    </div>
+                    <p id="fediverse-handle-hint" className={hintStyle}>
+                        英小文字・数字・_ の 3〜30 文字。あとから変更できません
+                    </p>
+                </div>
+                {botProtection && (
+                    <BotCheck
+                        key={botRound}
+                        provider={botProtection.provider}
+                        siteKey={botProtection.siteKey}
+                        action={BOT_CHECK_ACTIONS.fediverseSignUp}
+                        onToken={setBotToken}
                     />
                 )}
-                <h1 className={titleStyle}>はじめまして</h1>
-                <p className={subtitleStyle}>
-                    {candidate.notRegistered
-                        ? `${account} はまだ登録されていません。ID と表示名を決めると、このまま登録できます。`
-                        : `${account} で登録します。Ubichill での ID と表示名を決めてください。`}
-                </p>
-                <form onSubmit={submit} className={formStyle} aria-busy={busy}>
-                    <div className={fieldStyle}>
-                        <label htmlFor="fediverse-display-name" className={labelStyle}>
-                            表示名
-                        </label>
-                        <input
-                            id="fediverse-display-name"
-                            type="text"
-                            autoComplete="nickname"
-                            value={displayName}
-                            onChange={(e) => setDisplayName(e.target.value.slice(0, 30))}
-                            aria-invalid={'error' in displayNameStatus}
-                            aria-describedby="fediverse-display-name-status"
-                            className={'error' in displayNameStatus ? inputErrorStyle : inputStyle}
-                            required
-                        />
-                        <div id="fediverse-display-name-status" role="status">
-                            {displayNameStatus.state === 'checking' && <p className={hintStyle}>確認中...</p>}
-                            {'error' in displayNameStatus && (
-                                <p className={fieldErrorStyle}>{displayNameStatus.error}</p>
-                            )}
-                            {displayNameStatus.state === 'available' && (
-                                <p className={fieldSuccessStyle}>この表示名は使用できます</p>
-                            )}
-                        </div>
-                    </div>
-                    <div className={fieldStyle}>
-                        <label htmlFor="fediverse-handle" className={labelStyle}>
-                            ID
-                        </label>
-                        <input
-                            id="fediverse-handle"
-                            type="text"
-                            autoComplete="off"
-                            autoCapitalize="none"
-                            autoCorrect="off"
-                            spellCheck={false}
-                            value={handle}
-                            onChange={(e) => setHandle(e.target.value.toLowerCase().slice(0, 30))}
-                            aria-invalid={'error' in handleStatus}
-                            aria-describedby="fediverse-handle-status fediverse-handle-hint"
-                            className={'error' in handleStatus ? inputErrorStyle : inputStyle}
-                            required
-                        />
-                        <div id="fediverse-handle-status" role="status">
-                            {handleStatus.state === 'checking' && <p className={hintStyle}>確認中...</p>}
-                            {'error' in handleStatus && <p className={fieldErrorStyle}>{handleStatus.error}</p>}
-                            {handleStatus.state === 'available' && (
-                                <p className={fieldSuccessStyle}>この ID は使用できます</p>
-                            )}
-                        </div>
-                        <p id="fediverse-handle-hint" className={hintStyle}>
-                            英小文字・数字・_ の 3〜30 文字。あとから変更できません
-                        </p>
-                    </div>
-                    {botProtection && (
-                        <BotCheck
-                            key={botRound}
-                            provider={botProtection.provider}
-                            siteKey={botProtection.siteKey}
-                            action={BOT_CHECK_ACTIONS.fediverseSignUp}
-                            onToken={setBotToken}
-                        />
-                    )}
-                    {error && (
-                        <p role="alert" className={errorStyle}>
-                            {error}
-                        </p>
-                    )}
-                    <button
-                        type="submit"
-                        className={buttonStyle}
-                        disabled={
-                            busy ||
-                            handleStatus.state === 'checking' ||
-                            displayNameStatus.state === 'checking' ||
-                            (botProtection !== null && botToken === null)
-                        }
-                    >
-                        {busy ? '登録中...' : '登録して入る'}
-                    </button>
-                </form>
-                <button type="button" className={linkButtonStyle} onClick={cancel}>
-                    やめる
+                {error && (
+                    <p role="alert" className={errorStyle}>
+                        {error}
+                    </p>
+                )}
+                <button
+                    type="submit"
+                    className={buttonStyle}
+                    disabled={
+                        busy ||
+                        handleStatus.state === 'checking' ||
+                        displayNameStatus.state === 'checking' ||
+                        (botProtection !== null && botToken === null)
+                    }
+                >
+                    {busy ? '登録中...' : '登録して入る'}
                 </button>
-            </div>
-        </main>
+            </form>
+            <button type="button" className={linkButtonStyle} onClick={cancel}>
+                やめる
+            </button>
+        </>
     );
 }
 
-const avatarStyle = css({ w: '72px', h: '72px', rounded: 'full', objectFit: 'cover', bg: 'surfaceAccent' });
+const avatarStyle = css({
+    w: '72px',
+    h: '72px',
+    mx: 'auto',
+    rounded: 'full',
+    objectFit: 'cover',
+    bg: 'surfaceAccent',
+});

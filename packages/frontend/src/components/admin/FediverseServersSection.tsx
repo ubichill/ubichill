@@ -14,7 +14,7 @@ import { css } from '@/styled-system/css';
 import { adminButton, adminError, adminField, adminIconButton, adminList, adminRow, adminTag } from './adminStyles';
 
 /**
- * ログイン画面に並べるサーバー（管理者）。押すとそのままそのサーバーの認証画面へ進む入口で、並べていないサーバーも
+ * 紹介のページ（ログインの入り口）に並べるサーバー（管理者）。押すとそのままそのサーバーの認証画面へ進む入口で、並べていないサーバーも
  * 「その他のサーバー」から使える。変えるとすぐ反映する（確定のボタンは挟まない）。
  */
 export function FediverseServersSection() {
@@ -48,14 +48,14 @@ export function FediverseServersSection() {
 
     return (
         <section className={section}>
-            <h2 className={heading}>ログイン画面に並べるサーバー</h2>
+            <h2 className={heading}>紹介のページに並べるサーバー</h2>
             <p className={lead}>
                 フェディバースのボタンを押すと、この順に並びます。押すとそのサーバーの認証画面へ進みます。並べていないサーバーも「その他のサーバー」から使えます。
             </p>
             {error && <p className={adminError}>{error}</p>}
             {servers && servers.length === 0 && (
                 <p className={css({ fontSize: '13px', color: 'textMuted' })}>
-                    並べているサーバーはありません（ログイン画面には「その他のサーバー」だけが出ます）。
+                    並べているサーバーはありません（紹介のページには「その他のサーバー」だけが出ます）。
                 </p>
             )}
             {servers && servers.length > 0 && (
@@ -101,14 +101,14 @@ function FeaturedRow({
     onRemove: () => void;
 }) {
     const server = useFediverseServer(host, 0);
-    // 未対応・許可の外になったサーバーは、ログイン画面では出ない。管理者には外すよう印を出す
+    // 未対応・許可の外になったサーバーは、紹介のページでは出ない。管理者には外すよう印を出す
     const unusable = server.state === 'error' && server.code !== 'server-unreachable' && server.code !== null;
     return (
         <li className={adminRow()}>
             <span className={css({ flex: 1, minW: 0 })}>
                 <FediverseServerCard host={host} server={server.state === 'found' ? server.server : null} size="sm" />
             </span>
-            {unusable && <span className={adminTag()}>ログイン画面に出ません</span>}
+            {unusable && <span className={adminTag()}>紹介のページに出ません</span>}
             <button
                 type="button"
                 className={adminIconButton}

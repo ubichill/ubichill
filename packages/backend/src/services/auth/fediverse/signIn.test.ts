@@ -80,7 +80,7 @@ describe('サーバーの判定', () => {
 
 describe('withQuery', () => {
     it('既存のクエリと # を壊さない', () => {
-        expect(withQuery('/auth', 'a', 'b c')).toBe('/auth?a=b%20c');
+        expect(withQuery('/', 'a', 'b c')).toBe('/?a=b%20c');
         expect(withQuery('/x?y=1#z', 'a', '1')).toBe('/x?y=1&a=1#z');
     });
 });
@@ -417,7 +417,7 @@ describe('応答', () => {
         ).toMatchObject({
             kind: 'error',
             error: 'expired',
-            redirectTo: 'https://ubi.example/auth?fediverse_error=expired',
+            redirectTo: 'https://ubi.example/?fediverse_error=expired',
         });
     });
 
@@ -618,7 +618,7 @@ describe('初回登録', () => {
     it('候補を出し、メールなしで登録して元の部屋へ戻る', async () => {
         const t = setup();
         const { ticket, redirectTo } = await arrive(t);
-        expect(redirectTo).toBe('https://ubi.example/auth?fediverse=sign-up');
+        expect(redirectTo).toBe('https://ubi.example/?fediverse=sign-up');
         expect(await t.signIn.signUpCandidate(ticket)).toEqual({
             server: 'mastodon.example',
             username: 'alice',
@@ -960,7 +960,7 @@ describe('レビューで見つけた穴', () => {
         ).toEqual({
             kind: 'error',
             error: 'mismatch',
-            redirectTo: 'https://ubi.example/auth?fediverse_error=mismatch',
+            redirectTo: 'https://ubi.example/?fediverse_error=mismatch',
         });
     });
 

@@ -5,14 +5,12 @@ import { pushToast } from '@/lib/toast';
 
 /**
  * フェディバースの認証から戻ったとき（設定での追加・登録済みだった新規登録）、結果を知らせてクエリを外す。
- * ログイン画面（/auth）は自分で表示するので、ここでは扱わない。
  */
 export function FediverseReturnNotice() {
     const location = useLocation();
     const navigate = useNavigate();
 
     useEffect(() => {
-        if (location.pathname === '/auth') return;
         const returned = readFediverseReturn(location.search);
         if (!returned.linked && !returned.alreadyRegistered && !returned.error) return;
         if (returned.linked) pushToast('フェディバースのアカウントを追加しました', 'info');

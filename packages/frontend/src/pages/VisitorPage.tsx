@@ -3,27 +3,55 @@ import {
     DEFAULT_SERVER_INFO,
     type ServerInfo,
     type ServerOverview,
+    safeReturnTo,
     UBICHILL_REPOSITORY_URL,
     type WorldListItem,
     worldPagePath,
 } from '@ubichill/shared';
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router';
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router';
+import { dividerStyle, linkButtonStyle } from '@/components/auth/authStyles';
+import { FediverseSignInPanel } from '@/components/auth/FediverseSignInPanel';
+import { FediverseSignUpForm } from '@/components/auth/FediverseSignUpForm';
+import { PasswordAuthForm } from '@/components/auth/PasswordAuthForm';
+import { TwoFactorSignInForm } from '@/components/auth/TwoFactorSignInForm';
+import { Dialog } from '@/components/ui/Dialog';
+import { type AuthDialog, type AuthEntry, withAuthDialog } from '@/lib/account/authEntry';
+import {
+    cancelFediverseSignUp,
+    type FediverseSignInOptions,
+    fetchFediverseSignInOptions,
+} from '@/lib/account/fediverseSignIn';
 import { fetchLocalWorlds, fetchServerOverview } from '@/lib/server/serverInfo';
 import { css, cx } from '@/styled-system/css';
 
 /** 並べるワールドの数（多いサーバーでも紹介のページを長くしない） */
 const SHOWCASE_WORLDS = 12;
 
+const DIALOG_TITLES: Readonly<Record<AuthDialog, string>> = {
+    login: 'ログイン',
+    register: '新規登録',
+    'two-factor': '二段階認証',
+    'fediverse-sign-up': 'はじめまして',
+};
+
+const FEDIVERSE_OFF: FediverseSignInOptions = { enabled: false, registrationOpen: false, featuredServers: [] };
+
 /**
- * `/` をログインしていない人が開いたときの、サーバーの紹介。サーバーの名前と紹介（コントロールパネルの「全般」）、
- * 新規登録とログイン、このサーバーのワールド、運営の情報を出す。
+ * `/` をログインしていない人が開いたときの、サーバーの紹介とログインの入り口。サーバーの名前と紹介（コントロールパネルの「全般」）、
+ * Mastodon・Misskey のアカウントでのログイン、このサーバーのワールド、運営の情報を出す。
+ * メールアドレス（ID）とパスワードでのログイン・新規登録と、その続き（二段階目・フェディバースでの登録）は、この上のダイアログで開く。
  */
-export function VisitorPage() {
+export function VisitorPage({ entry }: { entry: AuthEntry }) {
+    const navigate = useNavigate();
+    const location = useLocation();
     // null は読み込み中（届くまで見えなくしておき、既定の名前から切り替わって見えないようにする）。
     // 読めなければ 'failed'（分からない人数・登録の受け付けは出さない）
     const [overview, setOverview] = useState<ServerOverview | 'failed' | null>(null);
     const [worlds, setWorlds] = useState<WorldListItem[] | null>(null);
+    const [fediverse, setFediverse] = useState<FediverseSignInOptions | null>(null);
+    // 二段階目の期限が切れてログインからやり直すときの理由
+    const [restartMessage, setRestartMessage] = useState('');
 
     useEffect(() => {
         fetchServerOverview()
@@ -32,11 +60,32 @@ export function VisitorPage() {
         fetchLocalWorlds()
             .then(setWorlds)
             .catch(() => setWorlds([]));
+        fetchFediverseSignInOptions()
+            .then(setFediverse)
+            .catch(() => setFediverse(FEDIVERSE_OFF));
     }, []);
 
     const loaded = overview !== null && overview !== 'failed' ? overview : null;
     const info = loaded?.info ?? DEFAULT_SERVER_INFO;
-    const pending = overview === null;
+    // 新規登録を受け付けているか（読めなければ受け付けている扱い。止めていれば登録の応答が理由を返す）
+    const registrationOpen = overview === 'failed' || loaded?.registrationOpen !== false;
+    const pending = overview === null || fediverse === null;
+    const returnTo = entry.next ?? '/';
+
+    // 開いているダイアログは URL に残す（読み込み直しても同じものを開く）
+    const showDialog = useCallback(
+        (dialog: AuthDialog | null) =>
+            navigate(
+                { pathname: '/', search: withAuthDialog(location.search, dialog), hash: location.hash },
+                { replace: true },
+            ),
+        [navigate, location.search, location.hash],
+    );
+
+    // 新規登録を止めているサーバーで ?mode=register を開いたら、ログインにする
+    useEffect(() => {
+        if (!registrationOpen && entry.dialog === 'register') showDialog('login');
+    }, [registrationOpen, entry.dialog, showDialog]);
 
     useEffect(() => {
         if (!loaded) return;
@@ -47,58 +96,113 @@ export function VisitorPage() {
         };
     }, [loaded]);
 
-    return (
-        <main className={page}>
-            <div className={cx(layout, pending && hidden)} aria-busy={pending}>
-                <section className={hero} aria-labelledby="server-name">
-                    <img src="/icon.png" alt="" width={72} height={72} className={icon} />
-                    <h1 id="server-name" className={name}>
-                        {info.name}
-                    </h1>
-                    <p className={description}>{info.description ?? DEFAULT_SERVER_DESCRIPTION}</p>
-                    <div className={actions}>
-                        {loaded?.registrationOpen && (
-                            <Link to="/auth?mode=register" className={primaryAction}>
-                                新規登録
-                            </Link>
-                        )}
-                        <Link to="/auth" className={secondaryAction}>
-                            ログイン
-                        </Link>
-                    </div>
-                    {loaded?.registrationOpen === false && <p className={note}>いまは新規登録を受け付けていません。</p>}
-                    {loaded && (
-                        <dl className={stats}>
-                            <div className={stat}>
-                                <dt className={statLabel}>ユーザー</dt>
-                                <dd className={statValue}>{loaded.stats.users.toLocaleString('ja-JP')}</dd>
-                            </div>
-                            <div className={stat}>
-                                <dt className={statLabel}>ワールド</dt>
-                                {/* 一覧が届くまでは 0 と出さない */}
-                                <dd className={statValue}>{worlds ? worlds.length.toLocaleString('ja-JP') : ''}</dd>
-                            </div>
-                        </dl>
-                    )}
-                    <ServerFacts info={info} />
-                </section>
+    const closeDialog = () => {
+        setRestartMessage('');
+        // フェディバースでの登録をやめたら、途中の状態を消す（共用の端末で、別の人が続きから登録できないように）
+        if (entry.dialog === 'fediverse-sign-up') void cancelFediverseSignUp().finally(() => showDialog(null));
+        else showDialog(null);
+    };
 
-                {worlds && worlds.length > 0 && (
-                    <section className={showcase} aria-labelledby="worlds-heading">
-                        <h2 id="worlds-heading" className={sectionHeading}>
-                            ワールド
-                        </h2>
-                        <ul className={worldGrid}>
-                            {worlds.slice(0, SHOWCASE_WORLDS).map((world) => (
-                                <li key={world.url}>
-                                    <WorldCard world={world} />
-                                </li>
-                            ))}
-                        </ul>
+    return (
+        <>
+            <main className={page} inert={entry.dialog !== null}>
+                <div className={cx(layout, pending && hidden)} aria-busy={pending}>
+                    <section className={hero} aria-labelledby="server-name">
+                        <img src="/icon.png" alt="" width={72} height={72} className={icon} />
+                        <h1 id="server-name" className={name}>
+                            {info.name}
+                        </h1>
+                        <p className={description}>{info.description ?? DEFAULT_SERVER_DESCRIPTION}</p>
+                        {entry.adding && <p className={note}>追加するアカウントでログインしてください</p>}
+                        <div className={actions}>
+                            {loaded?.registrationOpen && (
+                                <button type="button" className={primaryAction} onClick={() => showDialog('register')}>
+                                    新規登録
+                                </button>
+                            )}
+                            <button type="button" className={secondaryAction} onClick={() => showDialog('login')}>
+                                ログイン
+                            </button>
+                        </div>
+                        {loaded?.registrationOpen === false && (
+                            <p className={note}>いまは新規登録を受け付けていません。</p>
+                        )}
+                        {fediverse?.enabled && (
+                            <>
+                                <div className={dividerStyle} role="separator">
+                                    または
+                                </div>
+                                <FediverseSignInPanel returnTo={returnTo} featuredServers={fediverse.featuredServers} />
+                            </>
+                        )}
+                        {entry.adding && (
+                            <button type="button" className={linkButtonStyle} onClick={() => navigate('/')}>
+                                今のアカウントに戻る
+                            </button>
+                        )}
+                        {loaded && (
+                            <dl className={stats}>
+                                <div className={stat}>
+                                    <dt className={statLabel}>ユーザー</dt>
+                                    <dd className={statValue}>{loaded.stats.users.toLocaleString('ja-JP')}</dd>
+                                </div>
+                                <div className={stat}>
+                                    <dt className={statLabel}>ワールド</dt>
+                                    {/* 一覧が届くまでは 0 と出さない */}
+                                    <dd className={statValue}>{worlds ? worlds.length.toLocaleString('ja-JP') : ''}</dd>
+                                </div>
+                            </dl>
+                        )}
+                        <ServerFacts info={info} />
                     </section>
+
+                    {worlds && worlds.length > 0 && (
+                        <section className={showcase} aria-labelledby="worlds-heading">
+                            <h2 id="worlds-heading" className={sectionHeading}>
+                                ワールド
+                            </h2>
+                            <ul className={worldGrid}>
+                                {worlds.slice(0, SHOWCASE_WORLDS).map((world) => (
+                                    <li key={world.url}>
+                                        <WorldCard world={world} />
+                                    </li>
+                                ))}
+                            </ul>
+                        </section>
+                    )}
+                </div>
+            </main>
+            <Dialog
+                open={entry.dialog !== null}
+                title={entry.dialog ? DIALOG_TITLES[entry.dialog] : ''}
+                onClose={closeDialog}
+                focusKey={entry.dialog ?? undefined}
+                closeButton
+            >
+                {(entry.dialog === 'login' || entry.dialog === 'register') && (
+                    <PasswordAuthForm
+                        mode={entry.dialog}
+                        onModeChange={showDialog}
+                        returnTo={returnTo}
+                        adding={entry.adding}
+                        registrationOpen={registrationOpen}
+                        initialError={restartMessage}
+                        onTwoFactor={() => showDialog('two-factor')}
+                    />
                 )}
-            </div>
-        </main>
+                {entry.dialog === 'two-factor' && (
+                    <TwoFactorSignInForm
+                        // セッションを読み直すため、画面ごと移る
+                        onSignedIn={(to) => window.location.assign(safeReturnTo(to ?? returnTo))}
+                        onRestart={(message) => {
+                            setRestartMessage(message ?? '');
+                            showDialog('login');
+                        }}
+                    />
+                )}
+                {entry.dialog === 'fediverse-sign-up' && <FediverseSignUpForm onCancel={() => showDialog(null)} />}
+            </Dialog>
+        </>
     );
 }
 
@@ -178,8 +282,6 @@ const hero = css({
     borderColor: 'border',
     rounded: 'lg',
     textAlign: 'center',
-    position: { lg: 'sticky' },
-    top: { lg: '12' },
 });
 const icon = css({ borderRadius: '16px' });
 const name = css({
@@ -207,7 +309,9 @@ const actionBase = {
     fontSize: 'sm',
     fontWeight: 'medium',
     rounded: 'lg',
+    cursor: 'pointer',
     transition: 'background-color 0.2s',
+    _focusVisible: { outline: '2px solid token(colors.primary)', outlineOffset: '2px' },
 } as const;
 const primaryAction = css({
     ...actionBase,

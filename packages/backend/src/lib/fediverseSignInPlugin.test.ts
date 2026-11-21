@@ -109,7 +109,7 @@ describe('fediverseSignInPlugin', () => {
         });
 
     it('開始すると認可 URL を返し、ブラウザーの印を /api/auth/fediverse だけの httpOnly クッキーに入れる', async () => {
-        const t = setup({ kind: 'error', error: 'expired', redirectTo: `${BASE}/auth` });
+        const t = setup({ kind: 'error', error: 'expired', redirectTo: `${BASE}/` });
         const res = await start(t);
         expect(res.status).toBe(200);
         expect(await res.json()).toEqual({ url: 'https://mi.example/oauth/authorize?x' });
@@ -137,7 +137,7 @@ describe('fediverseSignInPlugin', () => {
     });
 
     it('改ざんした印は渡さない', async () => {
-        const t = setup({ kind: 'error', error: 'mismatch', redirectTo: `${BASE}/auth?fediverse_error=mismatch` });
+        const t = setup({ kind: 'error', error: 'mismatch', redirectTo: `${BASE}/?fediverse_error=mismatch` });
         const res = await t.request('/fediverse/callback/mi.example?code=c&state=s', {
             headers: { Cookie: '__Secure-better-auth.fediverse_flow=B1.forged' },
         });
@@ -147,9 +147,9 @@ describe('fediverseSignInPlugin', () => {
     });
 
     it('初回は登録の鍵をクッキーに入れ、候補の取得と登録でそれを使ってセッションを発行する', async () => {
-        const t = setup({ kind: 'sign-up', ticket: 'T1', redirectTo: `${BASE}/auth?fediverse=sign-up` });
+        const t = setup({ kind: 'sign-up', ticket: 'T1', redirectTo: `${BASE}/?fediverse=sign-up` });
         const callback = await t.request('/fediverse/callback/mi.example?code=c&state=s');
-        expect(callback.headers.get('location')).toBe(`${BASE}/auth?fediverse=sign-up`);
+        expect(callback.headers.get('location')).toBe(`${BASE}/?fediverse=sign-up`);
         expect(findCookie(callback, 'session_token')).toBeUndefined();
         const cookie = cookiesOf(callback).join('; ');
 
@@ -245,7 +245,7 @@ describe('fediverseSignInPlugin', () => {
     });
 
     it('登録をやめると鍵を消し、クッキーも消す', async () => {
-        const t = setup({ kind: 'sign-up', ticket: 'T1', redirectTo: `${BASE}/auth?fediverse=sign-up` });
+        const t = setup({ kind: 'sign-up', ticket: 'T1', redirectTo: `${BASE}/?fediverse=sign-up` });
         const callback = await t.request('/fediverse/callback/mi.example?code=c&state=s');
         const res = await t.request('/fediverse/sign-up', {
             method: 'DELETE',

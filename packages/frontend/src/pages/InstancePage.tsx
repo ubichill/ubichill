@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { InstanceHUD } from '@/components/hud/InstanceHUD';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
+import { signInPath } from '@/lib/account/authEntry';
 import { afterInstanceFailure, readInstanceEntryState, recordEntryOutcome } from '@/lib/home/home';
 import { HOST_MOD_SOURCE } from '@/lib/mods/modCdn';
 import { useSession } from '@/lib/session';
@@ -29,8 +30,8 @@ export function InstancePage() {
     const confirm = useConfirm();
 
     useEffect(() => {
-        if (!isPending && !session) navigate('/auth');
-    }, [isPending, session, navigate]);
+        if (!isPending && !session) navigate(signInPath(`${location.pathname}${location.search}`));
+    }, [isPending, session, navigate, location.pathname, location.search]);
 
     // 部屋を移ってもこのページは作り直されないので、入った部屋ごとに読む
     const entry = useMemo(() => readInstanceEntryState(location.state), [location.state]);
