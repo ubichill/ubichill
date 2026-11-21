@@ -422,7 +422,7 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
             // 既定の画面に戻す（他人が始めた state で、任意の origin へ飛ばさせない）
             const fail = (error: FediverseSignInError, state?: FlowState): CallbackOutcome => {
                 const appOrigin = state?.appOrigin ?? deps.config.defaultAppOrigin;
-                const path = state?.intent === 'link' ? state.returnTo : '/auth';
+                const path = state?.intent === 'link' ? state.returnTo : '/';
                 return { kind: 'error', error, redirectTo: `${appOrigin}${withQuery(path, 'fediverse_error', error)}` };
             };
             // state と session の両方が付いた応答は受け付けない（どちらの流れの鍵かを曖昧にしない）
@@ -521,7 +521,7 @@ export function createFediverseSignIn(deps: FediverseSignInDeps) {
             return {
                 kind: 'sign-up',
                 ticket,
-                redirectTo: `${state.appOrigin}${withQuery('/auth', 'fediverse', 'sign-up')}`,
+                redirectTo: `${state.appOrigin}${withQuery('/', 'fediverse', 'sign-up')}`,
             };
         },
 

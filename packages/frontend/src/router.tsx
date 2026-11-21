@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router';
 import { FediverseReturnNotice } from './components/auth/FediverseReturnNotice';
 import { NotificationsProvider } from './components/notifications';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -6,13 +6,11 @@ import { ConfirmProvider } from './components/ui/ConfirmProvider';
 import { VersionBadge } from './components/VersionBadge';
 import { VersionSkewGuard } from './components/VersionSkewGuard';
 import { SessionProvider } from './lib/session';
-import { AuthPage } from './pages/AuthPage';
 import { CliAuthorizePage } from './pages/CliAuthorizePage';
-import { HomePage } from './pages/HomePage';
 import { InstancePage } from './pages/InstancePage';
 import { ModPage } from './pages/ModPage';
+import { RootPage } from './pages/RootPage';
 import { UserPage } from './pages/UserPage';
-import { VisitorPage } from './pages/VisitorPage';
 import { WorldPage } from './pages/WorldPage';
 import { WorldEditorPage } from './pages/world-editor';
 
@@ -23,16 +21,9 @@ export function AppRouter() {
                 <NotificationsProvider>
                     <ConfirmProvider>
                         <Routes>
-                            <Route path="/auth" element={<AuthPage />} />
-                            {/* ロビーは無い。ログインしたらホームの部屋へそのまま移る。ログインしていなければサーバーの紹介 */}
-                            <Route
-                                path="/"
-                                element={
-                                    <ProtectedRoute guest={<VisitorPage />}>
-                                        <HomePage />
-                                    </ProtectedRoute>
-                                }
-                            />
+                            {/* ロビーは無い。ログインしたらホームの部屋へそのまま移る。ログインしていなければサーバーの紹介とログイン */}
+                            <Route path="/" element={<RootPage />} />
+                            <Route path="/auth" element={<LegacyAuthRedirect />} />
                             <Route
                                 path="/instance/:id"
                                 element={
@@ -89,4 +80,10 @@ export function AppRouter() {
             </SessionProvider>
         </BrowserRouter>
     );
+}
+
+/** 以前のログインの画面（/auth）へのリンク・ブックマーク。クエリはそのまま `/` で読む */
+function LegacyAuthRedirect() {
+    const { search, hash } = useLocation();
+    return <Navigate to={{ pathname: '/', search, hash }} replace />;
 }

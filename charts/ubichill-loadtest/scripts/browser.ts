@@ -67,7 +67,8 @@ async function logIn(
     origin: string,
     account: { readonly email: string; readonly password: string },
 ): Promise<void> {
-    await page.goto(`${origin}/auth`);
+    // ログインのダイアログを開いた紹介のページ（`/`）
+    await page.goto(`${origin}/?mode=login`);
     const submit = page.locator('form').getByRole('button', { name: 'ログイン', exact: true });
     await submit.waitFor({ state: 'visible', timeout: STEP_TIMEOUT_MS });
     await page.getByLabel('メールアドレス').fill(account.email);

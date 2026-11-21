@@ -45,7 +45,7 @@ const LINKS: readonly Field[] = [
     },
 ];
 
-/** サーバーの情報（管理者）。紹介のページ・ログインの画面・ほかのサーバー（NodeInfo）に出る。 */
+/** サーバーの情報（管理者）。紹介のページ・ほかのサーバー（NodeInfo）に出る。 */
 export function ServerInfoSection() {
     const id = useId();
     const [settings, setSettings] = useState<ServerInfoSettings | null>(null);
@@ -122,7 +122,7 @@ export function ServerInfoSection() {
         <section className={section}>
             <h2 className={heading}>サーバーの情報</h2>
             <p className={lead}>
-                紹介のページとログインの画面に出します。ほかのサーバーにも伝わるので、公開してよいものだけを入れてください。
+                紹介のページに出します。ほかのサーバーにも伝わるので、公開してよいものだけを入れてください。
             </p>
             <form
                 className={css({ display: 'flex', flexDirection: 'column', gap: '4' })}

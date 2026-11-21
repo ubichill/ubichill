@@ -9,12 +9,12 @@ import {
     linkButtonStyle,
     otpInputStyle,
     subtitleStyle,
-    titleStyle,
 } from '@/components/auth/authStyles';
 import { TwoFactorSignInFailure, verifyTwoFactorSignIn } from '@/lib/account/twoFactor';
 
 /**
  * ログインの二段階目（パスワードかフェディバースで本人を確かめた後）。認証アプリのコードか、バックアップコードを入れる。
+ * 見出し（二段階認証）は、出す側のダイアログが付ける。
  * 期限切れ・何度も間違えたときは、最初のログインからやり直させる。
  */
 export function TwoFactorSignInForm({
@@ -51,7 +51,6 @@ export function TwoFactorSignInForm({
 
     return (
         <>
-            <h1 className={titleStyle}>二段階認証</h1>
             <p className={subtitleStyle}>
                 {backup
                     ? '保存しておいたバックアップコードを 1 つ入力してください。'

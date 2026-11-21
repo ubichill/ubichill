@@ -2,6 +2,7 @@ import { displayAuthorAccount, normalizeUserCode } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { signOutAndReset } from '@/components/hud/tabs/settings/signOut';
+import { signInPath } from '@/lib/account/authEntry';
 import { fetchMyAccount } from '@/lib/account/me';
 import {
     approveCliAuthRequest,
@@ -89,7 +90,7 @@ function ApprovingAccount({ returnTo }: { returnTo: string }) {
         setBusy(true);
         try {
             await signOutAndReset(forgetSession);
-            navigate('/auth', { state: { from: returnTo }, replace: true });
+            navigate(signInPath(returnTo), { replace: true });
         } catch (error) {
             pushToast(error instanceof Error ? error.message : 'ログアウトに失敗しました', 'error');
             setBusy(false);

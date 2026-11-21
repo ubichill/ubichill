@@ -9,7 +9,7 @@ import { settingsNote } from './settingsStyles';
 
 /**
  * アカウントの削除（退会）。取り消せないので、直近の本人確認・ID の入れ直し・確認のダイアログを経る。
- * 消した後は、このブラウザーで覚えているほかのアカウントがあればそちらへ、無ければログイン画面へ。
+ * 消した後は `/` へ移る（このブラウザーで覚えているほかのアカウントがあればそのホーム、無ければ紹介のページ）。
  */
 export function DeleteAccountSection({
     handle,
@@ -45,8 +45,8 @@ export function DeleteAccountSection({
             await leaveWorld().catch(() => undefined);
             await deleteMyAccount(typed.trim());
             // 消したアカウントのセッションは無くなっている。ほかに覚えているアカウントがあればそちらへ
-            const next = await signOutThisAccount().catch(() => null);
-            window.location.assign(next ? '/' : '/auth');
+            await signOutThisAccount().catch(() => null);
+            window.location.assign('/');
         } catch (err) {
             setError(err instanceof Error ? err.message : '削除できませんでした');
             setBusy(false);

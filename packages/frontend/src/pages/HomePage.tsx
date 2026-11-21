@@ -68,7 +68,7 @@ export function HomePage() {
     const handleLogout = useCallback(async () => {
         try {
             await signOutAndReset(forgetSession);
-            navigate('/auth', { replace: true });
+            navigate('/', { replace: true });
         } catch (error) {
             setError(error instanceof Error ? error.message : 'ログアウトに失敗しました');
         }
