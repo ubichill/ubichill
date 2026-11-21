@@ -162,6 +162,8 @@ export interface components {
                 [key: string]: unknown;
             };
             sourceKind?: string;
+            /** @description 見えない Entity（GameObject）の ID。子も見えない。core:switch で切り替わる。 */
+            hiddenEntities?: string[];
         };
         InstanceDefinition: {
             id: string;

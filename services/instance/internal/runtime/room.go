@@ -20,6 +20,8 @@ type Room struct {
 	order      map[string]uint64
 	sequence   uint64
 	members    map[string]*member
+	// hidden は見えない Entity（GameObject）の ID（visibility.go）。
+	hidden map[string]bool
 	// state は共有状態（state.go）。stateBytes はその大きさの合計。
 	state      map[string]*stateEntry
 	stateBytes int
@@ -50,6 +52,8 @@ type member struct {
 	timer   *time.Timer
 	// migrated は引っ越しで移ってきて、まだ繋ぎ直していない参加者。繋ぎ直しでは user:joined を出さない。
 	migrated bool
+	// lastSwitch は最後にスイッチを押した時刻（visibility.go）。
+	lastSwitch time.Time
 }
 
 // errUnavailable は部屋が閉じた・自己停止したとき。クライアントはチケットを取り直して入り直せる。
@@ -59,7 +63,11 @@ func newRoom(d Definition) (*Room, error) {
 	if d.ID == "" || len(d.ID) > 200 || d.MaxUsers < 1 || d.MaxUsers > 1000 || d.Snapshot.Environment == nil || len(d.Snapshot.Entities) > 10000 {
 		return nil, errors.New("invalid instance definition")
 	}
-	r := &Room{definition: d, entities: map[string]Object{}, sizes: map[string]int{}, order: map[string]uint64{}, members: map[string]*member{}, state: map[string]*stateEntry{}, emptySince: time.Now().UnixMilli(), now: time.Now}
+	hidden, err := hiddenSet(d.Snapshot.HiddenEntities)
+	if err != nil {
+		return nil, err
+	}
+	r := &Room{definition: d, entities: map[string]Object{}, sizes: map[string]int{}, order: map[string]uint64{}, members: map[string]*member{}, hidden: hidden, state: map[string]*stateEntry{}, emptySince: time.Now().UnixMilli(), now: time.Now}
 	for _, e := range d.Snapshot.Entities {
 		id := str(e["id"])
 		if id == "" || len(id) > 200 {
@@ -155,6 +163,7 @@ func (r *Room) snapshot() Snapshot {
 	if s.AvailableComponents == nil {
 		s.AvailableComponents = []Object{}
 	}
+	s.HiddenEntities = r.hiddenList()
 	return s
 }
 

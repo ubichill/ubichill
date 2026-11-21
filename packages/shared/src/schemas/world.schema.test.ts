@@ -138,9 +138,9 @@ describe('core:collider world validation', () => {
     });
 
     it('この版が知らない core の部品は、断らずに data ごと残し、mod として数えない', () => {
-        const input = [entity({ type: 'core:switch', data: { targets: ['door'] } })];
+        const input = [entity({ type: 'core:teleporter', data: { targets: ['door'] } })];
         expect(InitialEntitiesSchema.parse(input)[0]?.components[0]).toMatchObject({
-            type: 'core:switch',
+            type: 'core:teleporter',
             data: { targets: ['door'] },
         });
         expect(collectModIds(input)).toEqual([]);

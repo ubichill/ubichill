@@ -3,8 +3,11 @@ import {
     IMAGE_FITS,
     MEDIA_FITS,
     PORTAL_LABEL_MAX_LENGTH,
+    SWITCH_LABEL_MAX_LENGTH,
+    SWITCH_MAX_TARGETS,
     TEXT_ALIGNS,
     TEXT_SIZE_RANGE,
+    WARP_LABEL_MAX_LENGTH,
 } from '@ubichill/core-components';
 import { createDefaultColliderData } from '@ubichill/runtime';
 import type { OverlayMode } from '@ubichill/shared';
@@ -207,6 +210,59 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
                 label: `名前（${PORTAL_LABEL_MAX_LENGTH} 文字まで）`,
             },
         },
+        viewKind: 'jsx',
+    },
+    {
+        modName: 'core',
+        kind: CORE_COMPONENT_TYPES.warp,
+        displayName: 'ワープ',
+        suggestSize: true,
+        defaultTransform: { w: 200, h: 56 },
+        dataFields: {
+            target: {
+                type: 'entityRef',
+                default: '',
+                label: '行き先',
+                help: '押すと、この Entity が画面の中心に来ます。ヒエラルキーから Entity をドラッグして選びます。',
+            },
+            label: {
+                type: 'string',
+                default: '',
+                placeholder: 'ワープ',
+                label: `名前（${WARP_LABEL_MAX_LENGTH} 文字まで）`,
+            },
+        },
+        viewKind: 'jsx',
+    },
+    {
+        modName: 'core',
+        kind: CORE_COMPONENT_TYPES.switch,
+        displayName: 'スイッチ',
+        suggestSize: true,
+        defaultTransform: { w: 200, h: 56 },
+        dataFields: {
+            targets: {
+                type: 'entityRefArray',
+                default: [],
+                label: `見え隠れさせる Entity（${SWITCH_MAX_TARGETS} 個まで）`,
+                help: '押すと、部屋の全員の画面で、選んだ Entity（とその子）の見える・見えないが切り替わります。最初に見せるかは、その Entity の「最初から見せる」で決めます。',
+            },
+            label: {
+                type: 'string',
+                default: '',
+                placeholder: 'スイッチ',
+                label: `名前（${SWITCH_LABEL_MAX_LENGTH} 文字まで）`,
+            },
+        },
+        viewKind: 'jsx',
+    },
+    {
+        modName: 'core',
+        kind: CORE_COMPONENT_TYPES.spawn,
+        displayName: '最初の場所',
+        suggestSize: true,
+        defaultTransform: { w: 160, h: 48 },
+        dataFields: {},
         viewKind: 'jsx',
     },
 ];

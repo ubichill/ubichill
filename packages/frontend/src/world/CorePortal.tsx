@@ -1,7 +1,7 @@
 import { PortalDataSchema, parsePortalTarget, readCoreData } from '@ubichill/core-components';
 import type { ComponentInstance } from '@ubichill/shared';
 import type React from 'react';
-import { css } from '@/styled-system/css';
+import { partButton, partButtonLabel } from './partStyles';
 import { usePortalNavigation } from './portalNavigation';
 import { surfacePlacement } from './surfacePlacement';
 
@@ -21,7 +21,7 @@ export const CorePortal: React.FC<{ entity: ComponentInstance }> = ({ entity }) 
         <div data-portal={entityId} style={{ ...surfacePlacement(entity), pointerEvents: 'auto' }}>
             <button
                 type="button"
-                className={button}
+                className={partButton}
                 disabled={!go || !target}
                 onClick={() => {
                     if (go && target) go(target, label);
@@ -42,34 +42,8 @@ export const CorePortal: React.FC<{ entity: ComponentInstance }> = ({ entity }) 
                     <path d="m10 17 5-5-5-5" />
                     <path d="M15 12H3" />
                 </svg>
-                <span className={labelText}>{label}</span>
+                <span className={partButtonLabel}>{label}</span>
             </button>
         </div>
     );
 };
-
-const button = css({
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '2',
-    w: 'full',
-    h: 'full',
-    minW: '96px',
-    minH: '44px',
-    px: '4',
-    py: '2',
-    bg: 'white',
-    color: 'primary',
-    border: '2px solid',
-    borderColor: 'primary',
-    borderRadius: '12px',
-    fontSize: '15px',
-    fontWeight: 'bold',
-    cursor: 'pointer',
-    transition: 'background-color 0.16s ease',
-    _hover: { bg: 'surfaceHover' },
-    _disabled: { cursor: 'default', _hover: { bg: 'white' } },
-});
-
-const labelText = css({ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });

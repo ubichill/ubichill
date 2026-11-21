@@ -281,6 +281,8 @@ export interface InitialEntity {
     components: Array<z.infer<typeof EntityComponentSchema>>;
     tags: string[];
     children: InitialEntity[];
+    /** false なら部屋に入った時点で見えない（子も）。`core:switch` で切り替える。省略は見える */
+    visible?: boolean;
     prefab?: PrefabLink;
 }
 
@@ -303,6 +305,7 @@ export const InitialEntitySchema: z.ZodType<InitialEntity> = z.lazy(() =>
         components: z.array(EntityComponentSchema).max(LIMITS.MAX_COMPONENTS_PER_ENTITY).default([]),
         tags: z.array(EntityTagSchema).max(LIMITS.MAX_TAGS).default([]),
         children: z.array(InitialEntitySchema).max(LIMITS.MAX_INITIAL_ENTITIES).default([]),
+        visible: z.boolean().optional(),
         prefab: PrefabLinkSchema.optional(),
     }),
 );

@@ -91,6 +91,32 @@ export function EntityInspector({
                 </div>
             </Section>
 
+            <div className={css({ display: 'flex', flexDirection: 'column', gap: '1' })}>
+                <label
+                    className={css({
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        color: 'text',
+                    })}
+                >
+                    <input
+                        type="checkbox"
+                        checked={entity.visible !== false}
+                        // 見えるときは書かない（YAML に既定値を増やさない）
+                        onChange={(e) =>
+                            onChange((prev) => ({ ...prev, visible: e.target.checked ? undefined : false }))
+                        }
+                    />
+                    最初から見せる
+                </label>
+                <span className={css({ fontSize: '11px', color: 'textSubtle' })}>
+                    外すと、部屋に入った時点では見えません（子も）。スイッチで出せます。
+                </span>
+            </div>
+
             <Section label="Tags">
                 <TagsEditor
                     tags={entity.tags ?? []}

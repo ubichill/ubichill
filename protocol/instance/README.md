@@ -43,6 +43,7 @@ Pod間の `relay:migrate` と `POST /realtime/v1/instances/{id}/handoff` は内�
 - 入室応答 → `users:update` → `world:snapshot` → 以降の更新、の順番で同じ接続へ送る。
 - 同一インスタンスの状態変更と送信キューへの追加を直列化する。ネットワーク書き込みは接続ごとに独立。
 - エンティティ作成の応答は作成者へ、created/patch/deleteの通知は他の参加者へ送る（作成者は楽観的更新）。
+- `switch:press`（`core:switch` を押す）は、押されたのが `core:switch` の Component で、対象が部屋にあるときだけ切り替える。結果は `entity:visibility`（見えない Entity の一覧そのもの）で押した本人を含む全員へ送る。1人が押せる間隔は300ms。見えない Entity の一覧はスナップショットの `hiddenEntities` にも入り、引っ越しでも引き継ぐ。
 - 輸送は通常のWebSocket。Socket.IOクライアントでは接続できない。
 
 ## 更新と再接続
