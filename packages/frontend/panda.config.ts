@@ -26,14 +26,6 @@ export default defineConfig({
                     '0%': { transform: 'translateX(-100%)' },
                     '100%': { transform: 'translateX(200%)' },
                 },
-                slideFromEnd: {
-                    '0%': { opacity: 0, transform: 'translateX(24px)' },
-                    '100%': { opacity: 1, transform: 'translateX(0)' },
-                },
-                slideFromStart: {
-                    '0%': { opacity: 0, transform: 'translateX(-24px)' },
-                    '100%': { opacity: 1, transform: 'translateX(0)' },
-                },
             },
             tokens: {
                 shadows: {
