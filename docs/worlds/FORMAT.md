@@ -81,8 +81,10 @@ Component が別の Component と連携するときは、mod が `dataFields` �
 
 ### 組み込み Component（`core:*`）
 
-Host が持つ Component。mod を読み込まずに使え、`dependencies` にも書かない。`core:` は予約名で、ここに無い型は検証で落ちる。
+Host が持つ Component。mod を読み込まずに使え、`dependencies` にも書かない。`core:` は予約名で、mod には使えない。
 クライアントからは作成・変更できない（ワールド定義でだけ置ける）。
+
+読む側（部屋・サーバー）は、その版が知らない `core:*` と、知っている部品の知らない項目を断らずに残し、使わない（新しい Ubichill で足した部品のワールドも、一部を除いて開ける）。部屋ではコンソールに知らせる。書く側では、World Editor が確認の一覧に出し（保存は止めない）、`ubichill dev` は警告、`ubichill publish` は公開を止める。値の誤り（範囲・形）は読む側でも断る。
 
 | 型 | 役割 | `data` |
 |---|---|---|
@@ -93,7 +95,7 @@ Host が持つ Component。mod を読み込まずに使え、`dependencies` に�
 | `core:text` | 文字（看板・案内）。改行はそのまま出す | `text`（2,000 文字まで）。`size`: px（8〜200、既定 24）。`color`: `#RRGGBB`。`background`: `#RRGGBB` か `transparent`（既定）。`align`: `left`・`center`・`right`。`bold` |
 | `core:portal` | 押すと、ほかのワールドへ移る入口（確かめてから今の部屋を出る） | `world`: 行き先（`@ID/名前`・このサーバーのワールドの ID・ワールドの http(s) URL）。`label`: 入口の名前（60 文字まで。空なら「入口」） |
 
-`core:image`・`core:text`・`core:portal` と背景の画像は、足した後の版の Ubichill でしか開けない（古いサーバーは定義の検査で断る）。
+`core:image`・`core:text`・`core:portal` と背景の画像は、足した後の版の Ubichill でしか使えない。読む側が知らない部品を残すようになる前の版のサーバーは、定義の検査で断る。
 
 ```yaml
 - id: tv
