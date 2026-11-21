@@ -4,8 +4,11 @@ import { MediaDataSchema } from './media/schema.js';
 import { PortalDataSchema } from './portal/schema.js';
 import { CORE_COMPONENT_TYPES, type CoreComponentType } from './public.js';
 import { readCoreData, unknownKeysOf } from './read.js';
+import { SpawnDataSchema } from './spawn/schema.js';
+import { SwitchDataSchema } from './switch/schema.js';
 import { TextDataSchema } from './text/schema.js';
 import { UiDataSchema } from './ui/schema.js';
+import { WarpDataSchema } from './warp/schema.js';
 
 export * from './collider/index.js';
 export * from './image/index.js';
@@ -13,8 +16,11 @@ export * from './media/index.js';
 export * from './portal/index.js';
 export * from './public.js';
 export * from './read.js';
+export * from './spawn/index.js';
+export * from './switch/index.js';
 export * from './text/index.js';
 export * from './ui/index.js';
+export * from './warp/index.js';
 
 export function isCoreComponentType(type: string): type is CoreComponentType {
     return Object.values(CORE_COMPONENT_TYPES).includes(type as CoreComponentType);
@@ -40,6 +46,12 @@ export function coreComponentSchema(type: CoreComponentType) {
             return TextDataSchema;
         case CORE_COMPONENT_TYPES.portal:
             return PortalDataSchema;
+        case CORE_COMPONENT_TYPES.spawn:
+            return SpawnDataSchema;
+        case CORE_COMPONENT_TYPES.warp:
+            return WarpDataSchema;
+        case CORE_COMPONENT_TYPES.switch:
+            return SwitchDataSchema;
     }
 }
 

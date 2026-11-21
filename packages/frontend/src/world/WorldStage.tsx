@@ -14,6 +14,7 @@ import { Z_INDEX } from '@/styles/layers';
 import { backgroundImageStyle } from './backgroundImage';
 import { EntityRenderer } from './EntityRenderer';
 import { useModRegistry } from './ModRegistryContext';
+import { useSpawnScroll } from './useSpawnScroll';
 
 const FALLBACK_ENTITY: ComponentInstance = {
     id: '',
@@ -41,13 +42,22 @@ export const WorldStage: React.FC = () => {
  */
 const InstanceSurface: React.FC = () => {
     const { isConnected } = useSocket();
-    const { entities, environment, activeMods } = useWorld();
+    const { entities, environment, activeMods, hiddenEntities } = useWorld();
     const { modMap } = useModRegistry();
     const { held } = useHold();
 
     // ワールドの進行（collider の接触判定）を Host の単一ループに載せる。
     // これにより mod 側は判定ループを書かずに collision:enter / collision:exit を受け取れる。
-    useWorldSimulation(entities);
+    // 見えない Entity は当たらない
+    const simulated = useMemo(
+        () =>
+            hiddenEntities.size === 0
+                ? entities
+                : new Map([...entities].filter(([, e]) => !(e.entityId && hiddenEntities.has(e.entityId)))),
+        [entities, hiddenEntities],
+    );
+    useWorldSimulation(simulated);
+    useSpawnScroll();
 
     // フックは早期 return より前にすべて宣言する（Rules of Hooks）
     const singletonWorkerMods = useMemo(

@@ -110,8 +110,11 @@ type Snapshot struct {
 	AvailableComponents []map[string]interface{} `json:"availableComponents"`
 	Entities            []map[string]interface{} `json:"entities"`
 	Environment         map[string]interface{}   `json:"environment"`
-	Lock                json.RawMessage          `json:"lock,omitempty"`
-	SourceKind          string                   `json:"sourceKind,omitempty"`
+
+	// HiddenEntities 見えない Entity（GameObject）の ID。子も見えない。core:switch で切り替わる。
+	HiddenEntities []string        `json:"hiddenEntities,omitempty"`
+	Lock           json.RawMessage `json:"lock,omitempty"`
+	SourceKind     string          `json:"sourceKind,omitempty"`
 }
 
 // TicketRequest defines model for TicketRequest.

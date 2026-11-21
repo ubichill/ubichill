@@ -68,9 +68,9 @@ describe('findCoreComponentProblems', () => {
 
 describe('unknownCoreComponentTypes', () => {
     it('知らない core の型だけを、重ねずに返す', () => {
-        expect(unknownCoreComponentTypes(['core:switch', 'core:text', 'pen:tray', 'core:switch', 'core:warp'])).toEqual(
-            ['core:switch', 'core:warp'],
-        );
-        expect(unknownCoreComponentsMessage(['core:switch', 'core:warp'])).toContain('core:switch・core:warp');
+        expect(
+            unknownCoreComponentTypes(['core:dial', 'core:text', 'pen:tray', 'core:dial', 'core:switch', 'core:lever']),
+        ).toEqual(['core:dial', 'core:lever']);
+        expect(unknownCoreComponentsMessage(['core:dial', 'core:lever'])).toContain('core:dial・core:lever');
     });
 });

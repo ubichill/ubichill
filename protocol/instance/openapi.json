@@ -532,6 +532,16 @@
           "sourceKind": {
             "type": "string",
             "x-go-type-skip-optional-pointer": true
+          },
+          "hiddenEntities": {
+            "type": "array",
+            "description": "見えない Entity（GameObject）の ID。子も見えない。core:switch で切り替わる。",
+            "maxItems": 10000,
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "x-go-type-skip-optional-pointer": true
           }
         },
         "required": [

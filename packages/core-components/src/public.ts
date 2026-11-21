@@ -12,6 +12,9 @@ export const CORE_COMPONENT_TYPES = {
     image: 'core:image',
     text: 'core:text',
     portal: 'core:portal',
+    spawn: 'core:spawn',
+    warp: 'core:warp',
+    switch: 'core:switch',
 } as const;
 
 export type CoreComponentType = (typeof CORE_COMPONENT_TYPES)[keyof typeof CORE_COMPONENT_TYPES];

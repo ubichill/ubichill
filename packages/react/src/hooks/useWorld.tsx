@@ -7,7 +7,7 @@ import type {
     WorldEnvironmentData,
     WorldSnapshotPayload,
 } from '@ubichill/shared';
-import { DEFAULTS } from '@ubichill/shared';
+import { DEFAULTS, hiddenGameObjects } from '@ubichill/shared';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useSocket } from './useSocket';
 
@@ -32,6 +32,10 @@ export interface WorldContextType {
     ) => Promise<ComponentInstance<T> | null>;
     patchEntity: (entityId: string, patch: EntityPatchPayload['patch']) => void;
     deleteEntity: (entityId: string) => void;
+    /** 見えない Entity（GameObject）の ID。見えない親の子孫も含む */
+    hiddenEntities: ReadonlySet<string>;
+    /** core:switch を押す。切り替わった結果は entity:visibility で届く */
+    pressSwitch: (componentId: string) => void;
     /** ワールドのローカル状態をリセット（ロビーに戻る際などに呼ぶ） */
     resetWorld: () => void;
     isConnected: boolean;
@@ -42,6 +46,8 @@ export interface WorldContextType {
 // ============================================
 
 export const WorldContext = createContext<WorldContextType | null>(null);
+
+const NO_HIDDEN: ReadonlySet<string> = new Set();
 
 // ============================================
 // Provider
@@ -56,6 +62,12 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const [activeMods, setActiveMods] = useState<string[]>([]);
     const [modLock, setModLock] = useState<ModLock | undefined>(undefined);
     const [worldSourceKind, setWorldSourceKind] = useState<string | undefined>(undefined);
+    // インスタンスから届くのは見えないと決めた Entity だけ。子孫は描くときに要るので、ここで一度だけ辿る
+    const [hiddenRoots, setHiddenRoots] = useState<ReadonlySet<string>>(NO_HIDDEN);
+    const hiddenEntities = useMemo(
+        () => (hiddenRoots.size === 0 ? NO_HIDDEN : hiddenGameObjects(entities.values(), hiddenRoots)),
+        [entities, hiddenRoots],
+    );
 
     useEffect(() => {
         if (!socket) return;
@@ -72,6 +84,11 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             setActiveMods(payload.activeMods || []);
             setModLock(payload.lock);
             setWorldSourceKind(payload.sourceKind);
+            setHiddenRoots(new Set(payload.hiddenEntities));
+        };
+
+        const handleVisibility = (payload: { hiddenEntities: string[] }) => {
+            setHiddenRoots(new Set(payload.hiddenEntities));
         };
 
         // エンティティ作成を受信
@@ -136,6 +153,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         socket.on('entity:patched', handleEntityPatched);
         socket.on('entity:ephemeral', handleEntityEphemeral);
         socket.on('entity:deleted', handleEntityDeleted);
+        socket.on('entity:visibility', handleVisibility);
 
         return () => {
             socket.off('world:snapshot', handleWorldSnapshot);
@@ -143,6 +161,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             socket.off('entity:patched', handleEntityPatched);
             socket.off('entity:ephemeral', handleEntityEphemeral);
             socket.off('entity:deleted', handleEntityDeleted);
+            socket.off('entity:visibility', handleVisibility);
         };
     }, [socket]);
 
@@ -223,6 +242,16 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         [socket, isConnected, currentUser],
     );
 
+    const pressSwitch = useCallback(
+        (componentId: string) => {
+            if (!socket || !isConnected || !currentUser) return;
+            socket.emit('switch:press', { componentId }, (response) => {
+                if (!response.success) console.warn('[World] スイッチを押せませんでした:', response.error);
+            });
+        },
+        [socket, isConnected, currentUser],
+    );
+
     const resetWorld = useCallback(() => {
         setEntities(new Map());
         setEphemeralData(new Map());
@@ -231,6 +260,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setActiveMods([]);
         setModLock(undefined);
         setWorldSourceKind(undefined);
+        setHiddenRoots(NO_HIDDEN);
     }, []);
 
     const contextValue: WorldContextType = useMemo(
@@ -245,6 +275,8 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             createEntity,
             patchEntity,
             deleteEntity,
+            hiddenEntities,
+            pressSwitch,
             resetWorld,
             isConnected,
         }),
@@ -259,6 +291,8 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             createEntity,
             patchEntity,
             deleteEntity,
+            hiddenEntities,
+            pressSwitch,
             resetWorld,
             isConnected,
         ],

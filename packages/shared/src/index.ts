@@ -110,6 +110,9 @@ export interface ServerToClientEvents {
     /** エンティティが削除された */
     'entity:deleted': (entityId: string) => void;
 
+    /** 見えない Entity（GameObject）の一覧が変わった（core:switch）。一覧そのものが届く */
+    'entity:visibility': (payload: { hiddenEntities: string[] }) => void;
+
     // ============================================
     // Instance Events (Server -> Client)
     // ============================================
@@ -167,6 +170,12 @@ export interface ClientToServerEvents {
 
     /** エンティティを更新（Reliable） */
     'entity:patch': (payload: EntityPatchPayload) => void;
+
+    /** core:switch を押す（切り替えはインスタンスが行い、entity:visibility で全員に届く） */
+    'switch:press': (
+        payload: { componentId: string },
+        callback: (response: { success: boolean; error?: string }) => void,
+    ) => void;
 
     /** エンティティのリアルタイムデータ送信（Volatile） */
     'entity:ephemeral': (payload: EntityEphemeralPayload) => void;
@@ -298,3 +307,4 @@ export * from './world/instanceDefinition';
 export * from './world/pagePath';
 export * from './world/requirements';
 export * from './world/resolve';
+export * from './world/visibility';
