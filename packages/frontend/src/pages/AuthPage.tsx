@@ -5,7 +5,7 @@ import {
     isTwoFactorRequired,
     safeReturnTo,
 } from '@ubichill/shared';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import {
     buttonStyle,
@@ -84,6 +84,10 @@ export function AuthPage() {
     const [botRound, setBotRound] = useState(0);
     // サーバーの名前（コントロールパネルの「全般」）。null は読み込み中
     const [serverName, setServerName] = useState<string | null>(null);
+    // 新規登録を受け付けているか（読めなければ受け付けている扱い。止めていれば登録の応答が理由を返す）
+    const [registrationOpen, setRegistrationOpen] = useState(true);
+    // 切り替えた後に、新しい形の最初の欄へフォーカスを移す（押したボタンが消えて body に飛ばないように）
+    const focusAfterSwitch = useRef(false);
     // パスワードを入れ始めたらウィジェットを出す。一度出したら、パスワードを消しても作り直さない（確かめ直させない）
     const [botCheckStarted, setBotCheckStarted] = useState(false);
 
@@ -96,9 +100,36 @@ export function AuthPage() {
             .then(setBotProtection)
             .catch(() => setBotProtection(null));
         fetchServerOverview()
-            .then((overview) => setServerName(overview.info.name))
+            .then((overview) => {
+                setServerName(overview.info.name);
+                setRegistrationOpen(overview.registrationOpen);
+            })
             .catch(() => setServerName(DEFAULT_SERVER_NAME));
     }, []);
+
+    // ログインか新規登録の形を開く（読み込み直しても同じ方を開くよう、URL にも残す）
+    const openForm = useCallback(
+        (next: 'login' | 'register') => {
+            setMode(next);
+            const params = new URLSearchParams(location.search);
+            if (next === 'register') params.set('mode', 'register');
+            else params.delete('mode');
+            const query = params.toString();
+            navigate(`/auth${query ? `?${query}` : ''}`, { replace: true, state: location.state });
+        },
+        [navigate, location.search, location.state],
+    );
+
+    // 新規登録を止めているサーバーで ?mode=register を開いたら、ログインの形にする
+    useEffect(() => {
+        if (!registrationOpen && mode === 'register') openForm('login');
+    }, [registrationOpen, mode, openForm]);
+
+    useEffect(() => {
+        if (!focusAfterSwitch.current) return;
+        focusAfterSwitch.current = false;
+        document.getElementById(mode === 'register' ? 'displayName' : 'email')?.focus();
+    }, [mode]);
 
     // クールダウンタイマー
     useEffect(() => {
@@ -150,7 +181,7 @@ export function AuthPage() {
                     setSuccess('登録が完了しました。ログインしてください。');
                     // 1.5秒後にログイン画面に遷移
                     setTimeout(() => {
-                        setMode('login');
+                        openForm('login');
                         setPassword(''); // セキュリティのためパスワードをクリア
                     }, 1500);
                 } else if (result.registrationId) {
@@ -235,7 +266,7 @@ export function AuthPage() {
                 setSuccess('登録が完了しました。ログインしてください。');
                 // 確認完了後、ログイン画面に戻る
                 setTimeout(() => {
-                    setMode('login');
+                    openForm('login');
                     setOtp('');
                     setRegistrationId('');
                     setDisplayName('');
@@ -248,7 +279,7 @@ export function AuthPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [registrationId, otp, from]);
+    }, [registrationId, otp, from, openForm]);
 
     // 既にログイン済みなら、元の画面へ移るまでの間だけ（ログイン状態を確かめている間は下のフォームが場所を取る）
     if (session && !isPending && !adding && !twoFactor) {
@@ -299,17 +330,12 @@ export function AuthPage() {
         );
     }
 
-    // ログインと新規登録を替える（読み込み直しても同じ方を開くよう、URL にも残す）
     const switchMode = (next: 'login' | 'register') => {
-        setMode(next);
         setError('');
         setSuccess('');
         setShowPassword(false);
-        const params = new URLSearchParams(location.search);
-        if (next === 'register') params.set('mode', 'register');
-        else params.delete('mode');
-        const query = params.toString();
-        navigate(`/auth${query ? `?${query}` : ''}`, { replace: true, state: location.state });
+        focusAfterSwitch.current = true;
+        openForm(next);
     };
 
     const handleBackToRegister = () => {
@@ -407,7 +433,12 @@ export function AuthPage() {
                 </h1>
                 {adding && <p className={subtitleStyle}>追加するアカウントでログインしてください</p>}
 
-                <form onSubmit={handleSubmit} className={formStyle} aria-busy={isLoading}>
+                <form
+                    onSubmit={handleSubmit}
+                    className={formStyle}
+                    aria-busy={isLoading}
+                    aria-label={mode === 'login' ? 'ログイン' : '新規登録'}
+                >
                     {mode === 'register' && (
                         <>
                             <div className={fieldStyle}>
@@ -593,7 +624,7 @@ export function AuthPage() {
                     </>
                 )}
 
-                {mode === 'login' && fediverseOptions?.registrationOpen !== false && (
+                {mode === 'login' && registrationOpen && (
                     <p className={switchModeStyle}>
                         アカウントをお持ちでない方は
                         <button

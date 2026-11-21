@@ -8,7 +8,7 @@ export const DEFAULT_SERVER_NAME = 'Ubichill';
 export const DEFAULT_SERVER_DESCRIPTION = '同じ空間で、作業も会話もいっしょに。';
 export const UBICHILL_REPOSITORY_URL = 'https://github.com/ubichill/ubichill';
 
-export const SERVER_INFO_LIMITS = { name: 64, description: 2000, maintainerName: 64, url: 2048 } as const;
+export const SERVER_INFO_LIMITS = { name: 64, description: 2000, maintainerName: 64, email: 254, url: 2048 } as const;
 
 /** 英数字で終わる語の後には空白を入れる（「URL には」「紹介は」） */
 const withLabel = (label: string, rest: string): string =>
@@ -48,6 +48,7 @@ export const ServerInfoSchema = z.object({
     maintainerEmail: z
         .string()
         .trim()
+        .max(SERVER_INFO_LIMITS.email, '管理者のメールアドレスが長すぎます')
         .refine(
             (value) => value === '' || z.email().safeParse(value).success,
             '管理者のメールアドレスの形が正しくありません',

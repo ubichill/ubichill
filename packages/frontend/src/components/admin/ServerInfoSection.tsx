@@ -93,11 +93,13 @@ export function ServerInfoSection() {
         }
     };
 
+    // 補足は入力欄の名前に含めず、説明として結ぶ
     const input = (field: Field) => (
-        <label key={field.key} className={adminLabel} htmlFor={`${id}-${field.key}`}>
-            {field.label}
+        <div key={field.key} className={adminLabel}>
+            <label htmlFor={`${id}-${field.key}`}>{field.label}</label>
             <input
                 id={`${id}-${field.key}`}
+                aria-describedby={field.hint ? `${id}-${field.key}-hint` : undefined}
                 className={adminField()}
                 type={field.type}
                 inputMode={field.type === 'text' ? undefined : field.type}
@@ -108,8 +110,12 @@ export function ServerInfoSection() {
                 disabled={busy}
                 onChange={(e) => edit({ [field.key]: e.target.value })}
             />
-            {field.hint && <span className={hint}>{field.hint}</span>}
-        </label>
+            {field.hint && (
+                <span id={`${id}-${field.key}-hint`} className={hint}>
+                    {field.hint}
+                </span>
+            )}
+        </div>
     );
 
     return (
@@ -138,10 +144,11 @@ export function ServerInfoSection() {
                         onChange={(e) => edit({ name: e.target.value })}
                     />
                 </label>
-                <label className={adminLabel} htmlFor={`${id}-description`}>
-                    サーバーの紹介
+                <div className={adminLabel}>
+                    <label htmlFor={`${id}-description`}>サーバーの紹介</label>
                     <textarea
                         id={`${id}-description`}
+                        aria-describedby={`${id}-description-hint`}
                         className={adminField({ multiline: true })}
                         rows={4}
                         maxLength={SERVER_INFO_LIMITS.description}
@@ -149,8 +156,10 @@ export function ServerInfoSection() {
                         disabled={busy}
                         onChange={(e) => edit({ description: e.target.value })}
                     />
-                    <span className={hint}>どんな人が集まる場所か。空なら Ubichill の紹介を出します。</span>
-                </label>
+                    <span id={`${id}-description-hint`} className={hint}>
+                        どんな人が集まる場所か。空なら Ubichill の紹介を出します。
+                    </span>
+                </div>
                 <div className={pair}>{MAINTAINER.map(input)}</div>
                 {LINKS.map(input)}
                 {error && (

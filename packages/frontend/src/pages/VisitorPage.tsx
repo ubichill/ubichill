@@ -20,25 +20,32 @@ const SHOWCASE_WORLDS = 12;
  * 新規登録とログイン、このサーバーのワールド、運営の情報を出す。
  */
 export function VisitorPage() {
-    // null は読み込み中（届くまで見えなくしておき、既定の名前から切り替わって見えないようにする）
-    const [overview, setOverview] = useState<ServerOverview | null>(null);
+    // null は読み込み中（届くまで見えなくしておき、既定の名前から切り替わって見えないようにする）。
+    // 読めなければ 'failed'（分からない人数・登録の受け付けは出さない）
+    const [overview, setOverview] = useState<ServerOverview | 'failed' | null>(null);
     const [worlds, setWorlds] = useState<WorldListItem[] | null>(null);
 
     useEffect(() => {
         fetchServerOverview()
             .then(setOverview)
-            .catch(() => setOverview({ info: DEFAULT_SERVER_INFO, registrationOpen: true, stats: { users: 0 } }));
+            .catch(() => setOverview('failed'));
         fetchLocalWorlds()
             .then(setWorlds)
             .catch(() => setWorlds([]));
     }, []);
 
-    useEffect(() => {
-        if (overview) document.title = overview.info.name;
-    }, [overview]);
-
-    const info = overview?.info ?? DEFAULT_SERVER_INFO;
+    const loaded = overview !== null && overview !== 'failed' ? overview : null;
+    const info = loaded?.info ?? DEFAULT_SERVER_INFO;
     const pending = overview === null;
+
+    useEffect(() => {
+        if (!loaded) return;
+        const previous = document.title;
+        document.title = loaded.info.name;
+        return () => {
+            document.title = previous;
+        };
+    }, [loaded]);
 
     return (
         <main className={page}>
@@ -50,7 +57,7 @@ export function VisitorPage() {
                     </h1>
                     <p className={description}>{info.description ?? DEFAULT_SERVER_DESCRIPTION}</p>
                     <div className={actions}>
-                        {overview?.registrationOpen !== false && (
+                        {loaded?.registrationOpen && (
                             <Link to="/auth?mode=register" className={primaryAction}>
                                 新規登録
                             </Link>
@@ -59,19 +66,20 @@ export function VisitorPage() {
                             ログイン
                         </Link>
                     </div>
-                    {overview?.registrationOpen === false && (
-                        <p className={note}>いまは新規登録を受け付けていません。</p>
+                    {loaded?.registrationOpen === false && <p className={note}>いまは新規登録を受け付けていません。</p>}
+                    {loaded && (
+                        <dl className={stats}>
+                            <div className={stat}>
+                                <dt className={statLabel}>ユーザー</dt>
+                                <dd className={statValue}>{loaded.stats.users.toLocaleString('ja-JP')}</dd>
+                            </div>
+                            <div className={stat}>
+                                <dt className={statLabel}>ワールド</dt>
+                                {/* 一覧が届くまでは 0 と出さない */}
+                                <dd className={statValue}>{worlds ? worlds.length.toLocaleString('ja-JP') : ''}</dd>
+                            </div>
+                        </dl>
                     )}
-                    <dl className={stats}>
-                        <div className={stat}>
-                            <dt className={statLabel}>ユーザー</dt>
-                            <dd className={statValue}>{(overview?.stats.users ?? 0).toLocaleString('ja-JP')}</dd>
-                        </div>
-                        <div className={stat}>
-                            <dt className={statLabel}>ワールド</dt>
-                            <dd className={statValue}>{(worlds?.length ?? 0).toLocaleString('ja-JP')}</dd>
-                        </div>
-                    </dl>
                     <ServerFacts info={info} />
                 </section>
 
