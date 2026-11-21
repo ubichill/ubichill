@@ -15,7 +15,12 @@ import { InstanceLoadingScreen } from './InstanceLoadingScreen';
 import { type InstanceFailure, InstanceNotFoundError } from './instanceFailure';
 import { ModRegistryProvider } from './ModRegistryContext';
 import type { ModSource } from './modSource';
-import { type PortalNavigate, PortalNavigationProvider } from './portalNavigation';
+import {
+    type PortalLookup,
+    PortalLookupProvider,
+    type PortalNavigate,
+    PortalNavigationProvider,
+} from './portalNavigation';
 import { ServerNoticeToasts } from './ServerNoticeToasts';
 import { useInstanceLoading } from './useInstanceLoading';
 import { useUnknownCoreNotice } from './useUnknownCoreNotice';
@@ -54,6 +59,8 @@ export interface WorldViewProps {
     onEntered?: () => void;
     /** 入口（core:portal）を押したときの移り方（SNS だけ）。無ければ入口は押せない。 */
     onPortal?: PortalNavigate;
+    /** 入口に出す行き先のワールドを引く（SNS だけ）。無ければ入口は名前と印だけ。 */
+    portalLookup?: PortalLookup;
     /** 入室できたあとに重ねる UI（HUD など）。 */
     children?: ReactNode;
 }
@@ -73,6 +80,7 @@ export function WorldView({
     onFailed,
     onEntered,
     onPortal,
+    portalLookup,
     children,
 }: WorldViewProps) {
     const { isConnected, isConnecting, error, sessionReplaced, currentUser, joinWorld, leaveWorld } = useSocket();
@@ -211,7 +219,9 @@ export function WorldView({
                     >
                         <WorkerLoadingProvider onStatusChange={setWorkers}>
                             <PortalNavigationProvider value={onPortal ?? null}>
-                                <WorldStage />
+                                <PortalLookupProvider value={portalLookup ?? null}>
+                                    <WorldStage />
+                                </PortalLookupProvider>
                             </PortalNavigationProvider>
                         </WorkerLoadingProvider>
                     </ModRegistryProvider>

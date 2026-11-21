@@ -22,10 +22,13 @@ import { HOST_MOD_SOURCE, MOD_CDN_URL } from '@/lib/mods/modCdn';
 import { useSession } from '@/lib/session';
 import { useBlocks } from '@/lib/social/blocks';
 import { blockedAuthorsOf } from '@/lib/social/blocksState';
+import { fetchWorld } from '@/lib/worlds/instancesApi';
+import { createPortalLookup } from '@/lib/worlds/portalDestination';
 import { css } from '@/styled-system/css';
 import { buildWorldLock, EntityRenderer, ModRegistryProvider, useModRegistry } from '@/world';
 import { backgroundImageStyle } from '@/world/backgroundImage';
 import { EditorPreviewProvider } from '@/world/editorPreview';
+import { PortalLookupProvider } from '@/world/portalNavigation';
 
 const FALLBACK_ENTITY: ComponentInstance = {
     id: '',
@@ -193,6 +196,9 @@ export function EditorPreview({
     const blockState = useBlocks(session?.user.id);
     const blocksPending = !!session && blockState.blocks === null && blockState.error === null;
 
+    // 入口に行き先のワールドを出す（作者が置いた入口の見た目を確かめられるように。押しても移らない）
+    const [portalLookup] = useState(() => createPortalLookup(fetchWorld));
+
     const hiddenEntities = useMemo(
         () => hiddenGameObjects(entities.values(), new Set(initiallyHiddenEntities(definition.spec.initialEntities))),
         [entities, definition.spec.initialEntities],
@@ -267,36 +273,38 @@ export function EditorPreview({
             <SocketContext.Provider value={socketValue}>
                 <WorldContext.Provider value={worldValue}>
                     <EditorPreviewProvider value={true}>
-                        {/* lock に固定されていない mod は実行しないので、試し用の lock ができてから mod を読み込む */}
-                        {previewLock && !blocksPending && (
-                            <ModRegistryProvider
-                                key={lockKey}
-                                lock={previewLock}
-                                source={HOST_MOD_SOURCE}
-                                blockedAuthors={blockedAuthorsOf(blockState)}
-                            >
-                                {/* ワールド座標系のスクロール領域。overlay: true の Entity はここに置かない
-                            （実行時の InstanceRenderer と同様、スクロールの影響を受けない別レイヤーにする）。 */}
-                                <div
-                                    onMouseDown={(e) => {
-                                        if (e.target === e.currentTarget) onBackgroundMouseDown?.();
-                                    }}
-                                    data-ubi-mod-surface
-                                    className={css({ position: 'absolute', inset: 0, overflow: 'auto' })}
+                        <PortalLookupProvider value={portalLookup}>
+                            {/* lock に固定されていない mod は実行しないので、試し用の lock ができてから mod を読み込む */}
+                            {previewLock && !blocksPending && (
+                                <ModRegistryProvider
+                                    key={lockKey}
+                                    lock={previewLock}
+                                    source={HOST_MOD_SOURCE}
+                                    blockedAuthors={blockedAuthorsOf(blockState)}
                                 >
-                                    <PreviewStage
-                                        entities={entities}
-                                        environment={environment}
-                                        overlay={overlay}
-                                        gridStep={gridStep}
-                                        onBackgroundMouseDown={onBackgroundMouseDown}
-                                    />
-                                </div>
-                                {/* overlay: true の Entity 専用レイヤー。上のスクロール領域の外側に置くことで
+                                    {/* ワールド座標系のスクロール領域。overlay: true の Entity はここに置かない
+                            （実行時の InstanceRenderer と同様、スクロールの影響を受けない別レイヤーにする）。 */}
+                                    <div
+                                        onMouseDown={(e) => {
+                                            if (e.target === e.currentTarget) onBackgroundMouseDown?.();
+                                        }}
+                                        data-ubi-mod-surface
+                                        className={css({ position: 'absolute', inset: 0, overflow: 'auto' })}
+                                    >
+                                        <PreviewStage
+                                            entities={entities}
+                                            environment={environment}
+                                            overlay={overlay}
+                                            gridStep={gridStep}
+                                            onBackgroundMouseDown={onBackgroundMouseDown}
+                                        />
+                                    </div>
+                                    {/* overlay: true の Entity 専用レイヤー。上のスクロール領域の外側に置くことで
                             実行画面 (InstanceRenderer の ENTITY_OVERLAY レイヤー) と配置が一致する。 */}
-                                <EditorOverlayStage entities={entities} />
-                            </ModRegistryProvider>
-                        )}
+                                    <EditorOverlayStage entities={entities} />
+                                </ModRegistryProvider>
+                            )}
+                        </PortalLookupProvider>
                     </EditorPreviewProvider>
                 </WorldContext.Provider>
             </SocketContext.Provider>

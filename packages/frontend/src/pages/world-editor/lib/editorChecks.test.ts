@@ -10,6 +10,7 @@ import {
 const ok: EditorCheckInput = {
     displayName: 'ぼくのワールド',
     worldName: 'my-world',
+    thumbnail: 'https://example.com/thumbnail.png',
     yamlError: '',
     referenceProblems: [],
     packagesError: '',
@@ -24,6 +25,18 @@ describe('editorChecks', () => {
         const checks = editorChecks({ ...ok, displayName: '  \n ' });
         expect(blockingChecks(checks).map((c) => c.id)).toEqual(['displayName']);
         expect(checks[0].target).toEqual({ kind: 'tab', tab: 'info' });
+    });
+
+    it('サムネイルが無ければ公開だけを止め、下書きは止めない', () => {
+        const checks = editorChecks({ ...ok, thumbnail: undefined });
+        expect(blockingChecks(checks, 'publish').map((c) => c.id)).toEqual(['thumbnail']);
+        expect(blockingChecks(checks, 'draft')).toEqual([]);
+        expect(checks[0]?.target).toEqual({ kind: 'tab', tab: 'info' });
+        expect(blockingChecks(editorChecks({ ...ok, thumbnail: '  ' })).map((c) => c.id)).toEqual(['thumbnail']);
+    });
+
+    it('表示名などの誤りは下書きも止める', () => {
+        expect(blockingChecks(editorChecks({ ...ok, worldName: '' }), 'draft').map((c) => c.id)).toEqual(['worldName']);
     });
 
     it('名前（URL）が空なら止める', () => {
