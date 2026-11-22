@@ -18,6 +18,24 @@ export const ROOM_PORTAL = {
     MAX_PER_ROOM: 64,
 } as const;
 
+/**
+ * 部屋へのポータルを置く許可（backend が発行し、インスタンスが `portal:open` で確かめる）。プライベートのワールドの部屋への
+ * ポータルを置けるのはその部屋を作った人だけ、という判定をサーバーで行うため。
+ * 形: `base64url(JSON {room, userId, exp})` + `.` + `base64url(HMAC-SHA256(鍵, 前半))`。exp は epoch 秒。
+ * 鍵は HMAC-SHA256(管理トークン, KEY_LABEL)。Go のインスタンス（services/instance の portals.go）と同じにする。
+ */
+export const ROOM_PORTAL_GRANT = {
+    KEY_LABEL: 'ubichill room portal grant v1',
+    TTL_SECONDS: 60,
+} as const;
+
+/** 許可が証明すること: userId がこの住所（`portal:open` の room と同じ文字列）へポータルを置いてよい。 */
+export interface RoomPortalGrantClaims {
+    room: string;
+    userId: string;
+    exp: number;
+}
+
 /** 行き先の部屋の住所（部屋のサーバーから見た形。このサーバーの部屋は ID、ほかのサーバーの部屋は `<ID>@<ドメイン>`）。 */
 export const ROOM_PORTAL_ADDRESS_MAX_LENGTH = 320;
 

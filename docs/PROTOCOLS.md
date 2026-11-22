@@ -82,7 +82,7 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 | --- | --- |
 | `GET /.well-known/webfinger` | 作者を確かめる他のサーバー・ブラウザ |
 | `GET /api/v1/authors/:handle/signing-keys` | 同上（`Access-Control-Allow-Origin: *`） |
-| `GET /api/v1/authors/:handle/worlds/:name.yaml`（`.lock.json`・`.sig.json`） | ワールドを読む他のサーバー |
+| `GET /api/v1/authors/:handle/worlds/:name.yaml`（`.lock.json`・`.sig.json`） | ワールドを読む他のサーバー。DB のワールドには公開範囲のヘッダー `Ubichill-World-Visibility: private\|public` を付け（`Access-Control-Expose-Headers` にも入れる）、`private` なら読む側のサーバーはそのワールドの部屋を作らせない。無い・知らない値はパブリック（ヘッダーを知らない古い版のサーバーは守らない） |
 | `GET /api/v1/authors/:handle/mods`（`?offset=`）・`/api/v1/authors/:handle/mods/:id` | 作者参照を解決するブラウザ・CLI（`PackageDescriptor` を返す。`Access-Control-Allow-Origin: *`）。WebFinger の rel `https://ubichill.com/ns/mods` から辿る |
 | `GET /api/v1/mods?q=…&offset=…` | `ubichill search`・ブラウザの検索・連合のピア（このサーバーの公開 mod だけを返す。`?scope=global` はこのサーバーの画面向けで、フォロー中のサーバーの mod を返す。検索語はピアへ送らず、ピアの一覧を検索語なしで取って絞る） |
 | `GET /api/v1/worlds?scope=local` | 連合のピア（このサーバーのワールドだけを返す） |

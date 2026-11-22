@@ -99,3 +99,20 @@ export async function saveWorldVisibility(worldId: string, visibility: WorldVisi
     });
     if (!res.ok) throw new Error(await readErrorMessage(res, '公開範囲を変えられませんでした'));
 }
+
+/**
+ * 部屋へのポータルを置く許可を backend にもらう（インスタンスが portal:open で確かめる）。room は portal:open に送るのと
+ * 同じ住所。プライベートのワールドの部屋で、部屋を作った人でなければ断られる。
+ */
+export async function requestRoomPortalGrant(room: string): Promise<string> {
+    const res = await fetch(`${API_BASE}/api/v1/room-portals/grants`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ room }),
+    });
+    if (!res.ok) throw new Error(await readErrorMessage(res, 'ポータルを置けませんでした'));
+    const data = (await res.json()) as { grant?: unknown };
+    if (typeof data.grant !== 'string') throw new Error('ポータルを置けませんでした');
+    return data.grant;
+}

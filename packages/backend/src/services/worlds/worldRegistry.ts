@@ -76,8 +76,11 @@ const NOT_FOUND: WorldResolution = { ok: false, reason: 'not-found', message: 'W
 /** ワールドはあるが、その版（content_hash）はもう残っていない（古い版を消した）。 */
 export type VersionResolution = WorldResolution | { ok: false; reason: 'gone'; message: string };
 
-/** 配るファイル。リポジトリのものはファイルのパス、DB のものは中身。 */
-export type WorldFile = { contentType: string } & ({ path: string } | { body: string });
+/**
+ * 配るファイル。リポジトリのものはファイルのパス、DB のものは中身と公開範囲（公開の有無を含めたもの。
+ * WORLD_VISIBILITY_HEADER でほかのサーバーに知らせる）。
+ */
+export type WorldFile = { contentType: string } & ({ path: string } | { body: string; visibility: WorldVisibility });
 
 /** 本体が配信するワールドの生の値（署名検証の対象そのもの）。 */
 export interface HostedWorldDocument extends WorldDocument {
@@ -227,7 +230,10 @@ class WorldRegistry {
     private static readonly LIST_RESOLVE_CONCURRENCY = 8;
     private static readonly LOCAL_TTL_MS = 5 * 60 * 1000;
     private static readonly LOCAL_FAILURE_TTL_MS = 60 * 1000;
-    /** 外部（他インスタンス/URL）ワールドの解決キャッシュ（連合、TTL 付き） */
+    /**
+     * 外部（他インスタンス/URL）ワールドの解決キャッシュ（連合、TTL 付き）。作者のサーバーで公開範囲を変えたのも、
+     * この間をおいて取り直したときに届く（取り直せなかった間は前の結果のまま）。
+     */
     private static readonly REMOTE_TTL_MS = 5 * 60 * 1000;
     /** 取得できなかった外部 URL を取り直さない時間（お気に入りなどで外部への取得を繰り返し起こされないように）。 */
     private static readonly REMOTE_FAILURE_TTL_MS = 60 * 1000;
@@ -400,7 +406,8 @@ class WorldRegistry {
         const verified = await Promise.all(
             candidates.map(async (item): Promise<WorldListItem | null> => {
                 const resolution = await this._resolveRemote(normalizeWorldUrl(item.url));
-                if (!resolution.ok || !isPublishable(resolution.world.identity)) return null;
+                if (!resolution.ok || !isPublishable(resolution.world.identity) || !isListed(resolution.world))
+                    return null;
                 // 表示する値（名前・説明・作者・識別）はピアの申告ではなく、自分で取得して確かめたワールドから作る。
                 // どのピアから知ったか（source）だけはピアの一覧の値を使う
                 return { ...this._toListItem(resolution.world), source: item.source };
@@ -1098,10 +1105,13 @@ class WorldRegistry {
         }
         const state = located?.record ? await worldRepository.findState(located.record.id) : undefined;
         const served = state ? servedWorldOf(state) : undefined;
-        if (!served) return undefined;
-        if (kind === 'yaml') return { contentType, body: yaml.stringify(served.definition) };
+        if (!located || !served) return undefined;
+        // 確かめられないワールドはどこでも部屋を作れないので、プライベートとして知らせる
+        const resolution = await this.resolveLocal(located.id);
+        const visibility: WorldVisibility = resolution.ok ? (resolution.world.visibility ?? 'public') : 'private';
+        if (kind === 'yaml') return { contentType, body: yaml.stringify(served.definition), visibility };
         const value = kind === 'lock.json' ? served.lock : served.signature;
-        return value ? { contentType, body: JSON.stringify(value) } : undefined;
+        return value ? { contentType, body: JSON.stringify(value), visibility } : undefined;
     }
 
     // ================================================================

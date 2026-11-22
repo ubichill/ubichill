@@ -22,11 +22,14 @@ import {
     type ResolvedWorld,
     validateWorldDefinition,
     verifyWorldSignature,
+    WORLD_VISIBILITY_HEADER,
     type WorldDefinition,
     type WorldDocument,
     type WorldIdentity,
     type WorldSignatureInvalidReason,
     type WorldSource,
+    type WorldVisibility,
+    worldVisibilityFromHeader,
 } from '@ubichill/shared';
 import yaml from 'yaml';
 import { safeFetch } from '../../lib/safeFetch';
@@ -55,8 +58,8 @@ export function sendsRegistryToken(url: string): boolean {
     }
 }
 
-/** サイズ上限付きで URL からテキストを取得する。 */
-async function fetchText(url: string): Promise<string> {
+/** サイズ上限付きで URL からテキストを取得する。配り手が付けた公開範囲（ほかの ubichill のワールド）も返す。 */
+async function fetchText(url: string): Promise<{ text: string; visibility?: WorldVisibility }> {
     const headers: Record<string, string> = { Accept: 'application/yaml, text/yaml, */*' };
     const token = registryToken();
     if (token && sendsRegistryToken(url)) {
@@ -69,7 +72,16 @@ async function fetchText(url: string): Promise<string> {
     if (text.length > LIMITS.MAX_YAML_SIZE) {
         throw new Error(`ワールド定義が大きすぎます (${text.length} > ${LIMITS.MAX_YAML_SIZE}): ${url}`);
     }
-    return text;
+    return { text, visibility: worldVisibilityFromHeader(res.headers.get(WORLD_VISIBILITY_HEADER)) };
+}
+
+/**
+ * 作者のサーバーがプライベートと知らせた外部のワールド。このサーバーではだれも部屋を作れない（作者は作者のサーバーで作る）。
+ * 作者の ID はこのサーバーのユーザーと取り違えないよう持たせない。一覧・ワールドに置くポータルの行き先からも外れる。
+ */
+export function asRemotePrivateWorld(world: ResolvedWorld): ResolvedWorld {
+    const { authorId: _neverLocal, ...rest } = world;
+    return { ...rest, visibility: 'private' };
 }
 
 type SiblingKind = 'lock' | 'sig';
@@ -215,18 +227,19 @@ export async function resolveWorld(
     options: ResolveWorldOptions = {},
 ): Promise<{ definition: WorldDefinition; resolved: ResolvedWorld }> {
     const fetchUrl = toRawGitHubUrl(url);
-    const [text, rawLock, rawSig] = await Promise.all([
+    const [{ text, visibility }, rawLock, rawSig] = await Promise.all([
         fetchText(fetchUrl),
         fetchSiblingJson(lockUrlFor(fetchUrl)),
         fetchSiblingJson(sigUrlFor(fetchUrl)),
     ]);
     // 正規 URL は元の（人間が貼れる）URL を維持する
-    return resolveBundle(
+    const result = await resolveBundle(
         { definition: yaml.parse(text) as unknown, lock: rawLock, signature: rawSig },
         url,
         source,
         options,
     );
+    return visibility === 'private' ? { ...result, resolved: asRemotePrivateWorld(result.resolved) } : result;
 }
 
 /** URL を取得して ResolvedWorld に解決する（外部/他インスタンス用）。 */

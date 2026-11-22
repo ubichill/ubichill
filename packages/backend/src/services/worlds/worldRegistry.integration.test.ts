@@ -169,11 +169,17 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         if (!draft.ok) throw new Error(draft.message);
         const id = draft.world.id;
         const listed = async () => (await worldRegistry.listWorlds('local')).some((w) => w.id === id);
+        // ほかのサーバーに知らせる公開範囲（ファイルのヘッダー）。プライベートでもファイルは配る
+        const served = async () => {
+            const file = await worldRegistry.worldFile(HANDLE, `${name}.yaml`);
+            return file && 'body' in file ? file.visibility : undefined;
+        };
         try {
             expect((await worldRegistry.resolveLocal(id)).ok && (await worldRegistry.getWorld(id))?.visibility).toBe(
                 'private',
             );
             expect(await instanceManager.createInstance({ worldId: id }, SYS)).toMatchObject({ reason: 'forbidden' });
+            expect(await served()).toBe('private');
 
             const bundle = bundleOf(worldDef(name, '公開範囲'));
             const sig = await signWorld(bundle, key, nodeWorldCrypto, { author: selfAccount(HANDLE) });
@@ -183,6 +189,7 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
             expect((await worldRegistry.getWorld(id))?.visibility).toBe('public');
             expect(await listed()).toBe(true);
             expect(await worldRegistry.publishableListItem(id)).toMatchObject({ id, visibility: 'public' });
+            expect(await served()).toBe('public');
 
             // 作者でない人は変えられない
             expect(await worldRegistry.setVisibility(id, SYS, 'private')).toBe(false);
@@ -191,6 +198,8 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
             expect((await worldRegistry.getWorld(id))?.visibility).toBe('private');
             expect(await listed()).toBe(false);
             expect(await worldRegistry.publishableListItem(id)).toBeUndefined();
+            expect(await served()).toBe('private');
+            expect(await worldRegistry.worldFile(HANDLE, `${name}.sig.json`)).toMatchObject({ visibility: 'private' });
             expect(await instanceManager.createInstance({ worldId: id }, SYS)).toMatchObject({ reason: 'forbidden' });
             expect(await worldRegistry.getEditorDefinition(id)).toMatchObject({
                 published: true,

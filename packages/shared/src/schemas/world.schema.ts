@@ -530,7 +530,10 @@ export const ResolvedWorldSchema = z.object({
     /** 識別結果（署名検証済み / 未署名）。解決側が付与する。 */
     identity: WorldIdentitySchema.optional(),
     requires: WorldRequirementsSchema.optional(),
-    /** このサーバーのワールドの公開範囲（公開の有無を含めたもの）。外部・同梱のワールドは付かない（パブリック）。 */
+    /**
+     * ワールドの公開範囲（公開の有無を含めたもの）。このサーバーのワールドと、作者のサーバーがプライベートと知らせた
+     * 外部のワールドに付く。ほかの外部・同梱のワールドは付かない（パブリック）。
+     */
     visibility: WorldVisibilitySchema.optional(),
 });
 

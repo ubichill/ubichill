@@ -38,6 +38,7 @@ import { router as messagesRouter } from './routes/messages';
 import { router as modsRouter } from './routes/mods';
 import { router as notificationsRouter } from './routes/notifications';
 import { router as profilesRouter } from './routes/profiles';
+import { router as roomPortalsRouter } from './routes/roomPortals';
 import { router as serverRouter } from './routes/server';
 import { router as serviceTokensRouter } from './routes/serviceTokens';
 import { router as socialRouter } from './routes/social';
@@ -189,6 +190,7 @@ app.use('/api/auth', toNodeHandler(auth));
 // ============================================
 app.use('/api/v1/worlds', worldsRouter);
 app.use('/api/v1/instances', instancesRouter);
+app.use('/api/v1/room-portals', roomPortalsRouter);
 // プロフィールの編集・画像は users の `/:userId` より先に置く
 app.use('/api/v1/users', profilesRouter);
 app.use('/api/v1/users', homeRouter);

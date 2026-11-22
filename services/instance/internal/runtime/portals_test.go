@@ -1,8 +1,12 @@
 package runtime
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http/httptest"
 	"reflect"
 	"slices"
 	"strings"
@@ -13,6 +17,28 @@ import (
 )
 
 func portalAt(room string, x, y float64) Object { return Object{"room": room, "x": x, "y": y} }
+
+// testGrantKey は start の管理トークンから派生した許可の鍵。
+var testGrantKey = portalGrantKey(Config{AdminToken: strings.Repeat("a", 32)})
+
+// signGrant は backend と同じ形の許可を作る（roomPortalGrantToken.ts の signRoomPortalGrant）。
+func signGrant(key []byte, g portalGrant) string {
+	payload := base64.RawURLEncoding.EncodeToString(encoded(g))
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(payload))
+	return payload + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func grantFor(user, room string) string {
+	return signGrant(testGrantKey, portalGrant{Room: room, UserID: user, Exp: time.Now().Add(time.Minute).Unix()})
+}
+
+// portalBy は user が backend の許可を付けて送る portal:open。
+func portalBy(user, room string, x, y float64) Object {
+	payload := portalAt(room, x, y)
+	payload["grant"] = grantFor(user, room)
+	return payload
+}
 
 // pinClock は部屋の時計を止めて、進める関数を返す。
 func pinClock(r *Room, at time.Time) func(time.Duration) {
@@ -139,7 +165,7 @@ func TestPortalOpenCreatesTheEntityForEveryone(t *testing.T) {
 	bob := connect(t, s, h, "a", "bob")
 	receive(t, alice, "user:joined")
 
-	payload := portalAt("Room_1@Example.COM:8080", 500, 400)
+	payload := portalBy("alice", "Room_1@Example.COM:8080", 500, 400)
 	payload["ownerName"] = "偽物"
 	created := openPortal(t, alice, "open", payload)
 	want := Object{
@@ -165,21 +191,23 @@ func TestPortalOpenRejectsInvalidInput(t *testing.T) {
 	s, h := start(t, false)
 	alice := connect(t, s, h, "a", "alice")
 	bob := connect(t, s, h, "a", "bob")
+	// 書式を確かめるところまで届くよう、許可は送った住所に合わせて付ける（許可そのものは TestPortalOpenRequiresGrant）
+	granted := grantFor("alice", "abc")
 	cases := map[string]any{
-		"住所が無い":        Object{"x": float64(0), "y": float64(0)},
-		"住所が空":         portalAt("", 0, 0),
-		"住所が数":         Object{"room": float64(1), "x": float64(0), "y": float64(0)},
-		"@ で終わる":       portalAt("a@", 0, 0),
-		"@ で始まる":       portalAt("@x", 0, 0),
-		"@ が 2 つ":      portalAt("a@b@c", 0, 0),
-		"65 文字の ID":    portalAt(strings.Repeat("a", 65), 0, 0),
-		"x が無い":        Object{"room": "abc", "y": float64(0)},
-		"x が文字列":       Object{"room": "abc", "x": "NaN", "y": float64(0)},
-		"y が null":     Object{"room": "abc", "x": float64(0), "y": nil},
-		"x が遠い":        portalAt("abc", 1e7+1, 0),
-		"y が遠い":        portalAt("abc", 0, -1e8),
-		"x がとても大きい":    portalAt("abc", 1e308, 0),
-		"左上が範囲の外":      portalAt("abc", -1e7, 0),
+		"住所が無い":        Object{"x": float64(0), "y": float64(0), "grant": grantFor("alice", "")},
+		"住所が空":         portalBy("alice", "", 0, 0),
+		"住所が数":         Object{"room": float64(1), "x": float64(0), "y": float64(0), "grant": granted},
+		"@ で終わる":       portalBy("alice", "a@", 0, 0),
+		"@ で始まる":       portalBy("alice", "@x", 0, 0),
+		"@ が 2 つ":      portalBy("alice", "a@b@c", 0, 0),
+		"65 文字の ID":    portalBy("alice", strings.Repeat("a", 65), 0, 0),
+		"x が無い":        Object{"room": "abc", "y": float64(0), "grant": granted},
+		"x が文字列":       Object{"room": "abc", "x": "NaN", "y": float64(0), "grant": granted},
+		"y が null":     Object{"room": "abc", "x": float64(0), "y": nil, "grant": granted},
+		"x が遠い":        portalBy("alice", "abc", 1e7+1, 0),
+		"y が遠い":        portalBy("alice", "abc", 0, -1e8),
+		"x がとても大きい":    portalBy("alice", "abc", 1e308, 0),
+		"左上が範囲の外":      portalBy("alice", "abc", -1e7, 0),
 		"data が配列":     []any{"abc", 0, 0},
 		"data が文字列の住所": "abc",
 	}
@@ -189,14 +217,14 @@ func TestPortalOpenRejectsInvalidInput(t *testing.T) {
 		}
 	}
 	// JSON の float64 に収まらない数（Inf にはならず、x が抜ける）
-	if err := alice.WriteJSON(Frame{Event: "portal:open", ID: "overflow", Data: []byte(`{"room":"abc","x":1e400,"y":0}`)}); err != nil {
+	if err := alice.WriteJSON(Frame{Event: "portal:open", ID: "overflow", Data: []byte(`{"room":"abc","x":1e400,"y":0,"grant":"` + granted + `"}`)}); err != nil {
 		t.Fatal(err)
 	}
 	if out, _ := object(receive(t, alice, "overflow").Data); out["success"] != false {
 		t.Fatalf("overflow: %v", out)
 	}
 	// 要求の ID が無いと応答できないので、置かない
-	_ = alice.WriteJSON(Frame{Event: "portal:open", Data: encoded(portalAt("abc", 0, 0))})
+	_ = alice.WriteJSON(Frame{Event: "portal:open", Data: encoded(portalBy("alice", "abc", 0, 0))})
 	receive(t, alice, "error")
 	_ = alice.WriteJSON(Frame{Event: "portal:close"})
 	receive(t, alice, "error")
@@ -213,21 +241,21 @@ func TestPortalCooldownAndReplace(t *testing.T) {
 	alice := connect(t, s, h, "a", "alice")
 	bob := connect(t, s, h, "a", "bob")
 
-	first := openPortal(t, alice, "first", portalAt("one", 0, 0))
+	first := openPortal(t, alice, "first", portalBy("alice", "one", 0, 0))
 	receive(t, bob, "entity:created")
-	if out := request(t, alice, "portal:open", "fast", portalAt("two", 0, 0)); out["success"] != false {
+	if out := request(t, alice, "portal:open", "fast", portalBy("alice", "two", 0, 0)); out["success"] != false {
 		t.Fatalf("続けて置けた: %v", out)
 	}
 	advance(roomPortalCooldown - time.Millisecond)
-	if out := request(t, alice, "portal:open", "still-fast", portalAt("two", 0, 0)); out["success"] != false {
+	if out := request(t, alice, "portal:open", "still-fast", portalBy("alice", "two", 0, 0)); out["success"] != false {
 		t.Fatalf("間隔の前に置けた: %v", out)
 	}
 	// 間隔は人ごと
-	openPortal(t, bob, "bob", portalAt("bobs", 0, 0))
+	openPortal(t, bob, "bob", portalBy("bob", "bobs", 0, 0))
 	receive(t, alice, "entity:created")
 
 	advance(time.Millisecond)
-	second := openPortal(t, alice, "second", portalAt("two", 10, 10))
+	second := openPortal(t, alice, "second", portalBy("alice", "two", 10, 10))
 	// 前のものを消してから、新しいものを配る
 	if id := deletedID(t, bob); id != first["id"] {
 		t.Fatalf("消えたもの: %s, want %s", id, first["id"])
@@ -244,10 +272,10 @@ func TestPortalCooldownAndReplace(t *testing.T) {
 	}
 	// 断られた要求は間隔を数え直さない
 	advance(roomPortalCooldown)
-	if out := request(t, alice, "portal:open", "invalid", portalAt("a@", 0, 0)); out["success"] != false {
+	if out := request(t, alice, "portal:open", "invalid", portalBy("alice", "a@", 0, 0)); out["success"] != false {
 		t.Fatal(out)
 	}
-	openPortal(t, alice, "third", portalAt("three", 0, 0))
+	openPortal(t, alice, "third", portalBy("alice", "three", 0, 0))
 }
 
 func TestPortalRoomCap(t *testing.T) {
@@ -265,11 +293,11 @@ func TestPortalRoomCap(t *testing.T) {
 	// ワールドのポータルは数えない
 	putEntity(s, "a", Object{"id": "gate::0", "type": "core:portal", "entityId": "gate", "ownerId": nil, "lockedBy": nil, "transform": fullTransform(), "data": Object{"world": "@me/home", "label": ""}})
 
-	if out := request(t, bob, "portal:open", "bob", portalAt("abc", 0, 0)); out["success"] != false {
+	if out := request(t, bob, "portal:open", "bob", portalBy("bob", "abc", 0, 0)); out["success"] != false {
 		t.Fatalf("上限を超えて置けた: %v", out)
 	}
 	// 置き直す人の前のものは消えるので数えない
-	openPortal(t, alice, "alice", portalAt("abc", 0, 0))
+	openPortal(t, alice, "alice", portalBy("alice", "abc", 0, 0))
 	if id := deletedID(t, bob); id != "alices" {
 		t.Fatalf("消えたもの: %s", id)
 	}
@@ -280,7 +308,7 @@ func TestPortalRoomCap(t *testing.T) {
 	if out := request(t, alice, "portal:close", "close", nil); out["success"] != true {
 		t.Fatal(out)
 	}
-	openPortal(t, bob, "bob-again", portalAt("abc", 0, 0))
+	openPortal(t, bob, "bob-again", portalBy("bob", "abc", 0, 0))
 }
 
 func TestPortalClose(t *testing.T) {
@@ -293,9 +321,9 @@ func TestPortalClose(t *testing.T) {
 	}
 	expectNone(t, bob, "entity:deleted")
 
-	mine := openPortal(t, alice, "open", portalAt("abc", 0, 0))
+	mine := openPortal(t, alice, "open", portalBy("alice", "abc", 0, 0))
 	receive(t, bob, "entity:created")
-	theirs := openPortal(t, bob, "bob", portalAt("abc", 0, 0))
+	theirs := openPortal(t, bob, "bob", portalBy("bob", "abc", 0, 0))
 	receive(t, alice, "entity:created")
 	if out := request(t, alice, "portal:close", "close", nil); out["success"] != true {
 		t.Fatalf("close: %v", out)
@@ -319,10 +347,10 @@ func TestPortalsExpireInOrder(t *testing.T) {
 	alice := connect(t, s, h, "a", "alice")
 	bob := connect(t, s, h, "a", "bob")
 	setLifetime(r, 400*time.Millisecond)
-	late := openPortal(t, alice, "late", portalAt("abc", 0, 0))
+	late := openPortal(t, alice, "late", portalBy("alice", "abc", 0, 0))
 	receive(t, bob, "entity:created")
 	setLifetime(r, 100*time.Millisecond)
-	early := openPortal(t, bob, "early", portalAt("abc", 0, 0))
+	early := openPortal(t, bob, "early", portalBy("bob", "abc", 0, 0))
 	receive(t, alice, "entity:created")
 
 	for _, want := range []Object{early, late} {
@@ -360,7 +388,7 @@ func TestPortalLeavesOtherEntitiesAlone(t *testing.T) {
 	}
 	look := createEntity(t, alice, Object{"room": "abc", "expiresAt": float64(0)})
 	receive(t, bob, "entity:created")
-	portal := openPortal(t, alice, "open", portalAt("abc", 0, 0))
+	portal := openPortal(t, alice, "open", portalBy("alice", "abc", 0, 0))
 	receive(t, bob, "entity:created")
 	if id := deletedID(t, bob); id != portal["id"] {
 		t.Fatalf("消えたもの: %s", id)
@@ -378,7 +406,7 @@ func TestPortalCannotBeMovedOrDeletedByAnyone(t *testing.T) {
 	s, h := start(t, false)
 	alice := connect(t, s, h, "a", "alice")
 	bob := connect(t, s, h, "a", "bob")
-	portal := openPortal(t, alice, "open", portalAt("abc", 0, 0))
+	portal := openPortal(t, alice, "open", portalBy("alice", "abc", 0, 0))
 	receive(t, bob, "entity:created")
 	id := str(portal["id"])
 	for name, patch := range map[string]Object{
@@ -408,7 +436,7 @@ func TestPortalOutlivesItsOwner(t *testing.T) {
 	s, h := start(t, false)
 	alice := connect(t, s, h, "a", "alice")
 	bob := connect(t, s, h, "a", "bob")
-	portal := openPortal(t, alice, "open", portalAt("abc", 0, 0))
+	portal := openPortal(t, alice, "open", portalBy("alice", "abc", 0, 0))
 	receive(t, bob, "entity:created")
 	if out := request(t, alice, "world:leave", "bye", nil); out["success"] != true {
 		t.Fatalf("leave: %v", out)
@@ -496,4 +524,92 @@ func TestPortalExpiryResumesAfterAnAbortedHandoff(t *testing.T) {
 	if len(entityIDs(r)) != 0 {
 		t.Fatal("消えていない")
 	}
+}
+
+// backend（packages/backend/src/services/instances/roomPortalGrantToken.test.ts）と同じ例。どちらかだけを変えると、
+// backend の出した許可をここで断る。
+func TestPortalGrantVectors(t *testing.T) {
+	key := portalGrantKey(Config{AdminToken: "ubichill-test-admin-token-0123456789abcdef"})
+	vectors := []struct {
+		grant, room, user string
+		exp               int64
+	}{
+		{"eyJyb29tIjoiVjFTdEdYUjhfWjVqZEhpNkItbXlUIiwidXNlcklkIjoidXNlci1heWEiLCJleHAiOjE3NjcyMjU2MDB9.vLWRgNDNpDDeOdjSBSwMLBAv5l1sWai3LJHh2kZB_LE", "V1StGXR8_Z5jdHi6B-myT", "user-aya", 1767225600},
+		{"eyJyb29tIjoiYWJjQFJvb20uRXhhbXBsZTo4NDQzIiwidXNlcklkIjoidXNlci1ib2IiLCJleHAiOjE3NjcyMjU2NjB9.RRPcv5-WHizWZK4vTXFc2DbHAVN_rz9wDcai_SO2RkY", "abc@Room.Example:8443", "user-bob", 1767225660},
+	}
+	for _, v := range vectors {
+		before := time.Unix(v.exp-1, 0)
+		if err := verifyPortalGrant(key, v.grant, v.room, v.user, before); err != nil {
+			t.Fatalf("%s: %v", v.room, err)
+		}
+		if got := signGrant(key, portalGrant{Room: v.room, UserID: v.user, Exp: v.exp}); got != v.grant {
+			t.Fatalf("同じ中身から別の許可になった:\n got %s\nwant %s", got, v.grant)
+		}
+		rejected := map[string]error{
+			"期限ちょうど":     verifyPortalGrant(key, v.grant, v.room, v.user, time.Unix(v.exp, 0)),
+			"別の住所":       verifyPortalGrant(key, v.grant, v.room+"x", v.user, before),
+			"住所の大文字小文字":  verifyPortalGrant(key, v.grant, strings.ToLower(v.room), v.user, before),
+			"別の人":        verifyPortalGrant(key, v.grant, v.room, v.user+"x", before),
+			"別の管理トークンの鍵": verifyPortalGrant(portalGrantKey(Config{AdminToken: strings.Repeat("b", 32)}), v.grant, v.room, v.user, before),
+			"チケットの鍵":     verifyPortalGrant(ticketKey(Config{AdminToken: "ubichill-test-admin-token-0123456789abcdef"}), v.grant, v.room, v.user, before),
+			"署名の書き換え":    verifyPortalGrant(key, v.grant[:len(v.grant)-2]+"AA", v.room, v.user, before),
+			"署名が無い":      verifyPortalGrant(key, strings.Split(v.grant, ".")[0], v.room, v.user, before),
+			"空":          verifyPortalGrant(key, "", v.room, v.user, before),
+			"鍵が無い":       verifyPortalGrant(nil, v.grant, v.room, v.user, before),
+		}
+		for name, err := range rejected {
+			if err == nil {
+				t.Errorf("%s / %s: 通した", v.room, name)
+			}
+		}
+	}
+	// 中身を書き換えると署名が合わない（期限を延ばす）
+	forged := base64.RawURLEncoding.EncodeToString(encoded(portalGrant{"V1StGXR8_Z5jdHi6B-myT", "user-aya", 1867225600}))
+	if verifyPortalGrant(key, forged+"."+strings.Split(vectors[0].grant, ".")[1], vectors[0].room, vectors[0].user, time.Unix(1767225600, 0)) == nil {
+		t.Fatal("期限を延ばした許可を通した")
+	}
+}
+
+// 管理トークンのある運用（backend がいる）では、portal:open に本人・その住所への許可が要る。
+func TestPortalOpenRequiresGrant(t *testing.T) {
+	s, h := start(t, false)
+	alice := connect(t, s, h, "a", "alice")
+	bob := connect(t, s, h, "a", "bob")
+	expired := signGrant(testGrantKey, portalGrant{Room: "abc", UserID: "alice", Exp: time.Now().Add(-time.Second).Unix()})
+	cases := map[string]Object{
+		"許可が無い":     portalAt("abc", 0, 0),
+		"許可が文字列でない": {"room": "abc", "x": float64(0), "y": float64(0), "grant": float64(1)},
+		"ほかの人の許可":   {"room": "abc", "x": float64(0), "y": float64(0), "grant": grantFor("bob", "abc")},
+		"ほかの住所の許可":  {"room": "abc", "x": float64(0), "y": float64(0), "grant": grantFor("alice", "abd")},
+		"期限切れ":      {"room": "abc", "x": float64(0), "y": float64(0), "grant": expired},
+		"長すぎる":      {"room": "abc", "x": float64(0), "y": float64(0), "grant": grantFor("alice", "abc") + strings.Repeat("A", maxPortalGrantLength)},
+	}
+	for name, payload := range cases {
+		out := request(t, alice, "portal:open", "no-"+newID(), payload)
+		if out["success"] != false || out["error"] != errPortalGrant.Error() {
+			t.Errorf("%s: %v", name, out)
+		}
+	}
+	expectNone(t, bob, "entity:created")
+	if n := len(roomPortalsIn(s.room("a"))); n != 0 {
+		t.Fatalf("許可なしで置かれた: %d", n)
+	}
+	// 断った要求は間隔を数えないので、すぐ許可付きで置ける
+	created := openPortal(t, alice, "ok", portalBy("alice", "abc", 0, 0))
+	if data, _ := created["data"].(map[string]any); data["grant"] != nil {
+		t.Fatalf("許可を Entity に残した: %v", data)
+	}
+	receive(t, bob, "entity:created")
+}
+
+// 管理トークンの無い単体モード（backend が無い）は、許可を出す人がいないので求めない。
+func TestPortalOpenStandaloneNeedsNoGrant(t *testing.T) {
+	s := New(Config{Guests: true, Grace: 20 * time.Millisecond})
+	if _, err := s.Provision(definition("a")); err != nil {
+		t.Fatal(err)
+	}
+	h := httptest.NewServer(s.Handler())
+	t.Cleanup(func() { s.Close(); h.Close() })
+	alice := connect(t, s, h, "a", "alice")
+	openPortal(t, alice, "open", portalAt("abc", 0, 0))
 }

@@ -7,6 +7,7 @@ import {
     effectiveWorldVisibility,
     isPortalDestination,
     pickPortalInstance,
+    worldVisibilityFromHeader,
 } from './worldVisibility';
 
 describe('effectiveWorldVisibility', () => {
@@ -23,6 +24,28 @@ describe('effectiveWorldVisibility', () => {
     it('知らない値は受け取らない', () => {
         expect(WorldVisibilitySchema.safeParse('unlisted').success).toBe(false);
         expect(WorldVisibilitySchema.safeParse('PUBLIC').success).toBe(false);
+    });
+});
+
+describe('worldVisibilityFromHeader', () => {
+    it('private・public を読む（大文字・前後の空白も）', () => {
+        expect(worldVisibilityFromHeader('private')).toBe('private');
+        expect(worldVisibilityFromHeader(' Private ')).toBe('private');
+        expect(worldVisibilityFromHeader('PUBLIC')).toBe('public');
+    });
+
+    it('無い・知らない値はパブリックとして扱う（undefined）。private を含む別の語は private にしない', () => {
+        expect(worldVisibilityFromHeader(null)).toBeUndefined();
+        expect(worldVisibilityFromHeader(undefined)).toBeUndefined();
+        expect(worldVisibilityFromHeader('')).toBeUndefined();
+        expect(worldVisibilityFromHeader('unlisted')).toBeUndefined();
+        expect(worldVisibilityFromHeader('privateish')).toBeUndefined();
+    });
+
+    it('重なったヘッダー（, でつながる）は、private が 1 つでもあれば private', () => {
+        expect(worldVisibilityFromHeader('public, private')).toBe('private');
+        expect(worldVisibilityFromHeader('private, private')).toBe('private');
+        expect(worldVisibilityFromHeader('public, public')).toBe('public');
     });
 });
 

@@ -7,6 +7,22 @@ export function effectiveWorldVisibility(setting: WorldVisibility, published: bo
     return published ? setting : 'private';
 }
 
+/**
+ * ワールドのファイル（`<world>.yaml` など）を配るときに付ける、そのワールドの公開範囲。ほかの ubichill のサーバーは、
+ * `private` なら自分のサーバーでその部屋を作らせない（作者の部屋に入るためにファイルは誰にでも配る）。
+ */
+export const WORLD_VISIBILITY_HEADER = 'Ubichill-World-Visibility';
+
+/**
+ * 配られたヘッダーの公開範囲。無い・知らない値は undefined（パブリックとして扱う）。
+ * 途中の proxy が重ねたもの（`private, private` のように , でつながる）は、private が 1 つでもあれば private。
+ */
+export function worldVisibilityFromHeader(value: string | null | undefined): WorldVisibility | undefined {
+    const values = (value ?? '').split(',').map((v) => v.trim().toLowerCase());
+    if (values.includes('private')) return 'private';
+    return values.includes('public') ? 'public' : undefined;
+}
+
 interface VisibleWorld {
     visibility?: WorldVisibility;
     authorId?: string;
