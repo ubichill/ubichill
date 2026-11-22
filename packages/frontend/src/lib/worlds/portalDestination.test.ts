@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createPortalLookup, type PortalRoomSource, portalWorldRef } from './portalDestination';
+import { InstanceNotFoundError } from '@/world';
+import { createPortalLookup, type PortalRoomSource, portalWorldRef, ROOM_STATUS_TTL_MS } from './portalDestination';
 
 describe('portalWorldRef', () => {
     it('行き先の種類ごとに、ワールドを引く参照にする', () => {
@@ -96,11 +97,96 @@ describe('createPortalLookup', () => {
             const lookup = createPortalLookup(
                 fetchWorld,
                 source(async () => {
-                    throw new Error('インスタンスが見つかりません');
+                    throw new InstanceNotFoundError('インスタンスが見つかりません');
                 }),
             );
             expect(await lookup({ kind: 'room', room: 'abc' })).toBeNull();
             expect(await lookup({ kind: 'id', id: 'abc' })).toEqual({ name: 'abc という名前のワールド' });
+        });
+
+        describe('入れるかの引き直し', () => {
+            const clock = () => {
+                const t = { now: 0 };
+                return {
+                    now: () => t.now,
+                    advance: (ms: number) => {
+                        t.now += ms;
+                    },
+                };
+            };
+            const goal = { kind: 'room', room: 'abc' } as const;
+            const users = (n: number) => ({ ...room(), stats: { currentUsers: n, maxUsers: 10 } });
+
+            it('満員だった部屋は、空きができれば次に引いたとき鍵が外れる（満員を覚え続けない）', async () => {
+                const c = clock();
+                const fetchRoom = vi.fn(async () => users(10));
+                const lookup = createPortalLookup(vi.fn(), source(fetchRoom), c.now);
+                expect(await lookup(goal)).toMatchObject({ locked: true });
+                fetchRoom.mockResolvedValue(users(9));
+                c.advance(ROOM_STATUS_TTL_MS - 1);
+                expect(await lookup(goal)).toMatchObject({ locked: true });
+                c.advance(1);
+                expect(await lookup(goal)).not.toHaveProperty('locked');
+                expect(fetchRoom).toHaveBeenCalledTimes(2);
+            });
+
+            it('入れた部屋があとで満員になれば、引き直したとき鍵を付ける', async () => {
+                const c = clock();
+                const fetchRoom = vi.fn(async () => users(3));
+                const lookup = createPortalLookup(vi.fn(), source(fetchRoom), c.now);
+                expect(await lookup(goal)).not.toHaveProperty('locked');
+                fetchRoom.mockResolvedValue(users(10));
+                c.advance(ROOM_STATUS_TTL_MS);
+                expect(await lookup(goal)).toMatchObject({ name: 'カフェ', locked: true });
+            });
+
+            it('引いている途中は、期限を過ぎても同じ問い合わせにまとめる（遅い通信で問い合わせを重ねない）', async () => {
+                const c = clock();
+                const answers: Array<(value: ReturnType<typeof room>) => void> = [];
+                const fetchRoom = vi.fn(() => new Promise<ReturnType<typeof room>>((resolve) => answers.push(resolve)));
+                const lookup = createPortalLookup(vi.fn(), source(fetchRoom), c.now);
+                const first = lookup(goal);
+                c.advance(ROOM_STATUS_TTL_MS * 3);
+                const second = lookup(goal);
+                expect(second).toBe(first);
+                expect(fetchRoom).toHaveBeenCalledTimes(1);
+                answers[0]?.(users(10));
+                expect(await first).toMatchObject({ locked: true });
+                const third = lookup(goal);
+                expect(fetchRoom).toHaveBeenCalledTimes(2);
+                answers[1]?.(users(1));
+                expect(await third).not.toHaveProperty('locked');
+            });
+
+            it('部屋ごとに別に引く（別の部屋の結果を使い回さない）', async () => {
+                const fetchRoom = vi.fn(async (address: string) => users(address === 'full' ? 10 : 1));
+                const lookup = createPortalLookup(vi.fn(), source(fetchRoom));
+                expect(await lookup({ kind: 'room', room: 'full' })).toMatchObject({ locked: true });
+                expect(await lookup({ kind: 'room', room: 'open' })).not.toHaveProperty('locked');
+            });
+
+            it('一時的に引けなければ前の結果のまま。無くなった部屋（404）は null にする', async () => {
+                const c = clock();
+                const fetchRoom = vi.fn(async () => users(2));
+                const lookup = createPortalLookup(vi.fn(), source(fetchRoom), c.now);
+                const before = await lookup(goal);
+                fetchRoom.mockRejectedValueOnce(new Error('502'));
+                c.advance(ROOM_STATUS_TTL_MS);
+                expect(await lookup(goal)).toBe(before);
+                fetchRoom.mockRejectedValueOnce(new InstanceNotFoundError('closed'));
+                c.advance(ROOM_STATUS_TTL_MS);
+                expect(await lookup(goal)).toBeNull();
+            });
+
+            it('初めから引けなければ null。期限を過ぎれば引き直す（引けなかったことを覚え続けない）', async () => {
+                const c = clock();
+                const fetchRoom = vi.fn(async () => users(2));
+                fetchRoom.mockRejectedValueOnce(new Error('offline'));
+                const lookup = createPortalLookup(vi.fn(), source(fetchRoom), c.now);
+                expect(await lookup(goal)).toBeNull();
+                c.advance(ROOM_STATUS_TTL_MS);
+                expect(await lookup(goal)).toMatchObject({ name: 'カフェ' });
+            });
         });
 
         it('部屋を引く手段が無ければ（エディタ）、部屋は引かずに null', async () => {
