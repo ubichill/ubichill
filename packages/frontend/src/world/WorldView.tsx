@@ -13,6 +13,7 @@ import { CursorLayer } from './cursor/CursorLayer';
 import { acceptEntry, hasAcceptedEntry, unverifiedEntryKey, unverifiedEntryMessage } from './entryGate';
 import { InstanceLoadingScreen } from './InstanceLoadingScreen';
 import { type InstanceFailure, InstanceNotFoundError } from './instanceFailure';
+import { type LoadingLook, loadingLook } from './loadingLook';
 import { ModRegistryProvider } from './ModRegistryContext';
 import type { ModSource } from './modSource';
 import {
@@ -93,6 +94,9 @@ export function WorldView({
 
     // インスタンスの取得・作者の確認など、Socket 以外で起きる失敗
     const [loadError, setLoadError] = useState<{ message: string; gone: boolean } | null>(null);
+    // 部屋を引いて分かったワールドの見た目（ロード画面に、mod より先に出す）
+    const [fetchedLook, setFetchedLook] = useState<{ instanceId: string; look: LoadingLook } | null>(null);
+    const look = loadingLook(preview, fetchedLook?.instanceId === instanceId ? fetchedLook.look : null);
     // mod の取得 / Worker 起動の進捗（各 Provider から通知される）
     const [mods, setMods] = useState({ completed: 0, total: 0 });
     const [workers, setWorkers] = useState({ ready: 0, total: 0 });
@@ -141,6 +145,8 @@ export function WorldView({
                 setLoadError({ message: `入室できません: ${fetched.error}`, gone: fetched.gone });
                 return;
             }
+            const { displayName, thumbnail } = fetched.instance.world;
+            setFetchedLook({ instanceId, look: { displayName, thumbnail } });
             const entryKey = unverifiedEntryKey(fetched.instance.world);
             if (entryKey && !hasAcceptedEntry(sessionStorage, entryKey)) {
                 const accepted = await confirmEntry(unverifiedEntryMessage(fetched.instance.world));
@@ -197,8 +203,8 @@ export function WorldView({
         <>
             {loading.showScreen && (
                 <InstanceLoadingScreen
-                    worldName={preview?.displayName}
-                    thumbnail={preview?.thumbnail}
+                    worldName={look.displayName}
+                    thumbnail={look.thumbnail}
                     progress={loading.progress}
                     stages={loading.stages}
                     fadingOut={loading.fadingOut}

@@ -78,6 +78,18 @@ describe('resolveModAssetUrl（modアセット領域への限定）', () => {
         expect(resolveModAssetUrl('./x.json', '')).toBeNull();
     });
 
+    it('自ホストの /mods から配るとき（modBase がパスだけ）は、ページの origin で解決する', () => {
+        const page = 'https://ubi.example/instance/abc';
+        expect(resolveModAssetUrl('sample.txt', '/mods/wasm-demo/v1.0.0', page)).toBe(
+            'https://ubi.example/mods/wasm-demo/v1.0.0/sample.txt',
+        );
+        // パスだけの modBase でも、領域の外（ホストの API・ほかの mod）は断る
+        expect(resolveModAssetUrl('/api/v1/instances', '/mods/wasm-demo/v1.0.0', page)).toBeNull();
+        expect(resolveModAssetUrl('../../pen/v2/x', '/mods/wasm-demo/v1.0.0', page)).toBeNull();
+        // ページの URL が無ければ（Node など）解決しない
+        expect(resolveModAssetUrl('sample.txt', '/mods/wasm-demo/v1.0.0', undefined)).toBeNull();
+    });
+
     it('modが同一 origin ホストから配信されていても /api は領域外で null', () => {
         // 例: dev で mods が host と同一 origin に置かれるケース
         const localBase = 'http://localhost:5173/mods/pen/v2';
