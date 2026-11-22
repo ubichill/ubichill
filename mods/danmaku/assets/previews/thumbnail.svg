@@ -1,6 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
-<rect x="8" y="12" width="60" height="20" rx="3" fill="#1d4e89" stroke="#7dd3fc" stroke-width="3"/>
-<g fill="#1e90ff"><circle cx="90" cy="72" r="7"/><circle cx="90" cy="48" r="7"/><circle cx="90" cy="24" r="7"/></g>
-<circle cx="90" cy="102" r="21" fill="none" stroke="rgba(0,0,0,0.18)" stroke-width="2"/>
-<circle cx="90" cy="102" r="17" fill="#4d9dff" stroke="#fff" stroke-width="5"/>
+<rect width="128" height="128" rx="12" fill="#0b1020"/>
+<polygon points="64,14 72,24 84,24 80,34 84,44 72,44 64,54 56,44 44,44 48,34 44,24 56,24" fill="#f472b6"/>
+<circle cx="64" cy="34" r="7" fill="#0b1020"/>
+<circle cx="64" cy="34" r="2.5" fill="#fff"/>
+<g fill="#f472b6"><circle cx="36" cy="62" r="5"/><circle cx="50" cy="72" r="5"/><circle cx="64" cy="76" r="5"/><circle cx="78" cy="72" r="5"/><circle cx="92" cy="62" r="5"/></g>
+<g fill="#fff"><circle cx="36" cy="62" r="2"/><circle cx="50" cy="72" r="2"/><circle cx="64" cy="76" r="2"/><circle cx="78" cy="72" r="2"/><circle cx="92" cy="62" r="2"/></g>
+<rect x="62.5" y="84" width="3" height="10" fill="#fde68a"/>
+<path d="M64 96 L68 106 L80 114 L80 117 L68 112 L64 117 L60 112 L48 117 L48 114 L60 106 Z" fill="#e2e8f0"/>
+<path d="M64 99 L65.5 105 L64 110 L62.5 105 Z" fill="#facc15"/>
 </svg>
