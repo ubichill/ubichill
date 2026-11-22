@@ -13,7 +13,7 @@ import (
 // 利用者は core:* を作れない・書き換えられない・消せない（events.go）ので、インスタンスが core:portal の Entity として作り、
 // 期限が来たら消す。置いた人が部屋を出ても消さない（先に通った人を友だちが追う）。
 const (
-	roomPortalLifetime   = 180 * time.Second
+	roomPortalLifetime   = 60 * time.Second
 	roomPortalWidth      = 200
 	roomPortalHeight     = 230
 	roomPortalCooldown   = 3 * time.Second

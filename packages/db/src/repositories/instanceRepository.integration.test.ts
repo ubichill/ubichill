@@ -51,7 +51,7 @@ describe.skipIf(!RUN)('instances の時刻（timestamptz, DB統合）', () => {
                 email: `${userId}@example.com`,
                 handle: `held_${stamp}`,
             });
-            const heldUntil = new Date(Date.now() + 180_000);
+            const heldUntil = new Date(Date.now() + 60_000);
             const held = await instanceRepository.create({
                 worldRef: 'https://world.test/held.yaml',
                 leaderId: userId,

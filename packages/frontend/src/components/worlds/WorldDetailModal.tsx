@@ -1,9 +1,7 @@
-import { type AccessType, type Instance, ROOM_PORTAL, type WorldListItem, worldSourceLabel } from '@ubichill/shared';
+import { type AccessType, type Instance, type WorldListItem, worldSourceLabel } from '@ubichill/shared';
 import { useEffect, useEffectEvent, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { SetHomeControl } from '@/components/home/SetHomeControl';
-import { HudIcon } from '@/components/hud/HudIcon';
-import { useHudNavigation } from '@/components/hud/HudNavigationContext';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { useDialogLayer } from '@/components/ui/dialogLayer';
 import { useSession } from '@/lib/session';
@@ -15,6 +13,7 @@ import { AuthorAccountLabel } from './AuthorAccountLabel';
 import { FavoriteButton } from './FavoriteButton';
 import { InstanceCard } from './InstanceCard';
 import { InstanceDetailOverlay } from './InstanceDetailOverlay';
+import { useNewInstance } from './useNewInstance';
 import { useWorldPagePath } from './useWorldPagePath';
 import { WorldIdentityBadge } from './WorldIdentityBadge';
 
@@ -44,7 +43,6 @@ export function WorldDetailModal({
     const pagePath = useWorldPagePath({ ...world, id: world?.id ?? worldId });
     const [instances, setInstances] = useState<Instance[]>([]);
     const [loading, setLoading] = useState(true);
-    const [creating, setCreating] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     const [detailInstance, setDetailInstance] = useState<Instance | null>(null);
@@ -83,46 +81,17 @@ export function WorldDetailModal({
     const [accessType, setAccessType] = useState<AccessType>('public');
     const editTarget = worldEditTarget({ id: world?.id ?? worldId, source: world?.source });
 
-    const handleCreate = async () => {
-        if (creating) return;
-        setCreating(true);
-        setError(null);
-        const worldRef = world?.url ?? worldId;
-        try {
-            const instance = await createInstance({ worldId: worldRef, access: { type: accessType } });
+    const newInstance = useNewInstance({
+        create: (options) =>
+            createInstance({ worldId: world?.url ?? worldId, access: { type: accessType }, ...options }),
+        enter: (instance) => {
             onJoinInstance(instance.id, instance.world.id, {
                 thumbnail: instance.world.thumbnail,
                 displayName: instance.world.displayName,
             });
             onClose();
-        } catch (e: unknown) {
-            setError(e instanceof Error ? e.message : 'インスタンスの作成に失敗しました');
-        } finally {
-            setCreating(false);
-        }
-    };
-
-    // 部屋の中のランチパッドでは、新しい部屋を作ってそこへのポータルを今の部屋に置ける。だれかが通るまで空なので、
-    // ポータルがある間は部屋を消さないよう頼む
-    const portal = useHudNavigation()?.portal ?? null;
-    const [opening, setOpening] = useState(false);
-    const handleOpenPortal = async () => {
-        if (!portal || opening) return;
-        setOpening(true);
-        setError(null);
-        try {
-            const instance = await createInstance({
-                worldId: world?.url ?? worldId,
-                access: { type: accessType },
-                holdEmptyMs: ROOM_PORTAL.LIFETIME_MS,
-            });
-            if (await portal.open(instance.id)) onClose();
-        } catch (e: unknown) {
-            setError(e instanceof Error ? e.message : 'インスタンスの作成に失敗しました');
-        } finally {
-            setOpening(false);
-        }
-    };
+        },
+    });
 
     const handleCopyUrl = () => {
         // ユーザーに配る共有 URL（/@handle/name）。canonical(機械URL) からも共有形へ変換。
@@ -309,8 +278,8 @@ export function WorldDetailModal({
                                     <AccessTypeSelect value={accessType} onChange={setAccessType} />
                                     <button
                                         type="button"
-                                        onClick={handleCreate}
-                                        disabled={creating}
+                                        onClick={newInstance.start}
+                                        disabled={newInstance.busy}
                                         className={css({
                                             flex: 1,
                                             py: '2',
@@ -326,23 +295,8 @@ export function WorldDetailModal({
                                             _disabled: { opacity: 0.6, cursor: 'not-allowed' },
                                         })}
                                     >
-                                        {creating ? '作成中...' : '新しくインスタンス作成'}
+                                        {newInstance.busy ? '作成中...' : '新しくインスタンス作成'}
                                     </button>
-                                    {portal && (
-                                        <button
-                                            type="button"
-                                            onClick={() => void handleOpenPortal()}
-                                            disabled={opening || portal.unavailable !== null}
-                                            title={
-                                                portal.unavailable ??
-                                                '新しいインスタンスを作り、今の部屋にそこへのポータルを開きます'
-                                            }
-                                            className={portalButton}
-                                        >
-                                            <HudIcon name="enter" size={16} />
-                                            {opening ? '開いています...' : 'ポータルで開く'}
-                                        </button>
-                                    )}
                                     {session && world?.authorId === session.user.id && (
                                         <button
                                             type="button"
@@ -412,6 +366,7 @@ export function WorldDetailModal({
                     </div>
                 </div>
             </div>
+            {newInstance.dialog}
             {detailInstance && (
                 <InstanceDetailOverlay
                     instance={detailInstance}
@@ -430,24 +385,3 @@ export function WorldDetailModal({
         </>
     );
 }
-
-const portalButton = css({
-    flex: 1,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '2',
-    py: '2',
-    px: '3',
-    bg: 'secondary',
-    color: 'text',
-    border: '1px solid',
-    borderColor: 'border',
-    borderRadius: '10px',
-    fontSize: '13px',
-    fontWeight: '600',
-    whiteSpace: 'nowrap',
-    cursor: 'pointer',
-    _hover: { borderColor: 'borderStrong' },
-    _disabled: { opacity: 0.6, cursor: 'not-allowed', _hover: { borderColor: 'border' } },
-});

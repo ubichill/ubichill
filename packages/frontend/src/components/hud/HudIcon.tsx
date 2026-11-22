@@ -132,6 +132,12 @@ const PATHS = {
             <path d="M15 12H3" />
         </>
     ),
+    portal: (
+        <>
+            <ellipse cx="12" cy="12" rx="7" ry="9.5" />
+            <ellipse cx="12" cy="12" rx="3" ry="5" />
+        </>
+    ),
     fediverse: (
         <>
             <circle cx="18" cy="5" r="3" />

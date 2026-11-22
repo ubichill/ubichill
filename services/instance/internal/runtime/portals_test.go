@@ -146,7 +146,7 @@ func TestPortalOpenCreatesTheEntityForEveryone(t *testing.T) {
 		"id": created["id"], "type": "core:portal", "ownerId": "alice", "lockedBy": nil,
 		"transform": map[string]any{"x": float64(400), "y": float64(285), "z": float64(0), "w": float64(200), "h": float64(230), "scale": float64(1), "rotation": float64(0)},
 		// 住所は送られたまま（小文字にしない）
-		"data": map[string]any{"room": "Room_1@Example.COM:8080", "expiresAt": float64(1_180_000), "ownerName": "アリス"},
+		"data": map[string]any{"room": "Room_1@Example.COM:8080", "expiresAt": float64(1_060_000), "ownerName": "アリス"},
 	}
 	if !ref(created["id"]) || !reflect.DeepEqual(created, want) {
 		t.Fatalf("作られた Entity:\n got %v\nwant %v", created, want)

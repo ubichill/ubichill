@@ -145,8 +145,8 @@ describe('作成（ポータルの先の部屋は空でもしばらく残す）'
     });
 
     it('holdEmptyMs があれば、作った時刻からその分を held_until にする', async () => {
-        await instanceManager.createInstance({ worldId: 'w', holdEmptyMs: 180_000 }, 'leader');
-        expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ heldUntil: new Date(T0 + 180_000) }));
+        await instanceManager.createInstance({ worldId: 'w', holdEmptyMs: 60_000 }, 'leader');
+        expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ heldUntil: new Date(T0 + 60_000) }));
     });
 
     it('holdEmptyMs が無ければ held_until は付けない（ふつうの部屋・ホーム）', async () => {

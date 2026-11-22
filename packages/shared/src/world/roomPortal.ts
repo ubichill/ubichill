@@ -8,7 +8,7 @@ import { parseRoomAddress } from '../federation/ubichill/roomAddress';
  */
 export const ROOM_PORTAL = {
     /** 置いてから消えるまで（ms）。行き先に作った新しい部屋も、この間は空でも残す */
-    LIFETIME_MS: 180_000,
+    LIFETIME_MS: 60_000,
     /** Entity の大きさ（px）。行き先の名前・丸い窓・置いた人の名前が入る */
     WIDTH: 200,
     HEIGHT: 230,
