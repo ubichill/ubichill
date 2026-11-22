@@ -12,8 +12,10 @@ import {
     stageEnemies,
     stepDamage,
 } from './damage';
-import { enemySpecOf } from './enemy';
-import { hash01 } from './patterns';
+import { activeFrom, enemySpecOf } from './enemy';
+import { type FrameInput, stepFrame } from './frame';
+import { DOWNWARD, hash01 } from './patterns';
+import { type Shot, shotsWhileRiding } from './shots';
 import type { Hits } from './stage';
 
 const enemy = (id: string, hp = 999) =>
@@ -151,6 +153,59 @@ describe('stepDamage・knownHits', () => {
     });
 });
 
+describe('降りたフレーム（自動連射の弾が飛んでいる間に Esc）', () => {
+    const target = enemySpecOf({
+        id: 'e',
+        transform: { x: 380, y: 80, w: 40, h: 40 },
+        data: { hp: 3, motion: 'none', pattern: 'radial', count: 1, interval: 100 },
+    });
+    const t = activeFrom(target) + 0.2;
+    const inside: Shot = { x: 400, y: 105, vy: -400, mine: true };
+    const frameInput = (hits: Hits, shots: Shot[]): FrameInput => ({
+        stageTime: t,
+        previousTime: null,
+        seconds: 1 / 60,
+        area: { x: 0, y: 0, w: 800, h: 600 },
+        enemies: [target],
+        hits,
+        ship: null,
+        shots,
+        aim: () => DOWNWARD,
+        wasAlive: new Set(['e']),
+    });
+
+    it('降りたら自分の弾は消え、記録できない当たりで敵が倒れて見えない（2 発当てた分は前の自機に書く）', () => {
+        const records: Record<string, unknown> = {};
+        const frames = [1, 2].reduce((acc, i) => {
+            const known = knownHits(acc, view(records));
+            const frame = stepFrame(frameInput(known, shotsWhileRiding([inside], true)));
+            expect(frame.myHits).toEqual({ e: 1 });
+            return step(acc, { enemies: [target], hits: frame.myHits, now: 10_000 + i, records }).state;
+        }, INITIAL_DAMAGE);
+        expect(knownHits(frames, view(records))).toEqual({ e: 2 });
+
+        // 降りたフレームでも 1 発が当たる位置にあるが、自分の弾は手放す（手放さないと倒れて見えて、次のフレームで戻る）
+        const unfiltered = stepFrame(frameInput({ e: 2 }, [inside]));
+        expect(unfiltered.defeated).toHaveLength(1);
+        const frame = stepFrame(frameInput({ e: 2 }, shotsWhileRiding([inside], false)));
+        expect(frame.myHits).toEqual({});
+        expect(frame.defeated).toEqual([]);
+        expect(frame.impacts).toEqual([]);
+        expect(frame.enemies.map((e) => e.spec.id)).toEqual(['e']);
+
+        const left = step(frames, { shipId: null, enemies: [target], hits: frame.myHits, now: 10_003, records });
+        expect(left.writes).toEqual([{ shipId: 'ship-a', record: { round: 1, by: 'me', hits: { e: 2 } } }]);
+        const after = { 'ship-a': left.writes[0].record };
+        expect(knownHits(left.state, view(after))).toEqual({ e: 2 });
+    });
+
+    it('ほかの人の弾は、降りても見た目として飛ばし続ける', () => {
+        const theirs: Shot = { ...inside, mine: false };
+        expect(shotsWhileRiding([inside, theirs], false)).toEqual([theirs]);
+        expect(shotsWhileRiding([inside, theirs], true)).toEqual([inside, theirs]);
+    });
+});
+
 /**
  * 何人かの画面とサーバーを並べて動かす。サーバーは届いた順に上書きし（最後に書いた人が勝つ）、書いた本人には
  * 返さない。乗っていない人の書き込みは断る（lockedBy）。届くまでの遅れは接続ごとにばらばらだが、順番は保つ。
@@ -159,6 +214,10 @@ interface Ride {
     readonly shipId: string;
     readonly from: number;
     readonly to: number;
+    /** from を過ぎて、自機が空いたのが見えたらすぐ乗る（前の人の書き込みとサーバーで行き違う）。 */
+    readonly whenFree?: boolean;
+    /** 乗るだけで撃たない。 */
+    readonly quiet?: boolean;
 }
 interface Message {
     readonly at: number;
@@ -175,7 +234,8 @@ type ShipView = { holder: string | null; record: unknown };
 function simulate(
     seed: number,
     rides: readonly (readonly Ride[])[],
-    enemies = [enemy('e0'), enemy('e1'), enemy('e2')],
+    // e0 は HP が低く、倒した当たりをすぐ書く処理も通る
+    enemies = [enemy('e0', 6), enemy('e1'), enemy('e2')],
 ) {
     const users = rides.map((_, i) => `user-${i}`);
     const shipIds = [...new Set(rides.flat().map((r) => r.shipId))];
@@ -186,10 +246,12 @@ function simulate(
     const truth: Record<string, number> = {};
     const queue: Message[] = [];
     const lastArrival = new Map<string, number>();
-    const counter = { seq: 0 };
+    const counter = { seq: 0, rejected: 0, urgent: 0 };
+    const boarded = new Set<Ride>();
     const send = (from: number, to: 'server' | number, now: number, shipId: string, change: Message['change']) => {
         const link = `${from}->${to}`;
-        const delay = 10 + 190 * hash01(seed, counter.seq, 7);
+        // たいていは短く、ときどき大きく遅れる
+        const delay = 10 + 390 * hash01(seed, counter.seq, 7) ** 3;
         const at = Math.max(lastArrival.get(link) ?? 0, now + delay);
         lastArrival.set(link, at);
         queue.push({ at, seq: counter.seq++, to, from, shipId, change });
@@ -214,6 +276,7 @@ function simulate(
                     : due.change.holder === null
                       ? ship.holder === writer
                       : ship.holder === null || ship.holder === writer;
+            if (!allowed && due.change.kind === 'record') counter.rejected++;
             if (allowed) {
                 apply(server, due.shipId, due.change);
                 for (const other of users.keys())
@@ -229,7 +292,9 @@ function simulate(
         deliver(now);
         for (const [i, user] of users.entries()) {
             for (const ride of rides[i]) {
-                if (ride.from > now - FRAME && ride.from <= now) {
+                const free = views[i].get(ride.shipId)?.holder === null;
+                if (!boarded.has(ride) && ride.from <= now && ride.to > now && (!ride.whenFree || free)) {
+                    boarded.add(ride);
                     apply(views[i], ride.shipId, { kind: 'holder', holder: user });
                     send(i, 'server', now, ride.shipId, { kind: 'holder', holder: user });
                 }
@@ -239,12 +304,15 @@ function simulate(
                 }
             }
             const shipId = [...views[i]].find(([, ship]) => ship.holder === user)?.[0] ?? null;
-            const roll = hash01(seed, frame, i);
+            const shoots = shipId !== null && !rides[i].some((ride) => ride.quiet && ride.shipId === shipId);
             const target = enemies[Math.floor(hash01(seed, frame, i, 1) * enemies.length)].id;
-            const hits: Hits = shipId && roll < 0.4 ? { [target]: 1 } : {};
-            if (shipId && roll < 0.4) truth[target] = (truth[target] ?? 0) + 1;
+            const hit = shoots && hash01(seed, frame, i) < 0.4;
+            const hits: Hits = hit ? { [target]: 1 } : {};
+            if (hit) truth[target] = (truth[target] ?? 0) + 1;
             const records = new Map([...views[i]].map(([id, ship]) => [id, ship.record]));
             const next = stepDamage(states[i], { user, round: 1, records, shipId, hits, enemies, now });
+            if (next.writes.length > 0 && now - states[i].lastWriteAt < DAMAGE_WRITE_MS && states[i].lastWriteAt > 0)
+                counter.urgent++;
             states[i] = next.state;
             for (const write of next.writes as DamageWrite[]) {
                 apply(views[i], write.shipId, { kind: 'record', record: write.record });
@@ -260,7 +328,7 @@ function simulate(
             records: new Map([...views[i]].map(([id, ship]) => [id, ship.record])),
         }),
     );
-    return { truth, seen };
+    return { truth, seen, rejected: counter.rejected, urgent: counter.urgent };
 }
 
 describe('何人かが同時に撃つ（サーバーは最後に書いた人が勝ち、書いた本人には返さない）', () => {
@@ -279,16 +347,36 @@ describe('何人かが同時に撃つ（サーバーは最後に書いた人が�
         },
     );
 
-    it('1 つの自機を乗り継いでも、前の人の分は消えず、二重にも数えない', () => {
+    it('1 つの自機を乗り継いでも（前の人の書き込みが届ききってから乗れば）、前の人の分は消えず、二重にも数えない', () => {
         for (const seed of seeds) {
             const handoff = 1000 + 500 * hash01(seed, 0, 97);
             const rides = [
                 [{ shipId: 'ship-0', from: 0, to: handoff }],
-                [{ shipId: 'ship-0', from: handoff + 400, to: 3000 }],
+                [{ shipId: 'ship-0', from: handoff + 1000, to: 3500, whenFree: true }],
                 [{ shipId: 'ship-1', from: 100, to: 3000 }],
             ];
             const { truth, seen } = simulate(seed, rides);
             for (const hits of seen) expect(hits).toEqual(truth);
         }
+    });
+
+    it('降りてすぐ次の人が乗り（前の人の最後の書き込みがサーバーに断られる）ても、全員の HP がそろい、二重に数えない', () => {
+        const runs = Array.from({ length: 400 }, (_, i) => i + 1).map((seed) => {
+            const handoff = 1000 + 500 * hash01(seed, 0, 97);
+            // 次の人が撃たなくても、前の人の画面に断られた値が残らない
+            const rides = [
+                [{ shipId: 'ship-0', from: 0, to: handoff }],
+                [{ shipId: 'ship-0', from: handoff, to: 3000, whenFree: true, quiet: seed % 2 === 0 }],
+                [{ shipId: 'ship-1', from: 100, to: 3000 }],
+            ];
+            return simulate(seed, rides);
+        });
+        for (const { truth, seen } of runs) {
+            for (const hits of seen) expect(hits).toEqual(seen[0]);
+            for (const [id, count] of Object.entries(seen[0])) expect(count).toBeLessThanOrEqual(truth[id] ?? 0);
+        }
+        // 行き違いで断られる書き込みと、倒した当たりですぐ書く場面が、実際に起きている
+        expect(runs.reduce((sum, run) => sum + run.rejected, 0)).toBeGreaterThan(0);
+        expect(runs.reduce((sum, run) => sum + run.urgent, 0)).toBeGreaterThan(0);
     });
 });

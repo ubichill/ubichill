@@ -49,6 +49,11 @@ export function shotFrom(raw: unknown, mine: boolean): Shot | null {
     return { x, y, vy: -clamp(speed, SHOT_SPEED_RANGE.min, SHOT_SPEED_RANGE.max), mine };
 }
 
+/** 乗っていない間は自分の弾を持たない（ほかの人の弾は見た目として飛ばし続ける）。 */
+export function shotsWhileRiding(shots: readonly Shot[], riding: boolean): Shot[] {
+    return riding ? [...shots] : shots.filter((shot) => !shot.mine);
+}
+
 export function addShot(shots: readonly Shot[], shot: Shot): Shot[] {
     return [...shots, shot].slice(-MAX_SHOTS);
 }

@@ -24,7 +24,7 @@ import { type Rect, rectCenter, rectContains, type Vec } from './game/geometry';
 import { rememberAims } from './game/patterns';
 import { ageEffects, type Effect, impactEffects, sceneCursors, shipEffects } from './game/render';
 import { type ShipMarks, shipMarksOf } from './game/ship';
-import { addShot, type Shot, shotFrom } from './game/shots';
+import { addShot, type Shot, shotFrom, shotsWhileRiding } from './game/shots';
 import {
     clearCountdown,
     clearDelayPassed,
@@ -235,6 +235,9 @@ Ubi.registerSystem((_entities, deltaTime) => {
     const hits = knownHits(clock.round);
     const t = playingSeconds(clock, now, specs, hits);
     const ships = shipsInArea();
+    const riding = ships.find((ship) => ship.holder !== null && ship.holder === Ubi.myUserId) ?? null;
+    // 降りたら飛んでいる自分の弾も消す（当たっても記録する自機が無いので、倒れて見えても次のフレームで戻ってしまう）
+    sim.shots = shotsWhileRiding(sim.shots, riding !== null);
     const localShip = sim.localShip && now - sim.localShip.at < SHIP_STALE_MS ? sim.localShip : null;
     const aims = rememberAims(
         sim.aims,
@@ -273,7 +276,6 @@ Ubi.registerSystem((_entities, deltaTime) => {
             { scope: 'world', targetType: 'danmaku:player' },
         );
     }
-    const riding = ships.find((ship) => ship.holder !== null && ship.holder === Ubi.myUserId) ?? null;
     const damage = stepDamage(sim.damage, {
         ...damageView(clock.round),
         shipId: riding?.id ?? null,
@@ -294,8 +296,7 @@ Ubi.registerSystem((_entities, deltaTime) => {
 
     const status = stageStatus(clock, now, specs, frame.hits);
     sim.clearedSince = status.kind === 'cleared' ? (sim.clearedSince ?? now) : null;
-    const iRide = ships.some((ship) => ship.holder !== null && ship.holder === Ubi.myUserId);
-    if (status.kind === 'cleared' && iRide && clearDelayPassed(sim.clearedSince, now)) startRound(now);
+    if (status.kind === 'cleared' && riding !== null && clearDelayPassed(sim.clearedSince, now)) startRound(now);
     updateHud(status, clock.round, ships.filter((ship) => ship.holder !== null).length, now);
 
     Ubi.canvas.frame(CANVAS_TARGET, {

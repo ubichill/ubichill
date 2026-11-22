@@ -147,6 +147,9 @@ const sameHits = (a: Hits, b: Hits): boolean =>
  * - 前に書いた値と同じなら書かない。DAMAGE_WRITE_MS の間はためておく。
  * - ただし、この分で倒れる敵がいる（ほかの画面では、まだ倒れていない）ときはすぐ書く。
  * - 降りた・乗り換えたときは、ためていた分をすぐ書く（次の人が乗る前に届くように）。
+ * - 乗り始めたら、当てる前でも自機の記録を 1 度書く。前の人の最後の書き込みがサーバーに断られると、前の人の画面には
+ *   断られた値が残る（サーバーは断った値を戻さない）ので、新しく乗った人の値で全員の画面をそろえる。
+ *   前の人の書き込みが後から届いて合計が変わったときも、書き直してそろえる。
  */
 export function stepDamage(state: DamageState, input: DamageStepInput): { state: DamageState; writes: DamageWrite[] } {
     const prev = state.riding;
@@ -157,7 +160,6 @@ export function stepDamage(state: DamageState, input: DamageStepInput): { state:
     if (!user) return { state: { ...state, riding }, writes: [] };
 
     const unwritten = (r: Riding): DamageRecord | null => {
-        if (Object.keys(r.own).length === 0) return null;
         const record = { round: r.round, by: user, hits: ridingTotal(r) };
         const last = state.written;
         return last &&
