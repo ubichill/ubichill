@@ -2,6 +2,8 @@ import { readCoreData, WarpDataSchema } from '@ubichill/core-components';
 import { useWorld } from '@ubichill/react';
 import type { ComponentInstance } from '@ubichill/shared';
 import type React from 'react';
+import { PartHitArea } from './PartHitArea';
+import { WarpIcon } from './partIcons';
 import { partButton, partButtonLabel } from './partStyles';
 import { scrollWorldTo } from './scrollWorld';
 import { surfacePlacement } from './surfacePlacement';
@@ -15,30 +17,23 @@ export const CoreWarp: React.FC<{ entity: ComponentInstance }> = ({ entity }) =>
     const parsed = readCoreData(WarpDataSchema, entity.data ?? {});
     const label = (parsed.success && parsed.data.label.trim()) || DEFAULT_LABEL;
     const target = parsed.success && parsed.data.target ? entityCenter(entities.values(), parsed.data.target) : null;
+    const press = () => {
+        if (target) scrollWorldTo(target, environment.worldSize);
+    };
+    if (parsed.success && parsed.data.look === 'none')
+        return (
+            <PartHitArea
+                entity={entity}
+                label={label}
+                icon={<WarpIcon size={12} />}
+                disabled={!target}
+                onPress={press}
+            />
+        );
     return (
         <div data-warp={entity.entityId ?? entity.id} style={{ ...surfacePlacement(entity), pointerEvents: 'auto' }}>
-            <button
-                type="button"
-                className={partButton}
-                disabled={!target}
-                onClick={() => {
-                    if (target) scrollWorldTo(target, environment.worldSize);
-                }}
-            >
-                <svg
-                    aria-hidden="true"
-                    viewBox="0 0 24 24"
-                    width="20"
-                    height="20"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                >
-                    <circle cx="12" cy="12" r="3" />
-                    <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
-                </svg>
+            <button type="button" className={partButton} disabled={!target} onClick={press}>
+                <WarpIcon size={20} />
                 <span className={partButtonLabel}>{label}</span>
             </button>
         </div>

@@ -2,6 +2,8 @@ import { readCoreData, SwitchDataSchema } from '@ubichill/core-components';
 import { useWorld } from '@ubichill/react';
 import type { ComponentInstance } from '@ubichill/shared';
 import type React from 'react';
+import { PartHitArea } from './PartHitArea';
+import { SwitchIcon } from './partIcons';
 import { partButton, partButtonLabel } from './partStyles';
 import { surfacePlacement } from './surfacePlacement';
 
@@ -13,23 +15,21 @@ export const CoreSwitch: React.FC<{ entity: ComponentInstance }> = ({ entity }) 
     const parsed = readCoreData(SwitchDataSchema, entity.data ?? {});
     const label = (parsed.success && parsed.data.label.trim()) || DEFAULT_LABEL;
     const ready = parsed.success && parsed.data.targets.length > 0;
+    const press = () => pressSwitch(entity.id);
+    if (parsed.success && parsed.data.look === 'none')
+        return (
+            <PartHitArea
+                entity={entity}
+                label={label}
+                icon={<SwitchIcon size={12} />}
+                disabled={!ready}
+                onPress={press}
+            />
+        );
     return (
         <div data-switch={entity.entityId ?? entity.id} style={{ ...surfacePlacement(entity), pointerEvents: 'auto' }}>
-            <button type="button" className={partButton} disabled={!ready} onClick={() => pressSwitch(entity.id)}>
-                <svg
-                    aria-hidden="true"
-                    viewBox="0 0 24 24"
-                    width="20"
-                    height="20"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                >
-                    <rect x="2" y="6" width="20" height="12" rx="6" />
-                    <circle cx="16" cy="12" r="3" />
-                </svg>
+            <button type="button" className={partButton} disabled={!ready} onClick={press}>
+                <SwitchIcon size={20} />
                 <span className={partButtonLabel}>{label}</span>
             </button>
         </div>

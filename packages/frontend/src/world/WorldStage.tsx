@@ -14,6 +14,7 @@ import { Z_INDEX } from '@/styles/layers';
 import { backgroundImageStyle } from './backgroundImage';
 import { EntityRenderer } from './EntityRenderer';
 import { useModRegistry } from './ModRegistryContext';
+import { stackingOrder } from './partLook';
 import { useSpawnScroll } from './useSpawnScroll';
 
 const FALLBACK_ENTITY: ComponentInstance = {
@@ -74,12 +75,11 @@ const InstanceSurface: React.FC = () => {
     // Entity ごとの値 (World Editor の Inspector で上書き可能) が正本で、mod の manifest 側の
     // overlay は Component 追加時の既定値としてのみ使う（EntityInspector/ComponentCard 側で反映）。
     const { worldEntityIds, overlayEntityIds } = useMemo(() => {
-        const world: string[] = [];
-        const overlay: string[] = [];
-        for (const [id, entity] of entities) {
-            (entity.overlay ? overlay : world).push(id);
-        }
-        return { worldEntityIds: world, overlayEntityIds: overlay };
+        const order = stackingOrder(entities);
+        return {
+            worldEntityIds: order.filter((id) => !entities.get(id)?.overlay),
+            overlayEntityIds: order.filter((id) => entities.get(id)?.overlay),
+        };
     }, [entities]);
 
     const renderEntities = useMemo(

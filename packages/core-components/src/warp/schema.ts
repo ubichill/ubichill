@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { EntityIdRef } from '../entityRef.js';
+import { PartLookSchema } from '../look.js';
 
 export const WARP_LABEL_MAX_LENGTH = 60;
 
@@ -10,7 +11,8 @@ export const WARP_LABEL_MAX_LENGTH = 60;
 export const WarpDataSchema = z
     .object({
         target: EntityIdRef.default(''),
-        /** ボタンに出す文字（空なら「ワープ」） */
+        /** ボタンに出す文字（空なら「ワープ」）。見た目なしでは読み上げる名前 */
         label: z.string().max(WARP_LABEL_MAX_LENGTH).default(''),
+        look: PartLookSchema,
     })
     .strict();

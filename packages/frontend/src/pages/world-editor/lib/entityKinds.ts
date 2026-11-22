@@ -2,6 +2,7 @@ import {
     CORE_COMPONENT_TYPES,
     IMAGE_FITS,
     MEDIA_FITS,
+    PART_LOOKS,
     PORTAL_LABEL_MAX_LENGTH,
     SWITCH_LABEL_MAX_LENGTH,
     SWITCH_MAX_TARGETS,
@@ -32,7 +33,15 @@ export type DataFieldSpec =
     | { type: 'url'; default?: string; placeholder?: string; label?: string; help?: string }
     // 画像の URL。このサーバーに画像を上げるボタンも出す（core:image）
     | { type: 'image'; default?: string; label?: string; help?: string }
-    | { type: 'enum'; default?: string; options: string[]; label?: string; help?: string }
+    // optionLabels: 選択肢に出す名前（無ければ値をそのまま出す）
+    | {
+          type: 'enum';
+          default?: string;
+          options: string[];
+          optionLabels?: Readonly<Record<string, string>>;
+          label?: string;
+          help?: string;
+      }
     | { type: 'json'; default?: unknown; label?: string; help?: string }
     // 配列: 各要素を item スキーマで編集する。エディタは「行リスト＋追加/削除」で描画する。
     | { type: 'array'; default?: unknown[]; item: DataFields; label?: string; help?: string }
@@ -95,6 +104,18 @@ export interface AvailableEntityKind {
     /** 画面固定オーバーレイの既定値（基準の角。`true` は `top-left`）。 */
     overlay?: OverlayMode;
 }
+
+/**
+ * 押せる部品（入口・ワープ・スイッチ）の見た目。既定（standard）は data に書かない（使う部品だけが項目を持つので、
+ * 古い ubichill のエディタで知らない項目として出ない）。欄には選択肢の先頭（standard）が出る。
+ */
+const PART_LOOK_FIELD: DataFieldSpec = {
+    type: 'enum',
+    options: [...PART_LOOKS],
+    optionLabels: { standard: '標準', none: 'なし（同じ Entity の画像・文字を押す）' },
+    label: '見た目',
+    help: 'なしにすると何も描かず、Entity の枠いっぱいが押せる場所になります。',
+};
 
 /** modのインストール有無に関係なく、Hostが必ず提供する組み込みComponent。 */
 export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
@@ -211,6 +232,7 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
                 label: `名前（${PORTAL_LABEL_MAX_LENGTH} 文字まで）`,
                 help: '空なら、行き先のワールドの名前を出します。',
             },
+            look: PART_LOOK_FIELD,
         },
         viewKind: 'jsx',
     },
@@ -233,6 +255,7 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
                 placeholder: 'ワープ',
                 label: `名前（${WARP_LABEL_MAX_LENGTH} 文字まで）`,
             },
+            look: PART_LOOK_FIELD,
         },
         viewKind: 'jsx',
     },
@@ -255,6 +278,7 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
                 placeholder: 'スイッチ',
                 label: `名前（${SWITCH_LABEL_MAX_LENGTH} 文字まで）`,
             },
+            look: PART_LOOK_FIELD,
         },
         viewKind: 'jsx',
     },

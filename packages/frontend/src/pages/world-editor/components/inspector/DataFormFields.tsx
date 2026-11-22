@@ -260,7 +260,7 @@ function DeclaredInput({
             >
                 {spec.options.map((o) => (
                     <option key={o} value={o}>
-                        {o}
+                        {spec.optionLabels?.[o] ?? o}
                     </option>
                 ))}
             </select>

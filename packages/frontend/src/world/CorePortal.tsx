@@ -3,6 +3,8 @@ import type { ComponentInstance } from '@ubichill/shared';
 import type React from 'react';
 import { useEffect, useState } from 'react';
 import { css } from '@/styled-system/css';
+import { PartHitArea } from './PartHitArea';
+import { PortalIcon } from './partIcons';
 import { type PortalDestination, usePortalLookup, usePortalNavigation } from './portalNavigation';
 import { surfacePlacement } from './surfacePlacement';
 
@@ -41,16 +43,22 @@ export const CorePortal: React.FC<{ entity: ComponentInstance }> = ({ entity }) 
     const name = (parsed.success && parsed.data.label.trim()) || destination?.name || DEFAULT_LABEL;
     const thumbnail =
         destination?.thumbnail && destination.thumbnail !== failedThumbnail ? destination.thumbnail : null;
+    const press = () => {
+        if (go && target) go(target, name);
+    };
+    if (parsed.success && parsed.data.look === 'none')
+        return (
+            <PartHitArea
+                entity={entity}
+                label={name}
+                icon={<PortalIcon size={12} />}
+                disabled={!go || !target}
+                onPress={press}
+            />
+        );
     return (
         <div data-portal={entityId} style={{ ...surfacePlacement(entity), pointerEvents: 'auto' }}>
-            <button
-                type="button"
-                className={portal}
-                disabled={!go || !target}
-                onClick={() => {
-                    if (go && target) go(target, name);
-                }}
-            >
+            <button type="button" className={portal} disabled={!go || !target} onClick={press}>
                 <span className={portalName}>{name}</span>
                 <span className={portalWindow}>
                     {thumbnail ? (
@@ -63,21 +71,7 @@ export const CorePortal: React.FC<{ entity: ComponentInstance }> = ({ entity }) 
                             className={portalImage}
                         />
                     ) : (
-                        <svg
-                            aria-hidden="true"
-                            viewBox="0 0 24 24"
-                            width="40%"
-                            height="40%"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.6"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                        >
-                            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-                            <path d="m10 17 5-5-5-5" />
-                            <path d="M15 12H3" />
-                        </svg>
+                        <PortalIcon size="40%" strokeWidth={1.6} />
                     )}
                 </span>
             </button>

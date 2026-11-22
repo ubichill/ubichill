@@ -12,6 +12,7 @@ import { WarpDataSchema } from './warp/schema.js';
 
 export * from './collider/index.js';
 export * from './image/index.js';
+export * from './look.js';
 export * from './media/index.js';
 export * from './portal/index.js';
 export * from './public.js';

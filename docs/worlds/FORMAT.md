@@ -94,10 +94,12 @@ Host が持つ Component。mod を読み込まずに使え、`dependencies` に�
 | `core:ui` | 作者が書く UI（看板・説明・リンクなど）。mod を作らずに置ける | `markup`: HTML 風の文字列（2 万文字まで） |
 | `core:image` | 画像（絵・写真・看板の絵）。大きさは `transform` の `w`・`h` | `src`: http(s) の URL（エディタの「画像を上げる」でこのサーバーに置ける）。`fit`: `contain`（既定）・`cover`・`fill`。`alt`: 説明（200 文字まで） |
 | `core:text` | 文字（看板・案内）。改行はそのまま出す | `text`（2,000 文字まで）。`size`: px（8〜200、既定 24）。`color`: `#RRGGBB`。`background`: `#RRGGBB` か `transparent`（既定）。`align`: `left`・`center`・`right`。`bold` |
-| `core:portal` | 押すと、ほかのワールドへ移る入口（確かめてから今の部屋を出る）。行き先のワールドのサムネイルを丸い窓に出し、上に名前を出す（Ubichill の画面とエディタだけ。world.html では印だけ） | `world`: 行き先（`@ID/名前`・このサーバーのワールドの ID・ワールドの http(s) URL）。`label`: 入口の名前（60 文字まで。空なら行き先のワールドの名前、引けなければ「入口」） |
-| `core:warp` | 押すと、行き先の Entity が画面の中心に来るようにスクロールする（ワールドの中で見る場所を変えるだけ。本人の画面だけ） | `target`: 行き先の Entity の id（空なら押せない）。`label`: ボタンの名前（60 文字まで。空なら「ワープ」） |
-| `core:switch` | 押すと、対象の Entity（と子）の見える・見えないを部屋の全員の画面で切り替える。切り替えはインスタンスが行い、部屋ごとの状態（部屋が無くなると最初に戻る） | `targets`: Entity の id の列（32 個まで）。`label`: ボタンの名前（60 文字まで。空なら「スイッチ」） |
+| `core:portal` | 押すと、ほかのワールドへ移る入口（確かめてから今の部屋を出る）。行き先のワールドのサムネイルを丸い窓に出し、上に名前を出す（Ubichill の画面とエディタだけ。world.html では印だけ） | `world`: 行き先（`@ID/名前`・このサーバーのワールドの ID・ワールドの http(s) URL）。`label`: 入口の名前（60 文字まで。空なら行き先のワールドの名前、引けなければ「入口」）。`look`: 見た目（下） |
+| `core:warp` | 押すと、行き先の Entity が画面の中心に来るようにスクロールする（ワールドの中で見る場所を変えるだけ。本人の画面だけ） | `target`: 行き先の Entity の id（空なら押せない）。`label`: ボタンの名前（60 文字まで。空なら「ワープ」）。`look`: 見た目（下） |
+| `core:switch` | 押すと、対象の Entity（と子）の見える・見えないを部屋の全員の画面で切り替える。切り替えはインスタンスが行い、部屋ごとの状態（部屋が無くなると最初に戻る） | `targets`: Entity の id の列（32 個まで）。`label`: ボタンの名前（60 文字まで。空なら「スイッチ」）。`look`: 見た目（下） |
 | `core:spawn` | 最初の場所。部屋に入ったとき、この Entity が画面の中心に来るようにスクロールする（複数あればどれか 1 つ。見えない印は使わない）。部屋では描かない | なし |
+
+`core:portal`・`core:warp`・`core:switch` の `look` は `standard`（既定。部品がボタン・丸い窓を描く）か `none`（何も描かず、Entity の矩形いっぱいが押せる場所になる。見た目は同じ Entity の `core:image`・`core:text` で付け、`label` は読み上げる名前になる）。`look` を知らない版は標準の見た目で描く。
 
 `core:image`・`core:text`・`core:portal`・`core:warp`・`core:switch`・`core:spawn`、Entity の `visible`、背景の画像は、足した後の版の Ubichill でしか使えない（`visible` を知らない版は、見える Entity として描く）。読む側が知らない部品を残すようになる前の版のサーバーは、定義の検査で断る。
 
@@ -158,6 +160,13 @@ Host が持つ Component。mod を読み込まずに使え、`dependencies` に�
   components:
     - type: core:portal
       data: { world: "@alice/cafe", label: "カフェへ" }
+- id: door
+  transform: { x: 880, y: 160, w: 160, h: 240 }
+  components:
+    - type: core:image
+      data: { src: "https://ubichill.example/api/v1/assets/<hash>.webp", alt: "扉" }
+    - type: core:warp
+      data: { target: welcome, label: "入口へ戻る", look: none }
 ```
 
 ### 画像の置き場所
