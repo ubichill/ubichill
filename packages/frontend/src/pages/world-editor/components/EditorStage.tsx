@@ -1,6 +1,7 @@
 import type { InitialEntity, WorldDefinition } from '@ubichill/shared';
-import { useRef } from 'react';
+import type { RefObject } from 'react';
 import { css } from '@/styled-system/css';
+import type { PrefabDragRef } from '../lib/dnd';
 import type { EntityPath, FlatEntityNode } from '../lib/entityTree';
 import { EditOverlay } from './EditOverlay';
 import { EditorPreview } from './EditorPreview';
@@ -14,11 +15,27 @@ interface EditorStageProps {
     hiddenRootIndices: Set<number>;
     /** 0 ならスナップ無効 (= worldSize clamp も無効、背景グリッドも非表示)。 */
     snapStep?: number;
+    /** プレビューの外枠（見えている範囲の真ん中を求めるのと、サムネイルを撮るのに使う）。 */
+    rootRef: RefObject<HTMLDivElement | null>;
     onSelect: (path: EntityPath | null) => void;
     onPatchTransform: (path: EntityPath, patch: Partial<InitialEntity['transform']>) => void;
     onDropComponent: (path: EntityPath, componentType: string) => void;
+    onDropComponentAt: (componentType: string, point: { x: number; y: number }) => void;
+    onDropPrefab: (ref: PrefabDragRef, point: { x: number; y: number }) => void;
     /** サムネイルを撮っている間だけ渡す。部屋で見える通りに描き、編集の枠を出さない */
     camera?: { onTaken: (taken: ThumbnailTaken) => void; onCancel: () => void } | null;
+}
+
+/** プレビューの見えている範囲の真ん中（ワールド座標）。まだ描いていなければ null。 */
+export function stageViewCenter(root: HTMLElement | null): { x: number; y: number } | null {
+    const world = root?.querySelector<HTMLElement>('[data-editor-world]');
+    if (!root || !world) return null;
+    const view = root.getBoundingClientRect();
+    const origin = world.getBoundingClientRect();
+    return {
+        x: Math.round(view.left + view.width / 2 - origin.left),
+        y: Math.round(view.top + view.height / 2 - origin.top),
+    };
 }
 
 /** プレビュー本体 + 編集オーバーレイのコンテナ。 */
@@ -29,13 +46,15 @@ export function EditorStage({
     hiddenPathKeys,
     hiddenRootIndices,
     snapStep,
+    rootRef,
     onSelect,
     onPatchTransform,
     onDropComponent,
+    onDropComponentAt,
+    onDropPrefab,
     camera,
 }: EditorStageProps) {
     const worldSize = definition.spec.environment?.worldSize;
-    const previewRoot = useRef<HTMLDivElement>(null);
     return (
         <main
             onMouseDown={(e) => {
@@ -58,10 +77,11 @@ export function EditorStage({
                 gridStep={!camera && snapStep && snapStep > 0 ? snapStep : undefined}
                 onBackgroundMouseDown={() => onSelect(null)}
                 roomLook={!!camera}
-                rootRef={previewRoot}
+                rootRef={rootRef}
                 overlay={
                     camera ? undefined : (
                         <EditOverlay
+                            entities={definition.spec.initialEntities}
                             nodes={flatNodes}
                             selectedPath={selectedPath}
                             hiddenPathKeys={hiddenPathKeys}
@@ -70,11 +90,13 @@ export function EditorStage({
                             onSelect={onSelect}
                             onPatchTransform={onPatchTransform}
                             onDropComponent={onDropComponent}
+                            onDropComponentAt={onDropComponentAt}
+                            onDropPrefab={onDropPrefab}
                         />
                     )
                 }
             />
-            {camera && <ThumbnailCamera target={previewRoot} onTaken={camera.onTaken} onCancel={camera.onCancel} />}
+            {camera && <ThumbnailCamera target={rootRef} onTaken={camera.onTaken} onCancel={camera.onCancel} />}
         </main>
     );
 }

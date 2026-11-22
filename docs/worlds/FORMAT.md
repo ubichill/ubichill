@@ -45,6 +45,7 @@ spec:
 ワールドの中身は Entity（＝GameObject）の木で表す。
 
 - **Entity**：`id`＋`transform`＋`components[]` を持つ「箱」。`children[]` で入れ子。id はツリー全体で一意。
+- **`name`**（任意）：表示名（50 文字まで、日本語も可）。エディタのヒエラルキーや枠に出すだけで、参照（`entityRef`・`core:warp` の行き先など）は `id` で行う。省略は `id` を出す。
 - **Component**：`type: "<modId>:<componentName>"`（例 `pen:tray`）で振る舞いを配布。1 Entity に複数可。`data` は Component ごとの初期値。
 - **`visible`**（任意）：`false` なら部屋に入った時点で見えない（子も）。描かず、押せず、当たり判定もしない（mod の Worker は動き続ける）。`core:switch` で部屋の全員の画面で切り替わる。省略は見える。
 - **`prefab`**（任意）：package のプレハブを配置したときに作る親 Entity（子にプレハブの Entity 一式を持つ）の出典（`PrefabLink`）。
@@ -99,7 +100,7 @@ Host が持つ Component。mod を読み込まずに使え、`dependencies` に�
 | `core:switch` | 押すと、対象の Entity（と子）の見える・見えないを部屋の全員の画面で切り替える。切り替えはインスタンスが行い、部屋ごとの状態（部屋が無くなると最初に戻る） | `targets`: Entity の id の列（32 個まで）。`label`: ボタンの名前（60 文字まで。空なら「スイッチ」） |
 | `core:spawn` | 最初の場所。部屋に入ったとき、この Entity が画面の中心に来るようにスクロールする（複数あればどれか 1 つ。見えない印は使わない）。部屋では描かない | なし |
 
-`core:image`・`core:text`・`core:portal`・`core:warp`・`core:switch`・`core:spawn`、Entity の `visible`、背景の画像は、足した後の版の Ubichill でしか使えない（`visible` を知らない版は、見える Entity として描く）。読む側が知らない部品を残すようになる前の版のサーバーは、定義の検査で断る。
+`core:image`・`core:text`・`core:portal`・`core:warp`・`core:switch`・`core:spawn`、Entity の `visible`・`name`、背景の画像は、足した後の版の Ubichill でしか使えない（`visible` を知らない版は、見える Entity として描く）。読む側が知らない部品を残すようになる前の版のサーバーは、定義の検査で断る。
 
 ```yaml
 - id: tv

@@ -400,6 +400,7 @@ function PreviewStage({
 
     return (
         <div
+            data-editor-world
             onMouseDown={(e) => {
                 if (e.target === e.currentTarget) onBackgroundMouseDown?.();
             }}

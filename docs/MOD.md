@@ -135,16 +135,17 @@ manifest はプレハブを含めて 1 MiB まで。`build` は超えると失�
 }
 ```
 
-ブラウザのアセット欄でプレハブを押すと、一式が元との関連を持ったまま配置される。
+ブラウザのアセット欄でプレハブを押すと画面の真ん中に、ワールドへドラッグするとその場所に、一式が元との関連を持ったまま配置される。
+親 Entity の id はプレハブの名前（2 つ目からは `sign-2` のように番号付き）、表示名（`name`）はプレハブの `name` になる。
 `dataFields` に宣言した `entityRef`・`entityRefArray` は配置ごとに付け替え、複数配置で参照が混ざらない。
 同じ Entity に同型の Component が複数ある場合は、一意な `id` を明示する。
 
 ```sh
 ubichill prefab add my-tools/sign --world=world.yaml
 ubichill update world.yaml my-tools
-ubichill prefab update prefab-xxxxxxxxxxxx --world=world.yaml
-ubichill prefab update prefab-xxxxxxxxxxxx --world=world.yaml --apply
-ubichill prefab unpack prefab-xxxxxxxxxxxx --world=world.yaml
+ubichill prefab update sign --world=world.yaml
+ubichill prefab update sign --world=world.yaml --apply
+ubichill prefab unpack sign-2 --world=world.yaml
 ```
 
 更新では、配置元の版・ワールド側の変更・更新先の版を比較する。元の版は保存した manifest hash と照合して取得し、

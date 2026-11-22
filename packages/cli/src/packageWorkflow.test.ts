@@ -53,6 +53,12 @@ describe('package development workflow', () => {
         await runPrefab(['add', 'my-world/welcome', '--world=world.yaml'], silentLogger);
         const placed = yaml.parse(readFileSync('world.yaml', 'utf8')).spec.initialEntities;
         expect(placed[1].prefab.entityIds.label).not.toBe(placed[2].prefab.entityIds.label);
+        // 親はプレハブの名前で指せる（unpack・update に渡す id）。雛形にある同じ名前の Entity とは番号で分ける
+        expect(placed[0].id).toBe('welcome');
+        expect(placed.slice(1).map((e: { id: string; name?: string }) => [e.id, e.name])).toEqual([
+            ['welcome-2', 'Welcome'],
+            ['welcome-3', 'Welcome'],
+        ]);
         await runPrefab(['unpack', placed[1].id, '--world=world.yaml'], silentLogger);
         expect(yaml.parse(readFileSync('world.yaml', 'utf8')).spec.initialEntities[1]).not.toHaveProperty('prefab');
         await checkPublicRelease(entry, 'https://cdn.example/mods', async (url) =>
