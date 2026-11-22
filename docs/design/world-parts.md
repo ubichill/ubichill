@@ -15,6 +15,7 @@ mod を書けない人でもワールドを作れるようにする最初の段�
 | 画像は Postgres に置く（プロフィール画像と同じ） | オブジェクトストレージが無く、backend が複数台ある。送られた画像は作り直す（向きを直し、位置情報などのメタデータを消し、長い辺を 2048px に縮めた WebP）。 |
 | URL は中身のハッシュ（`/api/v1/assets/<hash>.webp`） | 同じ URL の中身が変わらないので長く cache でき、署名したワールドが指す画像も変わらない。同じ画像はだれが上げても同じ URL。 |
 | 1 人 200 枚・200 MB まで | DB に置くので上限を掛ける。同じ人の同時のアップロードでも越えないよう、持ち主ごとに順番に数える。 |
+| どのワールドにも使われない画像は、上げてから 7 日で消す | 撮り直したサムネイル・差し替えた画像が残り続け、サーバーと本人の上限を埋める。7 日は、上げてまだ保存していない画像を守る（上げ直すと数え直す）。見るのはこのサーバーのワールドの下書き・版（だれのものでも）だけなので、ほかのサーバーや GitHub Pages のワールドだけが使う画像も消える。消したワールドだけが使っていた画像は次の掃除で消える（同じ画像を上げ直せば同じ URL が戻る）。 |
 | 画像はだれでも読める | ほかのサーバーで開いたワールドからも読む（CORP は cross-origin）。直接開かれても文書として何も実行させない（CSP の sandbox・nosniff）。 |
 | 入口は、行き先のワールドのページへ移す（部屋に直接入れない） | ワールドのページは、今ある部屋に入るか新しく作るかを選べる。人のいる部屋に入れるようにする。移る前に確かめ、今の部屋から出る。 |
 | 入口の行き先は `@ID/名前`・ワールドの ID・ワールドの URL | ワールドのページを開ける書き方だけを通す（`javascript:` などは検証で落とす）。 |
@@ -27,6 +28,7 @@ mod を書けない人でもワールドを作れるようにする最初の段�
 - 部品の data の形は `packages/core-components/src/{image,text,portal}`。描くのは `packages/frontend/src/world/Core{ImageSurface,TextSign,Portal}.tsx`（置き場所は `surfacePlacement` で `core:ui` と同じ）。
 - 入口の移り方は `world/portalNavigation.ts` の context で、SNS の画面（`InstancePage`）だけが渡す。world.html とエディタのプレビューでは押せない（`src/world` から router と backend を読まない規則）。
 - 画像: `services/worldAssets`（規則）・`routes/assets`・`world_assets`（migration 0045）。画像の作り直しはプロフィール画像と同じ `processImage`（長い辺を縮める `inside`）。
+- 使われていない画像の掃除: `services/worldAssets/worldAssetSweep.ts`（起動の 1 分後と 6 時間ごと。reaper のリースを持つ 1 台だけ）。使われているかは `worldAssetRepository.removeUnreferenced` が、全部の定義から shared の `WORLD_ASSET_REFERENCE_PATTERN` でハッシュを 1 回で抜き出して決める（画像ごとに定義を探すと、画像の数 × 定義の大きさになる）。
 - エディタ: `entityKinds.ts` に部品を宣言し、画像の欄（`image`）は「画像を上げる」ボタン付き（`ImageUrlInput`）。ワールド情報の背景の画像とサムネイルも同じ欄。サムネイルは「画面から撮る」で、エディタの画面を部屋で見える通りに描いて撮れる（16:9 の枠。DOM を描き直すので mod の UI も写る。ほかのサーバーの画像は CORS で読めるものだけ）。
 
 ## 残り
