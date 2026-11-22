@@ -24,6 +24,15 @@ export function parseRoomAddress(input: string, selfDomain: string): RoomAddress
     return { id, domain: domain === selfDomain.toLowerCase() ? null : domain };
 }
 
+/**
+ * このサーバーの部屋の住所（ID だけ・自分のドメイン付き）なら、このサーバーでの部屋の ID。ほかのサーバーの部屋・不正な住所は
+ * そのまま返す（呼ぶ側が連合へ回す・見つからないとする）。
+ */
+export function localRoomIdOf(input: string, selfDomain: string): string {
+    const address = parseRoomAddress(input, selfDomain);
+    return address && address.domain === null ? address.id : input;
+}
+
 /** 住所の表記（このサーバーの部屋は ID だけ）。 */
 export function formatRoomAddress({ id, domain }: RoomAddress): string {
     return domain ? `${id}@${domain}` : id;

@@ -40,7 +40,7 @@ const RoomPortalView = memo(function RoomPortalView({
     const name = destination?.name ?? (gone ? '入れない部屋' : 'ポータル');
     const thumbnail =
         destination?.thumbnail && destination.thumbnail !== failedThumbnail ? destination.thumbnail : null;
-    const look = destination ? { displayName: destination.name, thumbnail: destination.thumbnail } : undefined;
+    const look = destination?.name ? { displayName: destination.name, thumbnail: destination.thumbnail } : undefined;
 
     return (
         <div data-portal={entity.id} style={{ ...surfacePlacement(entity), pointerEvents: 'auto' }} className={column}>

@@ -26,10 +26,16 @@ export const usePortalNavigation = (): PortalNavigate | null => useContext(Porta
 
 /** ポータルに出す行き先のワールド（名前とサムネイル）。 */
 export interface PortalDestination {
-    name: string;
+    /** 行き先のワールドの名前。部屋をまだ一度も確かめられていなければ無い */
+    name?: string;
     thumbnail?: string;
-    /** 行き先の部屋に、見る人が入れない（公開範囲・招待）。ワールドへのポータルでは付けない */
+    /** 行き先の部屋に、見る人が入れない（公開範囲・招待・満員）。ワールドへのポータルでは付けない */
     locked?: boolean;
+    /**
+     * 行き先の部屋を確かめられなかった（通信・サーバーの失敗で、前の結果も無い）。鍵は出さず、押せば移る直前に確かめ直す。
+     * 「無い部屋」（null）と分ける
+     */
+    unknown?: boolean;
 }
 
 /**

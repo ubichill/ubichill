@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createPortalLookup, type PortalRoomSource, portalWorldRef, ROOM_STATUS_TTL_MS } from './portalDestination';
+import {
+    createPortalLookup,
+    type PortalRoomSource,
+    portalWorldRef,
+    ROOM_STATUS_TTL_MS,
+    UNKNOWN_ROOM,
+} from './portalDestination';
 
 describe('portalWorldRef', () => {
     it('行き先の種類ごとに、ワールドを引く参照にする', () => {
@@ -105,7 +111,7 @@ describe('createPortalLookup', () => {
             it('満員だった部屋は、空きができれば次に引いたとき鍵が外れる（満員を覚え続けない）', async () => {
                 const c = clock();
                 const fetchRoom = vi.fn(async () => users(10));
-                const lookup = createPortalLookup(vi.fn(), source(fetchRoom), c.now);
+                const lookup = createPortalLookup(vi.fn(), source(fetchRoom), { now: c.now });
                 expect(await lookup(goal)).toMatchObject({ locked: true });
                 fetchRoom.mockResolvedValue(users(9));
                 c.advance(ROOM_STATUS_TTL_MS - 1);
@@ -118,7 +124,7 @@ describe('createPortalLookup', () => {
             it('入れた部屋があとで満員になれば、引き直したとき鍵を付ける', async () => {
                 const c = clock();
                 const fetchRoom = vi.fn(async () => users(3));
-                const lookup = createPortalLookup(vi.fn(), source(fetchRoom), c.now);
+                const lookup = createPortalLookup(vi.fn(), source(fetchRoom), { now: c.now });
                 expect(await lookup(goal)).not.toHaveProperty('locked');
                 fetchRoom.mockResolvedValue(users(10));
                 c.advance(ROOM_STATUS_TTL_MS);
@@ -129,7 +135,7 @@ describe('createPortalLookup', () => {
                 const c = clock();
                 const answers: Array<(value: ReturnType<typeof room>) => void> = [];
                 const fetchRoom = vi.fn(() => new Promise<ReturnType<typeof room>>((resolve) => answers.push(resolve)));
-                const lookup = createPortalLookup(vi.fn(), source(fetchRoom), c.now);
+                const lookup = createPortalLookup(vi.fn(), source(fetchRoom), { now: c.now });
                 const first = lookup(goal);
                 c.advance(ROOM_STATUS_TTL_MS * 3);
                 const second = lookup(goal);
@@ -153,7 +159,7 @@ describe('createPortalLookup', () => {
             it('一時的に引けなければ前の結果のまま。無くなった部屋（404）は null にする', async () => {
                 const c = clock();
                 const fetchRoom = vi.fn(async (): Promise<ReturnType<typeof users> | null> => users(2));
-                const lookup = createPortalLookup(vi.fn(), source(fetchRoom), c.now);
+                const lookup = createPortalLookup(vi.fn(), source(fetchRoom), { now: c.now });
                 const before = await lookup(goal);
                 fetchRoom.mockRejectedValueOnce(new Error('502'));
                 c.advance(ROOM_STATUS_TTL_MS);
@@ -163,14 +169,46 @@ describe('createPortalLookup', () => {
                 expect(await lookup(goal)).toBeNull();
             });
 
-            it('初めから引けなければ null。期限を過ぎれば引き直す（引けなかったことを覚え続けない）', async () => {
+            it('初めから引けなければ「確かめられない」（鍵も「無い部屋」も出さない）。期限を過ぎれば引き直す', async () => {
                 const c = clock();
                 const fetchRoom = vi.fn(async () => users(2));
-                fetchRoom.mockRejectedValueOnce(new Error('offline'));
-                const lookup = createPortalLookup(vi.fn(), source(fetchRoom), c.now);
-                expect(await lookup(goal)).toBeNull();
+                fetchRoom.mockRejectedValueOnce(new Error('503'));
+                const lookup = createPortalLookup(vi.fn(), source(fetchRoom), { now: c.now });
+                const first = await lookup(goal);
+                expect(first).toBe(UNKNOWN_ROOM);
+                expect(first).not.toHaveProperty('locked');
                 c.advance(ROOM_STATUS_TTL_MS);
                 expect(await lookup(goal)).toMatchObject({ name: 'カフェ' });
+            });
+
+            it('無くなった部屋のあとに一時的に引けなくても、「無い部屋」のまま（確かめられないに戻さない）', async () => {
+                const c = clock();
+                const fetchRoom = vi.fn(async (): Promise<ReturnType<typeof users> | null> => null);
+                const lookup = createPortalLookup(vi.fn(), source(fetchRoom), { now: c.now });
+                expect(await lookup(goal)).toBeNull();
+                fetchRoom.mockRejectedValueOnce(new Error('503'));
+                c.advance(ROOM_STATUS_TTL_MS);
+                expect(await lookup(goal)).toBeNull();
+            });
+
+            it('応答の無い問い合わせは時間で諦め、その部屋の引き直しを止め続けない', async () => {
+                vi.useFakeTimers();
+                try {
+                    const c = clock();
+                    const fetchRoom = vi.fn(
+                        (): Promise<ReturnType<typeof users> | null> => new Promise(() => undefined),
+                    );
+                    const lookup = createPortalLookup(vi.fn(), source(fetchRoom), { now: c.now, timeoutMs: 1000 });
+                    const hung = lookup(goal);
+                    await vi.advanceTimersByTimeAsync(1000);
+                    expect(await hung).toBe(UNKNOWN_ROOM);
+                    fetchRoom.mockResolvedValueOnce(users(1));
+                    c.advance(ROOM_STATUS_TTL_MS);
+                    expect(await lookup(goal)).toMatchObject({ name: 'カフェ' });
+                    expect(fetchRoom).toHaveBeenCalledTimes(2);
+                } finally {
+                    vi.useRealTimers();
+                }
             });
         });
 

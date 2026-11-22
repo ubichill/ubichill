@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatRoomAddress, isRemoteRoom, parseRoomAddress, roomIdOf } from './roomAddress';
+import { formatRoomAddress, isRemoteRoom, localRoomIdOf, parseRoomAddress, roomIdOf } from './roomAddress';
 
 const SELF = 'home.example';
 
@@ -48,5 +48,19 @@ describe('roomIdOf', () => {
         expect(roomIdOf('r1@b.example')).toBe('r1');
         expect(roomIdOf('r1@localhost:3201')).toBe('r1');
         expect(roomIdOf('r1')).toBe('r1');
+    });
+});
+
+describe('localRoomIdOf', () => {
+    it('自分のドメインを付けた住所は、このサーバーの部屋の ID にする（大文字でも）', () => {
+        expect(localRoomIdOf('abc@home.example', SELF)).toBe('abc');
+        expect(localRoomIdOf('abc@HOME.example', SELF)).toBe('abc');
+        expect(localRoomIdOf('abc', SELF)).toBe('abc');
+    });
+
+    it('ほかのサーバーの部屋・不正な住所はそのまま（このサーバーの部屋と取り違えない）', () => {
+        expect(localRoomIdOf('abc@other.example', SELF)).toBe('abc@other.example');
+        expect(localRoomIdOf('abc@home.example.evil', SELF)).toBe('abc@home.example.evil');
+        expect(localRoomIdOf('a b@home.example', SELF)).toBe('a b@home.example');
     });
 });
