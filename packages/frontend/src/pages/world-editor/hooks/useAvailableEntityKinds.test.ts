@@ -25,6 +25,21 @@ describe('entityKindsFromManifest', () => {
         expect(kinds.map((k) => k.kind)).toEqual(['pen:pen']);
     });
 
+    it('データ専用でも設定欄を持つ Component（ワールドの作者が置いて設定する部品）は並べる', () => {
+        const kinds = entityKindsFromManifest(
+            'danmaku',
+            {
+                'danmaku:enemy': { dataOnly: true, dataFields: { hp: { type: 'number', default: 20 } } },
+                'danmaku:empty': { dataOnly: true, dataFields: {} },
+                'danmaku:broken': { dataOnly: true, dataFields: { hp: null, label: 'x' } },
+                'danmaku:array': { dataOnly: true, dataFields: ['hp'] },
+            },
+            base,
+        );
+        expect(kinds.map((k) => [k.kind, k.viewKind])).toEqual([['danmaku:enemy', 'logic']]);
+        expect(kinds[0]?.dataFields).toEqual({ hp: { type: 'number', default: 20 } });
+    });
+
     it('dataOnly が false・省略のものは並べる（true 以外で消さない）', () => {
         const kinds = entityKindsFromManifest(
             'pen',
