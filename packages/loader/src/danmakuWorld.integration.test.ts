@@ -67,6 +67,7 @@ describe('worlds/danmaku.yaml（公式のステージ）', () => {
             (t) =>
                 stepFrame({
                     stageTime: t,
+                    previousTime: t - 0.1,
                     seconds: 0.1,
                     area,
                     enemies,
@@ -90,6 +91,7 @@ describe('worlds/danmaku.yaml（公式のステージ）', () => {
             (t) =>
                 stepFrame({
                     stageTime: t,
+                    previousTime: t - 0.1,
                     seconds: 0.1,
                     area,
                     enemies,

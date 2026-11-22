@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { activeFrom, enemySpecOf } from './enemy';
-import { type FrameInput, stepFrame } from './frame';
+import { type FrameInput, MAX_SWEEP_SECONDS, stepFrame, sweepSince } from './frame';
 import { circlesOverlap } from './geometry';
 import { BULLET_HIT_RADIUS, DOWNWARD, volleyTime } from './patterns';
 import { SHOT_RADIUS, type Shot, shotFrom } from './shots';
@@ -11,6 +11,7 @@ const enemy = (id: string, data: Record<string, unknown>) =>
 
 const input = (overrides: Partial<FrameInput>): FrameInput => ({
     stageTime: 10,
+    previousTime: null,
     seconds: 1 / 60,
     area,
     enemies: [],
@@ -128,8 +129,8 @@ describe('stepFrame', () => {
             hitRadius: 1,
             vulnerable: true,
         });
-        const hit = (s: ReturnType<typeof ship>, seconds = FRAME) =>
-            stepFrame(input({ stageTime: t, seconds, enemies: [fast], ship: s })).shipHit;
+        const hit = (s: ReturnType<typeof ship>, seconds = FRAME, enemies = [fast], at = t) =>
+            stepFrame(input({ stageTime: at, previousTime: at - seconds, seconds, enemies, ship: s })).shipHit;
         const reach = 1 + BULLET_HIT_RADIUS;
         const between = (bulletBefore + bulletNow) / 2;
 
@@ -155,5 +156,40 @@ describe('stepFrame', () => {
             expect(hit({ ...passing, from: undefined })).toBe(false);
             expect(hit(passing)).toBe(true);
         });
+
+        it('0.1 秒より長いフレーム（0.2 秒）でも、前のフレームの時刻から見るので、前半に飛び越えた弾に当たる', () => {
+            // 弾は t-0.2 に 280、t-0.1 に 340、t に 400。自機は 310 で、弾が通ったのは t-0.15
+            const crossed = 100 + 600 * (0.5 - 0.15);
+            expect(crossed).toBeLessThan(100 + 600 * 0.4 - reach);
+            expect(hit(ship(400, crossed), 0.2)).toBe(true);
+        });
+
+        // 300 px/秒の弾: t-1 に 160、t-0.25 に 385、t に 460
+        const slow = enemy('slow', { pattern: 'radial', count: 1, interval: 100, bulletSpeed: 300 });
+        const late = volleyTime(slow, 0) + 1.2;
+        const slowHit = (s: ReturnType<typeof ship>, seconds: number) => hit(s, seconds, [slow], late);
+
+        it('長く止まっていた後（タブを戻した直後など）は最後の分だけを見て、止まっていた間に通った弾には当たらない', () => {
+            expect(slowHit(ship(400, 250), 1)).toBe(false);
+            expect(slowHit(ship(400, 420), 1)).toBe(true);
+        });
+
+        it('見る間を縮めるときは自機の動きも同じ間に縮める（弾と自機が違う時刻の位置で重ならない）', () => {
+            // 自機は t-1 に (400, 385) にいて、t に (500, 385) へ動いた。弾が 385 に来た t-0.25 には (475, 385)
+            const moved = ship(500, 385, { x: 400, y: 385 });
+            expect(slowHit(moved, 1)).toBe(false);
+            // 同じ動きを 0.25 秒でしたなら、t-0.25 に弾と同じ場所にいたので当たる
+            expect(slowHit(moved, MAX_SWEEP_SECONDS)).toBe(true);
+        });
+    });
+});
+
+describe('sweepSince', () => {
+    it('前のフレームの時刻から見て、長すぎる間・前のフレームが無い・時刻が戻ったときは縮める', () => {
+        expect(sweepSince(10, 9.8)).toBe(9.8);
+        expect(sweepSince(10, 5)).toBe(10 - MAX_SWEEP_SECONDS);
+        expect(sweepSince(10, null)).toBe(10);
+        expect(sweepSince(10, 12)).toBe(10);
+        expect(sweepSince(10, Number.NaN)).toBe(10);
     });
 });

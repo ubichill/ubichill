@@ -1,20 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { ENTRY_SECONDS, EXIT_SECONDS, enemySpecOf } from './enemy';
 import {
-    addHits,
     CLEAR_DELAY_MS,
     clearCountdown,
     clearDelayPassed,
-    type DamageEntry,
     nextRoundStart,
-    othersDamage,
-    parseDamageEntry,
     playingSeconds,
     readClock,
     stageSeconds,
     stageStatus,
     startsOnBoard,
-    totalHits,
 } from './stage';
 
 const enemy = (id: string, data: Record<string, unknown>) =>
@@ -30,50 +25,6 @@ describe('readClock・stageSeconds', () => {
     it('始まりが未来（ほかの人の時計が進んでいる）なら負の秒になり、敵はまだ出ない', () => {
         expect(stageSeconds({ round: 1, startedAt: 10_000 }, 9_000)).toBe(-1);
         expect(stageStatus({ round: 1, startedAt: 10_000 }, 9_000, [enemy('a', {})], {}).kind).toBe('running');
-    });
-});
-
-describe('ダメージ（人ごとに自分の分だけ書く）', () => {
-    it('崩れた記録は読まず、負・NaN の数は捨てる', () => {
-        expect(parseDamageEntry(null)).toBeNull();
-        expect(parseDamageEntry([1, 2])).toBeNull();
-        expect(parseDamageEntry({ round: -1, hits: {} })).toBeNull();
-        expect(parseDamageEntry({ round: 1, hits: [3] })).toBeNull();
-        expect(parseDamageEntry({ round: 1, hits: { a: 3, b: -2, c: Number.NaN, d: '4' } })).toEqual({
-            round: 1,
-            hits: { a: 3 },
-        });
-    });
-
-    it('自分のキーと、ダメージ以外のキーは数えない', () => {
-        const data = {
-            'damage:me': { round: 1, hits: { a: 100 } },
-            'damage:you': { round: 1, hits: { a: 2 } },
-            'damage:': { round: 1, hits: { a: 1 } },
-            round: 1,
-            damage: { round: 1, hits: { a: 50 } },
-        };
-        expect(othersDamage(data, 'me')).toEqual([
-            { round: 1, hits: { a: 2 } },
-            { round: 1, hits: { a: 1 } },
-        ]);
-    });
-
-    it('同じラウンドの分だけを全員で足す', () => {
-        const entries: DamageEntry[] = [
-            { round: 2, hits: { a: 3, b: 1 } },
-            { round: 2, hits: { a: 4 } },
-            { round: 1, hits: { a: 99 } },
-        ];
-        expect(totalHits(entries, 2)).toEqual({ a: 7, b: 1 });
-        expect(totalHits(entries, 3)).toEqual({});
-    });
-
-    it('ラウンドが変わったら前の分を捨ててから足す', () => {
-        const before = { round: 1, hits: { a: 10 } };
-        expect(addHits(before, 1, { a: 2, b: 1 })).toEqual({ round: 1, hits: { a: 12, b: 1 } });
-        expect(addHits(before, 2, { b: 1 })).toEqual({ round: 2, hits: { b: 1 } });
-        expect(addHits(null, 3, { a: -5 })).toEqual({ round: 3, hits: { a: 0 } });
     });
 });
 

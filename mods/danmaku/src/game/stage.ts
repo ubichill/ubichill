@@ -1,9 +1,6 @@
 /**
  * ステージの進み方。部屋で共有するのは「何ラウンド目か」と「始まった時刻」と、各自が与えたダメージだけ。
- * 敵の出現・弾・クリアはそこから各クライアントが計算する。
- *
- * ダメージは人ごとのキー（`damage:<userId>`）に自分の分だけ書く。同じキーを複数人で上書きし合わないので、
- * 同時に撃っても当たりが消えない。どのラウンドの分かを一緒に持ち、前のラウンドの分は数えない。
+ * 敵の出現・弾・クリアはそこから各クライアントが計算する。ダメージの記録の持ち方は damage.ts。
  */
 
 import { type EnemySpec, enemyPhase } from './enemy';
@@ -14,11 +11,6 @@ export interface StageClock {
     readonly startedAt: number;
 }
 
-export interface DamageEntry {
-    readonly round: number;
-    readonly hits: Readonly<Record<string, number>>;
-}
-
 export type Hits = Readonly<Record<string, number>>;
 
 export type StageStatus =
@@ -26,10 +18,8 @@ export type StageStatus =
     | { readonly kind: 'running'; readonly seconds: number; readonly defeated: number; readonly total: number }
     | { readonly kind: 'cleared'; readonly seconds: number; readonly defeated: number; readonly total: number };
 
-export const DAMAGE_KEY_PREFIX = 'damage:';
 /** 全部倒した・去ってから、次のラウンドまでの間。 */
 export const CLEAR_DELAY_MS = 3000;
-const MAX_HITS = 100_000;
 
 const nonNegativeInteger = (value: unknown): number | null =>
     typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : null;
@@ -43,51 +33,10 @@ export function stageSeconds(clock: StageClock, now: number): number | null {
     return clock.startedAt > 0 ? (now - clock.startedAt) / 1000 : null;
 }
 
-export function parseDamageEntry(value: unknown): DamageEntry | null {
-    if (typeof value !== 'object' || value === null) return null;
-    const { round, hits } = value as { round?: unknown; hits?: unknown };
-    const parsedRound = nonNegativeInteger(round);
-    if (parsedRound === null || typeof hits !== 'object' || hits === null || Array.isArray(hits)) return null;
-    return {
-        round: parsedRound,
-        hits: Object.fromEntries(
-            Object.entries(hits).flatMap(([id, count]) => {
-                const n = nonNegativeInteger(count);
-                return n === null ? [] : [[id, Math.min(n, MAX_HITS)]];
-            }),
-        ),
-    };
-}
-
-/** 自分以外の人のダメージ（自分の分は書いたばかりの値を使うので、届いた値は使わない）。 */
-export function othersDamage(data: Readonly<Record<string, unknown>>, myUserId: string | undefined): DamageEntry[] {
-    return Object.entries(data).flatMap(([key, value]) => {
-        if (!key.startsWith(DAMAGE_KEY_PREFIX) || key === `${DAMAGE_KEY_PREFIX}${myUserId}`) return [];
-        const entry = parseDamageEntry(value);
-        return entry ? [entry] : [];
-    });
-}
-
 /** 敵ごとの数を足し合わせる。 */
 export function sumHits(all: readonly Hits[]): Hits {
     const ids = new Set(all.flatMap((hits) => Object.keys(hits)));
     return Object.fromEntries([...ids].map((id) => [id, all.reduce((sum, hits) => sum + (hits[id] ?? 0), 0)]));
-}
-
-export function totalHits(entries: readonly DamageEntry[], round: number): Hits {
-    return sumHits(entries.filter((entry) => entry.round === round).map((entry) => entry.hits));
-}
-
-/** 自分のダメージに足す。ラウンドが変わっていたら前の分は捨てる。 */
-export function addHits(entry: DamageEntry | null, round: number, hits: Hits): DamageEntry {
-    const base = entry && entry.round === round ? entry.hits : {};
-    const added = Object.fromEntries(Object.entries(hits).map(([id, count]) => [id, Math.max(0, count)]));
-    return {
-        round,
-        hits: Object.fromEntries(
-            Object.entries(sumHits([base, added])).map(([id, count]) => [id, Math.min(count, MAX_HITS)]),
-        ),
-    };
 }
 
 export function isDefeated(spec: EnemySpec, hits: Hits): boolean {
