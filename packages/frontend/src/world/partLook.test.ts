@@ -23,7 +23,8 @@ describe('partLook', () => {
     it('押せる部品でないもの・読めない data は null（押せる場所にしない）', () => {
         expect(partLook(part('core:image', 'e', { look: 'none' }))).toBeNull();
         expect(partLook(part('pen:pen', 'e', { look: 'none' }))).toBeNull();
-        expect(partLook(part('core:warp', 'e', { look: 'glow' }))).toBeNull();
+        // 知らない見た目は標準として読む（押せる場所にはしない）
+        expect(partLook(part('core:warp', 'e', { look: 'glow' }))).toBe('standard');
         expect(partLook(part('core:warp', 'e', { target: 'Bad ID', look: 'none' }))).toBeNull();
         expect(isHitArea(part('core:warp', 'e', { look: 'glow' }))).toBe(false);
     });

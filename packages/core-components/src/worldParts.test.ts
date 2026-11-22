@@ -57,16 +57,15 @@ describe('押せる部品の見た目（look）', () => {
         }
     });
 
-    it('ほかの値は断る（大文字・空・真偽値・null も）', () => {
+    it('知らない値は断らずに標準として読む（大文字・空・真偽値・null も。新しい版の値でも押せる部品のまま）', () => {
         for (const type of parts) {
             for (const look of ['None', 'hidden', '', ' none', true, null, 0, ['none']]) {
-                expect(validateCoreComponentData(type, { look }).success, `${type} ${String(look)}`).toBe(false);
+                const result = validateCoreComponentData(type, { look });
+                expect(result.success && result.data.look, `${type} ${String(look)}`).toBe('standard');
             }
         }
-    });
-
-    it('読む側も値の誤りは断る（知らない項目と違い、捨てて読まない）', () => {
-        expect(readCoreComponentData(CORE_COMPONENT_TYPES.warp, { target: 'plaza', look: 'glow' }).success).toBe(false);
+        const read = readCoreComponentData(CORE_COMPONENT_TYPES.warp, { target: 'plaza', look: 'glow' });
+        expect(read.success && read.data).toEqual({ target: 'plaza', label: '', look: 'standard' });
     });
 
     it('見た目を変えても、ほかの設定はそのまま', () => {

@@ -99,7 +99,7 @@ Host が持つ Component。mod を読み込まずに使え、`dependencies` に�
 | `core:switch` | 押すと、対象の Entity（と子）の見える・見えないを部屋の全員の画面で切り替える。切り替えはインスタンスが行い、部屋ごとの状態（部屋が無くなると最初に戻る） | `targets`: Entity の id の列（32 個まで）。`label`: ボタンの名前（60 文字まで。空なら「スイッチ」）。`look`: 見た目（下） |
 | `core:spawn` | 最初の場所。部屋に入ったとき、この Entity が画面の中心に来るようにスクロールする（複数あればどれか 1 つ。見えない印は使わない）。部屋では描かない | なし |
 
-`core:portal`・`core:warp`・`core:switch` の `look` は `standard`（既定。部品がボタン・丸い窓を描く）か `none`（何も描かず、Entity の矩形いっぱいが押せる場所になる。見た目は同じ Entity の `core:image`・`core:text` で付け、`label` は読み上げる名前になる）。`look` を知らない版は標準の見た目で描く。
+`core:portal`・`core:warp`・`core:switch` の `look` は `standard`（既定。部品がボタン・丸い窓を描く）か `none`（何も描かず、Entity の矩形いっぱいが押せる場所になる。見た目は同じ Entity の `core:image`・`core:text` で付け、`label` は読み上げる名前になる）。`look` を知らない版と、知らない値（新しい版で足した値・書き誤り）は標準の見た目で描く。
 
 `core:image`・`core:text`・`core:portal`・`core:warp`・`core:switch`・`core:spawn`、Entity の `visible`、背景の画像は、足した後の版の Ubichill でしか使えない（`visible` を知らない版は、見える Entity として描く）。読む側が知らない部品を残すようになる前の版のサーバーは、定義の検査で断る。
 

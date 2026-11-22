@@ -8,4 +8,6 @@ export const PART_LOOKS = ['standard', 'none'] as const;
 
 export type PartLook = (typeof PART_LOOKS)[number];
 
-export const PartLookSchema = z.enum(PART_LOOKS).default('standard');
+// 見た目だけの項目なので、知らない値（新しい版で足した値・書き誤り）は断らずに標準として読む。
+// 断ると部品の data ごと読めなくなり、押せない部品になる
+export const PartLookSchema = z.enum(PART_LOOKS).default('standard').catch('standard');
