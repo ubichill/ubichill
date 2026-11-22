@@ -3,9 +3,9 @@ import { ModUIMount, useWorld } from '@ubichill/react';
 import type { ComponentInstance } from '@ubichill/shared';
 import { parseUiMarkup } from '@ubichill/ui-renderer';
 import type React from 'react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { css } from '@/styled-system/css';
-import { entityScripts, planButtonPress, uiButtonLabel } from './entityButton';
+import { createPressGuard, entityScripts, planButtonPress, uiButtonLabel } from './entityButton';
 import { surfacePlacement } from './surfacePlacement';
 import { useScriptRunner } from './useScriptRunner';
 
@@ -24,6 +24,7 @@ export const CoreUiPanel: React.FC<{ entity: ComponentInstance }> = ({ entity })
     const data = parsed.success ? parsed.data : null;
     const markup = data?.markup ?? '';
     const vnode = useMemo(() => parseUiMarkup(markup), [markup]);
+    const [guard] = useState(createPressGuard);
     const entityId = entity.entityId ?? entity.id;
     if (!data) return null;
 
@@ -32,25 +33,21 @@ export const CoreUiPanel: React.FC<{ entity: ComponentInstance }> = ({ entity })
         border: data.border === 'transparent' ? undefined : `${data.borderWidth}px solid ${data.border}`,
         borderRadius: data.radius,
     };
-    const content = (
-        <>
-            {data.text && !markup && (
-                <span
-                    className={textArea}
-                    style={{
-                        justifyContent: alignToFlex[data.align],
-                        textAlign: data.align,
-                        fontSize: data.size,
-                        color: data.color,
-                        fontWeight: data.bold ? 700 : 400,
-                    }}
-                >
-                    {data.text}
-                </span>
-            )}
-            {markup && <ModUIMount targetId={entityId} vnode={vnode} sendAction={ignoreAction} />}
-        </>
+    const text = data.text && !markup && (
+        <span
+            className={textArea}
+            style={{
+                justifyContent: alignToFlex[data.align],
+                textAlign: data.align,
+                fontSize: data.size,
+                color: data.color,
+                fontWeight: data.bold ? 700 : 400,
+            }}
+        >
+            {data.text}
+        </span>
     );
+    const html = markup && <ModUIMount targetId={entityId} vnode={vnode} sendAction={ignoreAction} />;
 
     if (data.button) {
         const scripts = planButtonPress(entityScripts(entities.values(), entityId));
@@ -64,11 +61,15 @@ export const CoreUiPanel: React.FC<{ entity: ComponentInstance }> = ({ entity })
                     style={box}
                     aria-label={label}
                     disabled={ready.length === 0}
-                    onClick={() => {
-                        for (const script of ready) runner.run(script, label);
-                    }}
+                    onClick={() => guard(() => Promise.all(ready.map((script) => runner.run(script, data.text))))}
                 >
-                    {content}
+                    {text}
+                    {/* ボタンの中の HTML は見た目だけ。リンクを押せるとボタンとどちらが動くか決まらない */}
+                    {html && (
+                        <span inert className={contents}>
+                            {html}
+                        </span>
+                    )}
                 </button>
             </div>
         );
@@ -77,13 +78,16 @@ export const CoreUiPanel: React.FC<{ entity: ComponentInstance }> = ({ entity })
     return (
         <div data-ui-panel={entityId} style={{ ...surfacePlacement(entity), pointerEvents: markup ? 'auto' : 'none' }}>
             <div className={plainBox} style={box}>
-                {content}
+                {text}
+                {html}
             </div>
         </div>
     );
 };
 
 const alignToFlex = { left: 'flex-start', center: 'center', right: 'flex-end' } as const;
+
+const contents = css({ display: 'contents' });
 
 const plainBox = css({ position: 'relative', w: 'full', h: 'full', boxSizing: 'border-box' });
 

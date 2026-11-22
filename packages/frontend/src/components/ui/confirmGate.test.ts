@@ -6,17 +6,39 @@ const gateWithLog = () => {
     return { gate: createConfirmGate((message) => shown.push(message)), shown };
 };
 
+/** 答えが出たか（まだ待っているか）を、待たずに確かめる。 */
+const settledValue = async (promise: Promise<boolean>): Promise<boolean | 'pending'> =>
+    Promise.race([promise, new Promise<'pending'>((resolve) => setTimeout(() => resolve('pending'), 0))]);
+
 describe('createConfirmGate', () => {
-    it('出ている間に来た確認は出さずに false。先の確認は残り、答えはその確認にだけ返る', async () => {
+    it('StrictMode で入室の確認が 2 回来たとき: 1 回目は false で終わり、2 回目が出て「確認」で true になる', async () => {
         const { gate, shown } = gateWithLog();
-        const first = gate.ask('「カフェ」へ移りますか？');
-        const second = gate.ask('「図書館」へ移りますか？');
-        await expect(second).resolves.toBe(false);
-        expect(shown).toEqual(['「カフェ」へ移りますか？']);
+        const message = 'このワールドは作者の署名を確かめられません。入りますか？';
+        const first = gate.ask(message);
+        const second = gate.ask(message);
+        await expect(first).resolves.toBe(false);
+        expect(await settledValue(second)).toBe('pending');
 
         gate.settle(true);
-        await expect(first).resolves.toBe(true);
-        expect(shown).toEqual(['「カフェ」へ移りますか？', null]);
+        await expect(second).resolves.toBe(true);
+        expect(shown).toEqual([message, message, null]);
+    });
+
+    it('別の確認が来たら、前の確認を閉じて新しい方を出す（戻る操作で前の画面の確認が残らない）', async () => {
+        const { gate, shown } = gateWithLog();
+        const before = gate.ask('「カフェ」へ移りますか？');
+        const after = gate.ask('このワールドに入りますか？');
+        await expect(before).resolves.toBe(false);
+        gate.settle(false);
+        await expect(after).resolves.toBe(false);
+        expect(shown).toEqual(['「カフェ」へ移りますか？', 'このワールドに入りますか？', null]);
+    });
+
+    it('何度置き換えても、答えを待ったまま残る確認は無い', async () => {
+        const { gate } = gateWithLog();
+        const asked = ['a', 'b', 'c', 'd'].map((message) => gate.ask(message));
+        gate.settle(true);
+        await expect(Promise.all(asked)).resolves.toEqual([false, false, false, true]);
     });
 
     it('答えた後は次の確認を出せる', async () => {

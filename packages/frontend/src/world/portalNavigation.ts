@@ -3,9 +3,9 @@ import { createContext, useContext } from 'react';
 
 /**
  * ポータル（core:portal）を押したときの移り方。SNS の画面（InstancePage）が渡す。
- * world.html とエディタのプレビューでは渡さないので、ポータルは押せない。
+ * world.html とエディタのプレビューでは渡さないので、ポータルは押せない。移る流れ（確かめる画面を含む）が終わると解決する。
  */
-export type PortalNavigate = (target: PortalTarget, label: string) => void;
+export type PortalNavigate = (target: PortalTarget, label: string) => Promise<void>;
 
 const PortalNavigationContext = createContext<PortalNavigate | null>(null);
 

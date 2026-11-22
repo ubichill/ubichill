@@ -150,7 +150,7 @@ export function InstancePage() {
             recovery={recovery}
             onFailed={handleFailed}
             onEntered={handleEntered}
-            onPortal={(target, label) => void goThroughPortal(target, label)}
+            onPortal={goThroughPortal}
             portalLookup={portalLookup}
         >
             <InstanceHUD />

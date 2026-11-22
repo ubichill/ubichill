@@ -9,7 +9,7 @@ const ConfirmContext = createContext<ConfirmFn>(async () => true);
 /**
  * 画面遷移など取り消しの効かない操作の前に確認モーダルを出すための共通フック。
  * `const confirm = useConfirm(); if (await confirm('移動しますか？')) navigate(...)` の形で使う。
- * 確認が出ている間に来た確認は出さずに false を返す（先の確認が勝つ）。
+ * 確認が出ている間に別の確認が来たら、前の確認を false で閉じて新しい方を出す。
  */
 export const useConfirm = () => useContext(ConfirmContext);
 

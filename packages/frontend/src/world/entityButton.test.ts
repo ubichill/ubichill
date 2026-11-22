@@ -1,13 +1,16 @@
 import type { ComponentInstance } from '@ubichill/shared';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
+    createPressGuard,
     type EntityScript,
     entityScripts,
     hasUiButton,
     idleButtonScripts,
     planButtonPress,
+    portalConfirmName,
     uiButtonLabel,
 } from './entityButton';
+import type { PortalLookup } from './portalNavigation';
 
 const part = (entityId: string, index: number, type: string, data: Record<string, unknown>) =>
     ({ id: `${entityId}::${index}`, entityId, type, data }) as Pick<
@@ -39,7 +42,7 @@ describe('hasUiButton', () => {
 });
 
 describe('entityScripts', () => {
-    it('その Entity のワープ・スイッチ・ポータルを並び順で返し、ほかの部品と読めない設定は入れない', () => {
+    it('その Entity のワープ・スイッチ・ポータルを並び順で返し、ほかの部品と設定の読めないワープ・スイッチは入れない', () => {
         const parts = [
             part('door', 0, 'core:ui', { button: true }),
             part('door', 1, 'core:switch', { targets: ['lamp'], label: ' 明かり ' }),
@@ -55,6 +58,17 @@ describe('entityScripts', () => {
                 label: '',
                 target: { kind: 'share', path: '@alice/cafe' },
             },
+        ]);
+    });
+
+    it('設定が読めないポータル（schema が断る行き先）は、行き先の無いポータルとして入れる（最初の 1 つに数える）', () => {
+        const parts = [
+            part('door', 0, 'core:portal', { world: 'javascript:alert(1)', label: '偽物' }),
+            part('door', 1, 'core:portal', { world: '@alice/cafe' }),
+        ];
+        expect(entityScripts(parts, 'door')).toEqual([
+            { kind: 'portal', id: 'door::0', label: '', target: null },
+            { kind: 'portal', id: 'door::1', label: '', target: { kind: 'share', path: '@alice/cafe' } },
         ]);
     });
 
@@ -121,6 +135,18 @@ describe('planButtonPress', () => {
 });
 
 describe('idleButtonScripts', () => {
+    it('1 つ目のポータルの設定が読めなくても、2 つ目は動かないものとして挙げる（2 つ目へ繰り上げない）', () => {
+        const parts = [
+            part('door', 0, 'core:ui', { button: true }),
+            part('door', 1, 'core:portal', { world: 'javascript:alert(1)' }),
+            part('door', 2, 'core:portal', { world: '@alice/library' }),
+        ];
+        expect(idleButtonScripts(parts, 'door')).toEqual(['door::2']);
+        expect(planButtonPress(entityScripts(parts, 'door'))).toEqual([
+            { kind: 'portal', id: 'door::1', label: '', target: null },
+        ]);
+    });
+
     it('ボタンにした UI がある Entity の、2 つ目からのポータルを挙げる', () => {
         const parts = [
             part('door', 0, 'core:ui', { button: true }),
@@ -148,6 +174,113 @@ describe('idleButtonScripts', () => {
             part('gate', 0, 'core:portal', { world: '@alice/library' }),
         ];
         expect(idleButtonScripts(parts, 'door')).toEqual([]);
+    });
+});
+
+describe('portalConfirmName', () => {
+    const cafe = { kind: 'share', path: '@alice/cafe' } as const;
+    const lookupOf =
+        (result: Awaited<ReturnType<PortalLookup>> | Error): PortalLookup =>
+        async () => {
+            if (result instanceof Error) throw result;
+            return result;
+        };
+
+    it('ポータルの名前があれば、それを出し、行き先は引かない', async () => {
+        const lookup = vi.fn(lookupOf({ name: 'カフェ' }));
+        await expect(portalConfirmName({ label: '奥の部屋', target: cafe }, lookup, '押す')).resolves.toBe('奥の部屋');
+        expect(lookup).not.toHaveBeenCalled();
+    });
+
+    it('名前が無ければ、行き先のワールドの名前（標準のポータルと同じ）', async () => {
+        await expect(portalConfirmName({ label: '', target: cafe }, lookupOf({ name: 'カフェ' }), '')).resolves.toBe(
+            'カフェ',
+        );
+    });
+
+    it('行き先を引けない・失敗した・引く手段が無いときは、押したものの名前、それも無ければ「ポータル」（「ボタン」にしない）', async () => {
+        await expect(portalConfirmName({ label: '', target: cafe }, lookupOf(null), ' 奥へ\n行く ')).resolves.toBe(
+            '奥へ 行く',
+        );
+        await expect(portalConfirmName({ label: '', target: cafe }, lookupOf(new Error('500')), '')).resolves.toBe(
+            'ポータル',
+        );
+        await expect(portalConfirmName({ label: '', target: cafe }, null, '  ')).resolves.toBe('ポータル');
+    });
+
+    it('行き先の問い合わせが返ってこなくても、待つのは決めた間だけ（押したことを止めない）', async () => {
+        vi.useFakeTimers();
+        try {
+            const hanging: PortalLookup = () => new Promise(() => {});
+            const name = portalConfirmName({ label: '', target: cafe }, hanging, '', 1500);
+            await vi.advanceTimersByTimeAsync(1500);
+            await expect(name).resolves.toBe('ポータル');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});
+
+describe('createPressGuard', () => {
+    const deferred = () => {
+        const box: { resolve: () => void; reject: (error: Error) => void } = { resolve: () => {}, reject: () => {} };
+        const promise = new Promise<void>((resolve, reject) => {
+            box.resolve = resolve;
+            box.reject = reject;
+        });
+        return { promise, ...box };
+    };
+
+    it('前に押したときの動き（確かめる画面）が終わるまで、押し直しても動かさない。終われば次を受け付ける', async () => {
+        const guard = createPressGuard();
+        const first = deferred();
+        const presses = vi.fn(() => first.promise);
+        guard(presses);
+        guard(presses);
+        guard(presses);
+        expect(presses).toHaveBeenCalledTimes(1);
+
+        first.resolve();
+        await vi.waitFor(() => {
+            guard(presses);
+            expect(presses).toHaveBeenCalledTimes(2);
+        });
+    });
+
+    it('動きが失敗しても（同期で投げても）、次に押せなくならない', async () => {
+        const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+            const guard = createPressGuard();
+            guard(() => {
+                throw new Error('sync');
+            });
+            const failed = deferred();
+            await vi.waitFor(() => {
+                const next = vi.fn(() => failed.promise);
+                guard(next);
+                expect(next).toHaveBeenCalledTimes(1);
+            });
+            failed.reject(new Error('async'));
+            const after = vi.fn(async () => {});
+            await vi.waitFor(() => {
+                guard(after);
+                expect(after).toHaveBeenCalled();
+            });
+            expect(errors).toHaveBeenCalledTimes(2);
+        } finally {
+            errors.mockRestore();
+        }
+    });
+
+    it('ボタンごとに別（ほかのボタンが動いている間も押せる）', () => {
+        const a = createPressGuard();
+        const b = createPressGuard();
+        const pending = () => new Promise<void>(() => {});
+        const pressA = vi.fn(pending);
+        const pressB = vi.fn(pending);
+        a(pressA);
+        b(pressB);
+        expect([pressA, pressB].map((press) => press.mock.calls.length)).toEqual([1, 1]);
     });
 });
 
