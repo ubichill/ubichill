@@ -1,7 +1,9 @@
 import {
     type DataFieldsLike,
+    describeCoreComponentProblem,
     describeReferenceProblem,
     fieldLabel,
+    findCoreComponentProblems,
     findReferenceProblems,
     type InitialEntity,
     type ReferenceProblem,
@@ -28,7 +30,15 @@ export function editorReferenceProblems(
     }));
 }
 
-/** entityId → その Entity の Component が持つ参照の問題の説明（Hierarchy の印に使う）。 */
+/** この版が知らない本体の部品・項目。部屋では使われないことを作者に知らせる。 */
+export function editorCoreProblems(entities: readonly InitialEntity[]): Array<{ entityId: string; message: string }> {
+    return findCoreComponentProblems(entities).map((problem) => ({
+        entityId: problem.entityId,
+        message: describeCoreComponentProblem(problem),
+    }));
+}
+
+/** entityId → その Entity の Component が持つ問題の説明（Hierarchy の印に使う）。 */
 export function problemsByEntity(
     problems: ReadonlyArray<{ entityId: string; message: string }>,
 ): ReadonlyMap<string, readonly string[]> {

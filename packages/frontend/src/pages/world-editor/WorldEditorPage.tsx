@@ -46,7 +46,7 @@ import {
     editorChecks,
 } from './lib/editorChecks';
 import { findEntityPath, flattenForStage, getEntityAt, updateEntityAt } from './lib/entityTree';
-import { editorReferenceProblems, problemsByEntity } from './lib/referenceProblems';
+import { editorCoreProblems, editorReferenceProblems, problemsByEntity } from './lib/referenceProblems';
 import { guardsUnload, withSavedFields } from './lib/savedDefinition';
 import { editorButton } from './recipes/button';
 
@@ -138,18 +138,21 @@ export function WorldEditorPage() {
 
     const selection = useEntitySelection();
     const ops = useEntityOps({ definition, updateEntities, kinds, selection });
-    const referenceProblemList = useMemo(
-        () => editorReferenceProblems(definition.spec.initialEntities, kinds),
+    const entityProblemList = useMemo(
+        () => [
+            ...editorReferenceProblems(definition.spec.initialEntities, kinds),
+            ...editorCoreProblems(definition.spec.initialEntities),
+        ],
         [definition.spec.initialEntities, kinds],
     );
-    const referenceProblems = useMemo(() => problemsByEntity(referenceProblemList), [referenceProblemList]);
+    const referenceProblems = useMemo(() => problemsByEntity(entityProblemList), [entityProblemList]);
     const checks = useMemo(
         () =>
             editorChecks({
                 displayName: definition.spec.displayName,
                 worldName: definition.metadata.name,
                 yamlError: modals.activeTab === 'yaml' ? modals.yamlError : '',
-                referenceProblems: referenceProblemList,
+                referenceProblems: entityProblemList,
                 packagesError,
                 compatibility: compatibilityMessage(definition.spec.requires),
             }),
@@ -159,7 +162,7 @@ export function WorldEditorPage() {
             definition.spec.requires,
             modals.activeTab,
             modals.yamlError,
-            referenceProblemList,
+            entityProblemList,
             packagesError,
         ],
     );
@@ -168,7 +171,7 @@ export function WorldEditorPage() {
             checks
                 .filter((check) => check.severity === 'warning')
                 .map((check) => ({
-                    source: check.target?.kind === 'entity' ? '参照' : 'mod',
+                    source: check.target?.kind === 'entity' ? 'Entity' : 'mod',
                     message: check.message,
                 })),
         [checks],

@@ -100,6 +100,27 @@ describe('publish（本体へ）', () => {
         expect(requests).toEqual([]);
     });
 
+    it('この版に無い本体の部品・項目（書き間違い）があれば、サーバーに送る前に止める', async () => {
+        const withTypo = worldYaml.replace(
+            'initialEntities: []',
+            [
+                'initialEntities:',
+                '    - id: sign',
+                '      transform: { x: 0, y: 0, z: 0, w: 10, h: 10, scale: 1, rotation: 0 }',
+                '      components:',
+                '        - type: core:txt',
+                '          data: {}',
+                '        - type: core:text',
+                '          data: { text: a, colour: "#000000" }',
+            ].join('\n'),
+        );
+        const { deps, requests } = fakeDeps({ 'w.yaml': withTypo }, () => ({ status: 200, body: {} }));
+        const failure = publish(deps, { worldPath: 'w.yaml', credential });
+        await expect(failure).rejects.toThrow(/core:txt/);
+        await expect(failure).rejects.toThrow(/colour/);
+        expect(requests).toEqual([]);
+    });
+
     it('サーバーが断ったら、その理由で失敗する（取り消し済みの鍵など）', async () => {
         const { deps } = fakeDeps({ 'w.yaml': worldYaml }, () => ({
             status: 422,

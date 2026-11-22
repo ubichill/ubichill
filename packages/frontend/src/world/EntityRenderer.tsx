@@ -1,4 +1,4 @@
-import { CORE_COMPONENT_TYPES, isCoreComponentType } from '@ubichill/core-components';
+import { CORE_COMPONENT_TYPES, isCoreComponentNamespace } from '@ubichill/core-components';
 import { useHold, useSocket, useWorld, WorkerModHost } from '@ubichill/react';
 import { EMPTY_ENTITY_TYPE, OVERLAY_FILL, resolveOverlayMode } from '@ubichill/shared';
 import type React from 'react';
@@ -45,8 +45,8 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
 
     // avoid starting network loads during render — schedule via effect
     useEffect(() => {
-        // EMPTY_ENTITY_TYPE と core:* はWorkerを持たないbuilt-inなのでmod解決を試みない。
-        if (entityType && entityType !== EMPTY_ENTITY_TYPE && !isCoreComponentType(entityType) && !mod)
+        // EMPTY_ENTITY_TYPE と core:*（この版が知らないものも）は Worker を持たないので mod として読み込まない。
+        if (entityType && entityType !== EMPTY_ENTITY_TYPE && !isCoreComponentNamespace(entityType) && !mod)
             loadMod(entityType);
     }, [mod, entityType, loadMod]);
 
@@ -56,7 +56,7 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
     if (entity.type === CORE_COMPONENT_TYPES.image) return <CoreImageSurface entity={entity} />;
     if (entity.type === CORE_COMPONENT_TYPES.text) return <CoreTextSign entity={entity} />;
     if (entity.type === CORE_COMPONENT_TYPES.portal) return <CorePortal entity={entity} />;
-    if (isCoreComponentType(entity.type)) return null;
+    if (isCoreComponentNamespace(entity.type)) return null;
     if (!mod) return null;
     // singleton は WorldStage 側で起動するためここではスキップ
     if (mod.singleton) return null;

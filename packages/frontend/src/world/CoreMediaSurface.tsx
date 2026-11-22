@@ -1,4 +1,4 @@
-import { MediaDataSchema } from '@ubichill/core-components';
+import { MediaDataSchema, readCoreData } from '@ubichill/core-components';
 import { mediaSurfaces } from '@ubichill/react';
 import { type ComponentInstance, conflictedMediaSurfaces } from '@ubichill/shared';
 import type React from 'react';
@@ -13,7 +13,7 @@ import { useMediaSurfaceOwners } from './useMediaSurfaceOwners';
  */
 export const CoreMediaSurface: React.FC<{ entity: ComponentInstance }> = ({ entity }) => {
     const ref = useRef<HTMLDivElement>(null);
-    const parsed = MediaDataSchema.safeParse(entity.data ?? {});
+    const parsed = readCoreData(MediaDataSchema, entity.data ?? {});
     const fit = parsed.success ? parsed.data.fit : 'contain';
     const entityId = entity.entityId ?? entity.id;
     const media = useMediaSurfaceOwners();

@@ -1,4 +1,4 @@
-import { isCoreComponentNamespace, isCoreComponentType, validateCoreComponentData } from '@ubichill/core-components';
+import { isCoreComponentNamespace, isCoreComponentType, readCoreComponentData } from '@ubichill/core-components';
 import { z } from 'zod';
 import { OVERLAY_MODES } from '../mod/entities';
 import { PackageAuthorSchema } from '../mod/packageRef';
@@ -249,16 +249,10 @@ export const EntityComponentSchema = z
         overlay: z.union([z.boolean(), z.enum(OVERLAY_MODES)]).optional(),
     })
     .superRefine((component, ctx) => {
-        if (isCoreComponentNamespace(component.type) && !isCoreComponentType(component.type)) {
-            ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                path: ['type'],
-                message: `未知の予約済み core Component "${component.type}" です`,
-            });
-            return;
-        }
+        // この版が知らない本体の部品・項目は、断らずに残して使わない（新しい ubichill のワールドも開ける）。
+        // 書く側（エディタ・CLI）は findCoreComponentProblems で知らせる
         if (!isCoreComponentType(component.type)) return;
-        const result = validateCoreComponentData(component.type, component.data);
+        const result = readCoreComponentData(component.type, component.data);
         if (result.success) return;
         for (const issue of result.error.issues) {
             ctx.addIssue({ ...issue, path: ['data', ...issue.path] });
@@ -362,7 +356,7 @@ export function collectModIds(entities: InitialEntity[]): string[] {
     const ids = new Set<string>();
     const walk = (e: InitialEntity): void => {
         for (const c of e.components) {
-            if (isCoreComponentType(c.type)) continue;
+            if (isCoreComponentNamespace(c.type)) continue;
             const modId = c.type.split(':')[0];
             if (modId) ids.add(modId);
         }
