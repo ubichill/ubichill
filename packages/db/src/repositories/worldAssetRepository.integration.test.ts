@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { type WorldSignature, worldAssetPath } from '@ubichill/shared';
-import { and, eq, inArray, like } from 'drizzle-orm';
+import { and, eq, inArray, like, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../index';
-import { users, worldAssets } from '../schema';
+import { users, worldAssets, worldDrafts, worlds } from '../schema';
 import { userRepository } from './userRepository';
 import { worldAssetRepository } from './worldAssetRepository';
 import { worldRepository } from './worldRepository';
@@ -165,6 +165,145 @@ describe.skipIf(!RUN)('worldAssetRepository (DB統合)', () => {
             expect(await worldRepository.delete(saved.worldId)).toBe(true);
             expect(await sweepAll(labels)).toEqual(['alice:deleted-world']);
             expect(await remaining(labels)).toEqual(['alice:reuploaded']);
+        });
+
+        describe('定義の保存と重なったとき', () => {
+            const deferred = () => {
+                const d = { resolve: () => {} };
+                const promise = new Promise<void>((resolve) => {
+                    d.resolve = resolve;
+                });
+                return { promise, resolve: () => d.resolve() };
+            };
+            const poll = async (label: string, check: () => Promise<boolean>, left = 250): Promise<void> => {
+                if (await check()) return;
+                if (left === 0) throw new Error(`${label} にならない`);
+                await new Promise((r) => setTimeout(r, 20));
+                return poll(label, check, left - 1);
+            };
+            /** 参照のロック（掃除と保存の順番）の、取れている・待っている mode */
+            const referenceLocks = async () =>
+                db.execute<{ mode: string; granted: boolean }>(sql`
+                    select mode, granted from pg_locks
+                    where locktype = 'advisory' and objsubid = 1
+                      and ((classid::bigint << 32) | objid::bigint) = hashtextextended('world-asset-references', 0)`);
+            const hasReferenceLock = async (mode: 'ShareLock' | 'ExclusiveLock', granted: boolean) =>
+                (await referenceLocks()).some((l) => l.mode === mode && l.granted === granted);
+            const blockedBy = async (pid: number) => {
+                const [row] = await db.execute<{ n: number }>(
+                    sql`select count(*)::int as n from pg_stat_activity where ${pid} = any(pg_blocking_pids(pid))`,
+                );
+                return (row?.n ?? 0) > 0;
+            };
+            /** 別の接続で `hold` を実行したまま、release まで commit しない */
+            const holdOpen = async (
+                hold: (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => Promise<void>,
+            ) => {
+                const held = deferred();
+                const release = deferred();
+                const pid = { value: 0 };
+                const done = db.transaction(async (tx) => {
+                    const [row] = await tx.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`);
+                    pid.value = row?.pid ?? 0;
+                    await hold(tx);
+                    held.resolve();
+                    await release.promise;
+                });
+                await held.promise;
+                return {
+                    pid: pid.value,
+                    release: async () => {
+                        release.resolve();
+                        await done;
+                    },
+                };
+            };
+            const settled = (promise: Promise<unknown>) => {
+                const state = { done: false };
+                void promise.then(
+                    () => (state.done = true),
+                    () => (state.done = true),
+                );
+                return state;
+            };
+
+            it.each([
+                ['下書き', 'raced-draft'],
+                ['版', 'raced-version'],
+            ])(
+                '掃除が参照を読む前に始まった保存（%s）が、古い使われていない画像を指してコミットしたら消さない',
+                async (kind, label) => {
+                    await upload(alice, label, old);
+                    const created = await worldRepository.saveDraft(
+                        { authorId: alice, worldName: `race-${label}-${stamp}` },
+                        draft({}),
+                    );
+                    if (created.status !== 'draft') throw new Error('ワールドを作れませんでした');
+                    const target = { authorId: alice, worldName: `race-${label}-${stamp}`, worldId: created.worldId };
+                    const definition = { spec: { thumbnail: url(label) } };
+
+                    // ワールドの行を押さえて、保存をトランザクションの途中（参照のロックを取った後）で止める
+                    const row = await holdOpen(async (tx) => {
+                        await tx
+                            .select({ id: worlds.id })
+                            .from(worlds)
+                            .where(eq(worlds.id, created.worldId))
+                            .for('update');
+                    });
+                    const saving =
+                        kind === '下書き'
+                            ? worldRepository.saveDraft(target, draft(definition))
+                            : worldRepository.publish(target, publishInput(definition, `1.0.0-${label}`));
+                    await poll('保存がワールドの行を待つ', () => blockedBy(row.pid));
+
+                    const sweeping = worldAssetRepository.removeUnreferenced(cutoff, 1000);
+                    const sweep = settled(sweeping);
+                    await poll(
+                        '掃除が保存を待つか、終わる',
+                        async () => sweep.done || (await hasReferenceLock('ExclusiveLock', false)),
+                    );
+
+                    await row.release();
+                    expect(await saving).toMatchObject({ worldId: created.worldId });
+                    expect(named([label], await sweeping)).toEqual([]);
+                    expect(await remaining([label])).toEqual([`alice:${label}`]);
+                },
+            );
+
+            it('掃除が先に排他を取ったら、その回の判断に従う。保存は掃除のコミットを待ってから通る', async () => {
+                const label = 'swept-first';
+                await upload(alice, label, old);
+                const worldName = `race-${label}-${stamp}`;
+
+                // 版の表を押さえて、掃除を排他を取った後（DELETE の前）で止める（下書きの保存は版の表を使わない）
+                const table = await holdOpen(async (tx) => {
+                    await tx.execute(sql`lock table world_versions in access exclusive mode`);
+                });
+                const sweeping = worldAssetRepository.removeUnreferenced(cutoff, 1000);
+                await poll(
+                    '掃除が排他を取って版の表を待つ',
+                    async () => (await hasReferenceLock('ExclusiveLock', true)) && (await blockedBy(table.pid)),
+                );
+
+                const saving = worldRepository.saveDraft(
+                    { authorId: alice, worldName },
+                    draft({ thumbnail: url(label) }),
+                );
+                const save = settled(saving);
+                await poll('保存が掃除を待つ', () => hasReferenceLock('ShareLock', false));
+                expect(save.done).toBe(false);
+
+                await table.release();
+                expect(named([label], await sweeping)).toEqual([`alice:${label}`]);
+                const saved = await saving;
+                if (saved.status !== 'draft') throw new Error('下書きを保存できませんでした');
+                const [row] = await db
+                    .select({ definition: worldDrafts.definition })
+                    .from(worldDrafts)
+                    .where(eq(worldDrafts.worldId, saved.worldId));
+                expect(row?.definition).toEqual({ thumbnail: url(label) });
+                expect(await remaining([label])).toEqual([]);
+            });
         });
 
         it('1 回に消すのは limit 枚まで。残りは次の回に消す', async () => {

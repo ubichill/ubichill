@@ -28,7 +28,7 @@ mod を書けない人でもワールドを作れるようにする最初の段�
 - 部品の data の形は `packages/core-components/src/{image,text,portal}`。描くのは `packages/frontend/src/world/Core{ImageSurface,TextSign,Portal}.tsx`（置き場所は `surfacePlacement` で `core:ui` と同じ）。
 - 入口の移り方は `world/portalNavigation.ts` の context で、SNS の画面（`InstancePage`）だけが渡す。world.html とエディタのプレビューでは押せない（`src/world` から router と backend を読まない規則）。
 - 画像: `services/worldAssets`（規則）・`routes/assets`・`world_assets`（migration 0045）。画像の作り直しはプロフィール画像と同じ `processImage`（長い辺を縮める `inside`）。
-- 使われていない画像の掃除: `services/worldAssets/worldAssetSweep.ts`（起動の 1 分後と 6 時間ごと。reaper のリースを持つ 1 台だけ）。使われているかは `worldAssetRepository.removeUnreferenced` が、全部の定義から shared の `WORLD_ASSET_REFERENCE_PATTERN` でハッシュを 1 回で抜き出して決める（画像ごとに定義を探すと、画像の数 × 定義の大きさになる）。
+- 使われていない画像の掃除: `services/worldAssets/worldAssetSweep.ts`（起動の 1 分後と 6 時間ごと。reaper のリースを持つ 1 台だけ）。使われているかは `worldAssetRepository.removeUnreferenced` が、全部の定義から shared の `WORLD_ASSET_REFERENCE_PATTERN` でハッシュを 1 回で抜き出して決める（画像ごとに定義を探すと、画像の数 × 定義の大きさになる）。定義を書くトランザクション（`worldRepository.saveDraft`・`publish`）は最初に参照のロック（`worldAssetReferenceLock.ts`）を共有で取り、掃除は 1 回ごとに排他で取ってから消す。掃除が読んだ後にコミットした保存が指す画像を消さないため（掃除の間に来た保存は、その回のコミットを待つ）。定義を書く処理を足すときは同じロックを取る。
 - エディタ: `entityKinds.ts` に部品を宣言し、画像の欄（`image`）は「画像を上げる」ボタン付き（`ImageUrlInput`）。ワールド情報の背景の画像とサムネイルも同じ欄。サムネイルは「画面から撮る」で、エディタの画面を部屋で見える通りに描いて撮れる（16:9 の枠。DOM を描き直すので mod の UI も写る。ほかのサーバーの画像は CORS で読めるものだけ）。
 
 ## 残り

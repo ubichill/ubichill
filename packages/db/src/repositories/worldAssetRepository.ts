@@ -2,6 +2,7 @@ import { WORLD_ASSET_REFERENCE_PATTERN } from '@ubichill/shared';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../index';
 import { worldAssets, worldDrafts, worldVersions } from '../schema';
+import { lockWorldAssetReferences } from './worldAssetReferenceLock';
 
 export interface WorldAssetBlob {
     hash: string;
@@ -117,30 +118,34 @@ export const worldAssetRepository = {
      * 消したものを返す。だれのワールドから指されていても残す（複製したワールドはほかの人の画像を指す）。
      * 定義は 1 回だけ読んでハッシュを抜き出す（画像ごとに全部の定義を探すと、画像の数 × 定義の大きさになる）。
      * 掃除と同時の上げ直し（created_at を今にする）が先に終われば、DELETE が行を読み直して消さない。
+     * 定義の保存とは {@link lockWorldAssetReferences} で順番にする（1 回の間、保存を待たせるので limit を小さく保つ）。
      */
     async removeUnreferenced(cutoff: Date, limit: number): Promise<RemovedWorldAsset[]> {
-        const rows = await db.execute<{ owner_id: string; hash: string; byte_size: number }>(sql`
-            WITH referenced AS MATERIALIZED (
-                SELECT DISTINCT m[1] AS hash
-                FROM (
-                    SELECT ${worldDrafts.definition}::text AS body FROM ${worldDrafts}
-                    UNION ALL
-                    SELECT ${worldVersions.definition}::text AS body FROM ${worldVersions}
-                ) d
-                CROSS JOIN LATERAL regexp_matches(d.body, ${WORLD_ASSET_REFERENCE_PATTERN}, 'g') AS m
-            ),
-            doomed AS (
-                SELECT a.owner_id, a.hash FROM ${worldAssets} a
-                WHERE a.created_at < ${cutoff.toISOString()}::timestamptz
-                  AND NOT EXISTS (SELECT 1 FROM referenced r WHERE r.hash = a.hash)
-                LIMIT ${limit}
-                FOR UPDATE SKIP LOCKED
-            )
-            DELETE FROM ${worldAssets} a USING doomed
-            WHERE a.owner_id = doomed.owner_id AND a.hash = doomed.hash
-              AND a.created_at < ${cutoff.toISOString()}::timestamptz
-            RETURNING a.owner_id, a.hash, a.byte_size`);
-        return rows.map((row) => ({ ownerId: row.owner_id, hash: row.hash, byteSize: row.byte_size }));
+        return db.transaction(async (tx) => {
+            await lockWorldAssetReferences(tx, 'sweep');
+            const rows = await tx.execute<{ owner_id: string; hash: string; byte_size: number }>(sql`
+                WITH referenced AS MATERIALIZED (
+                    SELECT DISTINCT m[1] AS hash
+                    FROM (
+                        SELECT ${worldDrafts.definition}::text AS body FROM ${worldDrafts}
+                        UNION ALL
+                        SELECT ${worldVersions.definition}::text AS body FROM ${worldVersions}
+                    ) d
+                    CROSS JOIN LATERAL regexp_matches(d.body, ${WORLD_ASSET_REFERENCE_PATTERN}, 'g') AS m
+                ),
+                doomed AS (
+                    SELECT a.owner_id, a.hash FROM ${worldAssets} a
+                    WHERE a.created_at < ${cutoff.toISOString()}::timestamptz
+                      AND NOT EXISTS (SELECT 1 FROM referenced r WHERE r.hash = a.hash)
+                    LIMIT ${limit}
+                    FOR UPDATE SKIP LOCKED
+                )
+                DELETE FROM ${worldAssets} a USING doomed
+                WHERE a.owner_id = doomed.owner_id AND a.hash = doomed.hash
+                  AND a.created_at < ${cutoff.toISOString()}::timestamptz
+                RETURNING a.owner_id, a.hash, a.byte_size`);
+            return rows.map((row) => ({ ownerId: row.owner_id, hash: row.hash, byteSize: row.byte_size }));
+        });
     },
 
     /** 消せたら true。ほかの人が同じ画像を上げていれば、その人の分は残る（URL は使い続けられる）。 */
