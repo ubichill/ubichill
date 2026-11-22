@@ -1,20 +1,52 @@
 import { CORE_COMPONENT_TYPES, isCoreComponentNamespace } from '@ubichill/core-components';
 import { useHold, useSocket, useWorld, WorkerModHost } from '@ubichill/react';
-import { EMPTY_ENTITY_TYPE, OVERLAY_FILL, resolveOverlayMode } from '@ubichill/shared';
+import { type ComponentInstance, EMPTY_ENTITY_TYPE, OVERLAY_FILL, resolveOverlayMode } from '@ubichill/shared';
 import type React from 'react';
 import { useEffect, useRef } from 'react';
+import { css } from '@/styled-system/css';
 import { Z_INDEX } from '@/styles/layers';
 import { CoreImageSurface } from './CoreImageSurface';
 import { CoreMediaSurface } from './CoreMediaSurface';
 import { CorePortal } from './CorePortal';
+import { CoreSpawnMarker } from './CoreSpawnMarker';
+import { CoreSwitch } from './CoreSwitch';
 import { CoreTextSign } from './CoreTextSign';
 import { CoreUiPanel } from './CoreUiPanel';
+import { CoreWarp } from './CoreWarp';
+import { useEditorPreview } from './editorPreview';
 import { HeldEntityPositionRegistry } from './HeldEntityPositionRegistry';
 import { readHeldOffset } from './heldOffset';
 import { useModRegistry } from './ModRegistryContext';
 
 interface EntityRendererProps {
     entityId: string;
+}
+
+/** 見えない Entity の描き方。部屋では隠し（mod の Worker は止めない）、エディタでは薄く描く。 */
+type Concealment = 'hide' | 'dim' | null;
+
+/** 本体の部品の描画。この版が知らない core:* は描かない。 */
+function corePart(entity: ComponentInstance): React.ReactNode {
+    switch (entity.type) {
+        case CORE_COMPONENT_TYPES.media:
+            return <CoreMediaSurface entity={entity} />;
+        case CORE_COMPONENT_TYPES.ui:
+            return <CoreUiPanel entity={entity} />;
+        case CORE_COMPONENT_TYPES.image:
+            return <CoreImageSurface entity={entity} />;
+        case CORE_COMPONENT_TYPES.text:
+            return <CoreTextSign entity={entity} />;
+        case CORE_COMPONENT_TYPES.portal:
+            return <CorePortal entity={entity} />;
+        case CORE_COMPONENT_TYPES.warp:
+            return <CoreWarp entity={entity} />;
+        case CORE_COMPONENT_TYPES.switch:
+            return <CoreSwitch entity={entity} />;
+        case CORE_COMPONENT_TYPES.spawn:
+            return <CoreSpawnMarker entity={entity} />;
+        default:
+            return null;
+    }
 }
 
 /** ワールドのスクロール量。overlay(画面座標) と world 座標の変換に使う。 */
@@ -36,8 +68,9 @@ function readWorldScroll(): { x: number; y: number } {
  * 新しい Worker は起動しない。DOM ノードの position を変えるだけ。
  */
 export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
-    const { entities } = useWorld();
+    const { entities, hiddenEntities } = useWorld();
     const { modMap, loadMod } = useModRegistry();
+    const editing = useEditorPreview();
 
     const entity = entities.get(entityId);
     const entityType = entity?.type;
@@ -51,24 +84,30 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
     }, [mod, entityType, loadMod]);
 
     if (!entity) return null;
-    if (entity.type === CORE_COMPONENT_TYPES.media) return <CoreMediaSurface entity={entity} />;
-    if (entity.type === CORE_COMPONENT_TYPES.ui) return <CoreUiPanel entity={entity} />;
-    if (entity.type === CORE_COMPONENT_TYPES.image) return <CoreImageSurface entity={entity} />;
-    if (entity.type === CORE_COMPONENT_TYPES.text) return <CoreTextSign entity={entity} />;
-    if (entity.type === CORE_COMPONENT_TYPES.portal) return <CorePortal entity={entity} />;
-    if (isCoreComponentNamespace(entity.type)) return null;
+    const concealment: Concealment =
+        entity.entityId && hiddenEntities.has(entity.entityId) ? (editing ? 'dim' : 'hide') : null;
+    if (isCoreComponentNamespace(entity.type)) {
+        if (concealment === 'hide') return null;
+        const part = corePart(entity);
+        return concealment === 'dim' ? <div className={dimmed}>{part}</div> : part;
+    }
     if (!mod) return null;
     // singleton は WorldStage 側で起動するためここではスキップ
     if (mod.singleton) return null;
 
-    return <EntityRendererInner entityId={entityId} />;
+    return <EntityRendererInner entityId={entityId} concealment={concealment} />;
 };
+
+const dimmed = css({ opacity: 0.35 });
 
 /**
  * Inner コンポーネント: エンティティが存在することが確定してから
  * held 状態のフックを呼ぶ（Rules of Hooks 対応）。
  */
-const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
+const EntityRendererInner: React.FC<EntityRendererProps & { concealment: Concealment }> = ({
+    entityId,
+    concealment,
+}) => {
     const { entities } = useWorld();
     const { modMap } = useModRegistry();
     const { held, heldRef } = useHold();
@@ -221,14 +260,15 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
                 // clip が必要な Panel / ScrollView 等の mod は JSX 側でその要素自身に
                 // overflow: 'hidden' / 'auto' を指定する。
                 pointerEvents: 'none',
-                opacity: isHeldByOther ? 0.85 : undefined,
+                opacity: concealment === 'dim' ? 0.35 : isHeldByOther ? 0.85 : undefined,
                 transition: isHeldByOther ? 'transform 80ms linear' : undefined,
                 transform: `translate(var(--held-dx, 0px), var(--held-dy, 0px)) scale(${scale ?? 1}) rotate(${rotation ?? 0}deg)`,
                 transformOrigin: '0 0',
             };
 
     return (
-        <div ref={divRef} style={wrapperStyle}>
+        // 見えない間も Worker は動かし続ける（隠すだけ。visibility: hidden の中は押せない）
+        <div ref={divRef} style={concealment === 'hide' ? { ...wrapperStyle, visibility: 'hidden' } : wrapperStyle}>
             {/* key に component 型を含める: エディタの entityId は位置ベース (`edit-0-0-c0`) で、
                 編集・並べ替えで同じ id の type が screen ⇄ controls と入れ替わることがある。
                 key を型に紐付けないと WorkerModHost が再利用され、前の worker が描画した

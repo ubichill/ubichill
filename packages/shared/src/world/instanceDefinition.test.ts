@@ -232,6 +232,51 @@ describe('toInstanceDefinition', () => {
         expect(JSON.parse(JSON.stringify(def)).snapshot).not.toHaveProperty('lock');
     });
 
+    it('visible: false の Entity だけを hiddenEntities に入れる（子は入れない。無ければ書かない）', () => {
+        const hiddenTree = world({
+            initialEntities: [
+                {
+                    id: 'door',
+                    transform: { x: 0, y: 0, z: 0, scale: 1, rotation: 0 },
+                    components: [],
+                    tags: [],
+                    visible: false,
+                    children: [
+                        {
+                            id: 'knob',
+                            transform: { x: 0, y: 0, z: 0, scale: 1, rotation: 0 },
+                            components: [],
+                            tags: [],
+                            children: [
+                                {
+                                    id: 'secret',
+                                    transform: { x: 0, y: 0, z: 0, scale: 1, rotation: 0 },
+                                    components: [],
+                                    tags: [],
+                                    visible: false,
+                                    children: [],
+                                },
+                            ],
+                        },
+                    ],
+                },
+                {
+                    id: 'sign',
+                    transform: { x: 0, y: 0, z: 0, scale: 1, rotation: 0 },
+                    components: [],
+                    tags: [],
+                    visible: true,
+                    children: [],
+                },
+            ],
+        });
+        expect(toInstanceDefinition(hiddenTree, { id: 'i', maxUsers: 1 }).snapshot.hiddenEntities).toEqual([
+            'door',
+            'secret',
+        ]);
+        expect(toInstanceDefinition(world(), { id: 'i', maxUsers: 1 }).snapshot).not.toHaveProperty('hiddenEntities');
+    });
+
     it('id と maxUsers は呼び出し側の値をそのまま使う（上限の検査は Go が行う）', () => {
         const def = toInstanceDefinition(world(), { id: 'dev-abc', maxUsers: 1000 });
         expect(def.id).toBe('dev-abc');

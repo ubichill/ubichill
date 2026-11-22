@@ -45,6 +45,9 @@
         "entity:patched": {
           "$ref": "#/components/messages/entity:patched"
         },
+        "entity:visibility": {
+          "$ref": "#/components/messages/entity:visibility"
+        },
         "error": {
           "$ref": "#/components/messages/error"
         },
@@ -74,6 +77,9 @@
         },
         "status:update": {
           "$ref": "#/components/messages/status:update"
+        },
+        "switch:press": {
+          "$ref": "#/components/messages/switch:press"
         },
         "user:joined": {
           "$ref": "#/components/messages/user:joined"
@@ -132,6 +138,9 @@
         },
         {
           "$ref": "#/channels/instance/messages/state:update"
+        },
+        {
+          "$ref": "#/channels/instance/messages/switch:press"
         }
       ]
     },
@@ -191,6 +200,9 @@
         },
         {
           "$ref": "#/channels/instance/messages/reply"
+        },
+        {
+          "$ref": "#/channels/instance/messages/entity:visibility"
         }
       ]
     }
@@ -1027,6 +1039,75 @@
           },
           "additionalProperties": false
         }
+      },
+      "switch:press": {
+        "name": "switch:press",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "switch:press"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "componentId": {
+                  "type": "string",
+                  "maxLength": 200,
+                  "description": "core:switch の ComponentInstance の id"
+                }
+              },
+              "required": [
+                "componentId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "description": "core:switch を押す。サーバーが、押されたのが core:switch の Component か・対象が部屋にあるかを確かめ、対象の見える・見えないを切り替えて entity:visibility を全員に送る。"
+      },
+      "entity:visibility": {
+        "name": "entity:visibility",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "entity:visibility"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "hiddenEntities": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "hiddenEntities"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "description": "見えない Entity の一覧が変わった（押した本人を含む全員へ）。一覧そのものを送るので、届いた順に置き換えればよい。"
       }
     }
   }

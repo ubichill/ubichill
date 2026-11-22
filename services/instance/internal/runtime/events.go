@@ -218,6 +218,16 @@ func (r *Room) handle(p *peer, f Frame) {
 		r.drop(id)
 		r.broadcast("entity:deleted", id, p, false)
 		p.reply(f.ID, Object{"success": true})
+	case "switch:press":
+		changed, err := r.pressSwitch(m, str(data["componentId"]))
+		if err != nil {
+			p.reject(f.ID, err.Error())
+			return
+		}
+		if changed {
+			r.broadcast("entity:visibility", Object{"hiddenEntities": nonNil(r.hiddenList())}, nil, false)
+		}
+		p.reply(f.ID, Object{"success": true})
 	case "state:get":
 		key := str(data["key"])
 		if !validStateKey(key) {

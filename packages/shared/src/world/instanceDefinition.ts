@@ -27,6 +27,8 @@ export interface WorldSnapshotPayload {
     lock?: ModLock;
     /** ワールドの provenance kind（local/github/...）。表示用。 */
     sourceKind?: string;
+    /** 見えない Entity（GameObject）の ID。子も見えない。`core:switch` でインスタンスが切り替える */
+    hiddenEntities?: string[];
 }
 
 /** Go の `PUT /realtime/v1/instances/{id}` と `--world` が受け取る定義（protocol/instance/openapi.json の InstanceDefinition）。 */
@@ -113,6 +115,14 @@ export function flattenGameObject(
     return [...own, ...fromChildren];
 }
 
+/** 最初から見えない Entity（`visible: false`）の ID。子の分はクライアントが親から辿る。 */
+export function initiallyHiddenEntities(entities: readonly InitialEntity[]): string[] {
+    return entities.flatMap((entity) => [
+        ...(entity.visible === false ? [entity.id] : []),
+        ...initiallyHiddenEntities(entity.children ?? []),
+    ]);
+}
+
 /** 定義を作るのに要るワールドの部分（ResolvedWorld から取る）。 */
 export type InstanceWorld = Pick<
     ResolvedWorld,
@@ -127,6 +137,7 @@ export function toInstanceDefinition(
     world: InstanceWorld,
     options: { id: string; maxUsers: number },
 ): InstanceDefinition {
+    const hidden = initiallyHiddenEntities(world.initialEntities);
     return {
         id: options.id,
         name: world.displayName,
@@ -138,6 +149,8 @@ export function toInstanceDefinition(
             environment: world.environment,
             lock: world.lock,
             sourceKind: world.source.kind,
+            // 無ければ書かない（見えない Entity の無いワールドの定義を変えない）
+            ...(hidden.length > 0 ? { hiddenEntities: hidden } : {}),
         },
     };
 }

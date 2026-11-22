@@ -7,12 +7,14 @@ import {
     WorldContext,
     type WorldContextType,
 } from '@ubichill/react';
-import type {
-    ComponentInstance,
-    InitialEntity,
-    ModLock,
-    WorldDefinition,
-    WorldEnvironmentData,
+import {
+    type ComponentInstance,
+    hiddenGameObjects,
+    type InitialEntity,
+    initiallyHiddenEntities,
+    type ModLock,
+    type WorldDefinition,
+    type WorldEnvironmentData,
 } from '@ubichill/shared';
 import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -23,6 +25,7 @@ import { blockedAuthorsOf } from '@/lib/social/blocksState';
 import { css } from '@/styled-system/css';
 import { buildWorldLock, EntityRenderer, ModRegistryProvider, useModRegistry } from '@/world';
 import { backgroundImageStyle } from '@/world/backgroundImage';
+import { EditorPreviewProvider } from '@/world/editorPreview';
 
 const FALLBACK_ENTITY: ComponentInstance = {
     id: '',
@@ -190,6 +193,11 @@ export function EditorPreview({
     const blockState = useBlocks(session?.user.id);
     const blocksPending = !!session && blockState.blocks === null && blockState.error === null;
 
+    const hiddenEntities = useMemo(
+        () => hiddenGameObjects(entities.values(), new Set(initiallyHiddenEntities(definition.spec.initialEntities))),
+        [entities, definition.spec.initialEntities],
+    );
+
     const worldValue: WorldContextType = useMemo(
         () => ({
             entities,
@@ -205,12 +213,17 @@ export function EditorPreview({
             deleteEntity: () => {
                 /* no-op */
             },
+            // 最初は見えない Entity（visible: false とその子）。エディタでは薄く描く（EntityRenderer）
+            hiddenEntities,
+            pressSwitch: () => {
+                /* no-op */
+            },
             resetWorld: () => {
                 /* no-op */
             },
             isConnected: true,
         }),
-        [entities, environment, activeMods],
+        [entities, environment, activeMods, hiddenEntities],
     );
 
     const socketValue: SocketContextValue = useMemo(
@@ -253,36 +266,38 @@ export function EditorPreview({
         >
             <SocketContext.Provider value={socketValue}>
                 <WorldContext.Provider value={worldValue}>
-                    {/* lock に固定されていない mod は実行しないので、試し用の lock ができてから mod を読み込む */}
-                    {previewLock && !blocksPending && (
-                        <ModRegistryProvider
-                            key={lockKey}
-                            lock={previewLock}
-                            source={HOST_MOD_SOURCE}
-                            blockedAuthors={blockedAuthorsOf(blockState)}
-                        >
-                            {/* ワールド座標系のスクロール領域。overlay: true の Entity はここに置かない
-                            （実行時の InstanceRenderer と同様、スクロールの影響を受けない別レイヤーにする）。 */}
-                            <div
-                                onMouseDown={(e) => {
-                                    if (e.target === e.currentTarget) onBackgroundMouseDown?.();
-                                }}
-                                data-ubi-mod-surface
-                                className={css({ position: 'absolute', inset: 0, overflow: 'auto' })}
+                    <EditorPreviewProvider value={true}>
+                        {/* lock に固定されていない mod は実行しないので、試し用の lock ができてから mod を読み込む */}
+                        {previewLock && !blocksPending && (
+                            <ModRegistryProvider
+                                key={lockKey}
+                                lock={previewLock}
+                                source={HOST_MOD_SOURCE}
+                                blockedAuthors={blockedAuthorsOf(blockState)}
                             >
-                                <PreviewStage
-                                    entities={entities}
-                                    environment={environment}
-                                    overlay={overlay}
-                                    gridStep={gridStep}
-                                    onBackgroundMouseDown={onBackgroundMouseDown}
-                                />
-                            </div>
-                            {/* overlay: true の Entity 専用レイヤー。上のスクロール領域の外側に置くことで
+                                {/* ワールド座標系のスクロール領域。overlay: true の Entity はここに置かない
+                            （実行時の InstanceRenderer と同様、スクロールの影響を受けない別レイヤーにする）。 */}
+                                <div
+                                    onMouseDown={(e) => {
+                                        if (e.target === e.currentTarget) onBackgroundMouseDown?.();
+                                    }}
+                                    data-ubi-mod-surface
+                                    className={css({ position: 'absolute', inset: 0, overflow: 'auto' })}
+                                >
+                                    <PreviewStage
+                                        entities={entities}
+                                        environment={environment}
+                                        overlay={overlay}
+                                        gridStep={gridStep}
+                                        onBackgroundMouseDown={onBackgroundMouseDown}
+                                    />
+                                </div>
+                                {/* overlay: true の Entity 専用レイヤー。上のスクロール領域の外側に置くことで
                             実行画面 (InstanceRenderer の ENTITY_OVERLAY レイヤー) と配置が一致する。 */}
-                            <EditorOverlayStage entities={entities} />
-                        </ModRegistryProvider>
-                    )}
+                                <EditorOverlayStage entities={entities} />
+                            </ModRegistryProvider>
+                        )}
+                    </EditorPreviewProvider>
                 </WorldContext.Provider>
             </SocketContext.Provider>
         </div>
