@@ -61,7 +61,7 @@ describe('createPortalLookup', () => {
             expect(a).toEqual({ name: 'カフェ', thumbnail: 'https://example.com/cafe.png' });
             expect(b).toBe(a);
             expect(fetchRoom).toHaveBeenCalledTimes(1);
-            expect(fetchRoom).toHaveBeenCalledWith('abc');
+            expect(fetchRoom).toHaveBeenCalledWith('abc', expect.any(AbortSignal));
         });
 
         it('入れない部屋（公開範囲・招待）と満員の部屋は locked', async () => {
