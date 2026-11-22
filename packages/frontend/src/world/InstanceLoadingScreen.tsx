@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { css, cx } from '@/styled-system/css';
 import type { LoadingStage, StageStatus } from './useInstanceLoading';
 
@@ -83,7 +84,58 @@ const labelColorClass: Record<StageStatus, string> = {
 };
 
 /**
- * インスタンス接続のロード画面。段階別ステータスと総合進捗バーを表示し、
+ * ワールドのサムネイル。読み込みの中でいちばん先に取りに行き（fetchPriority high）、届いたら出す。
+ * 後ろには同じ画像をぼかして敷く（2 枚目は同じ URL なのでもう一度は取りに行かない）。
+ */
+function WorldThumbnail({ src }: { src: string }) {
+    const [state, setState] = useState<'loading' | 'loaded' | 'failed'>('loading');
+    // 読めなければ場所も空けない（名前と進み具合だけにする）
+    if (state === 'failed') return null;
+    const loaded = state === 'loaded';
+    return (
+        <>
+            <img
+                src={src}
+                alt=""
+                aria-hidden="true"
+                className={css({
+                    position: 'absolute',
+                    inset: '-40px',
+                    width: 'calc(100% + 80px)',
+                    maxWidth: 'none',
+                    height: 'calc(100% + 80px)',
+                    objectFit: 'cover',
+                    filter: 'blur(28px) brightness(0.45)',
+                    transition: 'opacity 400ms ease',
+                    pointerEvents: 'none',
+                })}
+                style={{ opacity: loaded ? 1 : 0 }}
+            />
+            <img
+                src={src}
+                alt=""
+                fetchPriority="high"
+                decoding="async"
+                onLoad={() => setState('loaded')}
+                onError={() => setState('failed')}
+                className={css({
+                    position: 'relative',
+                    width: 'min(640px, 100%)',
+                    aspectRatio: '16 / 9',
+                    objectFit: 'cover',
+                    borderRadius: '16px',
+                    boxShadow: 'modal',
+                    bg: 'hudActionHover',
+                    transition: 'opacity 400ms ease',
+                })}
+                style={{ opacity: loaded ? 1 : 0 }}
+            />
+        </>
+    );
+}
+
+/**
+ * インスタンス接続のロード画面。ワールドのサムネイルを先に出し、段階別ステータスと総合進捗バーを表示する。
  * 失敗時はホームへ戻る導線を出す。
  */
 export function InstanceLoadingScreen({
@@ -111,6 +163,7 @@ export function InstanceLoadingScreen({
                 color: 'white',
                 gap: '24px',
                 px: '6',
+                overflow: 'hidden',
                 transition: 'opacity 500ms ease-in-out',
             })}
             style={{
@@ -118,36 +171,24 @@ export function InstanceLoadingScreen({
                 pointerEvents: fadingOut ? 'none' : 'auto',
             }}
         >
-            {thumbnail ? (
-                <img
-                    src={thumbnail}
-                    alt=""
-                    className={css({
-                        width: '120px',
-                        height: '120px',
-                        objectFit: 'cover',
-                        borderRadius: '24px',
-                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
-                    })}
-                />
-            ) : (
-                <div
-                    className={css({
-                        width: '120px',
-                        height: '120px',
-                        borderRadius: '24px',
-                        backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                    })}
-                />
-            )}
+            {thumbnail && <WorldThumbnail key={thumbnail} src={thumbnail} />}
 
-            <h2 className={css({ fontSize: '22px', fontWeight: 'bold', letterSpacing: '0.04em', textAlign: 'center' })}>
+            <h2
+                className={css({
+                    position: 'relative',
+                    fontSize: '22px',
+                    fontWeight: 'bold',
+                    letterSpacing: '0.04em',
+                    textAlign: 'center',
+                })}
+            >
                 {worldName || (failed ? '接続に失敗しました' : '接続中...')}
             </h2>
 
             {failed ? (
                 <div
                     className={css({
+                        position: 'relative',
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
@@ -191,6 +232,7 @@ export function InstanceLoadingScreen({
             ) : (
                 <div
                     className={css({
+                        position: 'relative',
                         width: 'full',
                         maxWidth: '360px',
                         display: 'flex',
