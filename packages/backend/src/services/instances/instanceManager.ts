@@ -16,6 +16,7 @@ import {
     canStartInstance,
     type InstanceAudience,
     isPublishable,
+    WorldSourceKind,
 } from '@ubichill/shared';
 import { appConfig } from '../../config';
 import { logger } from '../../utils/logger';
@@ -30,8 +31,13 @@ export type CloseInstanceResult =
 /** 公開範囲による入室拒否。再試行しても結果は変わらない（障害による失敗と区別する）。 */
 export class InstanceJoinRejected extends Error {}
 
-/** 作れなかった理由。forbidden はワールドの公開範囲で断ったもの（送り直しても変わらない）。 */
-export type InstanceCreateFailure = { error: string; reason?: 'forbidden' };
+/**
+ * 作れなかった理由。forbidden はワールドの公開範囲で断ったもの（送り直しても変わらない）。retry は外部のワールドの作者を
+ * いま確かめられないもの（少し待てば作れることがある）。
+ */
+export type InstanceCreateFailure = { error: string; reason?: 'forbidden' | 'retry' };
+
+export const AUTHOR_PENDING_MESSAGE = 'ワールドの作者をまだ確認できていません。少し待ってからもう一度試してください';
 
 export const PRIVATE_WORLD_MESSAGE = 'プライベートのワールドには、作者しかインスタンスを作れません';
 
@@ -54,6 +60,13 @@ class InstanceManager {
         }
         const world = resolution.world;
         if (!canStartInstance(world, leaderId)) return { error: PRIVATE_WORLD_MESSAGE, reason: 'forbidden' };
+        // 作者を名乗る外部のワールドは、作者を確かめられるまで作らない（確かめられない間は公開範囲も確かめきれないため）
+        if (
+            world.identity?.status === 'verified' &&
+            world.identity.authorPending &&
+            world.source.kind !== WorldSourceKind.Local
+        )
+            return { error: AUTHOR_PENDING_MESSAGE, reason: 'retry' };
 
         const maxUsers = request.settings?.maxUsers ?? world.capacity.default;
         const cappedMaxUsers = Math.min(maxUsers, world.capacity.max);

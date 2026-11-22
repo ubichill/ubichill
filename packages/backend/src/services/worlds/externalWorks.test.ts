@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import yaml from 'yaml';
 import {
     authorSharePath,
+    authorWorldOf,
     confirmPublishedMod,
     type FetchedJson,
     localAuthorWorldOf,
@@ -386,5 +387,51 @@ describe('localAuthorWorldOf', () => {
             localAuthorWorldOf(verified('youkan@ubichill.com', 'acct:youkan@ubichill.com/a/b'), 'ubichill.com'),
         ).toBeUndefined();
         expect(localAuthorWorldOf(verified('@ubichill.com', 'acct:@ubichill.com/w'), 'ubichill.com')).toBeUndefined();
+    });
+});
+
+describe('authorWorldOf', () => {
+    it('確かめた作者は confirmed、確かめられない間は名乗る作者と署名の対象の名前（confirmed ではない）', () => {
+        expect(
+            authorWorldOf({
+                status: 'verified',
+                worldId: 'acct:aya@author.example/garden',
+                author: 'aya@author.example',
+            }),
+        ).toEqual({ handle: 'aya', domain: 'author.example', name: 'garden', confirmed: true });
+        expect(
+            authorWorldOf({
+                status: 'verified',
+                worldId: 'ed25519:abc/garden',
+                authorPending: true,
+                claimedAuthor: 'aya@author.example',
+            }),
+        ).toEqual({ handle: 'aya', domain: 'author.example', name: 'garden', confirmed: false });
+    });
+
+    it('作者を名乗らない・確かめて違った（pending でない鍵だけの識別）・形の違う名前は undefined', () => {
+        expect(authorWorldOf({ status: 'verified', worldId: 'ed25519:abc/garden' })).toBeUndefined();
+        expect(
+            authorWorldOf({ status: 'verified', worldId: 'ed25519:abc/garden', claimedAuthor: 'aya@author.example' }),
+        ).toBeUndefined();
+        expect(
+            authorWorldOf({
+                status: 'verified',
+                worldId: 'ed25519:abc/',
+                authorPending: true,
+                claimedAuthor: 'aya@a.example',
+            }),
+        ).toBeUndefined();
+        expect(authorWorldOf({ status: 'unsigned' })).toBeUndefined();
+    });
+
+    it('確かめられない間の名乗りは、このサーバーの作者のワールドとして扱わない（localAuthorWorldOf）', () => {
+        const pending = {
+            status: 'verified',
+            worldId: 'ed25519:abc/w',
+            authorPending: true as const,
+            claimedAuthor: 'aya@home.example',
+        };
+        expect(localAuthorWorldOf(pending, 'home.example')).toBeUndefined();
     });
 });

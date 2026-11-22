@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
     findByAuthorAndWorldName: vi.fn(),
     findByAuthorAndAlias: vi.fn(),
     findState: vi.fn(),
+    /** 鍵を確かめられない作者（作者のサーバーへの取得の上限を使い切られたときなど） */
+    pending: new Set<string>(),
 }));
 
 vi.mock('../../lib/safeFetch', () => ({
@@ -29,7 +31,9 @@ vi.mock('../../lib/safeFetch', () => ({
     assertPublicUrl: vi.fn(),
 }));
 vi.mock('../authors/authorKeyService', () => ({
-    isAuthorKey: vi.fn(async () => ({ status: 'confirmed' })),
+    isAuthorKey: vi.fn(async (author: string) =>
+        mocks.pending.has(author) ? { status: 'pending' } : { status: 'confirmed' },
+    ),
     resolveAuthorDisplayName: vi.fn(async () => undefined),
     invalidateAuthorKey: vi.fn(),
 }));
@@ -141,6 +145,7 @@ beforeAll(() => {
 
 beforeEach(() => {
     mocks.files.clear();
+    mocks.pending.clear();
     mocks.created.length = 0;
     worldRegistry.invalidateResolvedWorlds();
     mocks.findByHandle.mockImplementation(async (handle: string) =>
@@ -220,5 +225,69 @@ describe('作者がほかのサーバーのアカウントのワールドの写�
         });
         // YAML・lock・署名の 3 つだけ
         expect(vi.mocked(safeFetch).mock.calls.map(([u]) => u)).toHaveLength(3);
+    });
+});
+
+describe('作者を確かめられない間（名乗っているだけ）の写し', () => {
+    const canonical = (name: string) => `https://author.example/api/v1/authors/aya/worlds/${name}.yaml`;
+
+    it('ほかのサーバーの作者: 正規の URL が private なら、確かめられなくても 403（取得の上限を使い切らせても抜けない）', async () => {
+        mocks.pending.add('aya@author.example');
+        await host(canonical('locked'), 'aya@author.example', 'locked', { [WORLD_VISIBILITY_HEADER]: 'private' });
+        const url = mirror('locked');
+        await host(url, 'aya@author.example', 'locked');
+        const resolution = await worldRegistry.resolveRefDetailed(url);
+        expect(resolution.ok && resolution.world.identity).toMatchObject({ authorPending: true });
+        expect(resolution.ok && resolution.world.visibility).toBe('private');
+        for (const user of LOCAL_USERS) {
+            expect(await instanceManager.createInstance({ worldId: url }, user)).toMatchObject({ reason: 'forbidden' });
+        }
+    });
+
+    it('正規の URL が public でも、作者を確かめられるまでは作らない（少し待って試し直す）', async () => {
+        mocks.pending.add('aya@author.example');
+        await host(canonical('wait'), 'aya@author.example', 'wait', { [WORLD_VISIBILITY_HEADER]: 'public' });
+        const url = mirror('wait');
+        await host(url, 'aya@author.example', 'wait');
+        expect(await instanceManager.createInstance({ worldId: url }, 'bob')).toMatchObject({ reason: 'retry' });
+        expect(mocks.created).toEqual([]);
+    });
+
+    it('このサーバーの作者のプライベートのワールドを名乗れば 403。パブリックでも作者の ID は付けない', async () => {
+        mocks.pending.add('aya@ubichill.example');
+        await ayaWorld('secret2', 'private');
+        const url = mirror('claim');
+        await host(url, 'aya@ubichill.example', 'secret2');
+        expect(await instanceManager.createInstance({ worldId: url }, 'bob')).toMatchObject({ reason: 'forbidden' });
+        // 作者本人の ID でも、名乗っているだけの写しからは作れない（作者の ID を付けない）
+        expect(await instanceManager.createInstance({ worldId: url }, AYA_ID)).toMatchObject({ reason: 'forbidden' });
+
+        // このサーバーのワールドの方は確かめ終えている（DB の作者の確認が落ちるのは写しを読む間だけ）
+        mocks.pending.clear();
+        await ayaWorld('open2', 'public');
+        expect((await worldRegistry.getWorld('db-open2'))?.visibility).toBe('public');
+        mocks.pending.add('aya@ubichill.example');
+        const open = mirror('claim-open');
+        await host(open, 'aya@ubichill.example', 'open2');
+        const resolution = await worldRegistry.resolveRefDetailed(open);
+        expect(resolution.ok && resolution.world.authorId).toBeUndefined();
+        expect(await instanceManager.createInstance({ worldId: open }, 'bob')).toMatchObject({ reason: 'retry' });
+    });
+});
+
+describe('正規の URL とみなす条件', () => {
+    it('http・ほかのポートで同じパスに置いたもの（ヘッダー無し）は正規の URL とみなさず、https の正規の URL を確かめる', async () => {
+        await host('https://author.example/api/v1/authors/aya/worlds/scheme.yaml', 'aya@author.example', 'scheme', {
+            [WORLD_VISIBILITY_HEADER]: 'private',
+        });
+        for (const url of [
+            'http://author.example/api/v1/authors/aya/worlds/scheme.yaml',
+            'https://author.example:8443/api/v1/authors/aya/worlds/scheme.yaml',
+        ]) {
+            await host(url, 'aya@author.example', 'scheme');
+            expect(await instanceManager.createInstance({ worldId: url }, 'bob'), url).toMatchObject({
+                reason: 'forbidden',
+            });
+        }
     });
 });

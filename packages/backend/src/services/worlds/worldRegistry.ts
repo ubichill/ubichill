@@ -163,11 +163,14 @@ export function asUnsignedRepositoryWorld(hosted: HostedWorldDocument): HostedWo
 
 const serveUnsignedRepositoryWorlds = (): boolean => process.env.WORLDS_SERVE_UNSIGNED_REPOSITORY === 'true';
 
-/** 同じワールドのファイルか（開発の http も同じとみなすので、スキームは比べない）。 */
-function sameWorldFile(a: string, b: string): boolean {
+/**
+ * 取ってきた URL が作者のサーバーの正規の URL そのものか。https で、オリジン（スキーム・ホスト・ポート）とパスが同じときだけ
+ * （http やほかのポートで配られたものはヘッダーが付いていなくても正規の URL とみなさず、正規の URL を確かめに行く）。
+ */
+function isCanonicalFile(url: string, canonical: string): boolean {
     try {
-        const [x, y] = [new URL(normalizeWorldUrl(a)), new URL(normalizeWorldUrl(b))];
-        return x.host === y.host && x.pathname === y.pathname && x.search === y.search;
+        const [x, y] = [new URL(normalizeWorldUrl(url)), new URL(canonical)];
+        return y.protocol === 'https:' && x.origin === y.origin && x.pathname === y.pathname && x.search === '';
     } catch {
         return false;
     }
@@ -649,27 +652,27 @@ class WorldRegistry {
      * - 作者がこのサーバーのアカウント: その作者のワールド（以前の名前を含む）の今の公開範囲と作者の ID
      * - 作者がほかのサーバー: 作者のサーバーの正規の URL のヘッダー（外部のワールドと同じく 5 分覚える）。正規の URL を
      *   取れない・無い（消した・名前を変えたあと）ならパブリック。取ってきた URL がそのワールドの正規の URL なら、そのヘッダーのまま
-     * 署名の無い写し（署名を外して置き直したもの）は別のワールド（未署名）なので、ここでは扱えない。
+     * 作者を確かめられなかった間（名乗っているだけ）は閉じる側にだけ当てる（プライベートにはするが、作者の ID は付けず、
+     * パブリックにもしない）。署名の無い写し（署名を外して置き直したもの）は別のワールド（未署名）なので、ここでは扱えない。
      */
     private async _withAuthorVisibility(url: string, resolution: WorldResolution): Promise<WorldResolution> {
         if (!resolution.ok) return resolution;
         const { world } = resolution;
         const owner = authorWorldOf(world.identity);
         if (!owner) return resolution;
+        const closed: WorldResolution = { ok: true, world: asRemotePrivateWorld(world) };
         if (owner.domain === selfDomain()) {
-            if (world.identity?.status === 'verified' && world.identity.authorPending) return resolution;
             const located = await this._locate(owner.handle, owner.name);
             if (!located?.record) return resolution;
             const local = await this.resolveLocal(located.id);
             const visibility: WorldVisibility = local.ok ? (local.world.visibility ?? 'public') : 'private';
+            if (!owner.confirmed) return visibility === 'private' ? closed : resolution;
             return { ok: true, world: { ...world, visibility, authorId: located.record.authorId } };
         }
         const canonical = canonicalWorldUrl(owner);
-        if (sameWorldFile(url, canonical)) return resolution;
+        if (isCanonicalFile(url, canonical)) return resolution;
         const upstream = await this._remoteCache.resolve(canonical);
-        return upstream.ok && upstream.world.visibility === 'private'
-            ? { ok: true, world: asRemotePrivateWorld(world) }
-            : resolution;
+        return upstream.ok && upstream.world.visibility === 'private' ? closed : resolution;
     }
 
     /** 外部のワールドを取り直して解決する（作者が公開し直したのを確かめ直すとき。呼び出し側で回数を抑えること）。 */

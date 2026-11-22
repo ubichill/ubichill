@@ -204,19 +204,31 @@ export function worldConfirmation<
 /** 作者の共有ページのパス（`/@handle/name`）。 */
 export const authorSharePath = (handle: string, name: string): string => `/@${handle}/${name}`;
 
-type IdentityLike = { status: string; worldId?: string; author?: string; authorPending?: true } | undefined;
+type IdentityLike =
+    | { status: string; worldId?: string; author?: string; authorPending?: true; claimedAuthor?: string }
+    | undefined;
 
 /**
- * 署名が名乗る作者のワールド（作者のアカウントのドメイン・ID と、ワールドの名前）。識別子が作者と食い違う・形が違うなら
- * undefined。作者の確認待ち（authorPending）でも返す（公開範囲は作者のサーバーに聞くので、閉じる側に使える）。
+ * 署名の作者のワールド（作者のアカウントのドメイン・ID と、ワールドの名前）。識別子が作者と食い違う・形が違うなら undefined。
+ * confirmed は作者の鍵を確かめられたか。確かめられなかった間（authorPending）は、署名が名乗る作者（claimedAuthor）と
+ * 署名の対象の名前で返す。名乗っているだけなので、公開範囲を閉じる側にだけ使う。
  */
-export function authorWorldOf(identity: IdentityLike): { handle: string; domain: string; name: string } | undefined {
-    if (identity?.status !== 'verified' || !identity.author) return undefined;
-    const account = parseAuthorAccount(identity.author);
-    if (!account) return undefined;
-    const prefix = authorWorldIdOf(identity.author, '');
-    const name = identity.worldId?.startsWith(prefix) ? identity.worldId.slice(prefix.length) : '';
-    return /^[a-z0-9-]+$/.test(name) ? { handle: account.handle, domain: account.domain, name } : undefined;
+export function authorWorldOf(
+    identity: IdentityLike,
+): { handle: string; domain: string; name: string; confirmed: boolean } | undefined {
+    if (identity?.status !== 'verified') return undefined;
+    const confirmed = !!identity.author && !identity.authorPending;
+    const author = confirmed ? identity.author : identity.authorPending ? identity.claimedAuthor : undefined;
+    const account = author ? parseAuthorAccount(author) : null;
+    if (!author || !account) return undefined;
+    const worldId = identity.worldId ?? '';
+    // 確かめた作者の識別子は `acct:<作者>/<名前>`、確かめられなかった間は `ed25519:<鍵>/<名前>`
+    const name = confirmed
+        ? worldId.startsWith(authorWorldIdOf(author, ''))
+            ? worldId.slice(authorWorldIdOf(author, '').length)
+            : ''
+        : worldId.slice(worldId.lastIndexOf('/') + 1);
+    return /^[a-z0-9-]+$/.test(name) ? { handle: account.handle, domain: account.domain, name, confirmed } : undefined;
 }
 
 /**
@@ -227,8 +239,10 @@ export function localAuthorWorldOf(
     identity: IdentityLike,
     domain: string,
 ): { handle: string; name: string } | undefined {
-    const owner = identity?.authorPending ? undefined : authorWorldOf(identity);
-    return owner && owner.domain === domain.toLowerCase() ? { handle: owner.handle, name: owner.name } : undefined;
+    const owner = authorWorldOf(identity);
+    return owner?.confirmed && owner.domain === domain.toLowerCase()
+        ? { handle: owner.handle, name: owner.name }
+        : undefined;
 }
 
 /** 作者のサーバーがそのワールドを配る正規の URL（公開範囲のヘッダーはここに付く）。 */

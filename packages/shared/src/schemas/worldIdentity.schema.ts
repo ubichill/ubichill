@@ -40,6 +40,11 @@ export const WorldIdentitySchema = z.discriminatedUnion('status', [
         authorCheckedAt: z.string().datetime().optional(),
         /** 作者を名乗っているが、いまは確認できなかった（取得の上限など）。作者は付けず、すぐ確認し直す。 */
         authorPending: z.literal(true).optional(),
+        /**
+         * 確認できなかった間（authorPending）の、署名が名乗る作者。確かめていないので作者としては使わない
+         * （表示・作者の ID にしない）。公開範囲を閉じる側に当てるためだけに持つ。
+         */
+        claimedAuthor: AuthorAccountSchema.optional(),
     }),
     z.object({
         status: z.literal('unsigned'),

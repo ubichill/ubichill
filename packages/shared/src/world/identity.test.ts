@@ -321,11 +321,13 @@ describe('作者アカウント（author）', () => {
             (() => Promise.reject(new Error('down'))) as AuthorKeyCheck,
         ]) {
             const verdict = await verifyWorldSignature(doc, sig, fakeCrypto, check);
-            expect(verdict).toMatchObject({ status: 'verified', authorPending: true });
+            // 名乗っている作者は claimedAuthor にだけ残す（公開範囲を閉じる側に使う。作者としては使わない）
+            expect(verdict).toMatchObject({ status: 'verified', authorPending: true, claimedAuthor: AUTHOR });
             expect(verdict).not.toHaveProperty('author');
         }
         const unconfirmed = await verifyWorldSignature(doc, sig, fakeCrypto, resolverFor({}));
         expect(unconfirmed).not.toHaveProperty('authorPending');
+        expect(unconfirmed).not.toHaveProperty('claimedAuthor');
     });
 
     it('確認の古さは、作者が付いていて確認時刻があるときだけ判定する（自サーバー・未署名は古くならない）', () => {
