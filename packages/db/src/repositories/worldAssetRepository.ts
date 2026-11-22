@@ -1,6 +1,8 @@
+import { WORLD_ASSET_REFERENCE_PATTERN } from '@ubichill/shared';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../index';
-import { worldAssets } from '../schema';
+import { worldAssets, worldDrafts, worldVersions } from '../schema';
+import { lockWorldAssetReferences } from './worldAssetReferenceLock';
 
 export interface WorldAssetBlob {
     hash: string;
@@ -19,6 +21,12 @@ export interface WorldAssetRecord {
 
 export type AddWorldAssetOutcome = 'added' | 'exists' | 'over-quota';
 
+export interface RemovedWorldAsset {
+    ownerId: string;
+    hash: string;
+    byteSize: number;
+}
+
 const metadata = {
     hash: worldAssets.hash,
     width: worldAssets.width,
@@ -30,7 +38,8 @@ const metadata = {
 /** ワールドの作者が上げた画像。 */
 export const worldAssetRepository = {
     /**
-     * 上限の内なら足す。同じ人が同じ画像を上げ直したときは何もしない（数えない）。
+     * 上限の内なら足す。同じ人が同じ画像を上げ直したときは数えず、created_at だけ今にする
+     * （使われていない画像の掃除の猶予を数え直す。上げ直してまだ保存していない画像を消さない）。
      * 同じ人の同時のアップロードで上限を越えないよう、持ち主ごとに順番に数える。
      */
     async add(
@@ -40,10 +49,12 @@ export const worldAssetRepository = {
     ): Promise<AddWorldAssetOutcome> {
         return db.transaction(async (tx) => {
             await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`world-assets:${ownerId}`}, 0))`);
+            // 掃除が同じ行を消している途中なら、消し終わるのを待って 0 行になり、下で足し直す
             const [existing] = await tx
-                .select({ hash: worldAssets.hash })
-                .from(worldAssets)
-                .where(and(eq(worldAssets.ownerId, ownerId), eq(worldAssets.hash, image.hash)));
+                .update(worldAssets)
+                .set({ createdAt: sql`now()` })
+                .where(and(eq(worldAssets.ownerId, ownerId), eq(worldAssets.hash, image.hash)))
+                .returning({ hash: worldAssets.hash });
             if (existing) return 'exists';
             const [usage] = await tx
                 .select({
@@ -100,6 +111,45 @@ export const worldAssetRepository = {
             .from(worldAssets)
             .where(eq(worldAssets.ownerId, ownerId))
             .orderBy(desc(worldAssets.createdAt));
+    },
+
+    /**
+     * created_at が cutoff より前で、このサーバーのどのワールドの定義（下書き・版）にも出てこない画像を limit 枚まで消し、
+     * 消したものを返す。だれのワールドから指されていても残す（複製したワールドはほかの人の画像を指す）。
+     * 定義は 1 回だけ読んでハッシュを抜き出す（画像ごとに全部の定義を探すと、画像の数 × 定義の大きさになる）。
+     * 掃除と同時の上げ直し（created_at を今にする）が先に終われば、DELETE が行を読み直して消さない。
+     * 定義の保存とは {@link lockWorldAssetReferences} で順番にする（1 回の間、保存を待たせる）。
+     * DELETE のスナップショットをロックの後に取るため READ COMMITTED に固定する（REPEATABLE READ だと最初の文で決まり、競合が戻る）。
+     */
+    async removeUnreferenced(cutoff: Date, limit: number): Promise<RemovedWorldAsset[]> {
+        return db.transaction(
+            async (tx) => {
+                await lockWorldAssetReferences(tx, 'sweep');
+                const rows = await tx.execute<{ owner_id: string; hash: string; byte_size: number }>(sql`
+                WITH referenced AS MATERIALIZED (
+                    SELECT DISTINCT m[1] AS hash
+                    FROM (
+                        SELECT ${worldDrafts.definition}::text AS body FROM ${worldDrafts}
+                        UNION ALL
+                        SELECT ${worldVersions.definition}::text AS body FROM ${worldVersions}
+                    ) d
+                    CROSS JOIN LATERAL regexp_matches(d.body, ${WORLD_ASSET_REFERENCE_PATTERN}, 'g') AS m
+                ),
+                doomed AS (
+                    SELECT a.owner_id, a.hash FROM ${worldAssets} a
+                    WHERE a.created_at < ${cutoff.toISOString()}::timestamptz
+                      AND NOT EXISTS (SELECT 1 FROM referenced r WHERE r.hash = a.hash)
+                    LIMIT ${limit}
+                    FOR UPDATE SKIP LOCKED
+                )
+                DELETE FROM ${worldAssets} a USING doomed
+                WHERE a.owner_id = doomed.owner_id AND a.hash = doomed.hash
+                  AND a.created_at < ${cutoff.toISOString()}::timestamptz
+                RETURNING a.owner_id, a.hash, a.byte_size`);
+                return rows.map((row) => ({ ownerId: row.owner_id, hash: row.hash, byteSize: row.byte_size }));
+            },
+            { isolationLevel: 'read committed' },
+        );
     },
 
     /** 消せたら true。ほかの人が同じ画像を上げていれば、その人の分は残る（URL は使い続けられる）。 */

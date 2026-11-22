@@ -15,6 +15,12 @@ export const WORLD_ASSET_QUOTA = { count: 200, bytes: 200 * 1024 * 1024 } as con
 /** 配信するパス（`PUBLIC_BASE_URL` の後ろに付ける） */
 export const worldAssetPath = (hash: string): string => `/api/v1/assets/${hash}.webp`;
 
+/**
+ * 文字列（ワールドの定義）の中で画像を指している部分を探す正規表現（Postgres と JS の両方で同じ意味）。1 つ目の括弧がハッシュ。
+ * 使われていない画像の掃除が使う。{@link worldAssetPath} の形を変えたらこれも変える（合わないと、使われている画像を消す）。
+ */
+export const WORLD_ASSET_REFERENCE_PATTERN = '([A-Za-z0-9_-]{43})\\.webp';
+
 /** `<hash>.webp` からハッシュ（SHA-256 の base64url）を取り出す。形が違えば null。 */
 export function worldAssetHashOf(file: string): string | null {
     const match = /^([A-Za-z0-9_-]{43})\.webp$/.exec(file);
