@@ -1,7 +1,7 @@
 /**
  * ユーザーが公開した作品（作ったワールド・外部に置いたワールドと mod）。ユーザーページ（`/users/:userId/worlds`・`/mods`）と
  * 連合の固定ノートで同じ条件にする:
- * - 本体に作ったワールド: 署名して公開したもの（isPublishable）だけ
+ * - 本体に作ったワールド: 署名して公開したもの（isPublishable）でパブリックのものだけ
  * - 外部の作品: いま本人の署名付きで配られていると確かめられたものだけ（externalWorkService）
  * - リポジトリ（worlds/）のワールド: 作者アカウントが本人のもの（ユーザーページだけ。画面からは編集できない）
  */
@@ -70,13 +70,15 @@ const hostedWorldView = (w: ResolvedWorld) => ({
 });
 
 export function createPublishedWorks(deps: PublishedWorksDeps) {
-    /** 本体に作って署名したワールド（作った時刻つき。作った順は DB の順のまま）。 */
+    /** 本体に作って署名した、パブリックのワールド（作った時刻つき。作った順は DB の順のまま）。 */
     const hostedWorlds = async (userId: string): Promise<Array<{ world: ResolvedWorld; createdAt: Date }>> => {
         const records = await deps.worldsByAuthor(userId);
         const resolved = await Promise.all(records.map((r) => deps.getWorld(r.id)));
         return records.flatMap((record, i) => {
             const world = resolved[i];
-            return world && isPublishable(world.identity) ? [{ world, createdAt: record.createdAt }] : [];
+            return world && isPublishable(world.identity) && world.visibility !== 'private'
+                ? [{ world, createdAt: record.createdAt }]
+                : [];
         });
     };
 

@@ -4,7 +4,7 @@ import type { worldDrafts, worlds, worldVersions } from '../schema';
 /** ワールドの所有と名前（中身は版と下書き）。0023 より前の列は含めない（新しいコードは読まない）。 */
 export type WorldRecord = Pick<
     typeof worlds.$inferSelect,
-    'id' | 'authorId' | 'worldName' | 'currentVersionId' | 'createdAt' | 'updatedAt'
+    'id' | 'authorId' | 'worldName' | 'currentVersionId' | 'visibility' | 'createdAt' | 'updatedAt'
 >;
 export type WorldVersionRecord = typeof worldVersions.$inferSelect;
 export type WorldDraftRecord = typeof worldDrafts.$inferSelect;

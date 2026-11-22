@@ -4,6 +4,7 @@ import { OVERLAY_MODES } from '../mod/entities';
 import { PackageAuthorSchema } from '../mod/packageRef';
 import { ModLockSchema } from './modLock.schema';
 import { WorldIdentitySchema } from './worldIdentity.schema';
+import { WorldVisibilitySchema } from './worldVisibility.schema';
 
 // ============================================
 // 定数
@@ -529,6 +530,8 @@ export const ResolvedWorldSchema = z.object({
     /** 識別結果（署名検証済み / 未署名）。解決側が付与する。 */
     identity: WorldIdentitySchema.optional(),
     requires: WorldRequirementsSchema.optional(),
+    /** このサーバーのワールドの公開範囲（公開の有無を含めたもの）。外部・同梱のワールドは付かない（パブリック）。 */
+    visibility: WorldVisibilitySchema.optional(),
 });
 
 export type ResolvedWorld = z.infer<typeof ResolvedWorldSchema>;

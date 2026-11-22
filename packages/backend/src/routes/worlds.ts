@@ -1,4 +1,4 @@
-import { LIMITS, ModLockSchema } from '@ubichill/shared';
+import { LIMITS, ModLockSchema, WorldVisibilitySchema } from '@ubichill/shared';
 import type { NextFunction, Request, Response } from 'express';
 import { Router } from 'express';
 import yaml from 'yaml';
@@ -281,9 +281,38 @@ router.put('/', requireSaver, saveLimiter, async (req, res) => {
 });
 
 /**
+ * PUT /api/v1/worlds/:worldId/visibility
+ * 公開範囲を変える（作者のみ）。body: `{ visibility: 'private' | 'public' }`。プライベートは作者だけがインスタンスを作れ、
+ * 一覧・ワールドに置くポータルの行き先から外れる。公開（署名した版）するまでは、どちらでもプライベートとして扱う。
+ */
+router.put('/:worldId/visibility', requireAuth, saveLimiter, async (req, res) => {
+    try {
+        if (!req.user) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+        const parsed = WorldVisibilitySchema.safeParse((req.body as { visibility?: unknown } | undefined)?.visibility);
+        if (!parsed.success) {
+            res.status(400).json({ error: '公開範囲は private か public です' });
+            return;
+        }
+        const changed = await worldRegistry.setVisibility(req.params.worldId as string, req.user.id, parsed.data);
+        if (!changed) {
+            res.status(404).json({ error: 'World not found' });
+            return;
+        }
+        federation?.featuredChanged(req.user.id);
+        res.json({ visibility: parsed.data });
+    } catch (error) {
+        logger.error('ワールドの公開範囲の変更エラー:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
  * GET /api/v1/worlds/:worldId/definition
  * エディタ用の定義（作成者のみ）。下書きがあれば下書きを返す。
- * 返り値: `{ definition, hasDraft, published, publishedVersion }`（definition は YAML と同等の構造）
+ * 返り値: `{ definition, hasDraft, published, publishedVersion, visibility }`（definition は YAML と同等の構造）
  */
 router.get('/:worldId/definition', requireAuth, async (req, res) => {
     try {

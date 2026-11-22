@@ -1,4 +1,4 @@
-import type { ModLock, WorldSignature } from '@ubichill/shared';
+import type { ModLock, WorldSignature, WorldVisibility } from '@ubichill/shared';
 import { and, count, desc, eq, gt, inArray, isNotNull, notExists, sql } from 'drizzle-orm';
 import { customAlphabet } from 'nanoid';
 import { type Database, db } from '../index';
@@ -48,6 +48,7 @@ const worldColumns = {
     authorId: worlds.authorId,
     worldName: worlds.worldName,
     currentVersionId: worlds.currentVersionId,
+    visibility: worlds.visibility,
     createdAt: worlds.createdAt,
     updatedAt: worlds.updatedAt,
 };
@@ -305,6 +306,16 @@ export const worldRepository = {
             .innerJoin(worldVersions, eq(worldVersions.worldId, worlds.id))
             .groupBy(worlds.id, worlds.authorId)
             .having(gt(count(worldVersions.id), 1));
+    },
+
+    /** 公開範囲を変える（作者のワールドだけ）。変えたら true。 */
+    async setVisibility(id: string, authorId: string, visibility: WorldVisibility): Promise<boolean> {
+        const results = await db
+            .update(worlds)
+            .set({ visibility })
+            .where(and(eq(worlds.id, id), eq(worlds.authorId, authorId)))
+            .returning({ id: worlds.id });
+        return results.length > 0;
     },
 
     /**

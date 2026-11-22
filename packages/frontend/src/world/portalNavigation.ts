@@ -27,7 +27,7 @@ export const usePortalNavigation = (): PortalNavigate | null => useContext(Porta
 export interface PortalDestination {
     name: string;
     thumbnail?: string;
-    /** 行き先の部屋に、見る人が入れない（公開範囲・招待）。ワールドへのポータルでは付けない */
+    /** 見る人が通れない（部屋: 公開範囲・招待・満員。ワールド: プライベートのワールド） */
     locked?: boolean;
 }
 

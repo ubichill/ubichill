@@ -195,6 +195,7 @@ export function OwnedWorldCard({
                     </span>
                     <span>v{world.version}</span>
                     {editable && <WorldIdentityBadge identity={world.identity} />}
+                    {editable && world.visibility === 'private' && <span>プライベート</span>}
                 </div>
                 {editable && world.problem && (
                     <p className={css({ fontSize: '11px', color: 'errorText', lineHeight: '1.4' })}>

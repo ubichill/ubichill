@@ -5,6 +5,7 @@ import {
     foreignKey,
     index,
     jsonb,
+    pgEnum,
     pgTable,
     primaryKey,
     text,
@@ -15,6 +16,9 @@ import {
 } from 'drizzle-orm/pg-core';
 import { nanoid } from 'nanoid';
 import { users } from './users';
+
+/** ワールドの公開範囲（shared の WORLD_VISIBILITIES）。公開（署名した版）するまでは、この値にかかわらずプライベート。 */
+export const worldVisibilityEnum = pgEnum('world_visibility', ['private', 'public']);
 
 /**
  * 自サーバーで公開・編集するワールド。中身は版（world_versions）と下書き（world_drafts）に持ち、ここは所有と名前だけ。
@@ -37,6 +41,8 @@ export const worlds = pgTable(
         worldName: varchar('world_name', { length: 50 }).notNull(),
         /** 公開中の版。未公開なら NULL（下書きを署名なしとして配る）。 */
         currentVersionId: varchar('current_version_id', { length: 21 }),
+        /** 作者の決めた公開範囲。プライベートは作者だけがインスタンスを作れ、ワールドに置くポータルの行き先にできない。 */
+        visibility: worldVisibilityEnum('visibility').notNull().default('public'),
         createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
         updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
     },

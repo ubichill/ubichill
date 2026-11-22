@@ -154,6 +154,58 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         }
     });
 
+    it('公開範囲: 下書きはプライベート、公開するとパブリック。作者がプライベートにすると一覧から外れ、作者しか部屋を作れない', async () => {
+        const { authorKeyRepository } = await import('@ubichill/db');
+        const { selfAccount } = await import('../authors/authorKeys');
+        const key = newTestSigningKey();
+        await authorKeyRepository.createLocal({
+            userId: AUTHOR,
+            kind: 'ci',
+            name: '公開範囲',
+            publicKey: key.publicKey,
+        });
+        const name = uniqueName('visibility');
+        const draft = await worldRegistry.saveBundle(AUTHOR, bundleOf(worldDef(name, '公開範囲')));
+        if (!draft.ok) throw new Error(draft.message);
+        const id = draft.world.id;
+        const listed = async () => (await worldRegistry.listWorlds('local')).some((w) => w.id === id);
+        try {
+            expect((await worldRegistry.resolveLocal(id)).ok && (await worldRegistry.getWorld(id))?.visibility).toBe(
+                'private',
+            );
+            expect(await instanceManager.createInstance({ worldId: id }, SYS)).toMatchObject({ reason: 'forbidden' });
+
+            const bundle = bundleOf(worldDef(name, '公開範囲'));
+            const sig = await signWorld(bundle, key, nodeWorldCrypto, { author: selfAccount(HANDLE) });
+            expect(await worldRegistry.saveBundle(AUTHOR, { ...bundle, signature: sig })).toMatchObject({
+                saved: 'published',
+            });
+            expect((await worldRegistry.getWorld(id))?.visibility).toBe('public');
+            expect(await listed()).toBe(true);
+            expect(await worldRegistry.publishableListItem(id)).toMatchObject({ id, visibility: 'public' });
+
+            // 作者でない人は変えられない
+            expect(await worldRegistry.setVisibility(id, SYS, 'private')).toBe(false);
+            expect(await worldRegistry.setVisibility(id, AUTHOR, 'private')).toBe(true);
+            // 変えたらすぐ（キャッシュを捨てて）効く
+            expect((await worldRegistry.getWorld(id))?.visibility).toBe('private');
+            expect(await listed()).toBe(false);
+            expect(await worldRegistry.publishableListItem(id)).toBeUndefined();
+            expect(await instanceManager.createInstance({ worldId: id }, SYS)).toMatchObject({ reason: 'forbidden' });
+            expect(await worldRegistry.getEditorDefinition(id)).toMatchObject({
+                published: true,
+                visibility: 'private',
+            });
+
+            expect(await worldRegistry.setVisibility(id, AUTHOR, 'public')).toBe(true);
+            expect(await listed()).toBe(true);
+        } finally {
+            await worldRegistry.deleteWorld(id);
+            const [env] = await authorKeyRepository.listByUser(AUTHOR);
+            if (env) await authorKeyRepository.revoke(AUTHOR, env.id, 'compromised');
+        }
+    });
+
     it('組の保存: 中身を書き換えず、同じ metadata.name は同じワールド、署名は外部と同じ規則で検証する', async () => {
         const key = newTestSigningKey();
         const name = uniqueName('bundle');
@@ -516,9 +568,9 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         const saved = await worldRegistry.saveBundle(AUTHOR, bundleOf(worldDef(uniqueName('inst'), 'インスタンス')));
         if (!saved.ok) throw new Error(saved.message);
         try {
-            // 共有 URL（/@handle/name）からも作れる
+            // 共有 URL（/@handle/name）からも作れる（下書きはプライベートなので作者が作る）
             const shareUrl = saved.world.url.replace(/\/api\/v1\/authors\/([^/]+)\/worlds\/([^/]+)\.yaml$/, '/@$1/$2');
-            const created = await instanceManager.createInstance({ worldId: shareUrl }, SYS);
+            const created = await instanceManager.createInstance({ worldId: shareUrl }, AUTHOR);
             expect('error' in created).toBe(false);
             if ('error' in created) return;
             const got = await instanceManager.getInstance(created.id);
@@ -584,7 +636,7 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
             const name = uniqueName('pinned');
             const v1 = await publish(name, '1.0.0');
             try {
-                const created = await instanceManager.createInstance({ worldId: v1.url }, SYS);
+                const created = await instanceManager.createInstance({ worldId: v1.url }, AUTHOR);
                 if ('error' in created) throw new Error(created.error);
                 const pinned = await instanceRepository.findById(created.id);
                 const [first] = await worldRepository.listVersions(v1.id);
@@ -614,7 +666,7 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         it('インスタンスが版を指していても、ワールドごと消せる（版の参照だけ外す）', async () => {
             const { instanceRepository } = await import('@ubichill/db');
             const v1 = await publish(uniqueName('delpinned'), '1.0.0');
-            const created = await instanceManager.createInstance({ worldId: v1.url }, SYS);
+            const created = await instanceManager.createInstance({ worldId: v1.url }, AUTHOR);
             if ('error' in created) throw new Error(created.error);
             try {
                 expect(await worldRegistry.deleteWorld(v1.id)).toBe(true);

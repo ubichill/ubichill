@@ -41,6 +41,20 @@ describe.skipIf(!RUN)('worldRepository (DB統合)', () => {
         expect(await worldRepository.findPublished(0)).toEqual([]);
     });
 
+    it('公開範囲は既定でパブリック。作者だけが変えられる', async () => {
+        const saved = await worldRepository.publish(
+            { authorId: LIST, worldName: 'visibility' },
+            publishInput(`visibility-${stamp}`),
+        );
+        if (saved.status !== 'published') throw new Error(saved.status);
+        expect((await worldRepository.findById(saved.worldId))?.visibility).toBe('public');
+        expect(await worldRepository.setVisibility(saved.worldId, SAME, 'private')).toBe(false);
+        expect((await worldRepository.findById(saved.worldId))?.visibility).toBe('public');
+        expect(await worldRepository.setVisibility(saved.worldId, LIST, 'private')).toBe(true);
+        expect((await worldRepository.findState(saved.worldId))?.world.visibility).toBe('private');
+        expect(await worldRepository.setVisibility('missing-world', LIST, 'public')).toBe(false);
+    });
+
     it('違う名前の作成を同時に送っても、作者ごとの上限を超えない（公開・下書きのどちらでも）', async () => {
         const results = await Promise.all(
             Array.from({ length: 8 }, (_, i) =>

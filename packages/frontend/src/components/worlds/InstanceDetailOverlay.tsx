@@ -1,4 +1,4 @@
-import { type Instance, isFullFor, type WorldListItem, worldOriginDomain } from '@ubichill/shared';
+import { canOpenRoomPortalTo, type Instance, isFullFor, type WorldListItem, worldOriginDomain } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { HudIcon } from '@/components/hud/HudIcon';
 import { useHudNavigation } from '@/components/hud/HudNavigationContext';
@@ -63,6 +63,7 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
     }, [instance.id, instance.world.id, worldRef]);
 
     const newInstance = useNewInstance({
+        world: instance.world,
         create: (options) => createInstance({ worldId: worldRef, ...options }),
         enter: (created) => onJoin(created.id),
     });
@@ -291,7 +292,7 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
                                     {isFull ? '満員' : needsInvite ? '招待が必要です' : 'このインスタンスに入る'}
                                 </button>
                             )}
-                            {portal && !isCurrent && (
+                            {portal && !isCurrent && canOpenRoomPortalTo(selected, viewerId) && (
                                 <button
                                     type="button"
                                     onClick={() => void openPortal()}
@@ -388,7 +389,8 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
                                 <button
                                     type="button"
                                     onClick={newInstance.start}
-                                    disabled={newInstance.busy}
+                                    disabled={newInstance.busy || newInstance.blocked !== null}
+                                    title={newInstance.blocked ?? undefined}
                                     className={css({
                                         display: 'flex',
                                         alignItems: 'center',

@@ -292,6 +292,7 @@ export * from './schemas';
 export { createModLock, lockedMods } from './schemas/modLock.schema';
 export * from './schemas/url.schema';
 export { withoutWorldLock } from './schemas/world.schema';
+export * from './schemas/worldVisibility.schema';
 export * from './server/serverInfo';
 export {
     confirmEnvelopeAuthor,
@@ -323,3 +324,4 @@ export * from './world/requirements';
 export * from './world/resolve';
 export * from './world/roomPortal';
 export * from './world/visibility';
+export * from './world/worldVisibility';

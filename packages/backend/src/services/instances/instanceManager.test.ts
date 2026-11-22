@@ -159,3 +159,43 @@ describe('作成（ポータルの先の部屋は空でもしばらく残す）'
         expect(created).not.toHaveProperty('heldUntil');
     });
 });
+
+describe('作成（ワールドの公開範囲）', () => {
+    const world = (visibility?: 'private' | 'public') => ({
+        ok: true as const,
+        world: {
+            id: 'w',
+            url: 'https://example.test/worlds/w',
+            version: '1',
+            displayName: 'W',
+            capacity: { default: 4, max: 8 },
+            authorId: 'aya',
+            ...(visibility ? { visibility } : {}),
+        },
+    });
+    beforeEach(() => {
+        mocks.create.mockClear();
+        mocks.findById.mockResolvedValue(room('public'));
+    });
+
+    it('プライベートのワールドは、作者でなければ作らずに断る（forbidden）', async () => {
+        mocks.resolveRefDetailed.mockResolvedValueOnce(world('private'));
+        const result = await instanceManager.createInstance({ worldId: 'w' }, 'bob');
+        expect(result).toEqual({ error: expect.stringContaining('プライベート'), reason: 'forbidden' });
+        expect(mocks.create).not.toHaveBeenCalled();
+    });
+
+    it('プライベートのワールドでも作者は作れ、部屋の情報に公開範囲が付く', async () => {
+        mocks.resolveRefDetailed.mockResolvedValueOnce(world('private'));
+        const created = await instanceManager.createInstance({ worldId: 'w' }, 'aya');
+        expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ leaderId: 'aya' }));
+        expect(created).toHaveProperty('world.visibility', 'private');
+    });
+
+    it('公開範囲を持たない（外部・同梱の）ワールドはだれでも作れ、公開範囲は付けない', async () => {
+        mocks.resolveRefDetailed.mockResolvedValueOnce(world());
+        const created = await instanceManager.createInstance({ worldId: 'w' }, 'bob');
+        expect(mocks.create).toHaveBeenCalled();
+        expect(created).not.toHaveProperty('world.visibility');
+    });
+});

@@ -91,6 +91,7 @@ export function InstanceTab({ currentInstanceId, onNavigate }: InstanceTabProps)
     };
 
     const newInstance = useNewInstance({
+        world,
         // 外部ワールドは id では自サーバーで解決できないので URL で作る
         create: async (options) => {
             if (!world) throw new Error('ワールドを読み込んでいます');
@@ -255,7 +256,8 @@ export function InstanceTab({ currentInstanceId, onNavigate }: InstanceTabProps)
                     <button
                         type="button"
                         onClick={newInstance.start}
-                        disabled={!world || newInstance.busy}
+                        disabled={!world || newInstance.busy || newInstance.blocked !== null}
+                        title={newInstance.blocked ?? undefined}
                         className={css(actionButtonBase, { bg: 'primary', color: 'textOnPrimary' })}
                     >
                         <svg

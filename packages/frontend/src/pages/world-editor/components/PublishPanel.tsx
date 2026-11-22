@@ -1,4 +1,6 @@
+import type { WorldVisibility } from '@ubichill/shared';
 import { ConsoleLevelIcon } from '@/components/console/ConsoleLevelIcon';
+import { ChoiceGroup } from '@/components/ui/ChoiceGroup';
 import { css } from '@/styled-system/css';
 import { type ActionFailure, failureTitle } from '../lib/actionFailure';
 import { blockingChecks, type CheckTarget, type EditorCheck } from '../lib/editorChecks';
@@ -15,6 +17,23 @@ interface PublishPanelProps {
     onCreateInstance: () => void;
     onSaveDraft: () => void;
     onPublish: () => void;
+    /** 公開範囲（保存済みのワールドだけ。新しいワールドは null で出さない） */
+    visibility: WorldVisibility | null;
+    published: boolean;
+    onVisibilityChange: (next: WorldVisibility) => void;
+}
+
+const VISIBILITY_CHOICES = [
+    { value: 'public', label: 'パブリック' },
+    { value: 'private', label: 'プライベート' },
+] as const;
+
+function visibilityNote(visibility: WorldVisibility, published: boolean): string {
+    if (visibility === 'private')
+        return 'インスタンスを作れるのはあなただけです。ワールドに置くポータルの行き先にもできません';
+    return published
+        ? 'だれでもインスタンスを作れ、ワールドに置くポータルの行き先にできます'
+        : '公開すると、だれでもインスタンスを作れ、ワールドに置くポータルの行き先にできます（公開するまではあなただけ）';
 }
 
 /**
@@ -32,6 +51,9 @@ export function PublishPanel({
     onCreateInstance,
     onSaveDraft,
     onPublish,
+    visibility,
+    published,
+    onVisibilityChange,
 }: PublishPanelProps) {
     const draftBlockedReason = blockingChecks(checks, 'draft')[0]?.message;
     const blockedReason = blockingChecks(checks, 'publish')[0]?.message;
@@ -143,6 +165,16 @@ export function PublishPanel({
                     </button>
                 </div>
             </div>
+            {visibility && (
+                <ChoiceGroup
+                    label="公開範囲"
+                    choices={VISIBILITY_CHOICES}
+                    value={visibility}
+                    description={visibilityNote(visibility, published)}
+                    disabled={saving}
+                    onChange={onVisibilityChange}
+                />
+            )}
             <button
                 type="button"
                 onClick={onPublish}

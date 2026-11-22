@@ -4,7 +4,7 @@ import type React from 'react';
 import { memo, useState } from 'react';
 import { css } from '@/styled-system/css';
 import { CloseIcon, LockIcon, PortalIcon } from './partIcons';
-import { portal, portalImage, portalName, portalWindow } from './portalLook';
+import { portal, portalImage, portalLockShade, portalName, portalWindow } from './portalLook';
 import { usePortalNavigation } from './portalNavigation';
 import { surfacePlacement } from './surfacePlacement';
 import { usePortalDestination } from './usePortalDestination';
@@ -68,7 +68,7 @@ const RoomPortalView = memo(function RoomPortalView({
                         )}
                     </span>
                     {locked && (
-                        <span className={lockShade}>
+                        <span className={portalLockShade}>
                             <LockIcon size="30%" />
                         </span>
                     )}
@@ -135,17 +135,6 @@ const ringArc = css({
     animationTimingFunction: 'linear',
     animationFillMode: 'forwards',
     _motionReduce: { animationName: 'none' },
-});
-
-const lockShade = css({
-    position: 'absolute',
-    inset: '0',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 'full',
-    bg: 'bannerShade',
-    color: 'textOnPrimary',
 });
 
 const owner = css({

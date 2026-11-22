@@ -15,6 +15,7 @@ import {
 import {
     type AuthorAccount,
     ENV_KEYS,
+    effectiveWorldVisibility,
     HANDLE_PATTERN,
     isPublishable,
     limitsFor,
@@ -32,6 +33,7 @@ import {
     type WorldSignatureInvalidReason,
     type WorldSource,
     WorldSourceKind,
+    type WorldVisibility,
     worldPublishProblem,
 } from '@ubichill/shared';
 import yaml from 'yaml';
@@ -150,6 +152,9 @@ export function asUnsignedRepositoryWorld(hosted: HostedWorldDocument): HostedWo
 }
 
 const serveUnsignedRepositoryWorlds = (): boolean => process.env.WORLDS_SERVE_UNSIGNED_REPOSITORY === 'true';
+
+/** 一覧（このサーバーの一覧・お気に入り・連合のピアへの一覧）に出すか。プライベートは作者のマイワールドにだけ出す。 */
+const isListed = (world: { visibility?: WorldVisibility }): boolean => world.visibility !== 'private';
 
 function claimedAuthorOf(hosted: HostedWorldDocument | undefined): AuthorAccount | null {
     const claimed = (hosted?.signature as { author?: unknown } | null | undefined)?.author;
@@ -346,7 +351,7 @@ class WorldRegistry {
         return scope === 'local' ? this._listLocalWorlds() : this._listGlobalWorlds();
     }
 
-    /** 自インスタンスのワールド一覧（署名検証済みのみ。未署名は URL を知っている人だけが入れる）。 */
+    /** 自インスタンスのワールド一覧（署名検証済みでパブリックのものだけ。未署名は URL を知っている人だけが入れる）。 */
     private async _listLocalWorlds(): Promise<WorldListItem[]> {
         // 下書き（公開中の版が無い）は一覧に出ないので引かない
         const allRecords = await worldRepository.findPublished(WorldRegistry.LOCAL_LIST_MAX);
@@ -376,7 +381,7 @@ class WorldRegistry {
         const repositoryListed = repositoryItems
             .flat()
             .filter((w) => isPublishable(w.identity) || serveUnsignedRepositoryWorlds());
-        return [...repositoryListed, ...dbItems.flat().filter((w) => isPublishable(w.identity))];
+        return [...repositoryListed, ...dbItems.flat().filter((w) => isPublishable(w.identity) && isListed(w))];
     }
 
     /**
@@ -903,10 +908,14 @@ class WorldRegistry {
     // 単発で入るなら resolveRef(URL)→instance 作成、永続的に見たいならピアをフォローする。
 
     /** エディタ用: 下書きがあれば下書き、無ければ本体の定義と、公開状態。 */
-    async getEditorDefinition(
-        worldId: string,
-    ): Promise<
-        | { definition: WorldDefinition; hasDraft: boolean; published: boolean; publishedVersion: string | null }
+    async getEditorDefinition(worldId: string): Promise<
+        | {
+              definition: WorldDefinition;
+              hasDraft: boolean;
+              published: boolean;
+              publishedVersion: string | null;
+              visibility: WorldVisibility;
+          }
         | undefined
     > {
         const state = await worldRepository.findState(worldId);
@@ -934,7 +943,19 @@ class WorldRegistry {
             published: isPublishable(world?.identity),
             // エディタが公開のたびに版を自動で上げるため（作者に版を意識させない）
             publishedVersion: state?.current?.version ?? null,
+            // 作者の決めた公開範囲（公開するまでは、これにかかわらずプライベート）
+            visibility: state?.world.visibility ?? 'public',
         };
+    }
+
+    /** 作者がワールドの公開範囲を変える。作者のワールドでなければ false。 */
+    async setVisibility(worldId: string, authorId: string, visibility: WorldVisibility): Promise<boolean> {
+        const changed = await worldRepository.setVisibility(worldId, authorId, visibility);
+        if (changed) {
+            this._forgetResolved(worldId);
+            this.events.broadcast({ type: 'world.changed', worldId });
+        }
+        return changed;
     }
 
     async deleteWorld(worldId: string): Promise<boolean> {
@@ -1167,7 +1188,10 @@ class WorldRegistry {
             { definition: served.definition, lock: served.lock, signature: served.signature },
             record.authorId,
         );
-        return resolution.ok && served.versionId ? { ...resolution, versionId: served.versionId } : resolution;
+        if (!resolution.ok) return resolution;
+        const published = !!served.versionId && isPublishable(resolution.world.identity);
+        const world = { ...resolution.world, visibility: effectiveWorldVisibility(record.visibility, published) };
+        return served.versionId ? { ok: true, world, versionId: served.versionId } : { ok: true, world };
     }
 
     /**
@@ -1235,7 +1259,8 @@ class WorldRegistry {
      */
     async publishableListItem(ref: string): Promise<WorldListItem | undefined> {
         const resolution = await this.resolveRefDetailed(ref);
-        if (!resolution.ok || !isPublishable(resolution.world.identity)) return undefined;
+        if (!resolution.ok || !isPublishable(resolution.world.identity) || !isListed(resolution.world))
+            return undefined;
         return this._toListItem(resolution.world);
     }
 
@@ -1266,6 +1291,7 @@ class WorldRegistry {
             authorName: w.authorName,
             mods: w.mods,
             identity: w.identity,
+            visibility: w.visibility,
             createdAt: rec ? rec.createdAt.toISOString() : undefined,
             updatedAt: rec ? rec.updatedAt.toISOString() : undefined,
         };

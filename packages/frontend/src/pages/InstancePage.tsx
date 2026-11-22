@@ -16,10 +16,11 @@ import { useSession } from '@/lib/session';
 import { useBlocks } from '@/lib/social/blocks';
 import { blockedAuthorsOf, blockedIdsOf } from '@/lib/social/blocksState';
 import { dismissToast, pushToast } from '@/lib/toast';
-import { fetchInstance, fetchWorld } from '@/lib/worlds/instancesApi';
-import { createPortalLookup } from '@/lib/worlds/portalDestination';
-import { portalPath } from '@/lib/worlds/portalPath';
+import { createInstance, fetchInstance, fetchInstances, fetchWorld } from '@/lib/worlds/instancesApi';
+import { createPortalLookup, portalWorldRef } from '@/lib/worlds/portalDestination';
+import { portalRoomPath } from '@/lib/worlds/portalPath';
 import { useRemoteVisit } from '@/lib/worlds/useRemoteVisit';
+import { worldPortalInstance } from '@/lib/worlds/worldPortalEntry';
 import { type InstanceFailure, type PortalGoal, WorldView } from '@/world';
 
 /** 失敗したら一定時間後に自動でホームへ戻す（ロード画面で詰まらないように）。 */
@@ -129,19 +130,38 @@ export function InstancePage() {
     // ポータル（core:portal）: 確かめてから部屋を出て、行き先へ。ワールドへのポータルはワールドのページ（そこで入室まで進む）、
     // 部屋へのポータルはその部屋（読み込み画面に行き先のサムネイルを出す）
     const { leaveWorld } = useSocket();
+    // ワールドに置くポータルは、行き先のワールドのパブリックの部屋へ（無ければ作る）。部屋を決めてから今の部屋を出る
+    // （決められなければ今の部屋に残る）。部屋へのポータルは、その部屋へ
+    const viewerId = session?.user.id ?? null;
     const goThroughPortal = useCallback(
         async (goal: PortalGoal, label: string, look?: { displayName: string; thumbnail?: string }) => {
-            if (!id || !(await confirm(`「${label}」へ移りますか？今の部屋から退出します。`))) return;
+            if (!id || !viewerId || !(await confirm(`「${label}」へ移りますか？今の部屋から退出します。`))) return;
+            const room =
+                goal.kind === 'room'
+                    ? roomPortalAddressFor(goal.room, id)
+                    : await worldPortalInstance(
+                          { fetchWorld, fetchInstances, createInstance },
+                          portalWorldRef(goal),
+                          viewerId,
+                      ).then(
+                          (instance) => instance.id,
+                          (e: unknown) => {
+                              pushToast(
+                                  e instanceof Error ? e.message : 'ポータルの先の部屋に入れませんでした',
+                                  'error',
+                              );
+                              return null;
+                          },
+                      );
+            if (!room) return;
             await leaveWorld();
-            if (goal.kind !== 'room') return navigate(portalPath(goal));
             const state: InstanceEntryState | undefined = look ? { worldData: look } : undefined;
-            navigate(portalPath({ kind: 'room', room: roomPortalAddressFor(goal.room, id) }), { state });
+            navigate(portalRoomPath(room), { state });
         },
-        [confirm, id, leaveWorld, navigate],
+        [confirm, id, leaveWorld, navigate, viewerId],
     );
 
     // ポータルに出す行き先（同じ行き先は 1 回だけ引く）。部屋へのポータルは、見る人が入れるかも引く
-    const viewerId = session?.user.id ?? null;
     const portalLookup = useMemo(
         () =>
             createPortalLookup(fetchWorld, {

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ROOM_PORTAL } from '../world/roomPortal';
 import { WorldModSchema, WorldRequirementsSchema, WorldSourceSchema } from './world.schema';
 import { WorldIdentitySchema } from './worldIdentity.schema';
+import { WorldVisibilitySchema } from './worldVisibility.schema';
 
 // ============================================
 // Access Type（アクセス種別）
@@ -79,6 +80,8 @@ export const InstanceSchema = z.object({
         identity: WorldIdentitySchema.optional(),
         /** ワールドを保存した ubichill の版。入る前に、この Host で一部が動かない可能性を知らせる。 */
         requires: WorldRequirementsSchema.optional(),
+        /** ワールドの公開範囲（このサーバーのワールドだけ。プライベートなら部屋へのポータルは部屋を作った人だけが置ける） */
+        visibility: WorldVisibilitySchema.optional(),
     }),
 
     access: InstanceAccessSchema,
@@ -159,6 +162,8 @@ export const WorldListItemSchema = z.object({
     mods: z.array(WorldModSchema).default([]),
     /** 識別結果。連合ピアの一覧由来は自己申告で検証できないため付与しない。 */
     identity: WorldIdentitySchema.optional(),
+    /** 公開範囲（このサーバーのワールドだけ。外部・同梱は付かない＝パブリック） */
+    visibility: WorldVisibilitySchema.optional(),
     /**
      * このサーバーでの共有ページのパス（`/@handle/name`）。外部のワールドで、作者がここのアカウントだと署名で確かめられ、
      * 作者がユーザーページに登録しているときだけ付く（本体のワールドは正規 URL から作れるので付けない）。

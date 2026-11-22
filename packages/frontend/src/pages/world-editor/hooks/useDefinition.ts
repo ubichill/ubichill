@@ -5,7 +5,13 @@
  * - savedYaml は「最後にサーバーへ保存した状態の YAML」を保持し dirty 判定のベースにする
  * - updateEntities(mutate) は entity array を更新する便利関数
  */
-import { type InitialEntity, type ResolvedWorld, type WorldDefinition, withoutWorldLock } from '@ubichill/shared';
+import {
+    type InitialEntity,
+    type ResolvedWorld,
+    type WorldDefinition,
+    type WorldVisibility,
+    withoutWorldLock,
+} from '@ubichill/shared';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import yaml from 'yaml';
 import { API_BASE } from '@/lib/api';
@@ -53,6 +59,9 @@ export interface PublishState {
 interface UseDefinitionResult {
     publishState: PublishState;
     setPublishState: React.Dispatch<React.SetStateAction<PublishState>>;
+    /** 作者の決めた公開範囲（定義の外。サーバーだけが持つ）。新しいワールドは保存するまで null */
+    visibility: WorldVisibility | null;
+    setVisibility: React.Dispatch<React.SetStateAction<WorldVisibility | null>>;
     definition: WorldDefinition;
     setDefinition: React.Dispatch<React.SetStateAction<WorldDefinition>>;
     savedYaml: string | null;
@@ -99,6 +108,7 @@ export function useDefinition({
         hasDraft: false,
         publishedVersion: null,
     });
+    const [visibility, setVisibility] = useState<WorldVisibility | null>(null);
 
     useEffect(() => {
         if (!isEdit || !worldId) return;
@@ -122,6 +132,7 @@ export function useDefinition({
                     hasDraft: boolean;
                     published: boolean;
                     publishedVersion?: string | null;
+                    visibility?: WorldVisibility;
                 };
                 setDefinition(data.definition);
                 setSavedYaml(yaml.stringify(withoutWorldLock(data.definition)));
@@ -130,6 +141,7 @@ export function useDefinition({
                     hasDraft: data.hasDraft,
                     publishedVersion: data.publishedVersion ?? null,
                 });
+                setVisibility(data.visibility ?? 'public');
             })
             .catch((e: unknown) => {
                 if (e instanceof DOMException && e.name === 'AbortError') return;
@@ -195,5 +207,7 @@ export function useDefinition({
         updateEntities,
         publishState,
         setPublishState,
+        visibility,
+        setVisibility,
     };
 }

@@ -1,4 +1,10 @@
-import type { ProfileImageKind, ProfileUpdateInput, UserProfile, WorldIdentity } from '@ubichill/shared';
+import type {
+    ProfileImageKind,
+    ProfileUpdateInput,
+    UserProfile,
+    WorldIdentity,
+    WorldVisibility,
+} from '@ubichill/shared';
 import { setMyDisplayName } from '@/lib/account/me';
 import { API_BASE } from '@/lib/api';
 import { errorMessage } from '@/lib/apiError';
@@ -36,6 +42,8 @@ export interface OwnedWorld {
      * そのまま署名し直せば直る。
      */
     problemCode?: string;
+    /** 本人の一覧のみ。作者の決めた公開範囲（公開するまでは、これにかかわらずプライベート） */
+    visibility?: WorldVisibility;
 }
 
 /** その人が作ったワールド（`GET /api/v1/users/:id/worlds`）。 */
