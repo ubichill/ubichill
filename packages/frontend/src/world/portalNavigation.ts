@@ -2,10 +2,10 @@ import type { PortalTarget } from '@ubichill/core-components';
 import { createContext, useContext } from 'react';
 
 /**
- * 入口（core:portal）を押したときの移り方。SNS の画面（InstancePage）が渡す。
- * world.html とエディタのプレビューでは渡さないので、入口は押せない。
+ * ポータル（core:portal）を押したときの移り方。SNS の画面（InstancePage）が渡す。
+ * world.html とエディタのプレビューでは渡さないので、ポータルは押せない。移る流れ（確かめる画面を含む）が終わると解決する。
  */
-export type PortalNavigate = (target: PortalTarget, label: string) => void;
+export type PortalNavigate = (target: PortalTarget, label: string) => Promise<void>;
 
 const PortalNavigationContext = createContext<PortalNavigate | null>(null);
 
@@ -13,14 +13,14 @@ export const PortalNavigationProvider = PortalNavigationContext.Provider;
 
 export const usePortalNavigation = (): PortalNavigate | null => useContext(PortalNavigationContext);
 
-/** 入口に出す行き先のワールド（名前とサムネイル）。 */
+/** ポータルに出す行き先のワールド（名前とサムネイル）。 */
 export interface PortalDestination {
     name: string;
     thumbnail?: string;
 }
 
 /**
- * 行き先のワールドを引く。SNS の画面とエディタが渡す（world.html では渡さないので、入口は名前と印だけ）。
+ * 行き先のワールドを引く。SNS の画面とエディタが渡す（world.html では渡さないので、ポータルは名前と印だけ）。
  * 見つからなければ null。
  */
 export type PortalLookup = (target: PortalTarget) => Promise<PortalDestination | null>;

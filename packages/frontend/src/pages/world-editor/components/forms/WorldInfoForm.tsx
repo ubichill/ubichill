@@ -264,7 +264,7 @@ function Field({ label, required, children }: { label: string; required?: boolea
 
 /**
  * 右上のサムネイル。エディタの画面から撮るか、画像を押して、画像を上げるか URL を入れて替えられる（空にすると外れる）。
- * 公開に必要で、一覧と入口に出る。
+ * 公開に必要で、一覧とポータルに出る。
  */
 function ThumbnailPicker({
     url,

@@ -14,7 +14,7 @@ export const SwitchDataSchema = z
             .array(EntityIdRef.refine((id) => id !== '', '対象を選んでください'))
             .max(SWITCH_MAX_TARGETS)
             .default([]),
-        /** ボタンに出す文字（空なら「スイッチ」） */
+        /** ボタンに出す文字（空なら「スイッチ」）。UI のボタンで動かすときは、ボタンの読み上げに使う */
         label: z.string().max(SWITCH_LABEL_MAX_LENGTH).default(''),
     })
     .strict();

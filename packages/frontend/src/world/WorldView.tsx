@@ -8,7 +8,7 @@
 import { useSocket, useWorld, WorkerLoadingProvider } from '@ubichill/react';
 import { checkWorldCompatibility, type Instance, type ModLock } from '@ubichill/shared';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { appConsole, logConsole } from '@/lib/console/consoleStore';
+import { appConsole, logConsole } from '../lib/console/consoleStore';
 import { CursorLayer } from './cursor/CursorLayer';
 import { acceptEntry, hasAcceptedEntry, unverifiedEntryKey, unverifiedEntryMessage } from './entryGate';
 import { InstanceLoadingScreen } from './InstanceLoadingScreen';
@@ -58,9 +58,9 @@ export interface WorldViewProps {
     onFailed?: (failure: InstanceFailure) => void;
     /** 部屋に入れたとき（入るたびに 1 回）。 */
     onEntered?: () => void;
-    /** 入口（core:portal）を押したときの移り方（SNS だけ）。無ければ入口は押せない。 */
+    /** ポータル（core:portal）を押したときの移り方（SNS だけ）。無ければポータルは押せない。 */
     onPortal?: PortalNavigate;
-    /** 入口に出す行き先のワールドを引く（SNS だけ）。無ければ入口は名前と印だけ。 */
+    /** ポータルに出す行き先のワールドを引く（SNS だけ）。無ければポータルは名前と印だけ。 */
     portalLookup?: PortalLookup;
     /** 入室できたあとに重ねる UI（HUD など）。 */
     children?: ReactNode;
@@ -89,6 +89,7 @@ export function WorldView({
     useUnknownCoreNotice();
 
     const joinedIdRef = useRef<string | null>(null);
+    const attemptRef = useRef<symbol | null>(null);
     const leaveWorldRef = useRef(leaveWorld);
     leaveWorldRef.current = leaveWorld;
 
@@ -105,6 +106,7 @@ export function WorldView({
         return () => {
             // 確認待ちの入室処理があれば打ち切る（stillTarget が false になる）
             joinedIdRef.current = null;
+            attemptRef.current = null;
             leaveWorldRef.current();
             resetWorld();
         };
@@ -114,11 +116,14 @@ export function WorldView({
         if (authPending) return;
         if (joinedIdRef.current === instanceId) return;
 
-        // 対象 id を同期的に確保する。以降の await 中に別 id へ移動・アンマウントされたら
-        // joinedIdRef が変わるので、それを見て古い入室処理を打ち切る（確認待ちでも二重入室しない）。
+        // 対象 id と試みの印を同期的に確保する。以降の await 中に別 id へ移動・アンマウントされたら
+        // 印が変わるので、それを見て古い入室処理を打ち切る（確認待ちでも二重入室しない）。id ではなく印で比べるのは、
+        // StrictMode では同じ id の試みが 2 つでき、id では古い方を見分けられないため。
         const previousId = joinedIdRef.current;
         joinedIdRef.current = instanceId;
-        const stillTarget = () => joinedIdRef.current === instanceId;
+        const attempt = Symbol(instanceId);
+        attemptRef.current = attempt;
+        const stillTarget = () => attemptRef.current === attempt;
         // コンソールは部屋ごと。前の部屋で読み込めなかった mod の記録（と、その再試行）を持ち越さない
         appConsole.clear();
 

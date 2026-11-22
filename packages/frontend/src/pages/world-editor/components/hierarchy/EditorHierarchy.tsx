@@ -1,7 +1,7 @@
 import type { InitialEntity } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { css } from '@/styled-system/css';
-import { ENTITY_DRAG_MIME, ROOT_DROP_KEY } from '../../lib/dnd';
+import { decodePrefabDrag, ENTITY_DRAG_MIME, PREFAB_DRAG_MIME, type PrefabDragRef, ROOT_DROP_KEY } from '../../lib/dnd';
 import type { EntityPath } from '../../lib/entityTree';
 import { EntityContextMenu, type EntityContextMenuItem } from './EntityContextMenu';
 import { EntityNode } from './EntityNode';
@@ -19,6 +19,8 @@ interface EditorHierarchyProps {
     onDeleteComponent: (path: EntityPath, componentIndex: number) => void;
     onToggleHidden: (path: EntityPath) => void;
     onDropComponent: (path: EntityPath, componentType: string) => void;
+    /** プレハブを落としたとき（parent=null ならルート） */
+    onDropPrefab: (ref: PrefabDragRef, parent: EntityPath | null) => void;
     /** Entity を別 Entity の子へ移動 (to=null なら root 末尾) */
     onMoveEntity: (from: EntityPath, to: EntityPath | null) => void;
     /** ダブルクリックで最初の子に降りる */
@@ -53,6 +55,7 @@ export function EditorHierarchy({
     onDeleteComponent,
     onToggleHidden,
     onDropComponent,
+    onDropPrefab,
     onMoveEntity,
     onEnterChild,
     onCopyEntity,
@@ -127,9 +130,10 @@ export function EditorHierarchy({
     };
 
     const acceptRootDrag = (e: React.DragEvent) => {
-        if (!e.dataTransfer.types.includes(ENTITY_DRAG_MIME)) return;
+        const prefab = e.dataTransfer.types.includes(PREFAB_DRAG_MIME);
+        if (!prefab && !e.dataTransfer.types.includes(ENTITY_DRAG_MIME)) return;
         e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
+        e.dataTransfer.dropEffect = prefab ? 'copy' : 'move';
         setDragOverKey(ROOT_DROP_KEY);
     };
 
@@ -215,7 +219,13 @@ export function EditorHierarchy({
                 onDragEnter={acceptRootDrag}
                 onDrop={(e) => {
                     const fromKey = e.dataTransfer.getData(ENTITY_DRAG_MIME);
+                    const prefab = decodePrefabDrag(e.dataTransfer.getData(PREFAB_DRAG_MIME));
                     setDragOverKey(null);
+                    if (prefab) {
+                        e.preventDefault();
+                        onDropPrefab(prefab, null);
+                        return;
+                    }
                     if (!fromKey) return;
                     e.preventDefault();
                     e.stopPropagation();
@@ -256,6 +266,7 @@ export function EditorHierarchy({
                             onDeleteComponent={onDeleteComponent}
                             onToggleHidden={onToggleHidden}
                             onDropComponent={onDropComponent}
+                            onDropPrefab={onDropPrefab}
                             onMoveEntity={onMoveEntity}
                             onEnterChild={onEnterChild}
                             onContextMenu={openContextMenu}

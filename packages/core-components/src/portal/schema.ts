@@ -21,7 +21,7 @@ export function parsePortalTarget(value: string): PortalTarget | null {
 }
 
 /**
- * `core:portal` の data。押すと、ほかのワールドへ移る入口。行き先は `@ID/名前`（共有ページ）・ワールドの ID・
+ * `core:portal` の data。押すと、ほかのワールドへ移るポータル。行き先は `@ID/名前`（共有ページ）・ワールドの ID・
  * ワールドの URL のどれか。空なら押せない（エディタで置いた直後）。未知キーは拒否する。
  */
 export const PortalDataSchema = z
@@ -35,7 +35,7 @@ export const PortalDataSchema = z
                 '行き先は @ID/名前・ワールドの ID・ワールドの URL のどれかにしてください',
             )
             .default(''),
-        /** 入口に出す名前（空なら「入口」） */
+        /** ポータルに出す名前（空なら行き先の名前か「ポータル」）。UI のボタンで動かすときは、ボタンの読み上げに使う */
         label: z.string().max(PORTAL_LABEL_MAX_LENGTH).default(''),
     })
     .strict();

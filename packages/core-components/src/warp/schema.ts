@@ -10,7 +10,7 @@ export const WARP_LABEL_MAX_LENGTH = 60;
 export const WarpDataSchema = z
     .object({
         target: EntityIdRef.default(''),
-        /** ボタンに出す文字（空なら「ワープ」） */
+        /** ボタンに出す文字（空なら「ワープ」）。UI のボタンで動かすときは、ボタンの読み上げに使う */
         label: z.string().max(WARP_LABEL_MAX_LENGTH).default(''),
     })
     .strict();

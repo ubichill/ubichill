@@ -1,9 +1,16 @@
 import type { InitialEntity } from '@ubichill/shared';
 import { useState } from 'react';
 import { css } from '@/styled-system/css';
-import { COMPONENT_DRAG_MIME, ENTITY_DRAG_MIME } from '../../lib/dnd';
+import {
+    COMPONENT_DRAG_MIME,
+    decodePrefabDrag,
+    ENTITY_DRAG_MIME,
+    PREFAB_DRAG_MIME,
+    type PrefabDragRef,
+} from '../../lib/dnd';
 import { type EntityPath, pathKey } from '../../lib/entityTree';
-import { Chevron, CloseIcon, EyeIcon, EyeOffIcon, PlusIcon, WarningIcon } from './hierarchyIcons';
+import { entityLabel } from '../../lib/stageSelection';
+import { Chevron, CloseIcon, EyeIcon, EyeOffIcon, PlusIcon, PrefabIcon, WarningIcon } from './hierarchyIcons';
 
 const INDENT_PX = 16;
 
@@ -47,6 +54,8 @@ export interface EntityNodeProps {
     onDeleteComponent: (path: EntityPath, componentIndex: number) => void;
     onToggleHidden: (path: EntityPath) => void;
     onDropComponent: (path: EntityPath, componentType: string) => void;
+    /** プレハブをこの Entity の子として置く */
+    onDropPrefab: (ref: PrefabDragRef, parent: EntityPath) => void;
     onMoveEntity: (from: EntityPath, to: EntityPath | null) => void;
     onEnterChild: (path: EntityPath) => void;
     /** 右クリックで開く context menu。 `null` を渡すと無効化。 */
@@ -76,6 +85,7 @@ export function EntityNode({
     onDeleteComponent,
     onToggleHidden,
     onDropComponent,
+    onDropPrefab,
     onMoveEntity,
     onEnterChild,
     onContextMenu,
@@ -107,20 +117,24 @@ export function EntityNode({
     // ドラッグ中にこの行を「自分が target」と表明する。
     const acceptDrag = (e: React.DragEvent) => {
         const types = e.dataTransfer.types;
-        if (!types.includes(ENTITY_DRAG_MIME) && !types.includes(COMPONENT_DRAG_MIME)) return;
+        const copies = types.includes(COMPONENT_DRAG_MIME) || types.includes(PREFAB_DRAG_MIME);
+        if (!copies && !types.includes(ENTITY_DRAG_MIME)) return;
         e.preventDefault();
         e.stopPropagation();
-        e.dataTransfer.dropEffect = types.includes(COMPONENT_DRAG_MIME) ? 'copy' : 'move';
+        e.dataTransfer.dropEffect = copies ? 'copy' : 'move';
         if (dragOverKey !== myKey) setDragOverKey(myKey);
     };
 
     const handleDrop = (e: React.DragEvent) => {
         const ctype = e.dataTransfer.getData(COMPONENT_DRAG_MIME);
         const fromKey = e.dataTransfer.getData(ENTITY_DRAG_MIME);
+        const prefab = decodePrefabDrag(e.dataTransfer.getData(PREFAB_DRAG_MIME));
         setDragOverKey(null);
         e.preventDefault();
         e.stopPropagation();
-        if (ctype) {
+        if (prefab) {
+            onDropPrefab(prefab, path);
+        } else if (ctype) {
             onDropComponent(path, ctype);
         } else if (fromKey) {
             onMoveEntity(fromKey.split('-').map(Number), path);
@@ -226,7 +240,11 @@ export function EntityNode({
                 </button>
                 <div className={css({ flex: 1, minW: 0, display: 'flex', flexDirection: 'column', gap: '1px' })}>
                     <span
+                        title={entity.name ? `${entity.name}（${entity.id}）` : entity.id}
                         className={css({
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '1',
                             fontSize: '12px',
                             fontWeight: '600',
                             overflow: 'hidden',
@@ -235,7 +253,18 @@ export function EntityNode({
                             textDecoration: selfHidden ? 'line-through' : 'none',
                         })}
                     >
-                        {entity.id}
+                        {entity.prefab && (
+                            <span
+                                aria-label="プレハブ"
+                                role="img"
+                                className={css({ display: 'inline-flex', flexShrink: 0 })}
+                            >
+                                <PrefabIcon size={12} />
+                            </span>
+                        )}
+                        <span className={css({ overflow: 'hidden', textOverflow: 'ellipsis' })}>
+                            {entityLabel(entity)}
+                        </span>
                     </span>
                     <span className={css({ fontSize: '11px', opacity: 0.7 })}>
                         ({Math.round(entity.transform.x)}, {Math.round(entity.transform.y)}) · {sizeBadge} ·{' '}
@@ -320,6 +349,7 @@ export function EntityNode({
                             onDeleteComponent={onDeleteComponent}
                             onToggleHidden={onToggleHidden}
                             onDropComponent={onDropComponent}
+                            onDropPrefab={onDropPrefab}
                             onMoveEntity={onMoveEntity}
                             onEnterChild={onEnterChild}
                             onContextMenu={onContextMenu}

@@ -2,7 +2,13 @@ import { isCoreComponentType } from '@ubichill/core-components';
 import { z } from 'zod';
 import type { ComponentDataFieldSpec } from '../schemas/mod.schema';
 import type { ModLockEntry } from '../schemas/modLock.schema';
-import { InitialEntitiesSchema, type InitialEntity, KebabCaseId, type PrefabLink } from '../schemas/world.schema';
+import {
+    InitialEntitiesSchema,
+    type InitialEntity,
+    KebabCaseId,
+    LIMITS,
+    type PrefabLink,
+} from '../schemas/world.schema';
 
 export const PrefabSchema = z
     .object({
@@ -171,17 +177,26 @@ export function prefabLink(
     };
 }
 
+/** 配置する親 Entity の id。プレハブの名前を使い、重なれば `-2`・`-3` を付ける（CLI で指しやすく、エディタで読める）。 */
+export function prefabRootId(name: string, existing: readonly InitialEntity[]): string {
+    const used = new Set(flattenPrefabEntities(existing).map((e) => e.id));
+    const candidate = (n: number) => (n === 1 ? name : `${name.slice(0, 49 - String(n).length)}-${n}`);
+    const pick = (n: number): string => (used.has(candidate(n)) ? pick(n + 1) : candidate(n));
+    return pick(1);
+}
+
 export function instantiatePrefab(
     entry: ModLockEntry,
     name: string,
     prefab: PackagePrefab,
     fields: PrefabFields,
     existing: InitialEntity[],
-    rootId: string,
+    at: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 },
 ): InitialEntity {
     const root: InitialEntity = {
-        id: rootId,
-        transform: { x: 0, y: 0, z: 0, scale: 1, rotation: 0 },
+        id: prefabRootId(name, existing),
+        name: prefab.name.slice(0, LIMITS.MAX_ENTITY_NAME_LENGTH),
+        transform: { ...at, scale: 1, rotation: 0 },
         components: [],
         tags: [],
         children: [],

@@ -52,6 +52,8 @@ import { maintenanceGate } from './services/cluster/maintenance';
 import { federation } from './services/federation';
 import { instanceReaper } from './services/instances/instanceReaper';
 import { createRedisNotificationBus, notificationHub } from './services/notifications/notificationHub';
+import { worldAssetSweep } from './services/worldAssets/worldAssetService';
+import { WORLD_ASSET_SWEEP } from './services/worldAssets/worldAssetSweep';
 import { worldRegistry } from './services/worlds/worldRegistry';
 import { logger } from './utils/logger';
 
@@ -315,6 +317,13 @@ async function startServer() {
     };
     void cleanExpiredRequests();
     setInterval(() => void cleanExpiredRequests(), 10 * 60 * 1000).unref();
+
+    // どのワールドにも使われていない古いワールドの画像を消す（全部のワールドの定義を読むので、10 分ごとの掃除とは分ける）
+    const sweepWorldAssets = () => {
+        void worldAssetSweep.runOnce().catch((err: unknown) => logger.error('ワールドの画像の掃除に失敗:', err));
+    };
+    setTimeout(sweepWorldAssets, WORLD_ASSET_SWEEP.startDelayMs).unref();
+    setInterval(sweepWorldAssets, WORLD_ASSET_SWEEP.intervalMs).unref();
 
     // 空インスタンスの掃除（reaper）を起動。DB を定期スイープし、在席0かつ
     // 作成から猶予経過した instance を削除する。インメモリのタイマー状態に依存しないため、

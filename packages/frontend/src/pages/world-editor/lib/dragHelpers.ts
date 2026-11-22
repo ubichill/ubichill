@@ -1,4 +1,5 @@
 import type { InitialEntity } from '@ubichill/shared';
+import { keepInside, type StageRect } from './drawnBounds';
 import type { EntityPath } from './entityTree';
 
 export type DragMode = 'move' | 'resize-se' | 'resize-sw' | 'resize-ne' | 'resize-nw';
@@ -8,6 +9,8 @@ export interface DragState {
     mode: DragMode;
     startClient: { x: number; y: number };
     startTransform: { x: number; y: number; w: number; h: number };
+    /** 動かす一式（子孫を含む）が描かれる範囲。始めたときのワールド座標。ワールドに収めるのはこの範囲 */
+    extent: StageRect;
 }
 
 export const DEFAULT_W = 200;
@@ -49,6 +52,13 @@ function applyResize(s: Transform, dx: number, dy: number, mode: Exclude<DragMod
     }
 }
 
+/**
+ * 原点ではなく中身（描かれる範囲）をワールドに収める。置いたプレハブの親の原点は中身の外（負の座標）にもあり、
+ * 原点を収めると一式が飛ぶ。中身を寄せた分だけ原点もずらす。
+ */
+const keepExtentInside = (origin: number, extentStart: number, size: number, limit: number): number =>
+    origin + Math.round(keepInside(extentStart, size, limit) - extentStart);
+
 export interface DragOptions {
     /** > 0 ならグリッド単位 (px) で丸める。 */
     snapStep?: number;
@@ -74,12 +84,12 @@ export function applyDrag(
     if (drag.mode === 'move') {
         const x = snap(s.x + dx, step);
         const y = snap(s.y + dy, step);
-        return ws
-            ? {
-                  x: clamp(x, 0, Math.max(0, ws.width - (s.w || MIN_SIZE))),
-                  y: clamp(y, 0, Math.max(0, ws.height - (s.h || MIN_SIZE))),
-              }
-            : { x, y };
+        if (!ws) return { x, y };
+        const e = drag.extent;
+        return {
+            x: keepExtentInside(x, x - s.x + e.x, e.width, ws.width),
+            y: keepExtentInside(y, y - s.y + e.y, e.height, ws.height),
+        };
     }
     const next = applyResize(s, dx, dy, drag.mode);
     const w = snap(next.w, step);

@@ -18,6 +18,8 @@ export const LIMITS = {
     MAX_COMPONENTS_PER_ENTITY: 32,
     MAX_DEPENDENCY_DEPTH: 3,
     MAX_TAGS: 10,
+    /** Entity の表示名（エディタで見分けるための名前。参照には id を使う） */
+    MAX_ENTITY_NAME_LENGTH: 50,
     MAX_WORLDS_PER_USER: 5,
     /** 1 つのワールドに残す公開の版の数（limitsFor から使う）。 */
     MAX_VERSIONS_PER_WORLD: 3,
@@ -277,6 +279,8 @@ export const EntityTagSchema = z
  */
 export interface InitialEntity {
     id: string;
+    /** 表示名（日本語も可）。エディタで見分けるためだけに使い、参照は id で行う。省略は id を出す */
+    name?: string;
     transform: z.infer<typeof TransformSchema>;
     components: Array<z.infer<typeof EntityComponentSchema>>;
     tags: string[];
@@ -301,6 +305,7 @@ export type PrefabLink = z.infer<typeof PrefabLinkSchema>;
 export const InitialEntitySchema: z.ZodType<InitialEntity> = z.lazy(() =>
     z.object({
         id: KebabCaseId,
+        name: z.string().min(1).max(LIMITS.MAX_ENTITY_NAME_LENGTH).optional(),
         transform: TransformSchema,
         components: z.array(EntityComponentSchema).max(LIMITS.MAX_COMPONENTS_PER_ENTITY).default([]),
         tags: z.array(EntityTagSchema).max(LIMITS.MAX_TAGS).default([]),

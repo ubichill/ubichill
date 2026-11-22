@@ -1,6 +1,6 @@
 import type { PortalTarget } from '@ubichill/core-components';
 
-/** 入口の行き先の、このサーバーの中のページ（ワールドのページが入室まで進める）。 */
+/** ポータルの行き先の、このサーバーの中のページ（ワールドのページが入室まで進める）。 */
 export function portalPath(target: PortalTarget): string {
     switch (target.kind) {
         case 'share': {

@@ -100,6 +100,7 @@ export {
 export { userSettingsRepository } from './repositories/userSettingsRepository';
 export {
     type AddWorldAssetOutcome,
+    type RemovedWorldAsset,
     type WorldAssetBlob,
     type WorldAssetRecord,
     worldAssetRepository,

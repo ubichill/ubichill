@@ -22,7 +22,7 @@ metadata:
 spec:
   displayName: マイワールド    # 表示名（必須）
   description: 説明            # 任意
-  thumbnail: https://.../thumb.png  # 公開に必要（URL）。ワールドの一覧と、ほかのワールドの入口に出る
+  thumbnail: https://.../thumb.png  # 公開に必要（URL）。ワールドの一覧と、ほかのワールドのポータルに出る
   capacity:
     default: 10             # 既定人数
     max: 20                 # 上限人数
@@ -45,6 +45,7 @@ spec:
 ワールドの中身は Entity（＝GameObject）の木で表す。
 
 - **Entity**：`id`＋`transform`＋`components[]` を持つ「箱」。`children[]` で入れ子。id はツリー全体で一意。
+- **`name`**（任意）：表示名（50 文字まで、日本語も可）。エディタのヒエラルキーや枠に出すだけで、参照（`entityRef`・`core:warp` の行き先など）は `id` で行う。省略は `id` を出す。
 - **Component**：`type: "<modId>:<componentName>"`（例 `pen:tray`）で振る舞いを配布。1 Entity に複数可。`data` は Component ごとの初期値。
 - **`visible`**（任意）：`false` なら部屋に入った時点で見えない（子も）。描かず、押せず、当たり判定もしない（mod の Worker は動き続ける）。`core:switch` で部屋の全員の画面で切り替わる。省略は見える。
 - **`prefab`**（任意）：package のプレハブを配置したときに作る親 Entity（子にプレハブの Entity 一式を持つ）の出典（`PrefabLink`）。
@@ -91,15 +92,17 @@ Host が持つ Component。mod を読み込まずに使え、`dependencies` に�
 |---|---|---|
 | `core:collider` | 当たり判定の形 | `shape: rect`（`size: { w, h }` か `entity`）または `shape: circle`（`radius`）。`offset`・`isTrigger`・`layer`・`mask` |
 | `core:media` | 動画を描く場所（Unity の MeshRenderer に当たる）。何を再生するかは、参照フィールドでこの Entity を指した mod が決める。1 つの面を指せる出力は 1 つだけ（2 つ以上が指す・1 Entity に 2 つ置くと何も描かない）。描けるのはワールド定義に置いた Component の出力だけ（部屋の中で作られた Component は数えない） | `fit: contain`（既定・全体を見せる）か `cover`（枠を埋める） |
-| `core:ui` | 作者が書く UI（看板・説明・リンクなど）。mod を作らずに置ける | `markup`: HTML 風の文字列（2 万文字まで） |
+| `core:ui` | Entity の大きさの四角（FigJam の図形と同じ考え方）。テキストを入れられ、ボタンにすると押したときに同じ Entity のスクリプト（`core:warp`・`core:switch`・`core:portal`）を動かす | `text`（2,000 文字まで）・`size`・`color`・`align`（既定 `center`）・`bold`。`fill`・`border`: `#RRGGBB` か `transparent`（既定）。`borderWidth`: px（0〜20、既定 2）。`radius`: 角丸の px（0〜1000、既定 0）。`button`: 押せるようにする（既定 false）。`markup`: HTML 風の文字列（2 万文字まで。書くとテキストの代わりに描く。上級者向け）。書いていない項目は描かない（塗りなし・枠なし） |
 | `core:image` | 画像（絵・写真・看板の絵）。大きさは `transform` の `w`・`h` | `src`: http(s) の URL（エディタの「画像を上げる」でこのサーバーに置ける）。`fit`: `contain`（既定）・`cover`・`fill`。`alt`: 説明（200 文字まで） |
 | `core:text` | 文字（看板・案内）。改行はそのまま出す | `text`（2,000 文字まで）。`size`: px（8〜200、既定 24）。`color`: `#RRGGBB`。`background`: `#RRGGBB` か `transparent`（既定）。`align`: `left`・`center`・`right`。`bold` |
-| `core:portal` | 押すと、ほかのワールドへ移る入口（確かめてから今の部屋を出る）。行き先のワールドのサムネイルを丸い窓に出し、上に名前を出す（Ubichill の画面とエディタだけ。world.html では印だけ） | `world`: 行き先（`@ID/名前`・このサーバーのワールドの ID・ワールドの http(s) URL）。`label`: 入口の名前（60 文字まで。空なら行き先のワールドの名前、引けなければ「入口」） |
+| `core:portal` | 押すと、ほかのワールドへ移るポータル（確かめてから今の部屋を出る）。行き先のワールドのサムネイルを丸い窓に出し、上に名前を出す（Ubichill の画面とエディタだけ。world.html では印だけ） | `world`: 行き先（`@ID/名前`・このサーバーのワールドの ID・ワールドの http(s) URL）。`label`: ポータルの名前（60 文字まで。空なら行き先のワールドの名前、引けなければ「ポータル」） |
 | `core:warp` | 押すと、行き先の Entity が画面の中心に来るようにスクロールする（ワールドの中で見る場所を変えるだけ。本人の画面だけ） | `target`: 行き先の Entity の id（空なら押せない）。`label`: ボタンの名前（60 文字まで。空なら「ワープ」） |
 | `core:switch` | 押すと、対象の Entity（と子）の見える・見えないを部屋の全員の画面で切り替える。切り替えはインスタンスが行い、部屋ごとの状態（部屋が無くなると最初に戻る） | `targets`: Entity の id の列（32 個まで）。`label`: ボタンの名前（60 文字まで。空なら「スイッチ」） |
-| `core:spawn` | 最初の場所。部屋に入ったとき、この Entity が画面の中心に来るようにスクロールする（複数あればどれか 1 つ。見えない印は使わない）。部屋では描かない | なし |
+| `core:spawn` | スポーン。部屋に入ったとき、この Entity が画面の中心に来るようにスクロールする（複数あればどれか 1 つ。見えない印は使わない）。部屋では描かない | なし |
 
-`core:image`・`core:text`・`core:portal`・`core:warp`・`core:switch`・`core:spawn`、Entity の `visible`、背景の画像は、足した後の版の Ubichill でしか使えない（`visible` を知らない版は、見える Entity として描く）。読む側が知らない部品を残すようになる前の版のサーバーは、定義の検査で断る。
+`core:warp`・`core:switch`・`core:portal` はスクリプト（押したときの動き）。同じ Entity に `button: true` の `core:ui` があれば、自分では何も描かず、その UI を押したときに動く。1 つのボタンで複数のスクリプトを動かせる。部屋の中で済むもの（`core:warp`・`core:switch`）を並び順に動かし、部屋を出る `core:portal` は並びの最初の 1 つだけを最後に動かす（ポータルがワープより前に並んでいても最後。2 つ目からのポータルは動かず、最初のポータルの行き先が空・読めなくても 2 つ目へは移らない。エディタは動かないポータルに知らせを出す）。押した動きが終わるまで（ポータルなら移るのを確かめる画面に答えるまで）、同じボタンを押し直しても動かない。移る前に確かめる画面には、ポータルの `label`、無ければ行き先のワールドの名前、それも引けなければ UI のテキストか「ポータル」を出す。ボタンにした UI の `markup` は見た目だけで、中のリンクは押せない（押すとボタンとして動く）。ボタンにした UI が無ければ、標準のボタン（ポータルは行き先のサムネイルの丸い窓）を出す。`label` は標準のボタンの名前で、UI のボタンのテキストが空のときは読み上げの名前になる。
+
+`core:image`・`core:text`・`core:portal`・`core:warp`・`core:switch`・`core:spawn`、`core:ui` のテキスト・四角・ボタン、Entity の `visible`・`name`、背景の画像は、足した後の版の Ubichill でしか使えない（`visible` を知らない版は、見える Entity として描く）。読む側が知らない部品を残すようになる前の版のサーバーは、定義の検査で断る。
 
 ```yaml
 - id: tv
@@ -158,6 +161,22 @@ Host が持つ Component。mod を読み込まずに使え、`dependencies` に�
   components:
     - type: core:portal
       data: { world: "@alice/cafe", label: "カフェへ" }
+- id: back-button
+  transform: { x: 880, y: 160, w: 200, h: 64 }
+  components:
+    - type: core:ui
+      data: { text: "最初に戻る", fill: "#ffffff", border: "#1b2a44", radius: 32, button: true }
+    - type: core:warp
+      data: { target: welcome }
+- id: door
+  transform: { x: 1120, y: 160, w: 160, h: 240 }
+  components:
+    - type: core:image
+      data: { src: "https://ubichill.example/api/v1/assets/<hash>.webp", alt: "扉" }
+    - type: core:ui
+      data: { button: true }   # 塗りも枠も無い、押せるだけの四角（扉の絵を押すとワープ）
+    - type: core:warp
+      data: { target: welcome, label: "最初に戻る" }
 ```
 
 ### 画像の置き場所
@@ -166,8 +185,9 @@ Host が持つ Component。mod を読み込まずに使え、`dependencies` に�
 
 - 1 人 200 枚・200 MB まで。送れるのは 10 MB までの JPEG・PNG・WebP・GIF（最初のコマ）・AVIF。
 - だれでも読める（ほかのサーバーで開いたワールドからも）。同じ URL の中身は変わらない。
+- このサーバーのどのワールド（下書き・公開した版）にも使われていない画像は、上げてから 7 日たつと消える。ほかのサーバーや GitHub Pages に置いたワールドからの参照は数えない。同じ画像を上げ直せば同じ URL が戻る。
 
-`thumbnail` は公開（作者の署名付きで出す）に必要。World Editor の公開・`ubichill publish`・本体の保存（署名付き）が、無ければ断る。下書きと署名の無い保存には求めない。読む側は、必要にする前に公開されたサムネイルの無いワールドも読む（一覧と入口は印を出す）。16:9 で、真ん中に大事なものを置く（入口は真ん中を丸く切り取る）。
+`thumbnail` は公開（作者の署名付きで出す）に必要。World Editor の公開・`ubichill publish`・本体の保存（署名付き）が、無ければ断る。下書きと署名の無い保存には求めない。読む側は、必要にする前に公開されたサムネイルの無いワールドも読む（一覧とポータルは印を出す）。16:9 で、真ん中に大事なものを置く（ポータルは真ん中を丸く切り取る）。
 
 ## その他の `spec` フィールド（任意）
 
