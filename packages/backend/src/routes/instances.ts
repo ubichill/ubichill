@@ -3,6 +3,7 @@ import {
     FEDERATION_LIMITS,
     isRemoteUserId,
     ListInstancesQuerySchema,
+    localRoomIdOf,
 } from '@ubichill/shared';
 import { type Request, type Response, Router } from 'express';
 import rateLimit from 'express-rate-limit';
@@ -10,6 +11,7 @@ import { appConfig } from '../config';
 import { redis } from '../lib/redis';
 import { sharedRateLimit } from '../lib/sharedRateLimit';
 import { optionalAuth, requireAuth } from '../middleware/auth';
+import { selfDomain } from '../services/authors/authorKeys';
 import { type Federation, federation } from '../services/federation';
 import { remoteInstanceOf } from '../services/federation/ubichill/remoteInstance';
 import type { TravelError } from '../services/federation/ubichill/travel';
@@ -61,6 +63,9 @@ async function checkedWorld(url: string) {
     ]);
     return resolved ?? undefined;
 }
+
+/** このサーバーのドメインを付けた住所（ほかのサーバーの部屋に置かれたポータルの行き先など）も、このサーバーの部屋として読む。 */
+const localRoomId = (id: string): string => localRoomIdOf(id, selfDomain());
 
 /** ほかのサーバーの部屋なら連合で答える（答えたら true）。 */
 async function remoteInstance(req: Request, res: Response, id: string): Promise<boolean> {
@@ -165,7 +170,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
         const id = req.params.id as string;
         if (await remoteInstance(req, res, id)) return;
         // 公開範囲で入れない人には、インスタンスがあることも伏せる
-        const instance = await instanceManager.getInstanceFor(id, req.user?.id ?? null);
+        const instance = await instanceManager.getInstanceFor(localRoomId(id), req.user?.id ?? null);
 
         if (!instance) {
             res.status(404).json({
@@ -203,7 +208,7 @@ router.post('/:id/join', requireAuth, async (req, res) => {
     // このサーバーの部屋に入るなら、ほかのサーバーへの来訪は終わり
     if (federation) void federation.travel.leave(req.user.id).catch(() => undefined);
     try {
-        return res.json(await instanceManager.join(String(req.params.id), { id: req.user.id, name: req.user.name }));
+        return res.json(await instanceManager.join(localRoomId(id), { id: req.user.id, name: req.user.name }));
     } catch (error) {
         if (error instanceof InstanceJoinRejected) return res.status(403).json({ error: error.message });
         logger.error('インスタンス参加エラー:', error);

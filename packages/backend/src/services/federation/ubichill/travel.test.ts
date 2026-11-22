@@ -117,6 +117,15 @@ describe('ほかのサーバーの部屋を見る（describe）', () => {
         });
     });
 
+    it('部屋のサーバーの回数の制限（429）・時間切れ・失敗は unavailable（無い部屋にしない。画面は「確かめられない」）', async () => {
+        for (const reply of [fail(429, 'rate-limited'), fail(408), fail(502)]) {
+            expect(await setup({ reply: () => reply }).travel.describe('alice', ADDRESS)).toEqual({
+                ok: false,
+                error: 'unavailable',
+            });
+        }
+    });
+
     it('開発では https でつながらなければ http を試す', async () => {
         const { travel, calls } = setup({
             allowHttp: true,
@@ -188,7 +197,8 @@ describe('ほかのサーバーの部屋に入る（join）', () => {
             [fail(409, 'full'), 'full'],
             [fail(404, 'not-found'), 'not-found'],
             [fail(403, 'domain-limited'), 'rejected'],
-            [fail(429, 'rate-limited'), 'rejected'],
+            [fail(429, 'rate-limited'), 'unavailable'],
+            [fail(408), 'unavailable'],
             [fail(503), 'unavailable'],
             [ok({ ticket: 't1' }), 'unavailable'],
         ];

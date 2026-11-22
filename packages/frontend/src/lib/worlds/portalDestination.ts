@@ -1,7 +1,7 @@
 import type { PortalTarget } from '@ubichill/core-components';
 import { isPortalDestination, type WorldListItem } from '@ubichill/shared';
 import type { PortalDestination, PortalLookup } from '@/world';
-import { type RoomStatus, roomRefusal } from './roomPortalEntry';
+import { ROOM_STATUS_TIMEOUT_MS, type RoomStatus, roomRefusal, withinTime } from './roomPortalEntry';
 
 /** 行き先を、ワールドを引く参照（`@handle/name`・ワールドの ID・URL）にする。 */
 export function portalWorldRef(target: PortalTarget): string {
@@ -31,18 +31,24 @@ export interface PortalRoomSource {
 /** 部屋に入れるかを、引いてからこの間は引き直さない（ms）。同じ部屋へのポータルがいくつあっても、引くのはこの間に 1 回。 */
 export const ROOM_STATUS_TTL_MS = 5_000;
 
+/** 部屋を一度も確かめられていない（前の結果が無いまま、通信・サーバーの失敗）。 */
+export const UNKNOWN_ROOM: PortalDestination = { unknown: true };
+
 /**
  * ポータルの行き先を引く関数を作る。ワールドは 1 回だけ引く（部屋に同じポータルがいくつあっても、描き直しても）。
  * 引けなかったワールドも覚える（無いワールドを何度も問い合わせない。部屋を入り直せば引き直す）。
  * ワールドへのポータルはプライベートのワールドを、部屋へのポータルは見る人が入れない部屋（公開範囲・招待・満員）を
  * locked にする。部屋に入れるかは人数で変わるので ROOM_STATUS_TTL_MS を過ぎたら引き直す（引いている途中は同じ
- * 問い合わせにまとめる）。無くなった部屋は null、一時的に引けなかったときは前の結果のまま。rooms が無ければ部屋は引かない。
+ * 問い合わせにまとめる。応答が無ければ timeoutMs で諦める）。無くなった部屋は null。一時的に引けなかったときは
+ * 前の結果のまま、前の結果も無ければ UNKNOWN_ROOM（鍵は出さない）。rooms が無ければ部屋は引かない。
  */
 export function createPortalLookup(
     fetchWorld: (ref: string) => Promise<WorldLook>,
     rooms?: PortalRoomSource,
-    now: () => number = Date.now,
+    options: { now?: () => number; timeoutMs?: number } = {},
 ): PortalLookup {
+    const now = options.now ?? Date.now;
+    const timeoutMs = options.timeoutMs ?? ROOM_STATUS_TIMEOUT_MS;
     const worlds = new Map<string, Promise<PortalDestination | null>>();
     const roomRequests = new Map<
         string,
@@ -51,18 +57,17 @@ export function createPortalLookup(
     const lastRooms = new Map<string, PortalDestination | null>();
 
     const loadRoom = (source: PortalRoomSource, room: string): Promise<PortalDestination | null> =>
-        source
-            .fetch(room)
+        withinTime(source.fetch(room), timeoutMs)
             .then(
                 (found): PortalDestination | null =>
                     found && {
                         ...destinationOf(found.world),
                         ...(roomRefusal(found, source.viewerId) ? { locked: true } : {}),
                     },
-                () => lastRooms.get(room) ?? null,
+                () => (lastRooms.has(room) ? (lastRooms.get(room) ?? null) : UNKNOWN_ROOM),
             )
             .then((destination) => {
-                lastRooms.set(room, destination);
+                if (destination !== UNKNOWN_ROOM) lastRooms.set(room, destination);
                 return destination;
             });
 

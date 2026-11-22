@@ -82,6 +82,7 @@ export function createTravel(deps: TravelDeps) {
         return !!url && !!room && url.hostname === room.hostname;
     };
 
+    // 回数の制限（429）・時間切れ（408）は、断られたのではなく今は答えられないだけ（「無い部屋」にしない）
     const errorOf = (status: number, code: unknown): TravelError =>
         status === 404
             ? 'not-found'
@@ -89,7 +90,7 @@ export function createTravel(deps: TravelDeps) {
               ? 'invite-required'
               : status === 409 && code === 'full'
                 ? 'full'
-                : status >= 500 || status === 0
+                : status >= 500 || status === 0 || status === 429 || status === 408
                   ? 'unavailable'
                   : 'rejected';
 

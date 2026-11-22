@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { loadingFailure, markFor, type RoomMark } from './loadingFailure';
+import { type EntryMark, loadingFailure, markFor, nextEntry } from './loadingFailure';
 
 export type StageStatus = 'pending' | 'active' | 'done' | 'error';
 
@@ -81,20 +81,25 @@ export function useInstanceLoading({
     workers,
 }: UseInstanceLoadingParams): InstanceLoadingState {
     const [graceDone, setGraceDone] = useState(false);
-    // タイムアウトと失敗は部屋の ID 付きで持つ（部屋を移った最初の描画で、前の部屋の分を読まない。loadingFailure.ts）
-    const [timedOutMark, setTimedOutMark] = useState<RoomMark<true> | null>(null);
-    const timedOut = markFor(timedOutMark, instanceId) ?? false;
+    // 部屋が変わったら、描画の中で入室の番号を進める（効果を待つと、最初の描画で前の入室の印を読む）
+    const [entry, setEntry] = useState({ instanceId, attempt: 0 });
+    const current = nextEntry(entry, instanceId);
+    if (current !== entry) setEntry(current);
+    const { attempt } = current;
+    // タイムアウトと失敗は入室の番号付きで持つ（前の入室の分を読まない。loadingFailure.ts）
+    const [timedOutMark, setTimedOutMark] = useState<EntryMark<true> | null>(null);
+    const timedOut = markFor(timedOutMark, attempt) ?? false;
     // join 後 WORKER_WAIT_MS を超えても worker が揃わなかったら、待たずに入室する
     const [workerWaitPassed, setWorkerWaitPassed] = useState(false);
-    const [failureMark, setFailureMark] = useState<RoomMark<string> | null>(null);
-    const failureMessage = markFor(failureMark, instanceId);
+    const [failureMark, setFailureMark] = useState<EntryMark<string> | null>(null);
+    const failureMessage = markFor(failureMark, attempt);
     const [showScreen, setShowScreen] = useState(true);
     const [fadingOut, setFadingOut] = useState(false);
 
     const joinedAtRef = useRef<number | null>(null);
     const maxProgressRef = useRef(0);
 
-    // インスタンス切り替え時は全状態をリセットし、タイムアウトを張り直す。
+    // 入るたびに全状態をリセットし、タイムアウトを張り直す。
     useEffect(() => {
         joinedAtRef.current = null;
         maxProgressRef.current = 0;
@@ -103,9 +108,9 @@ export function useInstanceLoading({
         setShowScreen(true);
         setFadingOut(false);
 
-        const timer = setTimeout(() => setTimedOutMark({ instanceId, value: true }), TIMEOUT_MS);
+        const timer = setTimeout(() => setTimedOutMark({ attempt, value: true }), TIMEOUT_MS);
         return () => clearTimeout(timer);
-    }, [instanceId]);
+    }, [attempt]);
 
     // join 後の猶予タイマー（modが登録される時間を確保）と、
     // worker を待つ上限タイマー（上限超過で待たずに入室する）。
@@ -149,8 +154,8 @@ export function useInstanceLoading({
     useEffect(() => {
         if (failureMessage) return;
         const message = loadingFailure({ error, isJoined, isConnecting, timedOut, complete });
-        if (message) setFailureMark({ instanceId, value: message });
-    }, [error, isJoined, isConnecting, timedOut, complete, failureMessage, instanceId]);
+        if (message) setFailureMark({ attempt, value: message });
+    }, [error, isJoined, isConnecting, timedOut, complete, failureMessage, attempt]);
 
     const failed = failureMessage !== null;
 

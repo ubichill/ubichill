@@ -49,14 +49,18 @@ describe('withComponentAdded', () => {
         expect(twice.components.map((c) => c.id)).toEqual(['controls', 'controls-2']);
     });
 
-    it('フィールドの default は既定 data を上書きし、既定 data は複製して共有しない', () => {
+    it('既定 data はフィールドの default より優先し（置いたときの値と、data に無いときに描く値を分ける）、複製して共有しない', () => {
         const defaultData = { nested: { a: 1 }, title: 'x' };
         const next = withComponentAdded(
             entity(),
             'm:c',
-            kind({ kind: 'm:c', defaultData, dataFields: { title: { type: 'string', default: 'y' } } }),
+            kind({
+                kind: 'm:c',
+                defaultData,
+                dataFields: { title: { type: 'string', default: 'y' }, size: { type: 'number', default: 24 } },
+            }),
         );
-        expect(next.components[0].data).toEqual({ nested: { a: 1 }, title: 'y' });
+        expect(next.components[0].data).toEqual({ nested: { a: 1 }, title: 'x', size: 24 });
         expect(next.components[0].data.nested).not.toBe(defaultData.nested);
     });
 });

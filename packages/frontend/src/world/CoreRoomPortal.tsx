@@ -40,7 +40,7 @@ const RoomPortalView = memo(function RoomPortalView({
     const name = destination?.name ?? (gone ? '入れない部屋' : 'ポータル');
     const thumbnail =
         destination?.thumbnail && destination.thumbnail !== failedThumbnail ? destination.thumbnail : null;
-    const look = destination ? { displayName: destination.name, thumbnail: destination.thumbnail } : undefined;
+    const look = destination?.name ? { displayName: destination.name, thumbnail: destination.thumbnail } : undefined;
 
     return (
         <div data-portal={entity.id} style={{ ...surfacePlacement(entity), pointerEvents: 'auto' }} className={column}>
@@ -49,7 +49,7 @@ const RoomPortalView = memo(function RoomPortalView({
                 className={portal}
                 disabled={!go || destination === undefined || locked}
                 title={locked ? 'この部屋には入れません' : undefined}
-                onClick={() => go?.({ kind: 'room', room: data.room }, name, look)}
+                onClick={() => void go?.({ kind: 'room', room: data.room }, name, look)}
             >
                 <span className={portalName}>{name}</span>
                 <span className={frame}>

@@ -56,6 +56,17 @@ describe('roomPortalRefusal', () => {
         expect(await roomPortalRefusal(failing, 'abc', 'me')).toBe('unknown');
     });
 
+    it('応答が無ければ時間で諦め、入らずに unknown（移る流れを止め続けない）', async () => {
+        vi.useFakeTimers();
+        try {
+            const hung = roomPortalRefusal(() => new Promise<RoomStatus | null>(() => undefined), 'abc', 'me', 1000);
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(await hung).toBe('unknown');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('招待が要るようになった部屋には入らない', async () => {
         expect(await roomPortalRefusal(async () => room(1, { canJoin: false }), 'abc', 'me')).toBe('closed');
     });

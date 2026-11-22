@@ -94,7 +94,10 @@ export interface AvailableEntityKind {
     }>;
     /** インスペクタで必ず表示する data フィールドの宣言 */
     dataFields?: DataFields;
-    /** Component追加時にそのまま使うdata。dataFieldsの単純な既定値では表せない組み込みComponent向け。 */
+    /**
+     * Component を足したときの data。dataFields の default（data に無いときに描く値）より優先する。
+     * 置いてすぐ見えるようにしたい値は、描く値を変えずにここで書く。
+     */
     defaultData?: Record<string, unknown>;
     /** 見た目の画像（manifest の `thumbnail`。assetIntegrity で hash を固定したものだけ） */
     thumbnail?: PreviewImageSource;
@@ -143,11 +146,13 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
         displayName: 'UI',
         suggestSize: true,
         defaultTransform: { w: 200, h: 80 },
+        // 置いたときは白い角丸の四角にテキストが入る。data に無い項目は描かない（YAML で書いた UI と同じ）
+        defaultData: { text: 'テキスト', size: 20, fill: '#ffffff', border: '#1b2a44', radius: 12 },
         dataFields: {
-            text: { type: 'string', multiline: true, default: 'テキスト', label: 'テキスト' },
+            text: { type: 'string', multiline: true, default: '', label: 'テキスト' },
             size: {
                 type: 'number',
-                default: 20,
+                default: 24,
                 min: TEXT_SIZE_RANGE.min,
                 max: TEXT_SIZE_RANGE.max,
                 step: 1,
@@ -164,13 +169,13 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
             bold: { type: 'boolean', default: false, label: '太字' },
             fill: {
                 type: 'string',
-                default: '#ffffff',
+                default: 'transparent',
                 label: '塗りの色',
                 help: '#RRGGBB か transparent（塗りなし）。',
             },
             border: {
                 type: 'string',
-                default: '#1b2a44',
+                default: 'transparent',
                 label: '枠線の色',
                 help: '#RRGGBB か transparent（枠線なし）。',
             },
@@ -184,7 +189,7 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
             },
             radius: {
                 type: 'number',
-                default: 12,
+                default: 0,
                 min: 0,
                 max: UI_RADIUS_MAX,
                 step: 1,
@@ -201,7 +206,7 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
                 type: 'string',
                 multiline: true,
                 label: 'HTML（上級者向け）',
-                help: 'テキストの代わりに、看板・説明・リンクなどを HTML 風に書けます。使えるタグ・属性は mod の UI と同じ（script やイベント属性は動かない）。リンクは新しいタブで開く。',
+                help: 'テキストの代わりに、看板・説明・リンクなどを HTML 風に書けます。使えるタグ・属性は mod の UI と同じ（script やイベント属性は動かない）。リンクは新しいタブで開く。ボタンにした UI では見た目だけで、リンクは押せない。',
             },
         },
         viewKind: 'jsx',
@@ -236,8 +241,9 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
         displayName: 'テキスト',
         suggestSize: true,
         defaultTransform: { w: 320, h: 80 },
+        defaultData: { text: 'ようこそ' },
         dataFields: {
-            text: { type: 'string', multiline: true, default: 'ようこそ', label: '文字' },
+            text: { type: 'string', multiline: true, default: '', label: '文字' },
             size: {
                 type: 'number',
                 default: 24,
