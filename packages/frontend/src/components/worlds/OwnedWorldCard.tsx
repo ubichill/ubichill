@@ -188,7 +188,16 @@ export function OwnedWorldCard({
                     </p>
                 )}
                 <div
-                    className={css({ display: 'flex', gap: '8px', fontSize: '11px', color: 'textSubtle', mt: 'auto' })}
+                    className={css({
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
+                        gap: '4px 8px',
+                        fontSize: '11px',
+                        color: 'textSubtle',
+                        mt: 'auto',
+                        '& > span': { whiteSpace: 'nowrap' },
+                    })}
                 >
                     <span>
                         {world.capacity.default}〜{world.capacity.max}人
