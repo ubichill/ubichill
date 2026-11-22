@@ -28,7 +28,6 @@ import { css } from '@/styled-system/css';
 import { buildWorldLock, EntityRenderer, ModRegistryProvider, useModRegistry } from '@/world';
 import { backgroundImageStyle } from '@/world/backgroundImage';
 import { EditorPreviewProvider } from '@/world/editorPreview';
-import { stackingOrder } from '@/world/partLook';
 import { PortalLookupProvider } from '@/world/portalNavigation';
 
 const FALLBACK_ENTITY: ComponentInstance = {
@@ -330,7 +329,10 @@ export function EditorPreview({
  */
 function EditorOverlayStage({ entities, hidden }: { entities: Map<string, ComponentInstance>; hidden: boolean }) {
     const overlayEntityIds = useMemo(
-        () => stackingOrder(entities).filter((id) => entities.get(id)?.overlay),
+        () =>
+            Array.from(entities.entries())
+                .filter(([, e]) => e.overlay)
+                .map(([id]) => id),
         [entities],
     );
     if (overlayEntityIds.length === 0) return null;
@@ -378,9 +380,9 @@ function PreviewStage({
     // overlay: true の Entity は EditorOverlayStage (スクロール領域外) が描画するのでここでは除外する。
     const renderEntities = useMemo(
         () =>
-            stackingOrder(entities)
-                .filter((id) => !entities.get(id)?.overlay)
-                .map((id) => <EntityRenderer key={id} entityId={id} />),
+            Array.from(entities.entries())
+                .filter(([, e]) => !e.overlay)
+                .map(([id]) => <EntityRenderer key={id} entityId={id} />),
         [entities],
     );
 

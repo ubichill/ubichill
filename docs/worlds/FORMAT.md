@@ -91,17 +91,17 @@ Host が持つ Component。mod を読み込まずに使え、`dependencies` に�
 |---|---|---|
 | `core:collider` | 当たり判定の形 | `shape: rect`（`size: { w, h }` か `entity`）または `shape: circle`（`radius`）。`offset`・`isTrigger`・`layer`・`mask` |
 | `core:media` | 動画を描く場所（Unity の MeshRenderer に当たる）。何を再生するかは、参照フィールドでこの Entity を指した mod が決める。1 つの面を指せる出力は 1 つだけ（2 つ以上が指す・1 Entity に 2 つ置くと何も描かない）。描けるのはワールド定義に置いた Component の出力だけ（部屋の中で作られた Component は数えない） | `fit: contain`（既定・全体を見せる）か `cover`（枠を埋める） |
-| `core:ui` | 作者が書く UI（看板・説明・リンクなど）。mod を作らずに置ける | `markup`: HTML 風の文字列（2 万文字まで） |
+| `core:ui` | Entity の大きさの四角（FigJam の図形と同じ考え方）。テキストを入れられ、ボタンにすると押したときに同じ Entity のスクリプト（`core:warp`・`core:switch`・`core:portal`）を動かす | `text`（2,000 文字まで）・`size`・`color`・`align`（既定 `center`）・`bold`。`fill`・`border`: `#RRGGBB` か `transparent`（既定）。`borderWidth`: px（0〜20、既定 2）。`radius`: 角丸の px（0〜1000、既定 0）。`button`: 押せるようにする（既定 false）。`markup`: HTML 風の文字列（2 万文字まで。書くとテキストの代わりに描く。上級者向け）。書いていない項目は描かない（塗りなし・枠なし） |
 | `core:image` | 画像（絵・写真・看板の絵）。大きさは `transform` の `w`・`h` | `src`: http(s) の URL（エディタの「画像を上げる」でこのサーバーに置ける）。`fit`: `contain`（既定）・`cover`・`fill`。`alt`: 説明（200 文字まで） |
 | `core:text` | 文字（看板・案内）。改行はそのまま出す | `text`（2,000 文字まで）。`size`: px（8〜200、既定 24）。`color`: `#RRGGBB`。`background`: `#RRGGBB` か `transparent`（既定）。`align`: `left`・`center`・`right`。`bold` |
-| `core:portal` | 押すと、ほかのワールドへ移るポータル（確かめてから今の部屋を出る）。行き先のワールドのサムネイルを丸い窓に出し、上に名前を出す（Ubichill の画面とエディタだけ。world.html では印だけ） | `world`: 行き先（`@ID/名前`・このサーバーのワールドの ID・ワールドの http(s) URL）。`label`: ポータルの名前（60 文字まで。空なら行き先のワールドの名前、引けなければ「ポータル」）。`look`: 見た目（下） |
-| `core:warp` | 押すと、行き先の Entity が画面の中心に来るようにスクロールする（ワールドの中で見る場所を変えるだけ。本人の画面だけ） | `target`: 行き先の Entity の id（空なら押せない）。`label`: ボタンの名前（60 文字まで。空なら「ワープ」）。`look`: 見た目（下） |
-| `core:switch` | 押すと、対象の Entity（と子）の見える・見えないを部屋の全員の画面で切り替える。切り替えはインスタンスが行い、部屋ごとの状態（部屋が無くなると最初に戻る） | `targets`: Entity の id の列（32 個まで）。`label`: ボタンの名前（60 文字まで。空なら「スイッチ」）。`look`: 見た目（下） |
+| `core:portal` | 押すと、ほかのワールドへ移るポータル（確かめてから今の部屋を出る）。行き先のワールドのサムネイルを丸い窓に出し、上に名前を出す（Ubichill の画面とエディタだけ。world.html では印だけ） | `world`: 行き先（`@ID/名前`・このサーバーのワールドの ID・ワールドの http(s) URL）。`label`: ポータルの名前（60 文字まで。空なら行き先のワールドの名前、引けなければ「ポータル」） |
+| `core:warp` | 押すと、行き先の Entity が画面の中心に来るようにスクロールする（ワールドの中で見る場所を変えるだけ。本人の画面だけ） | `target`: 行き先の Entity の id（空なら押せない）。`label`: ボタンの名前（60 文字まで。空なら「ワープ」） |
+| `core:switch` | 押すと、対象の Entity（と子）の見える・見えないを部屋の全員の画面で切り替える。切り替えはインスタンスが行い、部屋ごとの状態（部屋が無くなると最初に戻る） | `targets`: Entity の id の列（32 個まで）。`label`: ボタンの名前（60 文字まで。空なら「スイッチ」） |
 | `core:spawn` | スポーン。部屋に入ったとき、この Entity が画面の中心に来るようにスクロールする（複数あればどれか 1 つ。見えない印は使わない）。部屋では描かない | なし |
 
-`core:portal`・`core:warp`・`core:switch` の `look` は `standard`（既定。部品がボタン・丸い窓を描く）か `none`（何も描かず、Entity の矩形いっぱいが押せる場所になる。見た目は同じ Entity の `core:image`・`core:text` で付け、`label` は読み上げる名前になる）。`look` を知らない版と、知らない値（新しい版で足した値・書き誤り）は標準の見た目で描く。
+`core:warp`・`core:switch`・`core:portal` はスクリプト（押したときの動き）。同じ Entity に `button: true` の `core:ui` があれば、自分では何も描かず、その UI を押したときに動く（1 つのボタンで複数のスクリプトを動かせる。並び順に動く）。ボタンにした UI が無ければ、標準のボタン（ポータルは行き先のサムネイルの丸い窓）を出す。`label` は標準のボタンの名前で、UI のボタンのテキストが空のときは読み上げの名前になる。
 
-`core:image`・`core:text`・`core:portal`・`core:warp`・`core:switch`・`core:spawn`、Entity の `visible`、背景の画像は、足した後の版の Ubichill でしか使えない（`visible` を知らない版は、見える Entity として描く）。読む側が知らない部品を残すようになる前の版のサーバーは、定義の検査で断る。
+`core:image`・`core:text`・`core:portal`・`core:warp`・`core:switch`・`core:spawn`、`core:ui` のテキスト・四角・ボタン、Entity の `visible`、背景の画像は、足した後の版の Ubichill でしか使えない（`visible` を知らない版は、見える Entity として描く）。読む側が知らない部品を残すようになる前の版のサーバーは、定義の検査で断る。
 
 ```yaml
 - id: tv
@@ -160,13 +160,22 @@ Host が持つ Component。mod を読み込まずに使え、`dependencies` に�
   components:
     - type: core:portal
       data: { world: "@alice/cafe", label: "カフェへ" }
+- id: back-button
+  transform: { x: 880, y: 160, w: 200, h: 64 }
+  components:
+    - type: core:ui
+      data: { text: "最初に戻る", fill: "#ffffff", border: "#1b2a44", radius: 32, button: true }
+    - type: core:warp
+      data: { target: welcome }
 - id: door
-  transform: { x: 880, y: 160, w: 160, h: 240 }
+  transform: { x: 1120, y: 160, w: 160, h: 240 }
   components:
     - type: core:image
       data: { src: "https://ubichill.example/api/v1/assets/<hash>.webp", alt: "扉" }
+    - type: core:ui
+      data: { button: true }   # 塗りも枠も無い、押せるだけの四角（扉の絵を押すとワープ）
     - type: core:warp
-      data: { target: welcome, label: "入口へ戻る", look: none }
+      data: { target: welcome, label: "最初に戻る" }
 ```
 
 ### 画像の置き場所

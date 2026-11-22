@@ -20,13 +20,13 @@ mod を書けない人でもワールドを作れるようにする最初の段�
 | ポータルの行き先は `@ID/名前`・ワールドの ID・ワールドの URL | ワールドのページを開ける書き方だけを通す（`javascript:` などは検証で落とす）。 |
 | 文字の色・大きさは schema で `#RRGGBB`・数値に限る | 作者の値を style に入れるので、CSS を差し込ませない。背景の画像の URL も URL として正規化してから CSS に入れる。 |
 | 背景の画像は既定値を持たない | 足す前のワールドの解釈（と既定値で埋めた値）を変えない。 |
-| 押せる部品（ポータル・ワープ・スイッチ）は見た目を外せる（`look: 'none'`）。既定は部品が描く（`standard`） | 動きと見た目を分ける。扉の絵を押すとワープ、のように見た目は同じ Entity のイメージ・テキストで付ける。置いてすぐ見えるよう、既定は今の見た目のまま。 |
+| UI は四角（塗り・枠線・角丸・テキスト）で、ボタンにすると同じ Entity のスクリプト（ワープ・スイッチ・ポータル）を動かす。ボタンにした UI が無ければスクリプトは標準のボタンを出す | 動きと見た目を分ける（FigJam の図形に動きを割り当てる形）。見た目を変えたいときだけ UI を足せばよく、置いてすぐ押せる。部品ごとに「見た目なし」の項目を持たせると、同じことを 3 か所で決めることになる。 |
 | `requires.protocol` は上げない | これは mod の Host ⇔ Worker の版。新しい部品を使ったワールドは、古い版のサーバーでは定義の検査で断られる（読む側を新しくするまで開けない）。 |
 
 ## 仕組み
 
 - 部品の data の形は `packages/core-components/src/{image,text,portal}`。描くのは `packages/frontend/src/world/Core{ImageSurface,TextSign,Portal}.tsx`（置き場所は `surfacePlacement` で `core:ui` と同じ）。
-- 見た目なしの部品は何も描かず、Entity の矩形いっぱいを透明なボタンにする（`PartHitArea`。名前を読み上げ、押せない条件は標準の見た目と同じ）。同じ z では後に描いたものが上なので、描く順（`partLook.ts` の `stackingOrder`）で同じ Entity のほかの部品の後ろに回し、Component の並びによらず画像・文字の上で押せる（Component の transform で z を変えたときは z が勝つ）。エディタでは押せる範囲を点線と名前で見せ、サムネイルを撮るときは出さない。古い ubichill は `look` を知らない項目として捨て、標準の見た目で描く。
+- UI のボタンは同じ Entity のスクリプトを並び順に動かす（`world/entityButton.ts` で探し、`useScriptRunner` で動かす。標準のボタンも同じ動かし方を使う）。スクリプトはボタンにした UI があると部屋では描かず、エディタでだけ右下に名札を出す。押せない四角とテキストは下のものの操作を邪魔しない（`pointer-events: none`）。
 - ポータルの移り方は `world/portalNavigation.ts` の context で、SNS の画面（`InstancePage`）だけが渡す。world.html とエディタのプレビューでは押せない（`src/world` から router と backend を読まない規則）。
 - 画像: `services/worldAssets`（規則）・`routes/assets`・`world_assets`（migration 0045）。画像の作り直しはプロフィール画像と同じ `processImage`（長い辺を縮める `inside`）。
 - エディタ: `entityKinds.ts` に部品を宣言し、画像の欄（`image`）は「画像を上げる」ボタン付き（`ImageUrlInput`）。ワールド情報の背景の画像とサムネイルも同じ欄。サムネイルは「画面から撮る」で、エディタの画面を部屋で見える通りに描いて撮れる（16:9 の枠。DOM を描き直すので mod の UI も写る。ほかのサーバーの画像は CORS で読めるものだけ）。

@@ -2,12 +2,13 @@ import {
     CORE_COMPONENT_TYPES,
     IMAGE_FITS,
     MEDIA_FITS,
-    PART_LOOKS,
     PORTAL_LABEL_MAX_LENGTH,
     SWITCH_LABEL_MAX_LENGTH,
     SWITCH_MAX_TARGETS,
     TEXT_ALIGNS,
     TEXT_SIZE_RANGE,
+    UI_BORDER_WIDTH_MAX,
+    UI_RADIUS_MAX,
     WARP_LABEL_MAX_LENGTH,
 } from '@ubichill/core-components';
 import { createDefaultColliderData } from '@ubichill/runtime';
@@ -105,17 +106,9 @@ export interface AvailableEntityKind {
     overlay?: OverlayMode;
 }
 
-/**
- * 押せる部品（ポータル・ワープ・スイッチ）の見た目。既定（standard）は data に書かない（使う部品だけが項目を持つので、
- * 古い ubichill のエディタで知らない項目として出ない）。欄には選択肢の先頭（standard）が出る。
- */
-const PART_LOOK_FIELD: DataFieldSpec = {
-    type: 'enum',
-    options: [...PART_LOOKS],
-    optionLabels: { standard: '標準', none: 'なし（同じ Entity のイメージ・テキストを押す）' },
-    label: '見た目',
-    help: 'なしにすると何も描かず、Entity の枠いっぱいが押せる場所になります。',
-};
+/** スクリプト（ワープ・スイッチ・ポータル）の名前の欄の説明。動かし方は UI のボタンか、標準のボタン */
+const SCRIPT_TRIGGER_HELP =
+    '同じ Entity の UI を「ボタンにする」と、その UI を押したときに動きます。UI のボタンが無ければ、この名前の標準のボタンを出します。';
 
 /** modのインストール有無に関係なく、Hostが必ず提供する組み込みComponent。 */
 export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
@@ -149,14 +142,66 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
         kind: CORE_COMPONENT_TYPES.ui,
         displayName: 'UI',
         suggestSize: true,
-        defaultTransform: { w: 320, h: 160 },
-        defaultData: { markup: '<div style="padding: 12px; background: #fff; border-radius: 8px">ようこそ</div>' },
+        defaultTransform: { w: 200, h: 80 },
         dataFields: {
+            text: { type: 'string', multiline: true, default: 'テキスト', label: 'テキスト' },
+            size: {
+                type: 'number',
+                default: 20,
+                min: TEXT_SIZE_RANGE.min,
+                max: TEXT_SIZE_RANGE.max,
+                step: 1,
+                label: '文字の大きさ（px）',
+            },
+            color: { type: 'color', default: '#1b2a44', label: '文字の色' },
+            align: {
+                type: 'enum',
+                options: [...TEXT_ALIGNS],
+                optionLabels: { left: '左', center: '中央', right: '右' },
+                default: 'center',
+                label: '揃え',
+            },
+            bold: { type: 'boolean', default: false, label: '太字' },
+            fill: {
+                type: 'string',
+                default: '#ffffff',
+                label: '塗りの色',
+                help: '#RRGGBB か transparent（塗りなし）。',
+            },
+            border: {
+                type: 'string',
+                default: '#1b2a44',
+                label: '枠線の色',
+                help: '#RRGGBB か transparent（枠線なし）。',
+            },
+            borderWidth: {
+                type: 'number',
+                default: 2,
+                min: 0,
+                max: UI_BORDER_WIDTH_MAX,
+                step: 1,
+                label: '枠線の太さ（px）',
+            },
+            radius: {
+                type: 'number',
+                default: 12,
+                min: 0,
+                max: UI_RADIUS_MAX,
+                step: 1,
+                label: '角丸（px）',
+                help: '大きくすると丸くなります。',
+            },
+            button: {
+                type: 'boolean',
+                default: false,
+                label: 'ボタンにする',
+                help: '押せるようにして、押したときに同じ Entity のスクリプト（ワープ・スイッチ・ポータル）を動かします。',
+            },
             markup: {
                 type: 'string',
                 multiline: true,
-                label: 'UI データ（HTML 風）',
-                help: '看板・説明・リンクなど。使えるタグ・属性は mod の UI と同じ（script やイベント属性は動かない）。リンクは新しいタブで開く。',
+                label: 'HTML（上級者向け）',
+                help: 'テキストの代わりに、看板・説明・リンクなどを HTML 風に書けます。使えるタグ・属性は mod の UI と同じ（script やイベント属性は動かない）。リンクは新しいタブで開く。',
             },
         },
         viewKind: 'jsx',
@@ -233,9 +278,8 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
                 default: '',
                 placeholder: '行き先のワールドの名前',
                 label: `名前（${PORTAL_LABEL_MAX_LENGTH} 文字まで）`,
-                help: '空なら、行き先のワールドの名前を出します。',
+                help: `空なら、行き先のワールドの名前を出します。${SCRIPT_TRIGGER_HELP}`,
             },
-            look: PART_LOOK_FIELD,
         },
         viewKind: 'jsx',
     },
@@ -257,8 +301,8 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
                 default: '',
                 placeholder: 'ワープ',
                 label: `名前（${WARP_LABEL_MAX_LENGTH} 文字まで）`,
+                help: SCRIPT_TRIGGER_HELP,
             },
-            look: PART_LOOK_FIELD,
         },
         viewKind: 'jsx',
     },
@@ -280,8 +324,8 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
                 default: '',
                 placeholder: 'スイッチ',
                 label: `名前（${SWITCH_LABEL_MAX_LENGTH} 文字まで）`,
+                help: SCRIPT_TRIGGER_HELP,
             },
-            look: PART_LOOK_FIELD,
         },
         viewKind: 'jsx',
     },

@@ -1,10 +1,4 @@
-import {
-    CORE_COMPONENT_TYPES,
-    ColliderDataSchema,
-    PART_LOOKS,
-    PartLookSchema,
-    validateCoreComponentData,
-} from '@ubichill/core-components';
+import { CORE_COMPONENT_TYPES, ColliderDataSchema, validateCoreComponentData } from '@ubichill/core-components';
 import { describe, expect, it } from 'vitest';
 import { withComponentAdded } from '../lib/addComponent';
 import { CORE_ENTITY_KINDS, entityKindsFromManifest, usableDataFields } from '../lib/entityKinds';
@@ -33,16 +27,33 @@ describe('CORE_ENTITY_KINDS', () => {
         expect(Object.keys(names).sort()).toEqual(Object.values(CORE_COMPONENT_TYPES).sort());
     });
 
-    it('押せる部品の「見た目」は schema と同じ選択肢に名前を付けて出し、置いたときは data に書かない', () => {
+    it('置いた UI は、見える四角（白・枠線・角丸）にテキストが入り、ボタンではない。設定の選択肢には名前が付く', () => {
+        const kind = CORE_ENTITY_KINDS.find((k) => k.kind === CORE_COMPONENT_TYPES.ui);
+        const placed = withComponentAdded(
+            {
+                id: 'sign',
+                transform: { x: 0, y: 0, z: 0, scale: 1, rotation: 0 },
+                tags: [],
+                components: [],
+                children: [],
+            },
+            CORE_COMPONENT_TYPES.ui,
+            kind,
+        );
+        const data = placed.components[0]?.data;
+        expect(validateCoreComponentData(CORE_COMPONENT_TYPES.ui, data).success).toBe(true);
+        expect(data).toMatchObject({ text: 'テキスト', fill: '#ffffff', radius: 12, button: false });
+        // HTML は書いたときだけ（空の項目を足さない）
+        expect(data).not.toHaveProperty('markup');
+        expect(placed.transform).toMatchObject({ w: 200, h: 80 });
+        const align = kind?.dataFields?.align;
+        if (align?.type !== 'enum') throw new Error('揃えの欄が無い');
+        for (const option of align.options) expect(align.optionLabels?.[option], option).toBeTruthy();
+    });
+
+    it('スクリプト（ワープ・スイッチ・ポータル）は、置いても見た目の項目を持たず、そのまま検証を通る', () => {
         for (const type of [CORE_COMPONENT_TYPES.warp, CORE_COMPONENT_TYPES.switch, CORE_COMPONENT_TYPES.portal]) {
             const kind = CORE_ENTITY_KINDS.find((k) => k.kind === type);
-            const look = kind?.dataFields?.look;
-            if (look?.type !== 'enum') throw new Error(`${type} に見た目の欄が無い`);
-            // 欄は data に無いとき先頭の選択肢を出すので、先頭が schema の既定と同じでないといけない
-            expect(look.options, type).toEqual([...PART_LOOKS]);
-            expect(look.options[0]).toBe(PartLookSchema.parse(undefined));
-            for (const option of look.options) expect(look.optionLabels?.[option], option).toBeTruthy();
-
             const placed = withComponentAdded(
                 {
                     id: 'door',
@@ -54,7 +65,7 @@ describe('CORE_ENTITY_KINDS', () => {
                 type,
                 kind,
             ).components[0];
-            expect(placed?.data, type).not.toHaveProperty('look');
+            expect(Object.keys(kind?.dataFields ?? {}), type).not.toContain('look');
             expect(validateCoreComponentData(type, placed?.data).success, type).toBe(true);
         }
     });

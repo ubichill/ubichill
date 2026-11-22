@@ -1,12 +1,13 @@
-import { PortalDataSchema, type PortalTarget, parsePortalTarget, readCoreData } from '@ubichill/core-components';
+import type { PortalTarget } from '@ubichill/core-components';
 import type { ComponentInstance } from '@ubichill/shared';
 import type React from 'react';
 import { useEffect, useState } from 'react';
 import { css } from '@/styled-system/css';
-import { PartHitArea } from './PartHitArea';
 import { PortalIcon } from './partIcons';
-import { type PortalDestination, usePortalLookup, usePortalNavigation } from './portalNavigation';
+import { type PortalDestination, usePortalLookup } from './portalNavigation';
+import { ScriptBadge } from './ScriptBadge';
 import { surfacePlacement } from './surfacePlacement';
+import { useEntityScript } from './useEntityScript';
 
 const DEFAULT_LABEL = 'ポータル';
 
@@ -34,31 +35,18 @@ function usePortalDestination(target: PortalTarget | null): PortalDestination | 
  * （移り方は SNS の画面が決める。usePortalNavigation）。行き先が無い・移り方が渡されていない（world.html・エディタ）ときは押せない。
  */
 export const CorePortal: React.FC<{ entity: ComponentInstance }> = ({ entity }) => {
-    const go = usePortalNavigation();
-    const parsed = readCoreData(PortalDataSchema, entity.data ?? {});
-    const target = parsed.success ? parsePortalTarget(parsed.data.world) : null;
+    const { script, onButton, ready, run } = useEntityScript(entity);
+    const target = script?.kind === 'portal' ? script.target : null;
     const destination = usePortalDestination(target);
     const [failedThumbnail, setFailedThumbnail] = useState<string | null>(null);
     const entityId = entity.entityId ?? entity.id;
-    const name = (parsed.success && parsed.data.label.trim()) || destination?.name || DEFAULT_LABEL;
+    const name = script?.label || destination?.name || DEFAULT_LABEL;
     const thumbnail =
         destination?.thumbnail && destination.thumbnail !== failedThumbnail ? destination.thumbnail : null;
-    const press = () => {
-        if (go && target) go(target, name);
-    };
-    if (parsed.success && parsed.data.look === 'none')
-        return (
-            <PartHitArea
-                entity={entity}
-                label={name}
-                icon={<PortalIcon size={12} />}
-                disabled={!go || !target}
-                onPress={press}
-            />
-        );
+    if (onButton) return <ScriptBadge entity={entity} label={name} icon={<PortalIcon size={12} />} />;
     return (
         <div data-portal={entityId} style={{ ...surfacePlacement(entity), pointerEvents: 'auto' }}>
-            <button type="button" className={portal} disabled={!go || !target} onClick={press}>
+            <button type="button" className={portal} disabled={!ready} onClick={() => run(name)}>
                 <span className={portalName}>{name}</span>
                 <span className={portalWindow}>
                     {thumbnail ? (

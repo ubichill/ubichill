@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { EntityIdRef } from '../entityRef.js';
-import { PartLookSchema } from '../look.js';
 
 export const SWITCH_LABEL_MAX_LENGTH = 60;
 export const SWITCH_MAX_TARGETS = 32;
@@ -15,8 +14,7 @@ export const SwitchDataSchema = z
             .array(EntityIdRef.refine((id) => id !== '', '対象を選んでください'))
             .max(SWITCH_MAX_TARGETS)
             .default([]),
-        /** ボタンに出す文字（空なら「スイッチ」）。見た目なしでは読み上げる名前 */
+        /** ボタンに出す文字（空なら「スイッチ」）。UI のボタンで動かすときは、ボタンの読み上げに使う */
         label: z.string().max(SWITCH_LABEL_MAX_LENGTH).default(''),
-        look: PartLookSchema,
     })
     .strict();

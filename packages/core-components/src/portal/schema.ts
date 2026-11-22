@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { PartLookSchema } from '../look.js';
 
 export const PORTAL_TARGET_MAX_LENGTH = 2048;
 export const PORTAL_LABEL_MAX_LENGTH = 60;
@@ -36,8 +35,7 @@ export const PortalDataSchema = z
                 '行き先は @ID/名前・ワールドの ID・ワールドの URL のどれかにしてください',
             )
             .default(''),
-        /** ポータルに出す名前（空なら行き先の名前か「ポータル」）。見た目なしでは読み上げる名前 */
+        /** ポータルに出す名前（空なら行き先の名前か「ポータル」）。UI のボタンで動かすときは、ボタンの読み上げに使う */
         label: z.string().max(PORTAL_LABEL_MAX_LENGTH).default(''),
-        look: PartLookSchema,
     })
     .strict();
