@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest';
-import { InstanceNotFoundError } from '@/world';
 import { createPortalLookup, type PortalRoomSource, portalWorldRef, ROOM_STATUS_TTL_MS } from './portalDestination';
 
 describe('portalWorldRef', () => {
@@ -84,9 +83,7 @@ describe('createPortalLookup', () => {
             const fetchWorld = vi.fn(async () => ({ displayName: 'abc という名前のワールド' }));
             const lookup = createPortalLookup(
                 fetchWorld,
-                source(async () => {
-                    throw new InstanceNotFoundError('インスタンスが見つかりません');
-                }),
+                source(async () => null),
             );
             expect(await lookup({ kind: 'room', room: 'abc' })).toBeNull();
             expect(await lookup({ kind: 'id', id: 'abc' })).toEqual({ name: 'abc という名前のワールド' });
@@ -155,13 +152,13 @@ describe('createPortalLookup', () => {
 
             it('一時的に引けなければ前の結果のまま。無くなった部屋（404）は null にする', async () => {
                 const c = clock();
-                const fetchRoom = vi.fn(async () => users(2));
+                const fetchRoom = vi.fn(async (): Promise<ReturnType<typeof users> | null> => users(2));
                 const lookup = createPortalLookup(vi.fn(), source(fetchRoom), c.now);
                 const before = await lookup(goal);
                 fetchRoom.mockRejectedValueOnce(new Error('502'));
                 c.advance(ROOM_STATUS_TTL_MS);
                 expect(await lookup(goal)).toBe(before);
-                fetchRoom.mockRejectedValueOnce(new InstanceNotFoundError('closed'));
+                fetchRoom.mockResolvedValueOnce(null);
                 c.advance(ROOM_STATUS_TTL_MS);
                 expect(await lookup(goal)).toBeNull();
             });

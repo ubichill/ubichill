@@ -1,5 +1,5 @@
 import { useSocket } from '@ubichill/react';
-import { roomPortalAddressFor } from '@ubichill/shared';
+import { type Instance, roomPortalAddressFor } from '@ubichill/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { InstanceHUD } from '@/components/hud/InstanceHUD';
@@ -21,12 +21,19 @@ import { createPortalLookup } from '@/lib/worlds/portalDestination';
 import { portalPath } from '@/lib/worlds/portalPath';
 import { ROOM_PORTAL_REFUSAL_MESSAGES, roomPortalRefusal } from '@/lib/worlds/roomPortalEntry';
 import { useRemoteVisit } from '@/lib/worlds/useRemoteVisit';
-import { type InstanceFailure, type PortalGoal, WorldView } from '@/world';
+import { type InstanceFailure, InstanceNotFoundError, type PortalGoal, WorldView } from '@/world';
 
 /** 失敗したら一定時間後に自動でホームへ戻す（ロード画面で詰まらないように）。 */
 const RETURN_HOME_MS = 5000;
 
 const RETRY_MESSAGE = '元の部屋には入れませんでした';
+
+/** 部屋を引く。無い・見る人に見えない部屋（404）は null、ほかの失敗はそのまま。 */
+const fetchRoomOrGone = (address: string): Promise<Instance | null> =>
+    fetchInstance(address).catch((error: unknown) => {
+        if (error instanceof InstanceNotFoundError) return null;
+        throw error;
+    });
 
 /**
  * SNS のインスタンス画面。ワールドを動かすのは `WorldView` で、ここは認証の確認・ホームへの導線・HUD を足すだけ。
@@ -140,7 +147,7 @@ export function InstancePage() {
                 return navigate(portalPath(goal));
             }
             const room = roomPortalAddressFor(goal.room, id);
-            const refusal = await roomPortalRefusal(fetchInstance, room, viewerId);
+            const refusal = await roomPortalRefusal(fetchRoomOrGone, room, viewerId);
             if (refusal) return void pushToast(ROOM_PORTAL_REFUSAL_MESSAGES[refusal], 'warn');
             await leaveWorld();
             const state: InstanceEntryState | undefined = look ? { worldData: look } : undefined;
@@ -153,7 +160,7 @@ export function InstancePage() {
     const portalLookup = useMemo(
         () =>
             createPortalLookup(fetchWorld, {
-                fetch: (room) => fetchInstance(roomPortalAddressFor(room, id ?? '')),
+                fetch: (room) => fetchRoomOrGone(roomPortalAddressFor(room, id ?? '')),
                 viewerId,
             }),
         [id, viewerId],

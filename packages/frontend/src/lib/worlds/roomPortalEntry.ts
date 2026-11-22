@@ -1,5 +1,4 @@
 import { type Instance, isFullFor } from '@ubichill/shared';
-import { InstanceNotFoundError } from '@/world';
 
 /** 部屋に入れるかを決めるもの。人数で変わるので、ワールドの名前・サムネイルと違って覚えておかずに引き直す。 */
 export type RoomStatus = Pick<Instance, 'canJoin' | 'leaderId' | 'stats'>;
@@ -20,18 +19,18 @@ export function roomRefusal(room: RoomStatus, viewerId: string | null): 'closed'
     return isFullFor(room, viewerId) ? 'full' : null;
 }
 
-/** 部屋を引けなかったわけ。無い・見る人に見えない部屋（404）は gone。 */
-export const roomLookupFailure = (error: unknown): 'gone' | 'unknown' =>
-    error instanceof InstanceNotFoundError ? 'gone' : 'unknown';
-
 /**
  * 今の部屋を出る直前に、ポータルの先の部屋を引き直して入れるかを確かめる（ポータルの鍵は少し前に引いたもの）。
+ * fetchRoom は無い・見る人に見えない部屋を null にし、確かめられなければ失敗する。
  * 入れない・確かめられなければわけを返し、呼ぶ側は今の部屋に残る。
  */
 export function roomPortalRefusal(
-    fetchRoom: (address: string) => Promise<RoomStatus>,
+    fetchRoom: (address: string) => Promise<RoomStatus | null>,
     address: string,
     viewerId: string | null,
 ): Promise<RoomPortalRefusal | null> {
-    return fetchRoom(address).then((room) => roomRefusal(room, viewerId), roomLookupFailure);
+    return fetchRoom(address).then(
+        (room) => (room ? roomRefusal(room, viewerId) : 'gone'),
+        () => 'unknown' as const,
+    );
 }
