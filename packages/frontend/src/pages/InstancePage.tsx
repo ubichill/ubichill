@@ -19,6 +19,7 @@ import { dismissToast, pushToast } from '@/lib/toast';
 import { fetchInstance, fetchWorld } from '@/lib/worlds/instancesApi';
 import { createPortalLookup } from '@/lib/worlds/portalDestination';
 import { portalPath } from '@/lib/worlds/portalPath';
+import { ROOM_PORTAL_REFUSAL_MESSAGES, roomPortalRefusal } from '@/lib/worlds/roomPortalEntry';
 import { useRemoteVisit } from '@/lib/worlds/useRemoteVisit';
 import { type InstanceFailure, type PortalGoal, WorldView } from '@/world';
 
@@ -128,20 +129,27 @@ export function InstancePage() {
 
     // ポータル（core:portal）: 確かめてから部屋を出て、行き先へ。ワールドへのポータルはワールドのページ（そこで入室まで進む）、
     // 部屋へのポータルはその部屋（読み込み画面に行き先のサムネイルを出す）
+    // 部屋へのポータルは、出る直前に行き先の部屋を引き直し、入れなければ今の部屋に残る（ポータルの鍵は少し前のもの）
     const { leaveWorld } = useSocket();
+    const viewerId = session?.user.id ?? null;
     const goThroughPortal = useCallback(
         async (goal: PortalGoal, label: string, look?: { displayName: string; thumbnail?: string }) => {
             if (!id || !(await confirm(`「${label}」へ移りますか？今の部屋から退出します。`))) return;
+            if (goal.kind !== 'room') {
+                await leaveWorld();
+                return navigate(portalPath(goal));
+            }
+            const room = roomPortalAddressFor(goal.room, id);
+            const refusal = await roomPortalRefusal(fetchInstance, room, viewerId);
+            if (refusal) return void pushToast(ROOM_PORTAL_REFUSAL_MESSAGES[refusal], 'warn');
             await leaveWorld();
-            if (goal.kind !== 'room') return navigate(portalPath(goal));
             const state: InstanceEntryState | undefined = look ? { worldData: look } : undefined;
-            navigate(portalPath({ kind: 'room', room: roomPortalAddressFor(goal.room, id) }), { state });
+            navigate(portalPath({ kind: 'room', room }), { state });
         },
-        [confirm, id, leaveWorld, navigate],
+        [confirm, id, leaveWorld, navigate, viewerId],
     );
 
-    // ポータルに出す行き先（同じ行き先は 1 回だけ引く）。部屋へのポータルは、見る人が入れるかも引く
-    const viewerId = session?.user.id ?? null;
+    // ポータルに出す行き先。部屋へのポータルは、見る人が入れるかも引く（入れるかは少しずつ引き直す）
     const portalLookup = useMemo(
         () =>
             createPortalLookup(fetchWorld, {
