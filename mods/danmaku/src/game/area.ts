@@ -3,7 +3,16 @@
  * 範囲は壁の代わり: 自機はこの中から出られず、敵の弾はこの外で消える。
  */
 
-import { circlesOverlap, distanceSq, type Rect, rectCenter, rectContains, type Vec } from './geometry';
+import {
+    circlesOverlap,
+    distanceSq,
+    type Motion,
+    type Rect,
+    rectCenter,
+    rectContains,
+    sweptContact,
+    type Vec,
+} from './geometry';
 import { BULLET_HIT_RADIUS, type EnemyBullet } from './patterns';
 
 /** 大きさを付けていない範囲は、ワールドの既定の大きさとみなす。 */
@@ -47,14 +56,16 @@ export interface Body {
     readonly radius: number;
 }
 
+/** 弾は自機と弾それぞれの前のフレームからの動きで見る（速い弾が自機を飛び越えても当たる）。体当たりは今の位置で見る。 */
 export function shipIsHit(
-    center: Vec,
+    ship: Motion,
     hitRadius: number,
     bullets: readonly EnemyBullet[],
     bodies: readonly Body[],
 ): boolean {
     return (
-        bullets.some((bullet) => circlesOverlap(center, hitRadius, bullet, BULLET_HIT_RADIUS)) ||
-        bodies.some((body) => circlesOverlap(center, hitRadius, body.center, body.radius * BODY_HIT_SCALE))
+        bullets.some(
+            (bullet) => sweptContact(ship, { from: bullet.from, to: bullet }, hitRadius + BULLET_HIT_RADIUS) !== null,
+        ) || bodies.some((body) => circlesOverlap(ship.to, hitRadius, body.center, body.radius * BODY_HIT_SCALE))
     );
 }

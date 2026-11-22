@@ -93,6 +93,8 @@ const sim = {
     ships: new Map<string, ShipInfo>(),
     shipMarks: new Map<string, ShipMarks>(),
     localShip: null as LocalShip | null,
+    /** 前のフレームで当たりを見た自機（その間の動きを線分で見る）。 */
+    lastShip: null as LocalShip | null,
     shots: [] as Shot[],
     effects: [] as Effect[],
     aims: new Map<string, number>(),
@@ -228,12 +230,16 @@ Ubi.registerSystem((_entities, deltaTime) => {
         area: sim.area,
         enemies: specs,
         hits,
-        ship: localShip,
+        ship: localShip && {
+            ...localShip,
+            from: sim.lastShip?.shipId === localShip.shipId ? sim.lastShip.center : localShip.center,
+        },
         shots: sim.shots,
         aim: aims.aim,
         wasAlive: sim.alive,
     });
     aims.forgetUnused();
+    sim.lastShip = localShip;
 
     if (frame.shipHit && localShip && now - sim.hitSentAt >= HIT_RESEND_MS) {
         sim.hitSentAt = now;

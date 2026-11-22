@@ -3,8 +3,8 @@
  * 同じ当たりを 2 人が数えないため。
  */
 
-import { circlesOverlap, clamp, type Rect, rectContains, type Vec } from './geometry';
-import { MAX_STEP_SECONDS } from './ship';
+import { clamp, type Motion, pointAlong, type Rect, rectContains, sweptContact, type Vec } from './geometry';
+import { stepSeconds } from './ship';
 
 export interface Shot {
     readonly x: number;
@@ -17,6 +17,8 @@ export interface Shot {
 export interface ShotTarget {
     readonly id: string;
     readonly center: Vec;
+    /** フレームの始めの中心。省略すると、このフレームの間は止まっていたとみなす。 */
+    readonly from?: Vec;
     readonly radius: number;
 }
 
@@ -51,26 +53,43 @@ export function addShot(shots: readonly Shot[], shot: Shot): Shot[] {
     return [...shots, shot].slice(-MAX_SHOTS);
 }
 
-export function stepShots(shots: readonly Shot[], seconds: number, area: Rect): Shot[] {
-    const dt = clamp(Number.isFinite(seconds) ? seconds : 0, 0, MAX_STEP_SECONDS);
-    return shots
-        .map((shot) => ({ ...shot, y: shot.y + shot.vy * dt }))
-        .filter((shot) => rectContains(area, shot, CULL_MARGIN));
-}
-
 const countIds = (ids: readonly string[]): Record<string, number> =>
     Object.fromEntries([...new Set(ids)].map((id) => [id, ids.filter((other) => other === id).length]));
 
-/** 弾は最初に重なった的に当たって消える。 */
-export function resolveShots(shots: readonly Shot[], targets: readonly ShotTarget[]): ShotResult {
-    const matched = shots.map((shot) => ({
-        shot,
-        target: targets.find((t) => circlesOverlap(shot, SHOT_RADIUS, t.center, t.radius)),
-    }));
+/** 通り道で最初に触れた的と、触れた位置。重なった的が同時なら先に並んだ方。 */
+function firstImpact(path: Motion, targets: readonly ShotTarget[]): Impact | null {
+    const first = targets.reduce<{ target: ShotTarget; time: number } | null>((best, target) => {
+        const time = sweptContact(
+            path,
+            { from: target.from ?? target.center, to: target.center },
+            SHOT_RADIUS + target.radius,
+        );
+        return time !== null && (best === null || time < best.time) ? { target, time } : best;
+    }, null);
+    return first ? { ...pointAlong(path, first.time), targetId: first.target.id } : null;
+}
+
+/**
+ * 弾を 1 フレーム分進め、進む前から後までの線分で当たりを見る（速い弾がフレームの間に的を通り抜けても当たる）。
+ * 弾は最初に触れた的に当たって消える。当たらずに範囲の外へ出た弾も消す（当たりを見てから消す）。
+ */
+export function stepShots(
+    shots: readonly Shot[],
+    seconds: number,
+    area: Rect,
+    targets: readonly ShotTarget[],
+): ShotResult {
+    const dt = stepSeconds(seconds);
+    const flown = shots.map((shot) => {
+        const moved = { ...shot, y: shot.y + shot.vy * dt };
+        return { moved, impact: firstImpact({ from: shot, to: moved }, targets) };
+    });
     return {
-        shots: matched.flatMap(({ shot, target }) => (target ? [] : [shot])),
-        hits: countIds(matched.flatMap(({ shot, target }) => (target && shot.mine ? [target.id] : []))),
-        impacts: matched.flatMap(({ shot, target }) => (target ? [{ x: shot.x, y: shot.y, targetId: target.id }] : [])),
+        shots: flown.flatMap(({ moved, impact }) =>
+            impact === null && rectContains(area, moved, CULL_MARGIN) ? [moved] : [],
+        ),
+        hits: countIds(flown.flatMap(({ moved, impact }) => (impact && moved.mine ? [impact.targetId] : []))),
+        impacts: flown.flatMap(({ impact }) => (impact ? [impact] : [])),
     };
 }
 
@@ -81,8 +100,7 @@ export interface Trigger {
 
 /** 連射の間隔。押している間、rate 発/秒で撃つ。 */
 export function pullTrigger(cooldown: number, seconds: number, wantsFire: boolean, rate: number): Trigger {
-    const dt = clamp(Number.isFinite(seconds) ? seconds : 0, 0, MAX_STEP_SECONDS);
-    const remaining = Math.max(0, cooldown - dt);
+    const remaining = Math.max(0, cooldown - stepSeconds(seconds));
     if (!wantsFire || remaining > 0) return { fire: false, cooldown: remaining };
     return { fire: true, cooldown: 1 / clamp(Number.isFinite(rate) ? rate : 1, 0.1, 60) };
 }

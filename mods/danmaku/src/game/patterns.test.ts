@@ -108,6 +108,23 @@ describe('enemyBullets', () => {
         expect(dist(t0 + 2)).toBeCloseTo(2 * s.bulletSpeed);
     });
 
+    it('前のフレームの時刻からの通り道を持ち、その間に撃った弾は撃った位置から通ったことにする', () => {
+        const s = spec({ pattern: 'radial', count: 1, interval: 100, bulletSpeed: 600 });
+        const t0 = volleyTime(s, 0);
+        const [flying] = enemyBullets(s, t0 + 0.5, area, down, t0 + 0.44);
+        expect(flying.y - flying.from.y).toBeCloseTo(600 * 0.06);
+        const [fresh] = enemyBullets(s, t0 + 0.03, area, down, t0 - 0.03);
+        expect(fresh.from).toEqual(s.home);
+        expect(fresh.y - s.home.y).toBeCloseTo(600 * 0.03);
+    });
+
+    it('このフレームで範囲の外へ抜けた弾も、当たりを見るために残す', () => {
+        const s = spec({ pattern: 'radial', count: 1, interval: 100, bulletSpeed: 600 });
+        const t = volleyTime(s, 0) + (600 - s.home.y + 20) / 600;
+        expect(enemyBullets(s, t, area, down)).toEqual([]);
+        expect(enemyBullets(s, t, area, down, t - 0.06)).toHaveLength(1);
+    });
+
     it('狙い撃ちは回ごとに 1 つの key で向きを聞く', () => {
         const s = spec({ pattern: 'aimed', count: 3, interval: 1 });
         const keys: string[] = [];

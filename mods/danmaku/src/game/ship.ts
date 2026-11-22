@@ -23,6 +23,11 @@ export interface ShipStatus {
 const BLINK_MS = 80;
 /** 1 フレームで進める時間の上限。タブが裏に回った後などに壁抜けのように飛ばない。 */
 export const MAX_STEP_SECONDS = 0.1;
+
+/** 1 フレームとして進める秒。負・NaN は 0、長すぎる間は MAX_STEP_SECONDS にする。 */
+export function stepSeconds(seconds: number): number {
+    return clamp(Number.isFinite(seconds) ? seconds : 0, 0, MAX_STEP_SECONDS);
+}
 /** 低速移動（Shift）のときの速さの割合。 */
 export const FOCUS_SPEED_SCALE = 0.45;
 
@@ -127,7 +132,7 @@ export function moveInput(pressed: (code: string) => boolean): MoveInput {
 
 /** 入力の向きへ動かし、範囲の中に収める。斜めでも速さは変わらない。 */
 export function moveShip<T extends Rect>(box: T, input: MoveInput, speed: number, seconds: number, area: Rect): T {
-    const dt = clamp(Number.isFinite(seconds) ? seconds : 0, 0, MAX_STEP_SECONDS);
+    const dt = stepSeconds(seconds);
     const len = Math.hypot(input.dx, input.dy);
     const step = len === 0 ? 0 : (Math.max(0, speed) * dt * (input.focus ? FOCUS_SPEED_SCALE : 1)) / len;
     return clampRectInto({ ...box, x: box.x + input.dx * step, y: box.y + input.dy * step }, area);

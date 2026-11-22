@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { areaFor, areaOf, DEFAULT_AREA, shipIsHit } from './area';
 import { readColor, readEnum, readNumber } from './fields';
-import { circlesOverlap, clamp, clampRectInto } from './geometry';
+import { circlesOverlap, clamp, clampRectInto, still, sweptContact } from './geometry';
 
 const area = { x: 100, y: 50, w: 400, h: 300 };
 
@@ -33,6 +33,44 @@ describe('clamp・circlesOverlap', () => {
     it('ちょうど触れているだけなら重なっていない', () => {
         expect(circlesOverlap({ x: 0, y: 0 }, 3, { x: 7, y: 0 }, 4)).toBe(false);
         expect(circlesOverlap({ x: 0, y: 0 }, 3, { x: 6.99, y: 0 }, 4)).toBe(true);
+    });
+});
+
+describe('sweptContact（フレームの間に動いた線分で重なりを見る）', () => {
+    const move = (fx: number, fy: number, tx: number, ty: number) => ({ from: { x: fx, y: fy }, to: { x: tx, y: ty } });
+    const origin = still({ x: 0, y: 0 });
+
+    it('相手を通り抜けても、初めて触れた時点で重なる', () => {
+        // 半径 5 の円を、-100 から 100 へ 1 フレームで通り抜ける
+        expect(sweptContact(move(0, -100, 0, 100), origin, 5)).toBeCloseTo(95 / 200);
+        expect(circlesOverlap({ x: 0, y: 100 }, 0, { x: 0, y: 0 }, 5)).toBe(false);
+    });
+
+    it('通り道がちょうど接するだけなら重ならず、わずかに内側なら重なり、わずかに外なら重ならない', () => {
+        expect(sweptContact(move(5, -100, 5, 100), origin, 5)).toBeNull();
+        expect(sweptContact(move(4.99, -100, 4.99, 100), origin, 5)).not.toBeNull();
+        expect(sweptContact(move(5.01, -100, 5.01, 100), origin, 5)).toBeNull();
+    });
+
+    it('動かない（長さ 0）なら今の位置で見る（接するだけは重ならない）', () => {
+        expect(sweptContact(still({ x: 4.99, y: 0 }), origin, 5)).toBe(0);
+        expect(sweptContact(still({ x: 5, y: 0 }), origin, 5)).toBeNull();
+        expect(sweptContact(still({ x: 50, y: 0 }), origin, 5)).toBeNull();
+    });
+
+    it('初めから重なっていれば 0、離れていく・手前で止まる・終わりにちょうど触れるだけなら重ならない', () => {
+        expect(sweptContact(move(1, 0, 100, 0), origin, 5)).toBe(0);
+        expect(sweptContact(move(10, 0, 100, 0), origin, 5)).toBeNull();
+        expect(sweptContact(move(-100, 0, -6, 0), origin, 5)).toBeNull();
+        expect(sweptContact(move(-100, 0, -5, 0), origin, 5)).toBeNull();
+        expect(sweptContact(move(-5, 0, 0, 0), origin, 5)).toBe(0);
+    });
+
+    it('両方が動くときは相手から見た動きで見る（すれ違えば重なり、時間がずれて通れば重ならない）', () => {
+        // 同じ時に交差点を通る: 片方の移動後の位置だけで見ると、どちらも 30 離れている
+        expect(sweptContact(move(-30, 0, 30, 0), move(0, 30, 0, -30), 5)).toBeCloseTo(0.5 - 5 / Math.hypot(60, 60));
+        // 線は交わるが、相手が通るのは半フレーム後
+        expect(sweptContact(move(-30, 0, 30, 0), move(0, 60, 0, 0), 5)).toBeNull();
     });
 });
 
@@ -87,15 +125,21 @@ describe('遊ぶ範囲', () => {
 });
 
 describe('shipIsHit', () => {
-    const bullet = (x: number, y: number) => ({ x, y, enemyId: 'e', color: '#fff' });
+    const bullet = (x: number, y: number, from = { x, y }) => ({ x, y, from, enemyId: 'e', color: '#fff' });
+    const at = (x: number, y: number) => still({ x, y });
 
     it('弾の当たりは見た目より小さく、自機の判定の半径と足した距離より近いときだけ当たる', () => {
-        expect(shipIsHit({ x: 0, y: 0 }, 4, [bullet(7.9, 0)], [])).toBe(true);
-        expect(shipIsHit({ x: 0, y: 0 }, 4, [bullet(8, 0)], [])).toBe(false);
+        expect(shipIsHit(at(0, 0), 4, [bullet(7.9, 0)], [])).toBe(true);
+        expect(shipIsHit(at(0, 0), 4, [bullet(8, 0)], [])).toBe(false);
+    });
+
+    it('前のフレームから自機を飛び越えた弾にも当たる', () => {
+        expect(shipIsHit(at(0, 0), 1, [bullet(0, 20, { x: 0, y: -20 })], [])).toBe(true);
+        expect(shipIsHit(at(0, 0), 1, [bullet(5.01, 20, { x: 5.01, y: -20 })], [])).toBe(false);
     });
 
     it('敵の体に重なっても当たる（体当たり）', () => {
-        expect(shipIsHit({ x: 0, y: 0 }, 4, [], [{ center: { x: 15, y: 0 }, radius: 20 }])).toBe(true);
-        expect(shipIsHit({ x: 0, y: 0 }, 4, [], [{ center: { x: 30, y: 0 }, radius: 20 }])).toBe(false);
+        expect(shipIsHit(at(0, 0), 4, [], [{ center: { x: 15, y: 0 }, radius: 20 }])).toBe(true);
+        expect(shipIsHit(at(0, 0), 4, [], [{ center: { x: 30, y: 0 }, radius: 20 }])).toBe(false);
     });
 });

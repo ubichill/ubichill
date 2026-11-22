@@ -13,7 +13,7 @@ import {
 
 const area = { x: 0, y: 0, w: 800, h: 600 };
 const empty: Scene = { area, clock: 0, enemies: [], bullets: [], shots: [], effects: [], hitbox: null };
-const bullet = (x: number, y: number, color: string) => ({ x, y, color, enemyId: 'e' });
+const bullet = (x: number, y: number, color: string) => ({ x, y, from: { x, y }, color, enemyId: 'e' });
 
 describe('sceneCursors', () => {
     const BACKGROUND = 4; // 星 3 層と範囲の枠

@@ -6,12 +6,15 @@
 import { type Body, shipIsHit } from './area';
 import { type EnemySpec, enemyPhase, enemyPosition, isOnStage } from './enemy';
 import type { Rect, Vec } from './geometry';
-import { type AimFn, type EnemyBullet, enemyBullets } from './patterns';
-import { type Impact, resolveShots, type Shot, stepShots } from './shots';
+import { type AimFn, bulletInArea, type EnemyBullet, enemyBullets } from './patterns';
+import { stepSeconds } from './ship';
+import { type Impact, type Shot, stepShots } from './shots';
 import { type Hits, isDefeated, mergeHits } from './stage';
 
 export interface FrameShip {
     readonly center: Vec;
+    /** 前のフレームの中心。省略すると、このフレームの間は止まっていたとみなす。 */
+    readonly from?: Vec;
     readonly hitRadius: number;
     readonly vulnerable: boolean;
 }
@@ -59,6 +62,8 @@ const bodiesOf = (enemies: readonly PlacedEnemy[]): Body[] =>
 
 export function stepFrame(input: FrameInput): FrameResult {
     const t = input.stageTime;
+    // 前のフレームからの秒。弾・敵・自機がその間に動いた線分で当たりを見る
+    const dt = stepSeconds(input.seconds);
     const fighting = input.enemies.filter((spec) => !isDefeated(spec, input.hits));
     const onStage =
         t === null
@@ -66,20 +71,28 @@ export function stepFrame(input: FrameInput): FrameResult {
             : fighting
                   .filter((spec) => isOnStage(enemyPhase(spec, t)))
                   .map((spec) => ({ spec, position: enemyPosition(spec, t) }));
-    const bullets = t === null ? [] : fighting.flatMap((spec) => enemyBullets(spec, t, input.area, input.aim));
+    const bullets = t === null ? [] : fighting.flatMap((spec) => enemyBullets(spec, t, input.area, input.aim, t - dt));
     const ship = input.ship;
-    const shipHit = ship?.vulnerable === true && shipIsHit(ship.center, ship.hitRadius, bullets, bodiesOf(onStage));
+    const shipHit =
+        ship?.vulnerable === true &&
+        shipIsHit({ from: ship.from ?? ship.center, to: ship.center }, ship.hitRadius, bullets, bodiesOf(onStage));
 
-    const resolved = resolveShots(
-        stepShots(input.shots, input.seconds, input.area),
-        onStage.map(({ spec, position }) => ({ id: spec.id, center: position, radius: spec.radius })),
-    );
+    const targets =
+        t === null
+            ? []
+            : onStage.map(({ spec, position }) => ({
+                  id: spec.id,
+                  center: position,
+                  from: enemyPosition(spec, t - dt),
+                  radius: spec.radius,
+              }));
+    const resolved = stepShots(input.shots, dt, input.area, targets);
     const hits = mergeHits(input.hits, resolved.hits);
     const fallen = new Set(input.enemies.filter((spec) => isDefeated(spec, hits)).map((spec) => spec.id));
     const enemies = onStage.filter(({ spec }) => !fallen.has(spec.id));
     return {
         enemies,
-        bullets: bullets.filter((bullet) => !fallen.has(bullet.enemyId)),
+        bullets: bullets.filter((bullet) => !fallen.has(bullet.enemyId) && bulletInArea(bullet, input.area)),
         shipHit,
         myHits: resolved.hits,
         hits,

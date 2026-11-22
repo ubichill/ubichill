@@ -24,6 +24,8 @@ const RAIN_SPEED_RANGE = 0.6;
 export interface EnemyBullet {
     readonly x: number;
     readonly y: number;
+    /** 前のフレームの時刻での位置。当たりはここからの線分で見る。 */
+    readonly from: Vec;
     readonly enemyId: string;
     readonly color: string;
 }
@@ -98,22 +100,33 @@ export function liveVolleys(spec: EnemySpec, t: number, area: Rect): number[] {
     );
 }
 
-export function enemyBullets(spec: EnemySpec, t: number, area: Rect, aim: AimFn): EnemyBullet[] {
+/**
+ * t 時点の弾と、since（前のフレームの時刻）からの通り道。since の後に撃った弾は撃った位置から通ったことにする。
+ * 通り道が範囲にかかっていれば残す（このフレームで範囲の外へ抜けた弾も、当たりは見る）。
+ */
+export function enemyBullets(spec: EnemySpec, t: number, area: Rect, aim: AimFn, since = t): EnemyBullet[] {
     return liveVolleys(spec, t, area)
         .flatMap((volley) => {
             const firedAt = volleyTime(spec, volley);
             const origin = enemyPosition(spec, firedAt);
-            const travel = spec.bulletSpeed * (t - firedAt);
             const angle = spec.pattern === 'aimed' ? aim(volleyKey(spec, volley), origin, firedAt) : DOWNWARD;
-            return volleyDirections(spec, volley, angle).map((dir) => ({
-                x: origin.x + Math.cos(dir.angle) * travel * dir.speedScale,
-                y: origin.y + Math.sin(dir.angle) * travel * dir.speedScale,
-                enemyId: spec.id,
-                color: spec.color,
-            }));
+            return volleyDirections(spec, volley, angle).map((dir) => {
+                const speed = spec.bulletSpeed * dir.speedScale;
+                const velocity = { x: Math.cos(dir.angle) * speed, y: Math.sin(dir.angle) * speed };
+                const at = (time: number): Vec => {
+                    const age = Math.max(0, time - firedAt);
+                    return { x: origin.x + velocity.x * age, y: origin.y + velocity.y * age };
+                };
+                return { ...at(t), from: at(since), enemyId: spec.id, color: spec.color };
+            });
         })
-        .filter((bullet) => rectContains(area, bullet, AREA_MARGIN))
+        .filter((bullet) => bulletInArea(bullet, area) || bulletInArea(bullet.from, area))
         .slice(0, MAX_BULLETS_PER_ENEMY);
+}
+
+/** 弾を出しておく（描く）範囲。 */
+export function bulletInArea(point: Vec, area: Rect): boolean {
+    return rectContains(area, point, AREA_MARGIN);
 }
 
 /** origin から一番近い的への向き。的がいなければ真下。 */
