@@ -64,7 +64,7 @@ interface EditorPreviewProps {
     /** プレビュー領域の背景（mod UI なし）クリック時のハンドラ */
     onBackgroundMouseDown?: () => void;
     /**
-     * 部屋で見える通りに描く（サムネイルを撮るとき）。ワールドの境界・最初の場所の印・最初は見えない Entity と、
+     * 部屋で見える通りに描く（サムネイルを撮るとき）。ワールドの境界・スポーンの印・最初は見えない Entity と、
      * 画面に固定した Entity（mod の道具の欄など。ワールドの絵ではない）を出さない。
      */
     roomLook?: boolean;
@@ -205,7 +205,7 @@ export function EditorPreview({
     const blockState = useBlocks(session?.user.id);
     const blocksPending = !!session && blockState.blocks === null && blockState.error === null;
 
-    // 入口に行き先のワールドを出す（作者が置いた入口の見た目を確かめられるように。押しても移らない）
+    // ポータルに行き先のワールドを出す（作者が置いたポータルの見た目を確かめられるように。押しても移らない）
     const [portalLookup] = useState(() => createPortalLookup(fetchWorld));
 
     const hiddenEntities = useMemo(
