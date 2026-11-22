@@ -486,14 +486,8 @@ export function WorldEditorPage() {
                                 const path = selection.selectedPath;
                                 if (path) ops.handleDeleteEntity(path);
                             }}
-                            onRenameEntity={(id) => {
-                                const path = selection.selectedPath;
-                                if (path) ops.handleRenameEntity(path, id);
-                            }}
-                            onSetName={(name) => {
-                                const path = selection.selectedPath;
-                                if (path) ops.handleSetEntityName(path, name);
-                            }}
+                            onRenameEntity={ops.handleRenameEntity}
+                            onSetName={ops.handleSetEntityName}
                         />
                     </>
                 ) : (

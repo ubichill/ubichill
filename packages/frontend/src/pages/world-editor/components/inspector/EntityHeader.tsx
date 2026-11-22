@@ -6,8 +6,9 @@ import { inputStyle } from './shared';
 interface EntityHeaderProps {
     entity: InitialEntity;
     onDelete: () => void;
-    onRename: (id: string) => void;
-    onSetName: (name: string) => void;
+    /** entityId は編集を始めたときの Entity。確定までに別の Entity を選んでも、そちらは変えない */
+    onRename: (entityId: string, nextId: string) => void;
+    onSetName: (entityId: string, name: string) => void;
 }
 
 /**
@@ -25,7 +26,7 @@ export function EntityHeader({ entity, onDelete, onRename, onSetName }: EntityHe
                     title="押して名前を変える（空にすると ID を出す）"
                     display={entity.name || entity.id}
                     onCommit={(next) => {
-                        if (next !== (entity.name ?? '')) onSetName(next);
+                        if (next !== (entity.name ?? '')) onSetName(entity.id, next);
                     }}
                     textClass={nameText}
                 />
@@ -37,7 +38,7 @@ export function EntityHeader({ entity, onDelete, onRename, onSetName }: EntityHe
                     title="押して ID を変える（ワープの行き先などの参照に使う。参照も付け替える）"
                     display={`ID: ${entity.id}`}
                     onCommit={(next) => {
-                        if (next && next !== entity.id) onRename(next);
+                        if (next && next !== entity.id) onRename(entity.id, next);
                     }}
                     textClass={idText}
                 />
@@ -86,6 +87,8 @@ function InlineEdit({
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState(value);
     const inputRef = useRef<HTMLInputElement>(null);
+    // 確定先は編集を始めたときのもの。確定の前に別の Entity を選ぶと、props の onCommit は選び直した方を指す
+    const pending = useRef<{ commit: (next: string) => void; draft: string } | null>(null);
 
     useEffect(() => {
         if (!editing) setDraft(value);
@@ -95,9 +98,21 @@ function InlineEdit({
         if (editing) inputRef.current?.select();
     }, [editing]);
 
-    const commit = () => {
-        onCommit(draft.trim());
+    // 確定しないまま消えた（何も無いところを押してインスペクタが閉じた）ときも書く
+    useEffect(
+        () => () => {
+            const left = pending.current;
+            pending.current = null;
+            left?.commit(left.draft.trim());
+        },
+        [],
+    );
+
+    const finish = (save: boolean) => {
+        const done = pending.current;
+        pending.current = null;
         setEditing(false);
+        if (done && save) done.commit(done.draft.trim());
     };
 
     return editing ? (
@@ -108,20 +123,31 @@ function InlineEdit({
             value={draft}
             placeholder={placeholder}
             maxLength={maxLength}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={commit}
+            onChange={(e) => {
+                setDraft(e.target.value);
+                if (pending.current) pending.current = { ...pending.current, draft: e.target.value };
+            }}
+            onBlur={() => finish(true)}
             onKeyDown={(e) => {
                 // 日本語の変換を決める Enter では閉じない
-                if (e.key === 'Enter' && !e.nativeEvent.isComposing) commit();
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing) finish(true);
                 else if (e.key === 'Escape') {
                     setDraft(value);
-                    setEditing(false);
+                    finish(false);
                 }
             }}
             className={inputStyle}
         />
     ) : (
-        <button type="button" onClick={() => setEditing(true)} title={title} className={textClass}>
+        <button
+            type="button"
+            onClick={() => {
+                pending.current = { commit: onCommit, draft: value };
+                setEditing(true);
+            }}
+            title={title}
+            className={textClass}
+        >
             {display}
         </button>
     );

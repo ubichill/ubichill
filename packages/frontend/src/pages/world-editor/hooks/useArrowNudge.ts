@@ -6,7 +6,13 @@ const typingInto = (target: EventTarget | null): boolean =>
     target instanceof HTMLElement &&
     (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
 
-/** 選んだ Entity を矢印キーで 1px（Shift で 10px）動かす。文字を打っているとき・止めているときは何もしない。 */
+// 戻る前の確認・公開の準備・確認の窓などは focus を閉じ込めないので、押したキーは window まで届く
+const modalOpen = (): boolean => document.querySelector('[aria-modal="true"]') !== null;
+
+/**
+ * 選んだ Entity を矢印キーで 1px（Shift で 10px）動かす。文字を打っているとき・ダイアログが開いているとき・
+ * 止めているときは何もしない。
+ */
 export function useArrowNudge({
     selected,
     enabled,
@@ -21,7 +27,7 @@ export function useArrowNudge({
     useEffect(() => {
         if (!enabled || x === undefined || y === undefined) return;
         const onKeyDown = (e: KeyboardEvent) => {
-            if (e.metaKey || e.ctrlKey || e.altKey || typingInto(e.target)) return;
+            if (e.metaKey || e.ctrlKey || e.altKey || typingInto(e.target) || modalOpen()) return;
             const step = nudgeFor(e.key, e.shiftKey);
             if (!step) return;
             e.preventDefault();

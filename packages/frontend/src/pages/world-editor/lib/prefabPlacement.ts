@@ -1,5 +1,5 @@
 import type { InitialEntity } from '@ubichill/shared';
-import { drawnBoxesOf, enclosing, type StageRect } from './drawnBounds';
+import { drawnBoxesOf, enclosing, keepInside, type StageRect } from './drawnBounds';
 import { flattenForStage } from './entityTree';
 
 /** 親の原点からの位置で、中身が描かれる範囲（描く側と同じ大きさ）。大きさの分かる Entity が無ければ null。 */
@@ -15,11 +15,9 @@ export function centerOf(parent: InitialEntity): { x: number; y: number } {
 // -0 を YAML に書かない
 const whole = (value: number): number => Math.round(value) || 0;
 
-const fit = (start: number, size: number, offset: number, limit: number | undefined): number => {
-    if (limit === undefined) return start;
-    // 入りきらなければ左上（上端）をワールドの端にそろえる
-    return Math.min(Math.max(start, -offset), Math.max(-offset, limit - offset - size));
-};
+// 中身の範囲（parent + offset から size）がワールドに収まる親の位置
+const fit = (start: number, size: number, offset: number, limit: number | undefined): number =>
+    limit === undefined ? start : keepInside(start + offset, size, limit) - offset;
 
 /**
  * 中身の真ん中が point（ワールド座標）に来る親の位置。ワールドの大きさがあれば、中身がはみ出さないように寄せる。

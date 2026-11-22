@@ -2,7 +2,7 @@ import type { InitialEntity } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { css } from '@/styled-system/css';
 import { COMPONENT_DRAG_MIME, decodePrefabDrag, PREFAB_DRAG_MIME, type PrefabDragRef } from '../lib/dnd';
-import { applyDrag, type DragMode, type DragState } from '../lib/dragHelpers';
+import { applyDrag, type DragMode, type DragState, MIN_SIZE } from '../lib/dragHelpers';
 import type { StageRect } from '../lib/drawnBounds';
 import { type EntityPath, type FlatEntityNode, isDescendantOrSelf, pathKey } from '../lib/entityTree';
 import { entityLabel, groupBounds, isInsidePrefab, outermostPrefabRoot, pressOnStage } from '../lib/stageSelection';
@@ -107,6 +107,8 @@ export function EditOverlay({
             mode: sizeless ? 'move' : mode,
             startClient: { x: ev.clientX, y: ev.clientY },
             startTransform: { x: t.x, y: t.y, w: sizeless ? 0 : (t.w ?? 0), h: sizeless ? 0 : (t.h ?? 0) },
+            // 隠している子も一緒に動くので、見えているものに絞らない
+            extent: groupBounds(nodes, path) ?? { x: target.absX, y: target.absY, width: MIN_SIZE, height: MIN_SIZE },
             enterOnClick,
             moved: false,
         });

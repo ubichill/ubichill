@@ -5,7 +5,7 @@
  * 返すもの: handleCreateEmptyEntity / Add / Delete / Rename / Move / Copy / Paste / Duplicate /
  *           EnterChild / patchTransform + hasClipboard。
  */
-import { type InitialEntity, LIMITS, type WorldDefinition } from '@ubichill/shared';
+import type { InitialEntity, WorldDefinition } from '@ubichill/shared';
 import { useCallback, useMemo } from 'react';
 import { entityWithComponentAt, withComponentAdded } from '../lib/addComponent';
 import { DEFAULT_H, DEFAULT_W } from '../lib/dragHelpers';
@@ -22,8 +22,8 @@ import {
     moveEntity,
     nextRootZ,
     pathKey,
-    renameEntity,
-    toRenamedEntityId,
+    renameEntityById,
+    setEntityName,
     updateEntityAt,
 } from '../lib/entityTree';
 import { placementFor } from '../lib/prefabPlacement';
@@ -53,9 +53,10 @@ export interface UseEntityOpsResult {
     handleAddComponentToEntity: (path: EntityPath, componentType: string) => void;
     handleDeleteEntity: (path: EntityPath) => void;
     handleDeleteComponent: (path: EntityPath, componentIndex: number) => void;
-    handleRenameEntity: (path: EntityPath, newId: string) => void;
-    /** 表示名を変える（空なら外して id を出す） */
-    handleSetEntityName: (path: EntityPath, name: string) => void;
+    /** id で指す（編集を始めた後に選び直しても、始めた Entity を変える） */
+    handleRenameEntity: (id: string, newId: string) => void;
+    /** 表示名を変える（空なら外して id を出す）。id で指す */
+    handleSetEntityName: (id: string, name: string) => void;
     /** ワールドの空いたところに部品を落としたとき、その場所にその部品の Entity を作る */
     handleCreateEntityAt: (componentType: string, point: { x: number; y: number }) => void;
     handleMoveEntity: (from: EntityPath, to: EntityPath | null) => void;
@@ -187,23 +188,12 @@ export function useEntityOps({
     );
 
     const handleRenameEntity = useCallback(
-        (path: EntityPath, newId: string) => {
-            const taken = new Set(collectEntityIds(definition.spec.initialEntities));
-            const self = getEntityAt(definition.spec.initialEntities, path);
-            if (self) taken.delete(self.id);
-            const uniqueId = toRenamedEntityId(newId, taken);
-            if (uniqueId) updateEntities((prev) => renameEntity(prev, path, uniqueId, fieldsOf));
-        },
-        [updateEntities, definition.spec.initialEntities, fieldsOf],
+        (id: string, newId: string) => updateEntities((prev) => renameEntityById(prev, id, newId, fieldsOf)),
+        [updateEntities, fieldsOf],
     );
 
     const handleSetEntityName = useCallback(
-        (path: EntityPath, name: string) => {
-            const next = name.trim().slice(0, LIMITS.MAX_ENTITY_NAME_LENGTH);
-            updateEntities((prev) =>
-                updateEntityAt(prev, path, ({ name: _old, ...rest }) => (next ? { ...rest, name: next } : rest)),
-            );
-        },
+        (id: string, name: string) => updateEntities((prev) => setEntityName(prev, id, name)),
         [updateEntities],
     );
 

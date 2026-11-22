@@ -1,4 +1,4 @@
-import { type DataFieldsLike, type InitialEntity, remapRefs } from '@ubichill/shared';
+import { type DataFieldsLike, type InitialEntity, LIMITS, remapRefs } from '@ubichill/shared';
 import { WORLD_NAME_MAX_LENGTH as ENTITY_ID_MAX_LENGTH, toWorldName } from '../../../lib/worlds/worldName';
 
 /** Component 型 → その dataFields（参照フィールドを見分けるのに使う）。mod の取得前は undefined。 */
@@ -187,6 +187,30 @@ export function renameEntity(
     if (!self || self.id === newId) return entities;
     const renamed = updateEntityAt(entities, path, (e) => ({ ...e, id: newId }));
     return remapEntityRefs(renamed, new Map([[self.id, newId]]), fieldsOf);
+}
+
+/** id の Entity の id を変える（使われていれば番号を付け、参照も付け替える）。その id の Entity が無ければ変えない。 */
+export function renameEntityById(
+    entities: InitialEntity[],
+    id: string,
+    input: string,
+    fieldsOf: RefFieldsOf,
+): InitialEntity[] {
+    const path = findEntityPath(entities, id);
+    const newId = toRenamedEntityId(
+        input,
+        collectEntityIds(entities).filter((taken) => taken !== id),
+    );
+    return path && newId ? renameEntity(entities, path, newId, fieldsOf) : entities;
+}
+
+/** id の Entity の表示名を変える（空なら外して id を出す）。その id の Entity が無ければ変えない。 */
+export function setEntityName(entities: InitialEntity[], id: string, input: string): InitialEntity[] {
+    const path = findEntityPath(entities, id);
+    const name = input.trim().slice(0, LIMITS.MAX_ENTITY_NAME_LENGTH);
+    return path
+        ? updateEntityAt(entities, path, ({ name: _old, ...rest }) => (name ? { ...rest, name } : rest))
+        : entities;
 }
 
 /**

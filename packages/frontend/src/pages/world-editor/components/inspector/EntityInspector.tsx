@@ -23,9 +23,10 @@ interface EntityInspectorProps {
     onAddComponent: (type: string) => void;
     onDeleteComponent: (componentIndex: number) => void;
     onDeleteEntity: () => void;
-    onRenameEntity: (newId: string) => void;
+    /** entityId は編集を始めたときの Entity（確定までに選び直しても、そちらは変えない） */
+    onRenameEntity: (entityId: string, newId: string) => void;
     /** 表示名を変える（空なら外す） */
-    onSetName: (name: string) => void;
+    onSetName: (entityId: string, name: string) => void;
     /** この Entity の Component の参照の問題（未設定の必須参照・動画面の競合など）。 */
     referenceProblems: readonly string[];
 }

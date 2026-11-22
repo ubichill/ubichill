@@ -27,6 +27,10 @@ export function enclosing(rects: readonly StageRect[]): StageRect | null {
     };
 }
 
+/** 長さ size の範囲の始まりを、0〜limit に収まるように寄せる。入りきらなければ始まりを 0 にそろえる。 */
+export const keepInside = (start: number, size: number, limit: number): number =>
+    Math.min(Math.max(start, 0), Math.max(0, limit - size));
+
 /**
  * 描く側（surfacePlacement・EntityRenderer）と同じく、w×h を左上を軸に拡大・回転したものを囲む矩形。
  * w・h のどちらかが 0 なら大きさは中身次第で決まらないので null。
