@@ -12,5 +12,6 @@ export { checkModInstallation, type ModInstallationCheck } from './modInstallati
 export { describeModRejection } from './modRejection';
 export { isUnsignedModAllowed, type ModAuthorCheck, modAuthorFetcher } from './modSignature';
 export type { ModSource } from './modSource';
+export { type PortalDestination, type PortalLookup, PortalLookupProvider } from './portalNavigation';
 export { createGuestResolver, fetchGuestInstance, isJoinRejection } from './runtimeApi';
 export { WorldView, type WorldViewProps } from './WorldView';

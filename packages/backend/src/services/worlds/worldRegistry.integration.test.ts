@@ -49,7 +49,12 @@ const worldDef = (name: string, displayName: string, initialEntities: InitialEnt
     apiVersion: 'ubichill.com/v1alpha1',
     kind: 'World',
     metadata: { name, version: '1.0.0' },
-    spec: { displayName, capacity: { default: 2, max: 4 }, initialEntities },
+    spec: {
+        displayName,
+        thumbnail: 'https://example.com/thumbnail.png',
+        capacity: { default: 2, max: 4 },
+        initialEntities,
+    },
 });
 /** 送る組（YAML を往復した値＝ルートが受け取る値と同じ）。 */
 const bundleOf = (def: WorldDefinition) => ({ definition: yaml.parse(yaml.stringify(def)) as unknown, lock: null });
@@ -292,6 +297,32 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
             expect(draft).toMatchObject({ ok: true, saved: 'draft', world: { url: created.world.url } });
         } finally {
             await worldRegistry.deleteWorld(created.world.id);
+        }
+    });
+
+    it('サムネイルの無いワールドは公開（署名付き）できず、署名なし・下書きでは保存できる', async () => {
+        const name = uniqueName('nothumb');
+        const withoutThumbnail = (label: string): WorldDefinition => {
+            const def = worldDef(name, label);
+            return { ...def, spec: { ...def.spec, thumbnail: undefined } };
+        };
+        const unsigned = bundleOf(withoutThumbnail('署名なし'));
+        const saved = await worldRegistry.saveBundle(AUTHOR, unsigned);
+        if (!saved.ok) throw new Error(saved.message);
+        try {
+            expect(saved.saved).toBe('unsigned');
+            const signed = {
+                ...unsigned,
+                signature: await signWorld(unsigned, newTestSigningKey(), nodeWorldCrypto, {
+                    author: 'alice@example.com',
+                }),
+            };
+            expect(await worldRegistry.saveBundle(AUTHOR, signed)).toMatchObject({
+                ok: false,
+                reason: 'thumbnail-required',
+            });
+        } finally {
+            await worldRegistry.deleteWorld(saved.world.id);
         }
     });
 

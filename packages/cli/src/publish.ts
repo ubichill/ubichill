@@ -16,6 +16,7 @@ import {
     WorldDefinitionSchema,
     type WorldDocument,
     type WorldSigningKey,
+    worldPublishProblem,
     worldShareUrl,
 } from '@ubichill/shared';
 import type { Logger } from '@ubichill/terminal';
@@ -72,7 +73,7 @@ export function unpublishableReason(doc: WorldDocument): string | null {
         return `この版の ubichill に無い部品・項目があります。書き間違いを直すか、CLI を新しくしてください: ${problems
             .map((problem) => `${problem.entityId}: ${describeCoreComponentProblem(problem)}`)
             .join(' / ')}`;
-    return null;
+    return parsed.success ? worldPublishProblem(parsed.data.spec) : null;
 }
 
 function readLocal(deps: PublishDeps, worldPath: string) {

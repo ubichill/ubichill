@@ -12,3 +12,21 @@ const PortalNavigationContext = createContext<PortalNavigate | null>(null);
 export const PortalNavigationProvider = PortalNavigationContext.Provider;
 
 export const usePortalNavigation = (): PortalNavigate | null => useContext(PortalNavigationContext);
+
+/** 入口に出す行き先のワールド（名前とサムネイル）。 */
+export interface PortalDestination {
+    name: string;
+    thumbnail?: string;
+}
+
+/**
+ * 行き先のワールドを引く。SNS の画面とエディタが渡す（world.html では渡さないので、入口は名前と印だけ）。
+ * 見つからなければ null。
+ */
+export type PortalLookup = (target: PortalTarget) => Promise<PortalDestination | null>;
+
+const PortalLookupContext = createContext<PortalLookup | null>(null);
+
+export const PortalLookupProvider = PortalLookupContext.Provider;
+
+export const usePortalLookup = (): PortalLookup | null => useContext(PortalLookupContext);

@@ -55,7 +55,12 @@ const def = (name: string, label: string, version = '1.0.0') => ({
     apiVersion: 'ubichill.com/v1alpha1',
     kind: 'World',
     metadata: { name, version },
-    spec: { displayName: label, capacity: { default: 2, max: 4 }, initialEntities: [] },
+    spec: {
+        displayName: label,
+        thumbnail: 'https://example.com/thumbnail.png',
+        capacity: { default: 2, max: 4 },
+        initialEntities: [],
+    },
 });
 const LOCK = { lockVersion: 1, mods: {} };
 

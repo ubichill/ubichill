@@ -43,6 +43,7 @@ import {
     type CheckTarget,
     compatibilityMessage,
     controlPanelAlert,
+    type EditorAction,
     editorChecks,
 } from './lib/editorChecks';
 import { findEntityPath, flattenForStage, getEntityAt, updateEntityAt } from './lib/entityTree';
@@ -151,6 +152,7 @@ export function WorldEditorPage() {
             editorChecks({
                 displayName: definition.spec.displayName,
                 worldName: definition.metadata.name,
+                thumbnail: definition.spec.thumbnail,
                 yamlError: modals.activeTab === 'yaml' ? modals.yamlError : '',
                 referenceProblems: entityProblemList,
                 packagesError,
@@ -159,6 +161,7 @@ export function WorldEditorPage() {
         [
             definition.spec.displayName,
             definition.metadata.name,
+            definition.spec.thumbnail,
             definition.spec.requires,
             modals.activeTab,
             modals.yamlError,
@@ -190,19 +193,22 @@ export function WorldEditorPage() {
     );
 
     // 止める項目があれば保存しない（ボタンは押せないが Cmd/Ctrl+S・閉じる時の保存はここを通る）
-    const validate = useCallback((): boolean => {
-        const blocker = blockingChecks(checks)[0];
-        if (blocker) {
-            reportError('エディタ', blocker.message);
-            return false;
-        }
-        return true;
-    }, [checks, reportError]);
+    const validate = useCallback(
+        (action: EditorAction): boolean => {
+            const blocker = blockingChecks(checks, action)[0];
+            if (blocker) {
+                reportError('エディタ', blocker.message);
+                return false;
+            }
+            return true;
+        },
+        [checks, reportError],
+    );
 
     // 下書き保存（準備不要）。公開中のワールドでも公開中の版は変わらない。
-    const saveDraft = useCallback(async () => validate() && editorApi.saveDraft(), [validate, editorApi]);
+    const saveDraft = useCallback(async () => validate('draft') && editorApi.saveDraft(), [validate, editorApi]);
     // 作者アカウントで署名して公開（準備が足りなければ公開の準備ダイアログ）。
-    const publish = useCallback(async () => validate() && editorApi.publish(), [validate, editorApi]);
+    const publish = useCallback(async () => validate('publish') && editorApi.publish(), [validate, editorApi]);
 
     const handleSave = useCallback(() => {
         void saveDraft();

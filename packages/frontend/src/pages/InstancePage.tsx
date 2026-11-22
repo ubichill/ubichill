@@ -11,7 +11,8 @@ import { useSession } from '@/lib/session';
 import { useBlocks } from '@/lib/social/blocks';
 import { blockedAuthorsOf, blockedIdsOf } from '@/lib/social/blocksState';
 import { dismissToast, pushToast } from '@/lib/toast';
-import { fetchInstance } from '@/lib/worlds/instancesApi';
+import { fetchInstance, fetchWorld } from '@/lib/worlds/instancesApi';
+import { createPortalLookup } from '@/lib/worlds/portalDestination';
 import { portalPath } from '@/lib/worlds/portalPath';
 import { useRemoteVisit } from '@/lib/worlds/useRemoteVisit';
 import { type InstanceFailure, WorldView } from '@/world';
@@ -124,12 +125,15 @@ export function InstancePage() {
     const { leaveWorld } = useSocket();
     const goThroughPortal = useCallback(
         async (target: PortalTarget, label: string) => {
-            if (!(await confirm(`「${label}」からほかのワールドへ移りますか？今の部屋から退出します。`))) return;
+            if (!(await confirm(`「${label}」へ移りますか？今の部屋から退出します。`))) return;
             await leaveWorld();
             navigate(portalPath(target));
         },
         [confirm, leaveWorld, navigate],
     );
+
+    // 入口に出す行き先のワールド（同じ行き先は 1 回だけ引く）
+    const [portalLookup] = useState(() => createPortalLookup(fetchWorld));
 
     if (!id) return null;
     return (
@@ -147,6 +151,7 @@ export function InstancePage() {
             onFailed={handleFailed}
             onEntered={handleEntered}
             onPortal={(target, label) => void goThroughPortal(target, label)}
+            portalLookup={portalLookup}
         >
             <InstanceHUD />
         </WorldView>

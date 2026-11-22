@@ -6,6 +6,7 @@ metadata:
 spec:
   displayName: 弾幕シューティング
   description: "自機をクリックして搭乗。矢印キーで移動・自動射撃、Escapeで降りる弾幕シューティングのデモ"
+  thumbnail: https://ubichill.com/world-thumbnails/danmaku.png
   environment:
     worldSize:
       width: 800
