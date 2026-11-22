@@ -82,6 +82,9 @@ export function createAssetsRouter(deps: AssetsRouterDeps): Router {
             // ほかのオリジン（開発時のフロント・連合先のサーバー）の <img> からも読めるようにする
             'Cross-Origin-Resource-Policy': 'cross-origin',
         });
+        // ほかのサーバーのエディタがサムネイルを撮るとき（画像を読み直して描く）にも読めるようにする。
+        // このサーバーのフロントには cors() が付けた許可（cookie 付き）をそのまま返す
+        if (!res.getHeader('Access-Control-Allow-Origin')) res.set('Access-Control-Allow-Origin', '*');
         res.send(Buffer.from(image.bytes.buffer, image.bytes.byteOffset, image.bytes.byteLength));
     });
 
