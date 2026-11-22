@@ -66,6 +66,25 @@ export function entityScripts(parts: Iterable<Part>, entityId: string): EntitySc
         });
 }
 
+/**
+ * ボタンを 1 回押したときに動かすスクリプトとその順番。部屋の中で済むもの（ワープ・スイッチ）を並び順に動かし、
+ * 部屋を出るポータルは最初の 1 つだけを最後に動かす。ポータルが 2 つ動くと確かめる画面が重なり、行き先が決まらない。
+ */
+export function planButtonPress(scripts: readonly EntityScript[]): EntityScript[] {
+    const portal = scripts.find((script) => script.kind === 'portal');
+    const inRoom = scripts.filter((script) => script.kind !== 'portal');
+    return portal ? [...inRoom, portal] : inRoom;
+}
+
+/** ボタンにした UI がある Entity で、押しても動かないスクリプト（2 つ目からのポータル）の Component の ID。 */
+export function idleButtonScripts(parts: Iterable<Part>, entityId: string): string[] {
+    const list = [...parts];
+    if (!hasUiButton(list, entityId)) return [];
+    const scripts = entityScripts(list, entityId);
+    const planned = new Set(planButtonPress(scripts).map((script) => script.id));
+    return scripts.filter((script) => !planned.has(script.id)).map((script) => script.id);
+}
+
 /** ボタンの読み上げの名前。UI のテキスト、無ければスクリプトの名前を並べる。 */
 export function uiButtonLabel(text: string, scripts: readonly EntityScript[]): string {
     const own = text.trim().replace(/\s+/g, ' ');

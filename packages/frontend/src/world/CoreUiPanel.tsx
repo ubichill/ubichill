@@ -5,7 +5,7 @@ import { parseUiMarkup } from '@ubichill/ui-renderer';
 import type React from 'react';
 import { useMemo } from 'react';
 import { css } from '@/styled-system/css';
-import { entityScripts, uiButtonLabel } from './entityButton';
+import { entityScripts, planButtonPress, uiButtonLabel } from './entityButton';
 import { surfacePlacement } from './surfacePlacement';
 import { useScriptRunner } from './useScriptRunner';
 
@@ -53,7 +53,7 @@ export const CoreUiPanel: React.FC<{ entity: ComponentInstance }> = ({ entity })
     );
 
     if (data.button) {
-        const scripts = entityScripts(entities.values(), entityId);
+        const scripts = planButtonPress(entityScripts(entities.values(), entityId));
         const ready = scripts.filter(runner.ready);
         const label = uiButtonLabel(data.text, scripts);
         return (
