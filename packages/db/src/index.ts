@@ -80,6 +80,7 @@ export {
     roleRepository,
 } from './repositories/roleRepository';
 export { type ServerInfoRecord, serverInfoRepository } from './repositories/serverInfoRepository';
+export { storageSettingsRepository } from './repositories/storageSettingsRepository';
 export {
     type LockedTwoFactor,
     type TwoFactorChallengeRecord,
@@ -103,6 +104,7 @@ export {
     type RemovedWorldAsset,
     type WorldAssetBlob,
     type WorldAssetRecord,
+    type WorldAssetUse,
     worldAssetRepository,
 } from './repositories/worldAssetRepository';
 export { type PublishOutcome, type WorldTarget, worldRepository } from './repositories/worldRepository';

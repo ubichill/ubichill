@@ -6,6 +6,7 @@ import {
     RolesSection,
     ServerInfoSection,
     ServerPoliciesSection,
+    StorageQuotaSection,
     WorldPeersSection,
 } from '@/components/admin';
 import { css } from '@/styled-system/css';
@@ -22,7 +23,7 @@ const SECTIONS: ReadonlyArray<SplitTabItem<ControlPanelSection>> = [
     { id: 'announcements', label: 'お知らせ', icon: 'megaphone' },
 ];
 
-/** コントロールパネル（管理者だけ）。全般（サーバーの情報）・ユーザーとロール・認証・連合・お知らせを左で切り替える。 */
+/** コントロールパネル（管理者だけ）。全般（サーバーの情報・1 人あたりの容量）・ユーザーとロール・認証・連合・お知らせを左で切り替える。 */
 export function ControlPanelTab({
     section,
     onSectionChange,
@@ -33,7 +34,12 @@ export function ControlPanelTab({
     return (
         <SplitTab label="コントロールパネル" items={SECTIONS} current={section} onSelect={onSectionChange}>
             <div className={css({ display: 'flex', flexDirection: 'column', gap: '6', maxW: '720px' })}>
-                {section === 'general' && <ServerInfoSection />}
+                {section === 'general' && (
+                    <>
+                        <ServerInfoSection />
+                        <StorageQuotaSection />
+                    </>
+                )}
                 {section === 'users' && <AdminUsersSection />}
                 {section === 'roles' && <RolesSection />}
                 {section === 'auth' && (

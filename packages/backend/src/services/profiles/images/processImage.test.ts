@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { crc32 } from 'node:zlib';
 import { PROFILE_IMAGE_MAX_PIXELS, PROFILE_IMAGE_SIZES } from '@ubichill/shared';
 import sharp from 'sharp';
@@ -175,6 +176,62 @@ describe('processProfileImage（判定の手順）', () => {
             await processProfileImage(new Uint8Array(4), 'avatar', huge, { maxBytes: 10, maxPixels: 100_000_000 }),
         ).toMatchObject({ code: 'too-many-pixels' });
         expect(huge.render).not.toHaveBeenCalled();
+    });
+
+    describe('圧縮の選び方（ワールドの画像と同じ codec）', () => {
+        const worldCodec = createSharpCodec({ maxPixels: PROFILE_IMAGE_MAX_PIXELS, timeoutSeconds: 10 });
+        const rawOf = async (bytes: Uint8Array | Buffer) =>
+            (await sharp(bytes).removeAlpha().raw().toBuffer()).toString('base64');
+        const render = (input: Buffer) =>
+            worldCodec.render(new Uint8Array(input), { width: 2048, height: 2048, fit: 'inside' });
+
+        it('ドット絵の PNG は可逆にする（画素がそのまま残り、非可逆より小さい）', async () => {
+            const cells = Buffer.alloc(32 * 32 * 3);
+            for (const i of Array.from({ length: 32 * 32 }, (_, n) => n)) {
+                const on = (Math.floor(i / 32 / 4) + Math.floor((i % 32) / 4)) % 2 === 0;
+                cells.set(on ? [217, 87, 99] : [34, 32, 52], i * 3);
+            }
+            const png = await sharp(cells, { raw: { width: 32, height: 32, channels: 3 } })
+                .resize(256, 256, { kernel: 'nearest' })
+                .png()
+                .toBuffer();
+            const lossy = await sharp(png).webp({ quality: 82 }).toBuffer();
+            const rendered = await render(png);
+            expect(await rawOf(rendered.bytes)).toBe(await rawOf(png));
+            expect(rendered.bytes.byteLength).toBeLessThan(lossy.byteLength);
+        });
+
+        it('元の大きさの細かいドット絵も可逆にする', async () => {
+            const cells = Buffer.alloc(32 * 32 * 3);
+            for (const i of Array.from({ length: 32 * 32 }, (_, n) => n)) {
+                cells.set((Math.floor(i / 32) + (i % 32)) % 3 === 0 ? [217, 87, 99] : [34, 32, 52], i * 3);
+            }
+            const png = await sharp(cells, { raw: { width: 32, height: 32, channels: 3 } })
+                .png()
+                .toBuffer();
+            expect(await rawOf((await render(png)).bytes)).toBe(await rawOf(png));
+        });
+
+        it('大きくて細かい模様の PNG（写真・スクリーンショットに近い）は、可逆を作らずに非可逆にする', async () => {
+            const png = await sharp(randomBytes(640 * 480 * 3), { raw: { width: 640, height: 480, channels: 3 } })
+                .png()
+                .toBuffer();
+            const spy = vi.spyOn(sharp.prototype, 'webp');
+            const rendered = await render(png);
+            expect(spy.mock.calls.map(([options]) => options)).toEqual([{ quality: 82 }]);
+            spy.mockRestore();
+            expect(await rawOf(rendered.bytes)).not.toBe(await rawOf(png));
+        });
+
+        it('JPEG は可逆を試さない（作り直しは 1 回）', async () => {
+            const jpeg = await sharp(await solid('#336699', 64, 64))
+                .jpeg()
+                .toBuffer();
+            const spy = vi.spyOn(sharp.prototype, 'webp');
+            await render(jpeg);
+            expect(spy.mock.calls.map(([options]) => options)).toEqual([{ quality: 82 }]);
+            spy.mockRestore();
+        });
     });
 
     it('作り直しに失敗したら（壊れた画像・時間切れ）理由つきで断る', async () => {

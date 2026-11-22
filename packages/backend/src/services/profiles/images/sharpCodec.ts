@@ -1,5 +1,6 @@
-import sharp from 'sharp';
+import sharp, { type WebpOptions } from 'sharp';
 import type { ImageCodec } from './imageCodec';
+import { LOSSLESS_WEBP, LOSSY_WEBP, prefersLossless, triesLossless } from './webpEncoding';
 
 interface SharpCodecOptions {
     /** 展開してよい画素数の上限（ヘッダを偽った画像も展開の途中で止める） */
@@ -25,7 +26,7 @@ export function createSharpCodec({ maxPixels, timeoutSeconds }: SharpCodecOption
             }
         },
         async render(input, size) {
-            const { data, info } = await sharp(input, {
+            const resized = sharp(input, {
                 limitInputPixels: maxPixels,
                 failOn: 'warning',
                 autoOrient: true,
@@ -38,9 +39,19 @@ export function createSharpCodec({ maxPixels, timeoutSeconds }: SharpCodecOption
                         ? { fit: 'inside', withoutEnlargement: true }
                         : { fit: 'cover', position: 'centre' },
                 )
-                .webp({ quality: 82 })
-                .timeout({ seconds: timeoutSeconds })
-                .toBuffer({ resolveWithObject: true });
+                .timeout({ seconds: timeoutSeconds });
+            const encode = (options: WebpOptions) =>
+                resized.clone().webp(options).toBuffer({ resolveWithObject: true });
+            const [{ format }, lossy] = await Promise.all([resized.metadata(), encode(LOSSY_WEBP)]);
+            const lossless = triesLossless(format, {
+                bytes: lossy.data.byteLength,
+                width: lossy.info.width,
+                height: lossy.info.height,
+            })
+                ? await encode(LOSSLESS_WEBP)
+                : null;
+            const { data, info } =
+                lossless && prefersLossless(lossy.data.byteLength, lossless.data.byteLength) ? lossless : lossy;
             return {
                 bytes: new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
                 width: info.width,

@@ -1,14 +1,16 @@
 /**
  * 使われていないワールドの画像の掃除。このサーバーのどのワールド（下書き・版）からも指されず、上げて（上げ直して）から
- * 猶予を過ぎた画像を消す。猶予は、エディタで上げてまだ保存していない画像を守る。何を「使われている」とするかは repository。
+ * 猶予を過ぎた画像を消す。猶予は、エディタで上げてまだ保存していない画像を守る。何を「使われている」とするかと、
+ * 自動で消すのを止めた人の画像を残すのは repository。
  */
+import { WORLD_ASSET_UNUSED_GRACE_DAYS } from '@ubichill/shared';
 import type { LeaseGate } from '../cluster/leaseGate';
 
 const HOUR_MS = 60 * 60 * 1000;
 const MB = 1024 * 1024;
 
 export const WORLD_ASSET_SWEEP = {
-    graceMs: 7 * 24 * HOUR_MS,
+    graceMs: WORLD_ASSET_UNUSED_GRACE_DAYS * 24 * HOUR_MS,
     intervalMs: 6 * HOUR_MS,
     /** 起動の少し後にも回す（再起動が続いても間隔のぶん待たせない） */
     startDelayMs: 60 * 1000,

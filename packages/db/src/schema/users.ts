@@ -131,6 +131,8 @@ export const userSettings = pgTable('user_settings', {
     fediverseDiscoverable: boolean('fediverse_discoverable').default(true).notNull(),
     /** オンライン状態をフレンドにどこまで見せるか（shared の DEFAULT_PRESENCE_VISIBILITY と同じ初期値） */
     presenceVisibility: presenceVisibilityEnum('presence_visibility').default('location').notNull(),
+    /** 使われていないワールドの画像を自動で消すか（shared の DEFAULT_STORAGE_SETTINGS と同じ初期値） */
+    worldAssetAutoCleanup: boolean('world_asset_auto_cleanup').default(true).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });

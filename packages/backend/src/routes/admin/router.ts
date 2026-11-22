@@ -3,6 +3,7 @@ import type { BotProtection } from '../../services/auth/botProtection/botProtect
 import type { FeaturedServers } from '../../services/auth/fediverse/featuredServers';
 import type { RoleService } from '../../services/roles/roles';
 import type { ServerInfoService } from '../../services/server/serverInfo';
+import type { StorageQuota } from '../../services/storage/storageQuota';
 
 export interface AdminRouterDeps {
     requireAuth: RequestHandler;
@@ -11,6 +12,7 @@ export interface AdminRouterDeps {
     featuredServers: FeaturedServers;
     botProtection: Pick<BotProtection, 'settings' | 'update'>;
     serverInfo: Pick<ServerInfoService, 'settings' | 'update'>;
+    storage: Pick<StorageQuota, 'settings' | 'update'>;
 }
 
 type Outcome<T> = { ok: true; value: T } | { ok: false; status: number; error: string };
@@ -39,6 +41,7 @@ const same = <T extends object | null>(value: T): T => value;
  *   （本文 `{ servers }`）・`DELETE /fediverse-servers/:host`: ログイン画面に並べるサーバー（応答は変えた後の一覧）
  * - `GET /bot-protection`・`PUT /bot-protection`（本文は shared の BotProtectionUpdate）: ボット対策（応答は変えた後の設定）
  * - `GET /server-info`・`PUT /server-info`（本文は shared の ServerInfoInput）: サーバーの情報（応答は変えた後の設定）
+ * - `GET /storage`・`PUT /storage`（本文は shared の StorageQuotaInput）: 1 人あたりの容量（応答は変えた後の設定）
  * 連合の設定は `/api/v1/federation`、お知らせは `/api/v1/notifications/announcements`。
  */
 export function createAdminRouter(deps: AdminRouterDeps): Router {
@@ -108,6 +111,14 @@ export function createAdminRouter(deps: AdminRouterDeps): Router {
 
     router.put('/server-info', async (req, res) => {
         send(res, await deps.serverInfo.update(req.body), same);
+    });
+
+    router.get('/storage', async (_req, res) => {
+        res.set('Cache-Control', 'no-store').json(await deps.storage.settings());
+    });
+
+    router.put('/storage', async (req, res) => {
+        send(res, await deps.storage.update(req.body), same);
     });
 
     return router;

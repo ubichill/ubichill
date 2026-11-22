@@ -6,6 +6,7 @@ import { logger } from '../../utils/logger';
 import { maintenanceGate } from '../cluster/maintenance';
 import { processImage } from '../profiles/images/processImage';
 import { createSharpCodec } from '../profiles/images/sharpCodec';
+import { storageQuotaService } from '../storage/storageService';
 import { createWorldAssetSweep } from './worldAssetSweep';
 import { createWorldAssets } from './worldAssets';
 
@@ -19,6 +20,7 @@ export const worldAssetService = createWorldAssets({
         imageGate.run(() =>
             processImage(input, target, codec, { maxBytes: WORLD_ASSET_MAX_BYTES, maxPixels: WORLD_ASSET_MAX_PIXELS }),
         ),
+    quotaBytes: () => storageQuotaService.worldAssetQuotaBytes(),
     publicBaseUrl: process.env[ENV_KEYS.PUBLIC_BASE_URL] || SERVER_CONFIG.DEV_URL,
 });
 
