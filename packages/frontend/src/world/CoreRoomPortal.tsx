@@ -49,7 +49,7 @@ const RoomPortalView = memo(function RoomPortalView({
                 className={portal}
                 disabled={!go || destination === undefined || locked}
                 title={locked ? 'この部屋には入れません' : undefined}
-                onClick={() => go?.({ kind: 'room', room: data.room }, name, look)}
+                onClick={() => void go?.({ kind: 'room', room: data.room }, name, look)}
             >
                 <span className={portalName}>{name}</span>
                 <span className={frame}>

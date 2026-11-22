@@ -1,5 +1,11 @@
-import { CORE_COMPONENT_TYPES, ColliderDataSchema, validateCoreComponentData } from '@ubichill/core-components';
+import {
+    CORE_COMPONENT_TYPES,
+    ColliderDataSchema,
+    isCoreComponentType,
+    validateCoreComponentData,
+} from '@ubichill/core-components';
 import { describe, expect, it } from 'vitest';
+import { displayedFieldValue } from '../components/inspector/fieldValues';
 import { withComponentAdded } from '../lib/addComponent';
 import { CORE_ENTITY_KINDS, entityKindsFromManifest, usableDataFields } from '../lib/entityKinds';
 
@@ -42,13 +48,56 @@ describe('CORE_ENTITY_KINDS', () => {
         );
         const data = placed.components[0]?.data;
         expect(validateCoreComponentData(CORE_COMPONENT_TYPES.ui, data).success).toBe(true);
-        expect(data).toMatchObject({ text: 'テキスト', fill: '#ffffff', radius: 12, button: false });
+        expect(data).toMatchObject({
+            text: 'テキスト',
+            size: 20,
+            fill: '#ffffff',
+            border: '#1b2a44',
+            radius: 12,
+            button: false,
+        });
         // HTML は書いたときだけ（空の項目を足さない）
         expect(data).not.toHaveProperty('markup');
         expect(placed.transform).toMatchObject({ w: 200, h: 80 });
         const align = kind?.dataFields?.align;
         if (align?.type !== 'enum') throw new Error('揃えの欄が無い');
         for (const option of align.options) expect(align.optionLabels?.[option], option).toBeTruthy();
+    });
+
+    it('data に無い項目の欄には、部屋で描くときの値（schema の既定値）を出す（YAML で書いた UI の欄が描いたものと食い違わない）', () => {
+        const checked = CORE_ENTITY_KINDS.flatMap((kind) => {
+            const parsed = isCoreComponentType(kind.kind) ? validateCoreComponentData(kind.kind, {}) : null;
+            if (!parsed?.success) return [];
+            const drawn: Record<string, unknown> = parsed.data;
+            return (
+                Object.entries(kind.dataFields ?? {})
+                    // 参照は data に無ければ空で出す（配線していないことを見せる）。schema の空の値と意味は同じ
+                    .filter(([, spec]) => spec.type !== 'entityRef' && spec.type !== 'entityRefArray')
+                    .map(([key, spec]) => ({
+                        field: `${kind.kind}.${key}`,
+                        shown: displayedFieldValue(spec, {}, key),
+                        drawn: drawn[key],
+                    }))
+            );
+        });
+        expect(checked.filter(({ shown, drawn }) => JSON.stringify(shown) !== JSON.stringify(drawn))).toEqual([]);
+        expect(checked.map(({ field }) => field)).toContain('core:ui.fill');
+    });
+
+    it('置いたテキストには、見える文字が入る（描く値の既定は空のまま）', () => {
+        const kind = CORE_ENTITY_KINDS.find((k) => k.kind === CORE_COMPONENT_TYPES.text);
+        const placed = withComponentAdded(
+            {
+                id: 'sign',
+                transform: { x: 0, y: 0, z: 0, scale: 1, rotation: 0 },
+                tags: [],
+                components: [],
+                children: [],
+            },
+            CORE_COMPONENT_TYPES.text,
+            kind,
+        );
+        expect(placed.components[0]?.data).toMatchObject({ text: 'ようこそ' });
     });
 
     it('スクリプト（ワープ・スイッチ・ポータル）は、置いても見た目の項目を持たず、そのまま検証を通る', () => {

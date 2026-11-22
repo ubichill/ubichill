@@ -10,12 +10,13 @@ export type PortalGoal = PortalTarget | { kind: 'room'; room: string };
 /**
  * ポータル（core:portal）を押したときの移り方。SNS の画面（InstancePage）が渡す。
  * world.html とエディタのプレビューでは渡さないので、ポータルは押せない。look は分かっていれば、移る先の読み込み画面に出す。
+ * 移る流れ（確かめる画面を含む）が終わると解決する。
  */
 export type PortalNavigate = (
     goal: PortalGoal,
     label: string,
     look?: { displayName: string; thumbnail?: string },
-) => void;
+) => Promise<void>;
 
 const PortalNavigationContext = createContext<PortalNavigate | null>(null);
 
