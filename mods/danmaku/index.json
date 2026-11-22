@@ -2,19 +2,17 @@
   {
     "id": "danmaku",
     "name": "danmaku",
-    "version": "1.0.6",
+    "version": "2.0.0",
     "components": [
       "danmaku:canvas",
-      "danmaku:player",
-      "danmaku:wall"
+      "danmaku:player"
     ],
     "versions": [
       {
-        "version": "1.0.6",
+        "version": "2.0.0",
         "components": [
           "danmaku:canvas",
-          "danmaku:player",
-          "danmaku:wall"
+          "danmaku:player"
         ]
       }
     ]
