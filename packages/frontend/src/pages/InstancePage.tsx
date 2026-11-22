@@ -1,5 +1,5 @@
 import { useSocket } from '@ubichill/react';
-import { roomPortalAddressFor } from '@ubichill/shared';
+import { type Instance, roomPortalAddressFor } from '@ubichill/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { InstanceHUD } from '@/components/hud/InstanceHUD';
@@ -22,12 +22,19 @@ import { portalRoomPath } from '@/lib/worlds/portalPath';
 import { ROOM_PORTAL_REFUSAL_MESSAGES, roomPortalRefusal } from '@/lib/worlds/roomPortalEntry';
 import { useRemoteVisit } from '@/lib/worlds/useRemoteVisit';
 import { worldPortalInstance } from '@/lib/worlds/worldPortalEntry';
-import { type InstanceFailure, type PortalGoal, WorldView } from '@/world';
+import { type InstanceFailure, InstanceNotFoundError, type PortalGoal, WorldView } from '@/world';
 
 /** 失敗したら一定時間後に自動でホームへ戻す（ロード画面で詰まらないように）。 */
 const RETURN_HOME_MS = 5000;
 
 const RETRY_MESSAGE = '元の部屋には入れませんでした';
+
+/** 部屋を引く。無い・見る人に見えない部屋（404）は null、ほかの失敗はそのまま。 */
+const fetchRoomOrGone = (address: string): Promise<Instance | null> =>
+    fetchInstance(address).catch((error: unknown) => {
+        if (error instanceof InstanceNotFoundError) return null;
+        throw error;
+    });
 
 /**
  * ポータルで入る部屋。入れなければトーストを出して null（今の部屋に残る）。
@@ -37,7 +44,7 @@ const RETRY_MESSAGE = '元の部屋には入れませんでした';
 function portalRoom(goal: PortalGoal, currentRoom: string, viewerId: string): Promise<string | null> {
     if (goal.kind === 'room') {
         const room = roomPortalAddressFor(goal.room, currentRoom);
-        return roomPortalRefusal(fetchInstance, room, viewerId).then((refusal) => {
+        return roomPortalRefusal(fetchRoomOrGone, room, viewerId).then((refusal) => {
             if (!refusal) return room;
             pushToast(ROOM_PORTAL_REFUSAL_MESSAGES[refusal], 'warn');
             return null;
@@ -170,7 +177,7 @@ export function InstancePage() {
     const portalLookup = useMemo(
         () =>
             createPortalLookup(fetchWorld, {
-                fetch: (room) => fetchInstance(roomPortalAddressFor(room, id ?? '')),
+                fetch: (room) => fetchRoomOrGone(roomPortalAddressFor(room, id ?? '')),
                 viewerId,
             }),
         [id, viewerId],

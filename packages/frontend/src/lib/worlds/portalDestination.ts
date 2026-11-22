@@ -1,7 +1,7 @@
 import type { PortalTarget } from '@ubichill/core-components';
 import { isPortalDestination, type WorldListItem } from '@ubichill/shared';
 import type { PortalDestination, PortalLookup } from '@/world';
-import { type RoomStatus, roomLookupFailure, roomRefusal } from './roomPortalEntry';
+import { type RoomStatus, roomRefusal } from './roomPortalEntry';
 
 /** 行き先を、ワールドを引く参照（`@handle/name`・ワールドの ID・URL）にする。 */
 export function portalWorldRef(target: PortalTarget): string {
@@ -22,9 +22,9 @@ const destinationOf = (world: WorldLook): PortalDestination => ({
     ...(world.thumbnail ? { thumbnail: world.thumbnail } : {}),
 });
 
-/** 部屋へのポータルの行き先を引く手段。部屋の詳細（無い・見る人に見えなければ InstanceNotFoundError）と、満員の判定に使う見る人。 */
+/** 部屋へのポータルの行き先を引く手段。部屋の詳細（無い・見る人に見えなければ null）と、満員の判定に使う見る人。 */
 export interface PortalRoomSource {
-    fetch: (address: string) => Promise<RoomStatus & { world: WorldLook }>;
+    fetch: (address: string) => Promise<(RoomStatus & { world: WorldLook }) | null>;
     viewerId: string | null;
 }
 
@@ -54,11 +54,12 @@ export function createPortalLookup(
         source
             .fetch(room)
             .then(
-                (found): PortalDestination => ({
-                    ...destinationOf(found.world),
-                    ...(roomRefusal(found, source.viewerId) ? { locked: true } : {}),
-                }),
-                (error: unknown) => (roomLookupFailure(error) === 'gone' ? null : (lastRooms.get(room) ?? null)),
+                (found): PortalDestination | null =>
+                    found && {
+                        ...destinationOf(found.world),
+                        ...(roomRefusal(found, source.viewerId) ? { locked: true } : {}),
+                    },
+                () => lastRooms.get(room) ?? null,
             )
             .then((destination) => {
                 lastRooms.set(room, destination);

@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest';
-import { InstanceNotFoundError } from '@/world';
 import { type RoomStatus, roomPortalRefusal, roomRefusal } from './roomPortalEntry';
 
 const room = (currentUsers: number, overrides: Partial<RoomStatus> = {}): RoomStatus => ({
@@ -47,10 +46,7 @@ describe('roomPortalRefusal', () => {
     });
 
     it('部屋が無くなった・見えなくなった（404）なら gone', async () => {
-        const gone = async (): Promise<RoomStatus> => {
-            throw new InstanceNotFoundError('インスタンスが見つかりません');
-        };
-        expect(await roomPortalRefusal(gone, 'abc', 'me')).toBe('gone');
+        expect(await roomPortalRefusal(async () => null, 'abc', 'me')).toBe('gone');
     });
 
     it('確かめられなければ（通信・サーバーの失敗）入らずに unknown', async () => {
