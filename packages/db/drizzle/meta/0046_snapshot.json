@@ -1,5 +1,5 @@
 {
-  "id": "a826e68d-4717-486d-a89b-d1a663f000df",
+  "id": "7c19f7ed-ffae-4aea-bcc8-f56a7dc4af1b",
   "prevId": "fed6cdae-25cf-46b7-a2b2-ee5563af008f",
   "version": "7",
   "dialect": "postgresql",
@@ -4663,6 +4663,33 @@
         "world_assets_hash_idx": {
           "name": "world_assets_hash_idx",
           "columns": [
+            {
+              "expression": "hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "world_assets_owner_created_idx": {
+          "name": "world_assets_owner_created_idx",
+          "columns": [
+            {
+              "expression": "owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
             {
               "expression": "hash",
               "isExpression": false,

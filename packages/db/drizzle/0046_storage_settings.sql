@@ -5,4 +5,5 @@ CREATE TABLE "storage_settings" (
 	CONSTRAINT "storage_settings_single_row" CHECK ("storage_settings"."id" = 'current')
 );
 --> statement-breakpoint
-ALTER TABLE "user_settings" ADD COLUMN "world_asset_auto_cleanup" boolean DEFAULT true NOT NULL;
+ALTER TABLE "user_settings" ADD COLUMN "world_asset_auto_cleanup" boolean DEFAULT true NOT NULL;--> statement-breakpoint
+CREATE INDEX "world_assets_owner_created_idx" ON "world_assets" USING btree ("owner_id","created_at","hash");

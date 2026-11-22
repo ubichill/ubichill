@@ -1,20 +1,25 @@
 import { formatBytes, type StorageOverview, type StoredFile, WORLD_ASSET_UNUSED_GRACE_DAYS } from '@ubichill/shared';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { HudIcon } from '@/components/hud/HudIcon';
+import { socialButton } from '@/components/social/buttons';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { Switch } from '@/components/ui/Switch';
-import { deleteConfirmation, usageRatio, usageTone, withoutFile } from '@/lib/account/storage';
-import { deleteStoredFile, fetchMyStorage, updateMyStorageSettings } from '@/lib/account/storageApi';
+import { deleteConfirmation, fileKey, usageRatio, usageTone, withoutFiles, withPage } from '@/lib/account/storage';
+import {
+    deleteStoredFiles,
+    fetchMyStorage,
+    fetchMyStoredFiles,
+    updateMyStorageSettings,
+} from '@/lib/account/storageApi';
 import { pushToast } from '@/lib/toast';
 import { css, cva } from '@/styled-system/css';
 import { settingsGroup, settingsHeading, settingsNote } from './settingsStyles';
 
-const fileKey = (file: StoredFile) => `${file.kind}:${file.id}`;
 const formatDate = (iso: string) => new Date(iso).toLocaleDateString('ja-JP');
 
 /**
- * 設定の「ストレージ」: 使っている量・上げた画像の一覧（消す）・使われていない画像を自動で消すか。どれもその場で反映する。
- * 消すのは、自分のワールドで使っている画像のときだけ確かめる（ワールドの画像が出なくなるため）。
+ * 設定の「ストレージ」: 使っている量・上げた画像の一覧（ページごとに読む。1 個ずつ・チェックしてまとめて消す）・
+ * 使われていない画像を自動で消すか。どれもその場で反映する。消すのは、自分のワールドで使っている画像があるときだけ確かめる。
  */
 export function StorageSection() {
     const confirm = useConfirm();
@@ -22,6 +27,8 @@ export function StorageSection() {
     const [error, setError] = useState('');
     const [savingSettings, setSavingSettings] = useState(false);
     const [deleting, setDeleting] = useState<ReadonlySet<string>>(new Set());
+    const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
+    const [loadingMore, setLoadingMore] = useState(false);
 
     useEffect(() => {
         const ctrl = { cancelled: false };
@@ -45,22 +52,40 @@ export function StorageSection() {
         }
     };
 
-    const remove = async (file: StoredFile) => {
-        const question = deleteConfirmation(file);
-        if (question && !(await confirm(question))) return;
-        const key = fileKey(file);
-        setDeleting((prev) => new Set(prev).add(key));
+    const loadMore = async (cursor: string) => {
+        setLoadingMore(true);
         try {
-            await deleteStoredFile(file);
-            setOverview((current) => current && withoutFile(current, file));
+            const page = await fetchMyStoredFiles(cursor);
+            setOverview((current) => current && withPage(current, page));
+        } catch (e) {
+            pushToast(e instanceof Error ? e.message : '読み込めませんでした', 'error');
+        } finally {
+            setLoadingMore(false);
+        }
+    };
+
+    const remove = async (files: StoredFile[]) => {
+        const question = deleteConfirmation(files);
+        if (question && !(await confirm(question))) return;
+        const keys = files.map(fileKey);
+        const mark = (on: boolean) => (prev: ReadonlySet<string>) => {
+            const next = new Set(prev);
+            for (const key of keys) {
+                if (on) next.add(key);
+                else next.delete(key);
+            }
+            return next;
+        };
+        setDeleting(mark(true));
+        try {
+            // 頼んだものは、もう無かったもの（ほかの端末で消した）も含めて一覧から外す
+            await deleteStoredFiles(files);
+            setOverview((current) => current && withoutFiles(current, files));
+            setChecked(mark(false));
         } catch (e) {
             pushToast(e instanceof Error ? e.message : '消せませんでした', 'error');
         } finally {
-            setDeleting((prev) => {
-                const next = new Set(prev);
-                next.delete(key);
-                return next;
-            });
+            setDeleting(mark(false));
         }
     };
 
@@ -70,6 +95,16 @@ export function StorageSection() {
 
     const tone = usageTone(overview.usage, overview.quotaBytes);
     const shown = `${formatBytes(overview.usage.bytes)} / ${formatBytes(overview.quotaBytes)}`;
+    const items = overview.files.items;
+    const checkedFiles = items.filter((file) => checked.has(fileKey(file)));
+    const allChecked = items.length > 0 && checkedFiles.length === items.length;
+    const toggle = (file: StoredFile, on: boolean) =>
+        setChecked((prev) => {
+            const next = new Set(prev);
+            if (on) next.add(fileKey(file));
+            else next.delete(fileKey(file));
+            return next;
+        });
 
     return (
         <div className={css({ display: 'flex', flexDirection: 'column', gap: '6' })}>
@@ -111,7 +146,7 @@ export function StorageSection() {
 
             <Switch
                 title="使われていない画像を自動で消す"
-                description={`上げてから ${WORLD_ASSET_UNUSED_GRACE_DAYS} 日たち、どのワールドにも使われていない画像を消します。`}
+                description={`上げてから ${WORLD_ASSET_UNUSED_GRACE_DAYS} 日たち、このサーバーのどのワールドにも使われていない画像を消します。`}
                 on={overview.autoCleanup}
                 disabled={savingSettings}
                 onChange={(next) => void changeAutoCleanup(next)}
@@ -119,31 +154,136 @@ export function StorageSection() {
 
             <section className={settingsGroup}>
                 <h3 className={settingsHeading}>上げた画像</h3>
-                {overview.files.length === 0 ? (
+                <p className={settingsNote}>
+                    消すと、このサーバーで同じ画像を使うほかの人のワールドでも出なくなります。
+                </p>
+                {items.length === 0 ? (
                     <p className={settingsNote}>ありません。</p>
                 ) : (
-                    <ul className={css({ display: 'flex', flexDirection: 'column' })}>
-                        {overview.files.map((file) => (
-                            <FileRow
-                                key={fileKey(file)}
-                                file={file}
-                                busy={deleting.has(fileKey(file))}
-                                onDelete={() => void remove(file)}
+                    <>
+                        <div className={toolbar}>
+                            <Check
+                                label="読み込んだ画像をすべて選ぶ"
+                                checked={allChecked}
+                                indeterminate={checkedFiles.length > 0 && !allChecked}
+                                onChange={(on) => setChecked(new Set(on ? items.map(fileKey) : []))}
                             />
-                        ))}
-                    </ul>
+                            <span aria-live="polite" className={css({ flex: 1 })}>
+                                {checkedFiles.length > 0 ? `${checkedFiles.length} 個を選択` : ''}
+                            </span>
+                            {checkedFiles.length > 0 && (
+                                <button
+                                    type="button"
+                                    className={socialButton({ tone: 'danger' })}
+                                    disabled={checkedFiles.some((file) => deleting.has(fileKey(file)))}
+                                    onClick={() => void remove(checkedFiles)}
+                                >
+                                    {checkedFiles.length} 個を消す
+                                </button>
+                            )}
+                        </div>
+                        <ul className={css({ display: 'flex', flexDirection: 'column' })}>
+                            {items.map((file) => (
+                                <FileRow
+                                    key={fileKey(file)}
+                                    file={file}
+                                    checked={checked.has(fileKey(file))}
+                                    busy={deleting.has(fileKey(file))}
+                                    onCheck={(on) => toggle(file, on)}
+                                    onDelete={() => void remove([file])}
+                                />
+                            ))}
+                        </ul>
+                        {overview.files.next && (
+                            <MoreButton
+                                loading={loadingMore}
+                                onMore={() => overview.files.next && void loadMore(overview.files.next)}
+                            />
+                        )}
+                    </>
                 )}
             </section>
         </div>
     );
 }
 
-function FileRow({ file, busy, onDelete }: { file: StoredFile; busy: boolean; onDelete: () => void }) {
+/** 続きを読む。見えるところまでスクロールしたら自動で読み、押しても読める。 */
+function MoreButton({ loading, onMore }: { loading: boolean; onMore: () => void }) {
+    const ref = useRef<HTMLButtonElement>(null);
+    const latest = useRef(onMore);
+    latest.current = onMore;
+    useEffect(() => {
+        const target = ref.current;
+        if (!target || loading || typeof IntersectionObserver === 'undefined') return;
+        const observer = new IntersectionObserver((entries) => {
+            if (entries.some((entry) => entry.isIntersecting)) latest.current();
+        });
+        observer.observe(target);
+        return () => observer.disconnect();
+    }, [loading]);
+    return (
+        <button
+            ref={ref}
+            type="button"
+            className={socialButton({ tone: 'secondary' })}
+            disabled={loading}
+            onClick={onMore}
+        >
+            {loading ? '読み込み中...' : 'もっと見る'}
+        </button>
+    );
+}
+
+function Check({
+    label,
+    checked,
+    indeterminate = false,
+    onChange,
+}: {
+    label: string;
+    checked: boolean;
+    indeterminate?: boolean;
+    onChange: (checked: boolean) => void;
+}) {
+    const ref = useRef<HTMLInputElement>(null);
+    useEffect(() => {
+        if (ref.current) ref.current.indeterminate = indeterminate;
+    }, [indeterminate]);
+    return (
+        <input
+            ref={ref}
+            type="checkbox"
+            aria-label={label}
+            checked={checked}
+            onChange={(e) => onChange(e.target.checked)}
+            className={checkbox}
+        />
+    );
+}
+
+function FileRow({
+    file,
+    checked,
+    busy,
+    onCheck,
+    onDelete,
+}: {
+    file: StoredFile;
+    checked: boolean;
+    busy: boolean;
+    onCheck: (on: boolean) => void;
+    onDelete: () => void;
+}) {
     const usedIn = file.usedBy.map((use) => use.worldName).join('・');
     return (
         <li className={row({ busy })}>
+            <Check
+                label={`${formatDate(file.createdAt)} の ${formatBytes(file.bytes)} の画像を選ぶ`}
+                checked={checked}
+                onChange={onCheck}
+            />
             <a href={file.url} target="_blank" rel="noreferrer" className={thumbLink} aria-label="画像を開く">
-                <img src={file.url} alt="" loading="lazy" className={thumb} />
+                <img src={file.url} alt="" loading="lazy" decoding="async" className={thumb} />
             </a>
             <div className={css({ display: 'flex', flexDirection: 'column', gap: '0.5', minW: 0, flex: 1 })}>
                 <span className={css({ fontSize: '13px', color: 'text', fontVariantNumeric: 'tabular-nums' })}>
@@ -166,6 +306,23 @@ const meterFill = cva({
     variants: {
         tone: { normal: { bg: 'primary' }, near: { bg: 'warning' }, full: { bg: 'error' } },
     },
+});
+
+const toolbar = css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '3',
+    minH: '32px',
+    fontSize: '12px',
+    color: 'textMuted',
+});
+
+const checkbox = css({
+    flexShrink: 0,
+    w: '18px',
+    h: '18px',
+    accentColor: 'primary',
+    cursor: 'pointer',
 });
 
 const row = cva({

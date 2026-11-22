@@ -41,7 +41,7 @@ const assets = {
 };
 
 const app = express();
-app.use('/api/v1/assets', createAssetsRouter({ requireAuth, uploadLimiter: pass, assets }));
+app.use('/api/v1/assets', createAssetsRouter({ requireAuth, uploadLimiter: pass, deleteLimiter: pass, assets }));
 const server = createServer(app);
 const url = (path: string) => `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/assets${path}`;
 
@@ -95,5 +95,31 @@ describe('assets router', () => {
             204,
         );
         expect((await fetch(url('/nope.png'), { method: 'DELETE', headers: { 'x-user': 'alice' } })).status).toBe(404);
+    });
+});
+
+describe('assets router の回数の制限', () => {
+    const exhausted: RequestHandler = (_req, res) =>
+        void res.status(429).json({ error: '画像のアップロードが多すぎます。少し待ってから試してください' });
+    const limited = express();
+    limited.use(
+        '/api/v1/assets',
+        createAssetsRouter({ requireAuth, uploadLimiter: exhausted, deleteLimiter: pass, assets }),
+    );
+    const limitedServer = createServer(limited);
+    const limitedUrl = (path: string) =>
+        `http://127.0.0.1:${(limitedServer.address() as AddressInfo).port}/api/v1/assets${path}`;
+    beforeAll(() => new Promise<void>((resolve) => limitedServer.listen(0, '127.0.0.1', resolve)));
+    afterAll(() => new Promise<void>((resolve) => limitedServer.close(() => resolve())));
+
+    it('アップロードの回数を使い切っても、消すのは別に数える（容量を越えたら消してから上げ直すため）', async () => {
+        const upload = await fetch(limitedUrl('/'), {
+            method: 'POST',
+            headers: { 'x-user': 'alice', 'content-type': 'image/png' },
+            body: new Uint8Array([1]),
+        });
+        expect(upload.status).toBe(429);
+        const removed = await fetch(limitedUrl(`/${HASH}.webp`), { method: 'DELETE', headers: { 'x-user': 'alice' } });
+        expect(removed.status).toBe(204);
     });
 });

@@ -1,6 +1,7 @@
 import { perUserLimiter } from '../../lib/rateLimit';
 import { requireAuth } from '../../middleware/auth';
 import { worldAssetService } from '../../services/worldAssets/worldAssetService';
+import { storageDeleteLimiter } from '../storageLimiters';
 import { createAssetsRouter } from './router';
 
 export const router = createAssetsRouter({
@@ -11,5 +12,6 @@ export const router = createAssetsRouter({
         60,
         '画像のアップロードが多すぎます。少し待ってから試してください',
     ),
+    deleteLimiter: storageDeleteLimiter,
     assets: worldAssetService,
 });

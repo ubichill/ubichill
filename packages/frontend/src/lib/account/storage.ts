@@ -1,7 +1,9 @@
 /**
  * 設定の「ストレージ」の見せ方（API を呼ばない純粋な部分。呼ぶのは storageApi.ts）。
  */
-import type { StorageOverview, StoredFile } from '@ubichill/shared';
+import type { StorageOverview, StoredFile, StoredFilePage, StoredFileRef } from '@ubichill/shared';
+
+export const fileKey = (file: StoredFileRef): string => `${file.kind}:${file.id}`;
 
 /** 使っている割合（0〜1）。容量を下げて越えていても 1 で止める。 */
 export function usageRatio(usage: { bytes: number }, quotaBytes: number): number {
@@ -17,24 +19,53 @@ export function usageTone(usage: { bytes: number }, quotaBytes: number): 'normal
 
 const SHOWN_WORLDS = 3;
 
-/** 消す前に確かめる文。自分のワールドで使っていなければ null（すぐ消す）。 */
-export function deleteConfirmation(file: StoredFile): string | null {
-    if (file.usedBy.length === 0) return null;
-    const names = file.usedBy
+/**
+ * 消す前に確かめる文。自分のワールドで使っているものが無ければ null（すぐ消す）。
+ * ほかの人のワールドで使っているかは数えない（重い）ので、一言だけ添える。
+ */
+export function deleteConfirmation(files: readonly StoredFile[]): string | null {
+    const used = files.filter((file) => file.usedBy.length > 0);
+    if (used.length === 0) return null;
+    const worlds = [
+        ...new Map(used.flatMap((file) => file.usedBy.map((use) => [use.worldId, use.worldName]))).values(),
+    ];
+    const names = worlds
         .slice(0, SHOWN_WORLDS)
-        .map((use) => `「${use.worldName}」`)
+        .map((name) => `「${name}」`)
         .join('');
-    const more = file.usedBy.length > SHOWN_WORLDS ? `ほか ${file.usedBy.length - SHOWN_WORLDS} 個のワールド` : '';
-    return `${names}${more}で使っています。消すと、そのワールドでこの画像が出なくなります。消しますか？`;
+    const more = worlds.length > SHOWN_WORLDS ? `ほか ${worlds.length - SHOWN_WORLDS} 個のワールド` : '';
+    const subject = files.length > 1 ? `選んだ ${files.length} 個のうち ${used.length} 個を` : '';
+    return `${subject}${names}${more}で使っています。消すと、そこで画像が出なくなります（このサーバーのほかの人のワールドも同じ）。消しますか？`;
 }
 
-/** 消した後の一覧と使っている量。 */
-export function withoutFile(overview: StorageOverview, file: StoredFile): StorageOverview {
-    const files = overview.files.filter((f) => !(f.kind === file.kind && f.id === file.id));
-    if (files.length === overview.files.length) return overview;
+/** 続きのページを足す（読み直しで重なったものは足さない）。 */
+export function withPage(overview: StorageOverview, page: StoredFilePage): StorageOverview {
+    const seen = new Set(overview.files.items.map(fileKey));
     return {
         ...overview,
-        files,
-        usage: { bytes: Math.max(0, overview.usage.bytes - file.bytes), count: files.length },
+        files: {
+            items: [...overview.files.items, ...page.items.filter((f) => !seen.has(fileKey(f)))],
+            next: page.next,
+        },
     };
+}
+
+/** 消せたものを一覧と使っている量から除く（一覧に無いものは数えない）。 */
+export function withoutFiles(overview: StorageOverview, removed: readonly StoredFileRef[]): StorageOverview {
+    const gone = new Set(removed.map(fileKey));
+    const dropped = overview.files.items.filter((f) => gone.has(fileKey(f)));
+    if (dropped.length === 0) return overview;
+    return {
+        ...overview,
+        files: { ...overview.files, items: overview.files.items.filter((f) => !gone.has(fileKey(f))) },
+        usage: {
+            bytes: Math.max(0, overview.usage.bytes - dropped.reduce((sum, f) => sum + f.bytes, 0)),
+            count: Math.max(0, overview.usage.count - dropped.length),
+        },
+    };
+}
+
+/** まとめて消すときに分ける（1 回で消せる数まで）。 */
+export function chunksOf<T>(items: readonly T[], size: number): T[][] {
+    return Array.from({ length: Math.ceil(items.length / size) }, (_, n) => items.slice(n * size, (n + 1) * size));
 }

@@ -38,7 +38,7 @@ describe.skipIf(!RUN)('worldAssetRepository (DB統合)', () => {
         expect(await worldAssetRepository.add(bob, image(`${stamp}-1`), quota)).toEqual({ status: 'added' });
         expect(await worldAssetRepository.findByHash(`${stamp}-1`)).toMatchObject({ width: 4, height: 3 });
         expect((await worldAssetRepository.findByHash(`${stamp}-1`))?.bytes).toEqual(new Uint8Array(10).fill(7));
-        expect(await worldAssetRepository.listByOwner(alice)).toHaveLength(1);
+        expect(await worldAssetRepository.usageOf(alice)).toEqual({ bytes: 10, count: 1 });
     });
 
     it('同時に上げても合計の上限を越えない。越えるときは今の合計を返す', async () => {
@@ -61,7 +61,7 @@ describe.skipIf(!RUN)('worldAssetRepository (DB統合)', () => {
         for (const one of many) {
             expect((await worldAssetRepository.add(alice, one, 1000)).status).toBe('added');
         }
-        expect(await worldAssetRepository.listByOwner(alice)).toHaveLength(202);
+        expect((await worldAssetRepository.usageOf(alice)).count).toBe(202);
         await db.delete(worldAssets).where(like(worldAssets.hash, `${stamp}-many-%`));
     });
 
@@ -354,7 +354,7 @@ describe.skipIf(!RUN)('worldAssetRepository (DB統合)', () => {
         });
     });
 
-    describe('listByOwner の使っているワールド', () => {
+    describe('listPageByOwner', () => {
         const hashOf = (label: string) => createHash('sha256').update(`${stamp}:list:${label}`).digest('base64url');
         const url = (label: string) => `https://ubi.example${worldAssetPath(hashOf(label))}`;
 
@@ -389,7 +389,9 @@ describe.skipIf(!RUN)('worldAssetRepository (DB統合)', () => {
             );
 
             const usedBy = new Map(
-                (await worldAssetRepository.listByOwner(alice)).map((row) => [row.hash, row.usedBy] as const),
+                (await worldAssetRepository.listPageByOwner(alice, { limit: 1000 })).rows.map(
+                    (row) => [row.hash, row.usedBy] as const,
+                ),
             );
             expect(usedBy.get(hashOf('both'))).toEqual([
                 { worldId: drafted.worldId, worldName: `a-list-${stamp}` },
@@ -400,6 +402,59 @@ describe.skipIf(!RUN)('worldAssetRepository (DB統合)', () => {
             ]);
             expect(usedBy.get(hashOf('bobs-only'))).toEqual([]);
             expect(usedBy.get(hashOf('unused'))).toEqual([]);
+        });
+
+        it('ページに分けて、同じ時刻（マイクロ秒まで同じ・ミリ秒だけ同じ）の画像も重ならず抜けずに読める', async () => {
+            const carol = `wa-${stamp}-carol`;
+            await userRepository.create({
+                id: carol,
+                name: carol,
+                email: `${carol}@example.com`,
+                handle: `wa_${stamp}_c`,
+                emailVerified: true,
+            });
+            const labels = Array.from({ length: 7 }, (_, n) => `page-${n}`);
+            for (const label of labels) await worldAssetRepository.add(carol, image(hashOf(label)), 100_000);
+            // 2 個はマイクロ秒まで同じ、2 個は同じミリ秒の中で違うマイクロ秒
+            const times = [
+                '2026-11-01T00:00:00.000100Z',
+                '2026-11-01T00:00:00.000100Z',
+                '2026-11-01T00:00:00.000900Z',
+                '2026-11-01T00:00:00.000200Z',
+                '2026-11-02T00:00:00Z',
+                '2026-11-03T00:00:00Z',
+                '2026-11-03T00:00:00Z',
+            ];
+            for (const [n, label] of labels.entries()) {
+                await db.execute(
+                    sql`UPDATE world_assets SET created_at = ${times[n]}::timestamptz WHERE owner_id = ${carol} AND hash = ${hashOf(label)}`,
+                );
+            }
+            const readAll = async (
+                after: Parameters<typeof worldAssetRepository.listPageByOwner>[1]['after'],
+                seen: string[],
+            ): Promise<string[]> => {
+                const page = await worldAssetRepository.listPageByOwner(carol, { limit: 2, after });
+                const next = [...seen, ...page.rows.map((row) => row.hash)];
+                return page.next ? readAll(page.next, next) : next;
+            };
+            const ids = await readAll(undefined, []);
+            expect(ids).toHaveLength(7);
+            expect(new Set(ids).size).toBe(7);
+            // 新しい順
+            expect(ids.slice(0, 2).sort()).toEqual([hashOf('page-5'), hashOf('page-6')].sort());
+            expect(ids[2]).toBe(hashOf('page-4'));
+            expect(ids[3]).toBe(hashOf('page-2'));
+            expect(ids[4]).toBe(hashOf('page-3'));
+            expect(await worldAssetRepository.usageOf(carol)).toEqual({ bytes: 70, count: 7 });
+
+            // まとめて消す: 自分のものだけ・無いものは飛ばす
+            expect(
+                (await worldAssetRepository.removeMany(carol, [hashOf('page-0'), hashOf('page-1'), 'missing'])).sort(),
+            ).toEqual([hashOf('page-0'), hashOf('page-1')].sort());
+            expect(await worldAssetRepository.removeMany(alice, [hashOf('page-2')])).toEqual([]);
+            expect(await worldAssetRepository.removeMany(carol, [])).toEqual([]);
+            expect((await worldAssetRepository.usageOf(carol)).count).toBe(5);
         });
     });
 });

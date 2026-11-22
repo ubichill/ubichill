@@ -1,10 +1,10 @@
 import type { StorageOverview, StoredFile } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
-import { deleteConfirmation, usageRatio, usageTone, withoutFile } from './storage';
+import { chunksOf, deleteConfirmation, usageRatio, usageTone, withoutFiles, withPage } from './storage';
 
 const MB = 1024 * 1024;
 
-const file = (id: string, bytes: number, worlds: string[] = []): StoredFile => ({
+const file = (id: string, bytes: number, worlds: Array<[string, string]> = []): StoredFile => ({
     kind: 'world-image',
     id,
     url: `https://ubi.example/api/v1/assets/${id}.webp`,
@@ -12,7 +12,14 @@ const file = (id: string, bytes: number, worlds: string[] = []): StoredFile => (
     width: 10,
     height: 10,
     createdAt: '2026-11-22T00:00:00.000Z',
-    usedBy: worlds.map((worldName, n) => ({ worldId: `w${n}`, worldName })),
+    usedBy: worlds.map(([worldId, worldName]) => ({ worldId, worldName })),
+});
+
+const overview = (files: StoredFile[], count = files.length): StorageOverview => ({
+    autoCleanup: true,
+    usage: { bytes: files.reduce((sum, f) => sum + f.bytes, 0), count },
+    quotaBytes: 200 * MB,
+    files: { items: files, next: 'cursor-1' },
 });
 
 describe('usageRatio・usageTone', () => {
@@ -34,37 +41,76 @@ describe('usageRatio・usageTone', () => {
 });
 
 describe('deleteConfirmation', () => {
-    it('自分のワールドで使っていなければ確かめない', () => {
-        expect(deleteConfirmation(file('a', 1))).toBeNull();
+    it('自分のワールドで使っているものが無ければ確かめない', () => {
+        expect(deleteConfirmation([file('a', 1)])).toBeNull();
+        expect(deleteConfirmation([file('a', 1), file('b', 1)])).toBeNull();
     });
 
-    it('使っているワールドの名前を出す。4 つ以上はほかの数にまとめる', () => {
-        expect(deleteConfirmation(file('a', 1, ['森の家']))).toBe(
-            '「森の家」で使っています。消すと、そのワールドでこの画像が出なくなります。消しますか？',
+    it('1 個: 使っているワールドの名前と、ほかの人のワールドへの一言', () => {
+        expect(deleteConfirmation([file('a', 1, [['w1', '森の家']])])).toBe(
+            '「森の家」で使っています。消すと、そこで画像が出なくなります（このサーバーのほかの人のワールドも同じ）。消しますか？',
         );
-        expect(deleteConfirmation(file('a', 1, ['a', 'b', 'c', 'd', 'e']))).toBe(
-            '「a」「b」「c」ほか 2 個のワールドで使っています。消すと、そのワールドでこの画像が出なくなります。消しますか？',
+    });
+
+    it('まとめて: 使っている数と、ワールドを重ねずに 3 つまで出す', () => {
+        expect(
+            deleteConfirmation([
+                file('a', 1, [
+                    ['w1', 'a'],
+                    ['w2', 'b'],
+                ]),
+                file('b', 1, [
+                    ['w2', 'b'],
+                    ['w3', 'c'],
+                    ['w4', 'd'],
+                ]),
+                file('c', 1),
+            ]),
+        ).toBe(
+            '選んだ 3 個のうち 2 個を「a」「b」「c」ほか 1 個のワールドで使っています。消すと、そこで画像が出なくなります（このサーバーのほかの人のワールドも同じ）。消しますか？',
         );
     });
 });
 
-describe('withoutFile', () => {
-    const overview: StorageOverview = {
-        autoCleanup: true,
-        usage: { bytes: 3 * MB, count: 2 },
-        quotaBytes: 200 * MB,
-        files: [file('a', MB), file('b', 2 * MB)],
-    };
+describe('withPage', () => {
+    it('続きを後ろに足し、重なったものは足さない', () => {
+        const next = withPage(overview([file('a', 1), file('b', 1)]), {
+            items: [file('b', 1), file('c', 1)],
+            next: null,
+        });
+        expect(next.files).toEqual({ items: [file('a', 1), file('b', 1), file('c', 1)], next: null });
+    });
+});
 
-    it('消した分だけ量と数を減らす', () => {
-        expect(withoutFile(overview, file('a', MB))).toMatchObject({
-            usage: { bytes: 2 * MB, count: 1 },
-            files: [expect.objectContaining({ id: 'b' })],
+describe('withoutFiles', () => {
+    it('消した分だけ量と数を減らす（読んでいないページの分の数は残す）', () => {
+        const before = overview([file('a', MB), file('b', 2 * MB), file('c', MB)], 120);
+        expect(
+            withoutFiles(before, [
+                { kind: 'world-image', id: 'a' },
+                { kind: 'world-image', id: 'c' },
+            ]),
+        ).toMatchObject({
+            usage: { bytes: 2 * MB, count: 118 },
+            files: { items: [expect.objectContaining({ id: 'b' })], next: 'cursor-1' },
         });
     });
 
     it('一覧に無いもの（2 回押した・ほかの端末で消した）は何も変えない', () => {
-        const once = withoutFile(overview, file('a', MB));
-        expect(withoutFile(once, file('a', MB))).toBe(once);
+        const once = withoutFiles(overview([file('a', MB)]), [{ kind: 'world-image', id: 'a' }]);
+        expect(withoutFiles(once, [{ kind: 'world-image', id: 'a' }])).toBe(once);
+    });
+});
+
+describe('chunksOf', () => {
+    it('100 個ずつに分ける', () => {
+        expect(chunksOf([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
+        expect(chunksOf([], 100)).toEqual([]);
+        expect(
+            chunksOf(
+                Array.from({ length: 250 }, (_, n) => n),
+                100,
+            ).map((c) => c.length),
+        ).toEqual([100, 100, 50]);
     });
 });

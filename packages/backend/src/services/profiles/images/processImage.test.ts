@@ -185,52 +185,92 @@ describe('processProfileImage（判定の手順）', () => {
         const render = (input: Buffer) =>
             worldCodec.render(new Uint8Array(input), { width: 2048, height: 2048, fit: 'inside' });
 
-        it('ドット絵の PNG は可逆にする（画素がそのまま残り、非可逆より小さい）', async () => {
-            const cells = Buffer.alloc(32 * 32 * 3);
-            for (const i of Array.from({ length: 32 * 32 }, (_, n) => n)) {
-                const on = (Math.floor(i / 32 / 4) + Math.floor((i % 32) / 4)) % 2 === 0;
-                cells.set(on ? [217, 87, 99] : [34, 32, 52], i * 3);
+        const pixelArt = async (cells: number, scale: number, pattern: (x: number, y: number) => boolean) => {
+            const raw = Buffer.alloc(cells * cells * 3);
+            for (const i of Array.from({ length: cells * cells }, (_, n) => n)) {
+                raw.set(pattern(i % cells, Math.floor(i / cells)) ? [217, 87, 99] : [34, 32, 52], i * 3);
             }
-            const png = await sharp(cells, { raw: { width: 32, height: 32, channels: 3 } })
-                .resize(256, 256, { kernel: 'nearest' })
+            return sharp(raw, { raw: { width: cells, height: cells, channels: 3 } })
+                .resize(cells * scale, cells * scale, { kernel: 'nearest' })
                 .png()
                 .toBuffer();
+        };
+        const webpCalls = async (task: () => Promise<unknown>) => {
+            const spy = vi.spyOn(sharp.prototype, 'webp');
+            await task();
+            const calls = spy.mock.calls.map(([options]) => options);
+            spy.mockRestore();
+            return calls;
+        };
+
+        it('ドット絵の PNG は可逆にする（画素がそのまま残り、非可逆より小さい）', async () => {
+            const png = await pixelArt(32, 8, (x, y) => (Math.floor(x / 4) + Math.floor(y / 4)) % 2 === 0);
             const lossy = await sharp(png).webp({ quality: 82 }).toBuffer();
             const rendered = await render(png);
             expect(await rawOf(rendered.bytes)).toBe(await rawOf(png));
             expect(rendered.bytes.byteLength).toBeLessThan(lossy.byteLength);
         });
 
+        it('細かいドット絵を大きく引き伸ばしたもの（64 マスを 1024px）も可逆にする', async () => {
+            const png = await pixelArt(64, 16, (x, y) => (x * 7 + y * 3) % 5 < 2);
+            const rendered = await render(png);
+            expect(await rawOf(rendered.bytes)).toBe(await rawOf(png));
+        });
+
         it('元の大きさの細かいドット絵も可逆にする', async () => {
-            const cells = Buffer.alloc(32 * 32 * 3);
-            for (const i of Array.from({ length: 32 * 32 }, (_, n) => n)) {
-                cells.set((Math.floor(i / 32) + (i % 32)) % 3 === 0 ? [217, 87, 99] : [34, 32, 52], i * 3);
-            }
-            const png = await sharp(cells, { raw: { width: 32, height: 32, channels: 3 } })
-                .png()
-                .toBuffer();
+            const png = await pixelArt(32, 1, (x, y) => (x + y) % 3 === 0);
             expect(await rawOf((await render(png)).bytes)).toBe(await rawOf(png));
         });
 
-        it('大きくて細かい模様の PNG（写真・スクリーンショットに近い）は、可逆を作らずに非可逆にする', async () => {
-            const png = await sharp(randomBytes(640 * 480 * 3), { raw: { width: 640, height: 480, channels: 3 } })
+        it('色の多い PNG（写真・スクリーンショット・わずかなノイズ）は、可逆を作らずに非可逆にする', async () => {
+            // なだらかなグラデーションに ±1 のノイズ（非可逆ならとても小さくなるが、可逆は大きい）
+            const noise = Buffer.from(
+                randomBytes(512 * 512 * 3).map((b, n) => 8 + Math.floor(n / 3 / 1100) + (b % 3) - 1),
+            );
+            const png = await sharp(noise, { raw: { width: 512, height: 512, channels: 3 } })
                 .png()
                 .toBuffer();
-            const spy = vi.spyOn(sharp.prototype, 'webp');
+            const rendered: Array<Uint8Array<ArrayBufferLike>> = [];
+            expect(
+                await webpCalls(async () => {
+                    rendered.push((await render(png)).bytes);
+                }),
+            ).toEqual([{ quality: 82 }]);
+            expect(await rawOf(rendered[0] ?? new Uint8Array())).not.toBe(await rawOf(png));
+        });
+
+        it('可逆が失敗しても、非可逆でアップロードを通す', async () => {
+            const png = await pixelArt(32, 1, (x, y) => (x + y) % 3 === 0);
+            const original = sharp.prototype.webp;
+            const failLossless = function (this: sharp.Sharp, options?: sharp.WebpOptions) {
+                if (options?.lossless) throw new Error('lossless failed');
+                return original.call(this, options);
+            };
+            const spy = vi.spyOn(sharp.prototype, 'webp').mockImplementation(failLossless as typeof original);
             const rendered = await render(png);
-            expect(spy.mock.calls.map(([options]) => options)).toEqual([{ quality: 82 }]);
             spy.mockRestore();
+            expect(await sharp(rendered.bytes).metadata()).toMatchObject({ format: 'webp', width: 32, height: 32 });
             expect(await rawOf(rendered.bytes)).not.toBe(await rawOf(png));
+        });
+
+        it('透明な部分は残し、透明でない画像に透明度を足さない', async () => {
+            const transparent = await sharp({
+                create: { width: 64, height: 64, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+            })
+                .png()
+                .toBuffer();
+            expect((await sharp((await render(transparent)).bytes).metadata()).hasAlpha).toBe(true);
+            const opaque = await sharp(await solid('#336699', 64, 64))
+                .jpeg()
+                .toBuffer();
+            expect((await sharp((await render(opaque)).bytes).metadata()).hasAlpha).toBe(false);
         });
 
         it('JPEG は可逆を試さない（作り直しは 1 回）', async () => {
             const jpeg = await sharp(await solid('#336699', 64, 64))
                 .jpeg()
                 .toBuffer();
-            const spy = vi.spyOn(sharp.prototype, 'webp');
-            await render(jpeg);
-            expect(spy.mock.calls.map(([options]) => options)).toEqual([{ quality: 82 }]);
-            spy.mockRestore();
+            expect(await webpCalls(() => render(jpeg))).toEqual([{ quality: 82 }]);
         });
     });
 

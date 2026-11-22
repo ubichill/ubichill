@@ -35,12 +35,35 @@ export const DEFAULT_STORAGE_SETTINGS: StorageSettings = { autoCleanup: true };
 /** `PUT /users/me/storage/settings` */
 export const StorageSettingsSchema = z.object({ autoCleanup: z.boolean() }).strict();
 
-/** `GET /users/me/storage`。files は新しい順。 */
+/** 一覧の 1 ページ（新しい順）。next は続きを読む `GET /users/me/storage/files?cursor=` の値（無ければ null）。 */
+export interface StoredFilePage {
+    items: StoredFile[];
+    next: string | null;
+}
+
+/** 一覧の 1 ページの数 */
+export const STORED_FILE_PAGE_SIZE = 50;
+
+/** `GET /users/me/storage`。files は最初のページ。 */
 export interface StorageOverview extends StorageSettings {
     usage: { bytes: number; count: number };
     quotaBytes: number;
-    files: StoredFile[];
+    files: StoredFilePage;
 }
+
+/** 1 回で消せる数 */
+export const STORED_FILE_DELETE_MAX = 100;
+
+/** `POST /users/me/storage/files/delete`。応答は消せたもの（無いもの・ほかの人のものは入らない）。 */
+export const StoredFileDeleteSchema = z
+    .object({
+        files: z
+            .array(z.object({ kind: z.literal('world-image'), id: z.string().min(1).max(64) }).strict())
+            .min(1, '消すファイルを選んでください')
+            .max(STORED_FILE_DELETE_MAX, `1 回で消せるのは ${STORED_FILE_DELETE_MAX} 個までです`),
+    })
+    .strict();
+export type StoredFileRef = Pick<StoredFile, 'kind' | 'id'>;
 
 /** `GET /admin/storage` */
 export interface StorageQuotaSettings {

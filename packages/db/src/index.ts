@@ -103,6 +103,7 @@ export {
     type AddWorldAssetOutcome,
     type RemovedWorldAsset,
     type WorldAssetBlob,
+    type WorldAssetCursor,
     type WorldAssetRecord,
     type WorldAssetUse,
     worldAssetRepository,

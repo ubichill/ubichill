@@ -4,8 +4,10 @@ import type { WorldAssetService } from '../../services/worldAssets/worldAssets';
 
 export interface AssetsRouterDeps {
     requireAuth: RequestHandler;
-    /** 画像のアップロード・削除（作り直しが重いので絞る） */
+    /** 画像のアップロード（作り直しが重いので絞る） */
     uploadLimiter: RequestHandler;
+    /** 消す（アップロードとは別に数える） */
+    deleteLimiter: RequestHandler;
     assets: Pick<WorldAssetService, 'upload' | 'remove' | 'image'>;
 }
 
@@ -50,7 +52,7 @@ export function createAssetsRouter(deps: AssetsRouterDeps): Router {
         return res.status(201).json(outcome.value);
     });
 
-    router.delete('/:file', deps.requireAuth, deps.uploadLimiter, async (req, res) => {
+    router.delete('/:file', deps.requireAuth, deps.deleteLimiter, async (req, res) => {
         if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
         const hash = worldAssetHashOf(String(req.params.file));
         if (!hash) return res.status(404).json({ error: '画像が見つかりません', code: 'not-found' });
