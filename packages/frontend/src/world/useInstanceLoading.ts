@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { loadingFailure, markFor, type RoomMark } from './loadingFailure';
 
 export type StageStatus = 'pending' | 'active' | 'done' | 'error';
 
@@ -80,10 +81,13 @@ export function useInstanceLoading({
     workers,
 }: UseInstanceLoadingParams): InstanceLoadingState {
     const [graceDone, setGraceDone] = useState(false);
-    const [timedOut, setTimedOut] = useState(false);
+    // タイムアウトと失敗は部屋の ID 付きで持つ（部屋を移った最初の描画で、前の部屋の分を読まない。loadingFailure.ts）
+    const [timedOutMark, setTimedOutMark] = useState<RoomMark<true> | null>(null);
+    const timedOut = markFor(timedOutMark, instanceId) ?? false;
     // join 後 WORKER_WAIT_MS を超えても worker が揃わなかったら、待たずに入室する
     const [workerWaitPassed, setWorkerWaitPassed] = useState(false);
-    const [failureMessage, setFailureMessage] = useState<string | null>(null);
+    const [failureMark, setFailureMark] = useState<RoomMark<string> | null>(null);
+    const failureMessage = markFor(failureMark, instanceId);
     const [showScreen, setShowScreen] = useState(true);
     const [fadingOut, setFadingOut] = useState(false);
 
@@ -91,19 +95,15 @@ export function useInstanceLoading({
     const maxProgressRef = useRef(0);
 
     // インスタンス切り替え時は全状態をリセットし、タイムアウトを張り直す。
-    // instanceId は本文で読まないが「リセットのトリガー」として依存に必要。
-    // biome-ignore lint/correctness/useExhaustiveDependencies: instanceId は意図的なリセットトリガー
     useEffect(() => {
         joinedAtRef.current = null;
         maxProgressRef.current = 0;
         setGraceDone(false);
-        setTimedOut(false);
         setWorkerWaitPassed(false);
-        setFailureMessage(null);
         setShowScreen(true);
         setFadingOut(false);
 
-        const timer = setTimeout(() => setTimedOut(true), TIMEOUT_MS);
+        const timer = setTimeout(() => setTimedOutMark({ instanceId, value: true }), TIMEOUT_MS);
         return () => clearTimeout(timer);
     }, [instanceId]);
 
@@ -148,12 +148,9 @@ export function useInstanceLoading({
     // ready を返さない等）ホームに蹴り返さず、そのまま入室を維持する。
     useEffect(() => {
         if (failureMessage) return;
-        if (error && !isJoined) {
-            setFailureMessage(error);
-        } else if (timedOut && !complete && !isJoined && !isConnecting) {
-            setFailureMessage('インスタンスへの接続がタイムアウトしました');
-        }
-    }, [error, isJoined, isConnecting, timedOut, complete, failureMessage]);
+        const message = loadingFailure({ error, isJoined, isConnecting, timedOut, complete });
+        if (message) setFailureMark({ instanceId, value: message });
+    }, [error, isJoined, isConnecting, timedOut, complete, failureMessage, instanceId]);
 
     const failed = failureMessage !== null;
 
