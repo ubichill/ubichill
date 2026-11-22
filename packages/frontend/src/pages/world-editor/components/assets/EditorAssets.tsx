@@ -7,7 +7,7 @@ import { type PreviewImageSource, packagePreviewImage } from '@/lib/mods/preview
 import { css } from '@/styled-system/css';
 import type { AvailableEntityKind } from '../../hooks/useAvailableEntityKinds';
 import { type AssetNode, buildAssetTree } from '../../hooks/useModAssets';
-import { COMPONENT_DRAG_MIME } from '../../lib/dnd';
+import { COMPONENT_DRAG_MIME, encodePrefabDrag, PREFAB_DRAG_MIME } from '../../lib/dnd';
 
 type Dependency = NonNullable<WorldDefinition['spec']['dependencies']>[number];
 
@@ -308,7 +308,15 @@ function EntryTile({ entry, onOpen }: { entry: Entry; onOpen: () => void }) {
                 type="button"
                 className={tileButtonStyle}
                 onClick={onOpen}
-                title={`${entry.name} — 押すと一式を配置します`}
+                draggable
+                onDragStart={(e) => {
+                    e.dataTransfer.setData(
+                        PREFAB_DRAG_MIME,
+                        encodePrefabDrag({ modId: entry.pkg.entry.id, name: entry.prefabName }),
+                    );
+                    e.dataTransfer.effectAllowed = 'copy';
+                }}
+                title={`${entry.name} — 押すと画面の真ん中に、ワールドへドラッグするとその場所に置きます`}
             >
                 <ThumbBox>
                     <PreviewImage source={entry.thumbnail} alt="" fallback={<PrefabIcon />} />
@@ -346,7 +354,7 @@ function EntryTile({ entry, onOpen }: { entry: Entry; onOpen: () => void }) {
                     e.dataTransfer.setData('text/plain', entry.componentType);
                     e.dataTransfer.effectAllowed = 'copy';
                 }}
-                title={`${entry.componentType} — Entity へドラッグして追加`}
+                title={`${entry.componentType} — Entity か、ワールドの空いたところへドラッグして追加`}
                 className={css({
                     display: 'flex',
                     flexDirection: 'column',

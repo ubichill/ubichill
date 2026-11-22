@@ -4,7 +4,7 @@ import { css } from '@/styled-system/css';
 import type { DataFieldSpec, DataFields } from '../../hooks/useAvailableEntityKinds';
 import { isPlainObject } from '../../lib/componentData';
 import { ENTITY_DRAG_MIME } from '../../lib/dnd';
-import { resolveEntityIdByPathKey } from '../../lib/entityTree';
+import { findEntityPath, getEntityAt, resolveEntityIdByPathKey } from '../../lib/entityTree';
 import { refTargetError } from '../../lib/referenceProblems';
 import { CloseIcon } from '../hierarchy/hierarchyIcons';
 import { ImageUrlInput } from '../ImageUrlInput';
@@ -367,15 +367,14 @@ function RefPlaceholder({ spec, multiple }: { spec: RefSpec; multiple: boolean }
     );
 }
 
-function EntityRefChip({
-    entityId,
-    error,
-    onRemove,
-}: {
-    entityId: string;
-    error: string | null;
-    onRemove: () => void;
-}) {
+/** 参照先の表示名（無ければ id のまま）。参照の値そのものは id。 */
+function refLabel(allEntities: InitialEntity[], entityId: string): string {
+    const path = findEntityPath(allEntities, entityId);
+    const name = path ? getEntityAt(allEntities, path)?.name : undefined;
+    return name ? `${name}（${entityId}）` : entityId;
+}
+
+function EntityRefChip({ label, error, onRemove }: { label: string; error: string | null; onRemove: () => void }) {
     return (
         <span
             title={error ?? undefined}
@@ -391,7 +390,7 @@ function EntityRefChip({
                 fontSize: '11px',
             })}
         >
-            <span className={css({ color: error ? 'errorText' : 'text' })}>{entityId}</span>
+            <span className={css({ color: error ? 'errorText' : 'text' })}>{label}</span>
             <button
                 type="button"
                 onClick={onRemove}
@@ -433,7 +432,7 @@ function EntityRefField({
     return (
         <EntityDropZone allEntities={allEntities} spec={spec} onDropEntityId={(id) => onChange(id)}>
             {value ? (
-                <EntityRefChip entityId={value} error={error} onRemove={() => onChange(null)} />
+                <EntityRefChip label={refLabel(allEntities, value)} error={error} onRemove={() => onChange(null)} />
             ) : (
                 <RefPlaceholder spec={spec} multiple={false} />
             )}
@@ -468,7 +467,7 @@ function EntityRefArrayField({
                     {value.map((id) => (
                         <EntityRefChip
                             key={id}
-                            entityId={id}
+                            label={refLabel(allEntities, id)}
                             error={errorOf(id)}
                             onRemove={() => onChange(value.filter((v) => v !== id))}
                         />

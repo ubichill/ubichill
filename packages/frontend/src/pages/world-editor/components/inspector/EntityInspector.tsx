@@ -25,7 +25,10 @@ interface EntityInspectorProps {
     onAddComponent: (type: string) => void;
     onDeleteComponent: (componentIndex: number) => void;
     onDeleteEntity: () => void;
-    onRenameEntity: (newId: string) => void;
+    /** entityId は編集を始めたときの Entity（確定までに選び直しても、そちらは変えない） */
+    onRenameEntity: (entityId: string, newId: string) => void;
+    /** 表示名を変える（空なら外す） */
+    onSetName: (entityId: string, name: string) => void;
     /** この Entity の Component の参照の問題（未設定の必須参照・動画面の競合など）。 */
     referenceProblems: readonly string[];
 }
@@ -59,6 +62,7 @@ export function EntityInspector({
     onDeleteComponent,
     onDeleteEntity,
     onRenameEntity,
+    onSetName,
     referenceProblems,
 }: EntityInspectorProps) {
     const t = entity.transform;
@@ -79,7 +83,7 @@ export function EntityInspector({
                 gap: '4',
             })}
         >
-            <EntityHeader entity={entity} onDelete={onDeleteEntity} onRename={onRenameEntity} />
+            <EntityHeader entity={entity} onDelete={onDeleteEntity} onRename={onRenameEntity} onSetName={onSetName} />
             <EditorNotices messages={referenceProblems} />
 
             <Section label={isChild ? 'Transform (親基準)' : 'Transform'}>

@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import { fetchPackageBytes, type PackageFetch, readPackageManifest } from '@ubichill/loader';
@@ -39,17 +38,7 @@ export async function runPrefab(args: string[], log: Logger): Promise<void> {
         const manifest = await readPackageManifest(entry, '', fetchBytes);
         const prefab = manifest.prefabs?.[name];
         if (!prefab) throw new Error('プレハブが見つかりません');
-        entities = [
-            ...entities,
-            instantiatePrefab(
-                entry,
-                name,
-                prefab,
-                manifest.components,
-                entities,
-                `prefab-${randomUUID().slice(0, 12)}`,
-            ),
-        ];
+        entities = [...entities, instantiatePrefab(entry, name, prefab, manifest.components, entities)];
     } else if (action === 'update' || action === 'unpack') {
         const entity = flattenPrefabEntities(entities).find((e) => e.id === target);
         if (!entity?.prefab) throw new Error('配置済みプレハブの Entity ID を指定してください');
