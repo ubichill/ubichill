@@ -372,8 +372,17 @@ export interface VersionedManifestComponent {
     thumbnail?: string;
     displayName?: string;
     overlay?: OverlayMode;
-    /** Worker を持たないデータ専用 Component（mod が spawn するだけで、エディタでは置かない） */
+    /** Worker を持たないデータ専用 Component。設定欄（dataFields）が無ければ mod が spawn するだけで、エディタでは置かない */
     dataOnly?: boolean;
+}
+
+/**
+ * エディタで置ける Component か。データ専用でも設定欄を持つもの（例: 弾幕の敵。範囲の Worker が読む）は
+ * ワールドの作者が置いて設定する部品なので並べる。設定欄の無いもの（例: pen:stroke）は mod が spawn するだけ。
+ */
+function isPlaceable(meta: VersionedManifestComponent): boolean {
+    if (meta.dataOnly !== true) return true;
+    return Object.keys(usableDataFields(meta.dataFields) ?? {}).length > 0;
 }
 
 /**
@@ -391,7 +400,7 @@ function deriveViewKind(meta: VersionedManifestComponent): 'jsx' | 'canvas' | 'l
 
 /**
  * 1 つの mod の manifest から、エディタで配置できる entity kind を作る（純粋）。
- * データ専用 Component（例: pen:stroke）は mod が実行中に spawn するものなので並べない。
+ * 設定欄の無いデータ専用 Component（例: pen:stroke）は mod が実行中に spawn するものなので並べない。
  */
 export function entityKindsFromManifest(
     modName: string,
@@ -400,7 +409,7 @@ export function entityKindsFromManifest(
     assetIntegrity?: Readonly<Record<string, string>>,
 ): AvailableEntityKind[] {
     return Object.entries(components)
-        .filter(([, meta]) => meta.dataOnly !== true)
+        .filter(([, meta]) => isPlaceable(meta))
         .map(([kind, meta]) => ({
             modName,
             kind,

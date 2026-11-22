@@ -1,6 +1,6 @@
 {
     "name": "@ubichill/mod-danmaku",
-    "version": "1.0.6",
+    "version": "2.0.0",
     "private": true,
     "main": "src/index.ts",
     "types": "src/index.ts",
@@ -9,7 +9,7 @@
     },
     "ubichill": {
         "thumbnail": "previews/thumbnail.svg",
-        "description": "矢印キーで自機を動かし、弾を撃ち合う弾幕のサンプルです。"
+        "description": "置いた敵が時間どおりに現れて弾幕を撃つ、シューティングの部品です。自機は HP を持ち、遊ぶ範囲の中で弾をよけながら敵を撃ち落とします。"
     },
     "peerDependencies": {
         "ubichill": "*"
