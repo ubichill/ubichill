@@ -60,6 +60,8 @@ class InstanceManager {
             accessType: request.access?.type ?? 'public',
             accessTags: request.access?.tags ?? [],
             maxUsers: cappedMaxUsers,
+            // reaper は backend の時計で比べるので、DB の now() ではなくここの時計で決める
+            heldUntil: request.holdEmptyMs ? new Date(Date.now() + request.holdEmptyMs) : null,
         });
 
         try {

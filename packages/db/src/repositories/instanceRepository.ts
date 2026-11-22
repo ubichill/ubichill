@@ -16,6 +16,8 @@ export interface CreateInstanceInput {
     accessType?: 'public' | 'friend_plus' | 'friend_only' | 'invite_only';
     accessTags?: string[];
     maxUsers?: number;
+    /** この時刻までは空でも消さない（ポータルの先に作る部屋）。 */
+    heldUntil?: Date | null;
 }
 
 export interface UpdateInstanceInput {
@@ -60,6 +62,7 @@ export const instanceRepository = {
                 accessType: input.accessType ?? 'public',
                 accessTags: input.accessTags ?? [],
                 maxUsers: input.maxUsers ?? 10,
+                heldUntil: input.heldUntil ?? null,
             })
             .returning();
         return results[0];

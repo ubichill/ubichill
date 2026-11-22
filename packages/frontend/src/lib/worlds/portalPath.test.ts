@@ -17,4 +17,11 @@ describe('portalPath', () => {
             `/world?url=${encodeURIComponent('https://example.com/w/cafe.yaml?x=1')}`,
         );
     });
+
+    it('部屋へのポータルは、その部屋へ（ほかのサーバーの部屋の住所もそのまま 1 つのパスにする）', () => {
+        expect(portalPath({ kind: 'room', room: 'V1StGXR8_Z5jdHi6B-myT' })).toBe('/instance/V1StGXR8_Z5jdHi6B-myT');
+        expect(portalPath({ kind: 'room', room: 'abc@room.example:8443' })).toBe(
+            `/instance/${encodeURIComponent('abc@room.example:8443')}`,
+        );
+    });
 });

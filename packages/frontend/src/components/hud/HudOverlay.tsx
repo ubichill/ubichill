@@ -44,6 +44,7 @@ import { type SettingsSection, SettingsTab } from './tabs/SettingsTab';
 import { type SocialSection, SocialTab } from './tabs/SocialTab';
 import { type WorldsSection, WorldsTab } from './tabs/WorldsTab';
 import { useHudActions } from './useHudActions';
+import { usePortalOpener } from './usePortalOpener';
 
 interface HudOverlayProps {
     onClose: () => void;
@@ -111,6 +112,7 @@ export function HudOverlay({ onClose, currentInstanceId, initialTab }: HudOverla
         return () => cancelAnimationFrame(frame);
     }, []);
 
+    const portal = usePortalOpener(currentInstanceId, onClose);
     const navigation = useMemo<HudNavigation>(
         () => ({
             currentInstanceId,
@@ -122,8 +124,9 @@ export function HudOverlay({ onClose, currentInstanceId, initialTab }: HudOverla
             openUser: (userId) => setView((v) => openUser(v, userId, selfId)),
             openConversation: (userId) => setView((v) => openPage(v, { kind: 'conversation', userId })),
             joinInstance: actions.joinInstance,
+            portal,
         }),
-        [currentInstanceId, instance, selfId, actions.joinInstance],
+        [currentInstanceId, instance, selfId, actions.joinInstance, portal],
     );
     const open = (page: HudPage) => setView((v) => openPage(v, page));
     const select = (tab: HudTab) => setView(selectTab(tab));

@@ -1,5 +1,7 @@
 import { type Instance, isFullFor, type WorldListItem, worldOriginDomain } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
+import { HudIcon } from '@/components/hud/HudIcon';
+import { useHudNavigation } from '@/components/hud/HudNavigationContext';
 import { useDialogLayer } from '@/components/ui/dialogLayer';
 import { useSession } from '@/lib/session';
 import { createInstance, fetchInstances, fetchWorld } from '@/lib/worlds/instancesApi';
@@ -73,6 +75,16 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
         } finally {
             setCreating(false);
         }
+    };
+
+    // 部屋の中のランチパッドでは、この部屋へのポータルを今の部屋に置ける（入れるかは見る人ごとにポータルが出し分ける）
+    const portal = useHudNavigation()?.portal ?? null;
+    const [opening, setOpening] = useState(false);
+    const openPortal = async () => {
+        if (!portal || opening) return;
+        setOpening(true);
+        if (await portal.open(selected.id)) onClose();
+        setOpening(false);
     };
 
     // ワールド詳細ページの共有 URL（別タブで開く）。ローカルはフロント origin、リモートは origin サーバー。
@@ -269,6 +281,18 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
                                 {isFull ? '満員' : needsInvite ? '招待が必要です' : 'このインスタンスに入る'}
                             </button>
                         )}
+                        {portal && !isCurrent && (
+                            <button
+                                type="button"
+                                onClick={() => void openPortal()}
+                                disabled={opening || portal.unavailable !== null}
+                                title={portal.unavailable ?? '今の部屋に、このインスタンスへのポータルを開きます'}
+                                className={portalButton}
+                            >
+                                <HudIcon name="enter" size={16} />
+                                {opening ? '開いています...' : 'ここへのポータルを開く'}
+                            </button>
+                        )}
 
                         {/* ワールド情報（副次） */}
                         {(world.description || worldRows.length > 0 || (world.mods && world.mods.length > 0)) && (
@@ -452,3 +476,20 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
         </div>
     );
 }
+
+const portalButton = css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '2',
+    py: '2.5',
+    bg: 'secondary',
+    color: 'text',
+    border: '1px solid',
+    borderColor: 'border',
+    borderRadius: '10px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    _hover: { borderColor: 'borderStrong' },
+    _disabled: { opacity: 0.6, cursor: 'not-allowed', _hover: { borderColor: 'border' } },
+});

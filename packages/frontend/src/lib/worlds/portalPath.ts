@@ -1,15 +1,17 @@
-import type { PortalTarget } from '@ubichill/core-components';
+import type { PortalGoal } from '@/world';
 
-/** ポータルの行き先の、このサーバーの中のページ（ワールドのページが入室まで進める）。 */
-export function portalPath(target: PortalTarget): string {
-    switch (target.kind) {
+/** ポータルの行き先の、このサーバーの中のページ。ワールドはワールドのページ（そこで入室まで進む）、部屋はその部屋。 */
+export function portalPath(goal: PortalGoal): string {
+    switch (goal.kind) {
         case 'share': {
-            const [handle, name] = target.path.split('/');
+            const [handle, name] = goal.path.split('/');
             return `/${handle}/${encodeURIComponent(name ?? '')}`;
         }
         case 'id':
-            return `/world/${encodeURIComponent(target.id)}`;
+            return `/world/${encodeURIComponent(goal.id)}`;
         case 'url':
-            return `/world?url=${encodeURIComponent(target.url)}`;
+            return `/world?url=${encodeURIComponent(goal.url)}`;
+        case 'room':
+            return `/instance/${encodeURIComponent(goal.room)}`;
     }
 }

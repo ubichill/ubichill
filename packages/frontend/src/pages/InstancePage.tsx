@@ -1,11 +1,16 @@
-import type { PortalTarget } from '@ubichill/core-components';
 import { useSocket } from '@ubichill/react';
+import { roomPortalAddressFor } from '@ubichill/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { InstanceHUD } from '@/components/hud/InstanceHUD';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { signInPath } from '@/lib/account/authEntry';
-import { afterInstanceFailure, readInstanceEntryState, recordEntryOutcome } from '@/lib/home/home';
+import {
+    afterInstanceFailure,
+    type InstanceEntryState,
+    readInstanceEntryState,
+    recordEntryOutcome,
+} from '@/lib/home/home';
 import { HOST_MOD_SOURCE } from '@/lib/mods/modCdn';
 import { useSession } from '@/lib/session';
 import { useBlocks } from '@/lib/social/blocks';
@@ -15,7 +20,7 @@ import { fetchInstance, fetchWorld } from '@/lib/worlds/instancesApi';
 import { createPortalLookup } from '@/lib/worlds/portalDestination';
 import { portalPath } from '@/lib/worlds/portalPath';
 import { useRemoteVisit } from '@/lib/worlds/useRemoteVisit';
-import { type InstanceFailure, WorldView } from '@/world';
+import { type InstanceFailure, type PortalGoal, WorldView } from '@/world';
 
 /** 失敗したら一定時間後に自動でホームへ戻す（ロード画面で詰まらないように）。 */
 const RETURN_HOME_MS = 5000;
@@ -121,19 +126,30 @@ export function InstancePage() {
         [failure?.replaced, toHome],
     );
 
-    // ポータル（core:portal）: 確かめてから部屋を出て、行き先のワールドのページへ（そこで入室まで進む）
+    // ポータル（core:portal）: 確かめてから部屋を出て、行き先へ。ワールドへのポータルはワールドのページ（そこで入室まで進む）、
+    // 部屋へのポータルはその部屋（読み込み画面に行き先のサムネイルを出す）
     const { leaveWorld } = useSocket();
     const goThroughPortal = useCallback(
-        async (target: PortalTarget, label: string) => {
-            if (!(await confirm(`「${label}」へ移りますか？今の部屋から退出します。`))) return;
+        async (goal: PortalGoal, label: string, look?: { displayName: string; thumbnail?: string }) => {
+            if (!id || !(await confirm(`「${label}」へ移りますか？今の部屋から退出します。`))) return;
             await leaveWorld();
-            navigate(portalPath(target));
+            if (goal.kind !== 'room') return navigate(portalPath(goal));
+            const state: InstanceEntryState | undefined = look ? { worldData: look } : undefined;
+            navigate(portalPath({ kind: 'room', room: roomPortalAddressFor(goal.room, id) }), { state });
         },
-        [confirm, leaveWorld, navigate],
+        [confirm, id, leaveWorld, navigate],
     );
 
-    // ポータルに出す行き先のワールド（同じ行き先は 1 回だけ引く）
-    const [portalLookup] = useState(() => createPortalLookup(fetchWorld));
+    // ポータルに出す行き先（同じ行き先は 1 回だけ引く）。部屋へのポータルは、見る人が入れるかも引く
+    const viewerId = session?.user.id ?? null;
+    const portalLookup = useMemo(
+        () =>
+            createPortalLookup(fetchWorld, {
+                fetch: (room) => fetchInstance(roomPortalAddressFor(room, id ?? '')),
+                viewerId,
+            }),
+        [id, viewerId],
+    );
 
     if (!id) return null;
     return (
@@ -150,7 +166,7 @@ export function InstancePage() {
             recovery={recovery}
             onFailed={handleFailed}
             onEntered={handleEntered}
-            onPortal={(target, label) => void goThroughPortal(target, label)}
+            onPortal={(goal, label, look) => void goThroughPortal(goal, label, look)}
             portalLookup={portalLookup}
         >
             <InstanceHUD />

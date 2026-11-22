@@ -177,6 +177,19 @@ export interface ClientToServerEvents {
         callback: (response: { success: boolean; error?: string }) => void,
     ) => void;
 
+    /**
+     * 見ている所に、部屋へのポータルを置く（どのワールドでも。1 人 1 つで、置き直すと前のものは消える）。インスタンスが
+     * core:portal の Entity を作って entity:created で全員に配り、ROOM_PORTAL.LIFETIME_MS で消す（entity:deleted）。
+     * x・y はポータルの真ん中（roomPortalCenter）、room は部屋のサーバーから見た行き先の住所。
+     */
+    'portal:open': (
+        payload: { room: string; x: number; y: number },
+        callback: (response: { success: boolean; error?: string }) => void,
+    ) => void;
+
+    /** 自分の置いたポータルを閉じる */
+    'portal:close': (callback: (response: { success: boolean; error?: string }) => void) => void;
+
     /** エンティティのリアルタイムデータ送信（Volatile） */
     'entity:ephemeral': (payload: EntityEphemeralPayload) => void;
 
@@ -308,4 +321,5 @@ export * from './world/pagePath';
 export * from './world/publishRequirements';
 export * from './world/requirements';
 export * from './world/resolve';
+export * from './world/roomPortal';
 export * from './world/visibility';

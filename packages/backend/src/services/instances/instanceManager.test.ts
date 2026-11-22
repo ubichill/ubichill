@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
     findById: vi.fn(),
@@ -10,15 +10,33 @@ const mocks = vi.hoisted(() => ({
     presence: vi.fn(async () => new Map()),
     roomPresence: vi.fn(async (id: string) => new Map([[id, { id, memberIds: ['bob'], emptySince: 0 }]])),
     getWorldByUrl: vi.fn(async () => ({ id: 'w', version: '1', displayName: 'W' })),
+    resolveRefDetailed: vi.fn(async () => ({
+        ok: true,
+        world: {
+            id: 'w',
+            url: 'https://example.test/worlds/w',
+            version: '1',
+            displayName: 'W',
+            capacity: { default: 4, max: 8 },
+        },
+    })),
+    create: vi.fn(async (input: Record<string, unknown>) => ({
+        ...input,
+        id: 'room-new',
+        createdAt: new Date(0),
+        expiresAt: null,
+    })),
 }));
 
 vi.mock('@ubichill/db', () => ({
-    instanceRepository: { findById: mocks.findById },
+    instanceRepository: { findById: mocks.findById, create: mocks.create },
     inviteRepository: { findValid: mocks.findValidInvite },
 }));
 vi.mock('../../config', () => ({ appConfig: { runtime: { publicUrl: '/ws' } } }));
 vi.mock('../social/friends/friends', () => ({ friendIdsOf: mocks.friendIdsOf }));
-vi.mock('../worlds/worldRegistry', () => ({ worldRegistry: { getWorldByUrl: mocks.getWorldByUrl } }));
+vi.mock('../worlds/worldRegistry', () => ({
+    worldRegistry: { getWorldByUrl: mocks.getWorldByUrl, resolveRefDetailed: mocks.resolveRefDetailed },
+}));
 vi.mock('./instanceRuntime', () => ({
     instanceRuntime: {
         presence: mocks.presence,
@@ -112,5 +130,32 @@ describe('入室で部屋を置いている間に部屋が消えたら（終了�
         await instanceManager.join('room-1', { id: 'alice', name: 'Alice' });
         expect(mocks.close).not.toHaveBeenCalled();
         expect(mocks.ticket).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('作成（ポータルの先の部屋は空でもしばらく残す）', () => {
+    const T0 = Date.UTC(2026, 0, 1);
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(T0);
+        mocks.findById.mockResolvedValue(room('public'));
+    });
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('holdEmptyMs があれば、作った時刻からその分を held_until にする', async () => {
+        await instanceManager.createInstance({ worldId: 'w', holdEmptyMs: 180_000 }, 'leader');
+        expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ heldUntil: new Date(T0 + 180_000) }));
+    });
+
+    it('holdEmptyMs が無ければ held_until は付けない（ふつうの部屋・ホーム）', async () => {
+        await instanceManager.createInstance({ worldId: 'w' }, 'leader');
+        expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ heldUntil: null }));
+    });
+
+    it('held_until は公開する部屋の情報に出さない', async () => {
+        const created = await instanceManager.createInstance({ worldId: 'w', holdEmptyMs: 1 }, 'leader');
+        expect(created).not.toHaveProperty('heldUntil');
     });
 });

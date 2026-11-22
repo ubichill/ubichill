@@ -26,6 +26,11 @@ export default defineConfig({
                     '0%': { transform: 'translateX(-100%)' },
                     '100%': { transform: 'translateX(200%)' },
                 },
+                // 部屋へのポータルの残り時間の輪（pathLength=100 の円を減らしていく）
+                portalCountdown: {
+                    '0%': { strokeDashoffset: '0' },
+                    '100%': { strokeDashoffset: '100' },
+                },
             },
             tokens: {
                 shadows: {

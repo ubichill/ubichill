@@ -1,6 +1,12 @@
 import { CORE_COMPONENT_TYPES, isCoreComponentNamespace } from '@ubichill/core-components';
 import { useHold, useSocket, useWorld, WorkerModHost } from '@ubichill/react';
-import { type ComponentInstance, EMPTY_ENTITY_TYPE, OVERLAY_FILL, resolveOverlayMode } from '@ubichill/shared';
+import {
+    type ComponentInstance,
+    EMPTY_ENTITY_TYPE,
+    OVERLAY_FILL,
+    RoomPortalDataSchema,
+    resolveOverlayMode,
+} from '@ubichill/shared';
 import type React from 'react';
 import { useEffect, useRef } from 'react';
 import { css } from '@/styled-system/css';
@@ -8,6 +14,7 @@ import { Z_INDEX } from '@/styles/layers';
 import { CoreImageSurface } from './CoreImageSurface';
 import { CoreMediaSurface } from './CoreMediaSurface';
 import { CorePortal } from './CorePortal';
+import { CoreRoomPortal } from './CoreRoomPortal';
 import { CoreSpawnMarker } from './CoreSpawnMarker';
 import { CoreSwitch } from './CoreSwitch';
 import { CoreTextSign } from './CoreTextSign';
@@ -36,8 +43,11 @@ function corePart(entity: ComponentInstance): React.ReactNode {
             return <CoreImageSurface entity={entity} />;
         case CORE_COMPONENT_TYPES.text:
             return <CoreTextSign entity={entity} />;
-        case CORE_COMPONENT_TYPES.portal:
-            return <CorePortal entity={entity} />;
+        case CORE_COMPONENT_TYPES.portal: {
+            // 部屋で利用者が置いたもの（インスタンスが作る。行き先は部屋）と、ワールドに置いたもの（行き先はワールド）
+            const room = RoomPortalDataSchema.safeParse(entity.data);
+            return room.success ? <CoreRoomPortal entity={entity} data={room.data} /> : <CorePortal entity={entity} />;
+        }
         case CORE_COMPONENT_TYPES.warp:
             return <CoreWarp entity={entity} />;
         case CORE_COMPONENT_TYPES.switch:

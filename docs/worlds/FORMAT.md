@@ -101,6 +101,8 @@ Host が持つ Component。mod を読み込まずに使え、`dependencies` に�
 
 `core:warp`・`core:switch`・`core:portal` はスクリプト（押したときの動き）。同じ Entity に `button: true` の `core:ui` があれば、自分では何も描かず、その UI を押したときに動く（1 つのボタンで複数のスクリプトを動かせる。並び順に動く）。ボタンにした UI が無ければ、標準のボタン（ポータルは行き先のサムネイルの丸い窓）を出す。`label` は標準のボタンの名前で、UI のボタンのテキストが空のときは読み上げの名前になる。
 
+部屋にいる人がランチパッドから開くポータル（行き先が部屋。data は `room`・`expiresAt`・`ownerName`）も `core:portal` だが、インスタンスが作るもので、ワールドには書かない（[設計](../design/world-building.md#部屋で置くポータル)）。
+
 `core:image`・`core:text`・`core:portal`・`core:warp`・`core:switch`・`core:spawn`、`core:ui` のテキスト・四角・ボタン、Entity の `visible`、背景の画像は、足した後の版の Ubichill でしか使えない（`visible` を知らない版は、見える Entity として描く）。読む側が知らない部品を残すようになる前の版のサーバーは、定義の検査で断る。
 
 ```yaml
