@@ -148,6 +148,21 @@ describe('stepDamage・knownHits', () => {
         expect(left.state.riding).toBeNull();
     });
 
+    it('すぐ乗り直したときも、自分が前に書いた値でなく見えている記録と比べて書く（前の人の画面に断られた値を残さない）', () => {
+        // N が {e:2} を書いて降り、P が乗って {e:2}（P）を書き、1 発当てて降りた（P の最後の {e:3} はサーバーに断られた）
+        const rode = step(INITIAL_DAMAGE, { hits: { e: 2 } });
+        const off = step(rode.state, { shipId: null, now: rode.state.lastWriteAt + 1 });
+        expect(off.writes).toEqual([]);
+        const byP = { 'ship-a': { round: 1, by: 'p', hits: { e: 2 } } };
+        const again = step(off.state, { records: byP, now: rode.state.lastWriteAt + 100 });
+        expect(again.writes).toEqual([{ shipId: 'ship-a', record: { round: 1, by: 'me', hits: { e: 2 } } }]);
+        // 見えている記録が自分の書く値と同じなら書かず、その後のフレームも書かない
+        const mine = { 'ship-a': { round: 1, by: 'me', hits: { e: 2 } } };
+        const same = step(off.state, { records: mine, now: rode.state.lastWriteAt + 100 });
+        expect(same.writes).toEqual([]);
+        expect(step(same.state, { records: mine, now: rode.state.lastWriteAt + 1000 }).writes).toEqual([]);
+    });
+
     it('書く人が分からないときは書かない', () => {
         expect(step(INITIAL_DAMAGE, { user: undefined, hits: { e: 1 } }).writes).toEqual([]);
     });
@@ -231,6 +246,50 @@ interface Message {
 }
 type ShipView = { holder: string | null; record: unknown };
 
+/** 届く時刻（同じなら送った順）で取り出す二分ヒープ。 */
+function messageQueue() {
+    const heap: Message[] = [];
+    const before = (a: Message, b: Message) => a.at < b.at || (a.at === b.at && a.seq < b.seq);
+    const swap = (i: number, j: number) => {
+        [heap[i], heap[j]] = [heap[j], heap[i]];
+    };
+    const up = (i: number): void => {
+        const parent = (i - 1) >> 1;
+        if (i > 0 && before(heap[i], heap[parent])) {
+            swap(i, parent);
+            up(parent);
+        }
+    };
+    const down = (i: number): void => {
+        const smallest = [2 * i + 1, 2 * i + 2]
+            .filter((c) => c < heap.length)
+            .reduce((best, c) => (before(heap[c], heap[best]) ? c : best), i);
+        if (smallest !== i) {
+            swap(i, smallest);
+            down(smallest);
+        }
+    };
+    const pop = (): Message => {
+        const top = heap[0];
+        const last = heap.pop() as Message;
+        if (heap.length > 0) {
+            heap[0] = last;
+            down(0);
+        }
+        return top;
+    };
+    return {
+        push: (message: Message) => {
+            heap.push(message);
+            up(heap.length - 1);
+        },
+        /** now までに届くものを順に取り出す（取り出している間に足されたものも含む）。 */
+        *takeUntil(now: number): Generator<Message> {
+            while (heap.length > 0 && heap[0].at <= now) yield pop();
+        },
+    };
+}
+
 function simulate(
     seed: number,
     rides: readonly (readonly Ride[])[],
@@ -244,7 +303,7 @@ function simulate(
     const views = users.map(freshShips);
     const states: DamageState[] = users.map(() => INITIAL_DAMAGE);
     const truth: Record<string, number> = {};
-    const queue: Message[] = [];
+    const queue = messageQueue();
     const lastArrival = new Map<string, number>();
     const counter = { seq: 0, rejected: 0, urgent: 0 };
     const boarded = new Set<Ride>();
@@ -262,28 +321,26 @@ function simulate(
         else ship.holder = change.holder;
     };
     const deliver = (now: number) => {
-        const due = queue.filter((m) => m.at <= now).sort((a, b) => a.at - b.at || a.seq - b.seq)[0];
-        if (!due) return;
-        queue.splice(queue.indexOf(due), 1);
-        if (due.to !== 'server') {
-            apply(views[due.to], due.shipId, due.change);
-        } else {
-            const ship = server.get(due.shipId) as ShipView;
-            const writer = users[due.from];
-            const allowed =
-                due.change.kind === 'record'
-                    ? ship.holder === null || ship.holder === writer
-                    : due.change.holder === null
-                      ? ship.holder === writer
-                      : ship.holder === null || ship.holder === writer;
-            if (!allowed && due.change.kind === 'record') counter.rejected++;
-            if (allowed) {
-                apply(server, due.shipId, due.change);
-                for (const other of users.keys())
-                    if (other !== due.from) send(-1, other, due.at, due.shipId, due.change);
+        for (const due of queue.takeUntil(now)) {
+            if (due.to !== 'server') {
+                apply(views[due.to], due.shipId, due.change);
+            } else {
+                const ship = server.get(due.shipId) as ShipView;
+                const writer = users[due.from];
+                const allowed =
+                    due.change.kind === 'record'
+                        ? ship.holder === null || ship.holder === writer
+                        : due.change.holder === null
+                          ? ship.holder === writer
+                          : ship.holder === null || ship.holder === writer;
+                if (!allowed && due.change.kind === 'record') counter.rejected++;
+                if (allowed) {
+                    apply(server, due.shipId, due.change);
+                    for (const other of users.keys())
+                        if (other !== due.from) send(-1, other, due.at, due.shipId, due.change);
+                }
             }
         }
-        deliver(now);
     };
 
     const FRAME = 1000 / 60;
@@ -311,8 +368,9 @@ function simulate(
             if (hit) truth[target] = (truth[target] ?? 0) + 1;
             const records = new Map([...views[i]].map(([id, ship]) => [id, ship.record]));
             const next = stepDamage(states[i], { user, round: 1, records, shipId, hits, enemies, now });
-            if (next.writes.length > 0 && now - states[i].lastWriteAt < DAMAGE_WRITE_MS && states[i].lastWriteAt > 0)
-                counter.urgent++;
+            // 倒した当たりですぐ書いたもの（乗り降りの書き込みは数えない）
+            const steady = shipId !== null && states[i].riding?.shipId === shipId;
+            if (steady && next.writes.length > 0 && now - states[i].lastWriteAt < DAMAGE_WRITE_MS) counter.urgent++;
             states[i] = next.state;
             for (const write of next.writes as DamageWrite[]) {
                 apply(views[i], write.shipId, { kind: 'record', record: write.record });
@@ -332,6 +390,8 @@ function simulate(
 }
 
 describe('何人かが同時に撃つ（サーバーは最後に書いた人が勝ち、書いた本人には返さない）', () => {
+    // 数百通り動かすので、混んだ CI でも既定の 5 秒で切られないようにする
+    const SIMULATION_TIMEOUT_MS = 60_000;
     const seeds = Array.from({ length: 40 }, (_, i) => i + 1);
 
     it.each([2, 8])(
@@ -345,38 +405,47 @@ describe('何人かが同時に撃つ（サーバーは最後に書いた人が�
                 for (const hits of seen) expect(hits).toEqual(truth);
             }
         },
+        SIMULATION_TIMEOUT_MS,
     );
 
-    it('1 つの自機を乗り継いでも（前の人の書き込みが届ききってから乗れば）、前の人の分は消えず、二重にも数えない', () => {
-        for (const seed of seeds) {
-            const handoff = 1000 + 500 * hash01(seed, 0, 97);
-            const rides = [
-                [{ shipId: 'ship-0', from: 0, to: handoff }],
-                [{ shipId: 'ship-0', from: handoff + 1000, to: 3500, whenFree: true }],
-                [{ shipId: 'ship-1', from: 100, to: 3000 }],
-            ];
-            const { truth, seen } = simulate(seed, rides);
-            for (const hits of seen) expect(hits).toEqual(truth);
-        }
-    });
+    it(
+        '1 つの自機を乗り継いでも（前の人の書き込みが届ききってから乗れば）、前の人の分は消えず、二重にも数えない',
+        () => {
+            for (const seed of seeds) {
+                const handoff = 1000 + 500 * hash01(seed, 0, 97);
+                const rides = [
+                    [{ shipId: 'ship-0', from: 0, to: handoff }],
+                    [{ shipId: 'ship-0', from: handoff + 1000, to: 3500, whenFree: true }],
+                    [{ shipId: 'ship-1', from: 100, to: 3000 }],
+                ];
+                const { truth, seen } = simulate(seed, rides);
+                for (const hits of seen) expect(hits).toEqual(truth);
+            }
+        },
+        SIMULATION_TIMEOUT_MS,
+    );
 
-    it('降りてすぐ次の人が乗り（前の人の最後の書き込みがサーバーに断られる）ても、全員の HP がそろい、二重に数えない', () => {
-        const runs = Array.from({ length: 400 }, (_, i) => i + 1).map((seed) => {
-            const handoff = 1000 + 500 * hash01(seed, 0, 97);
-            // 次の人が撃たなくても、前の人の画面に断られた値が残らない
-            const rides = [
-                [{ shipId: 'ship-0', from: 0, to: handoff }],
-                [{ shipId: 'ship-0', from: handoff, to: 3000, whenFree: true, quiet: seed % 2 === 0 }],
-                [{ shipId: 'ship-1', from: 100, to: 3000 }],
-            ];
-            return simulate(seed, rides);
-        });
-        for (const { truth, seen } of runs) {
-            for (const hits of seen) expect(hits).toEqual(seen[0]);
-            for (const [id, count] of Object.entries(seen[0])) expect(count).toBeLessThanOrEqual(truth[id] ?? 0);
-        }
-        // 行き違いで断られる書き込みと、倒した当たりですぐ書く場面が、実際に起きている
-        expect(runs.reduce((sum, run) => sum + run.rejected, 0)).toBeGreaterThan(0);
-        expect(runs.reduce((sum, run) => sum + run.urgent, 0)).toBeGreaterThan(0);
-    });
+    it(
+        '降りてすぐ次の人が乗り（前の人の最後の書き込みがサーバーに断られる）ても、全員の HP がそろい、二重に数えない',
+        () => {
+            const runs = Array.from({ length: 400 }, (_, i) => i + 1).map((seed) => {
+                const handoff = 1000 + 500 * hash01(seed, 0, 97);
+                // 次の人が撃たなくても、前の人の画面に断られた値が残らない
+                const rides = [
+                    [{ shipId: 'ship-0', from: 0, to: handoff }],
+                    [{ shipId: 'ship-0', from: handoff, to: 3000, whenFree: true, quiet: seed % 2 === 0 }],
+                    [{ shipId: 'ship-1', from: 100, to: 3000 }],
+                ];
+                return simulate(seed, rides);
+            });
+            for (const { truth, seen } of runs) {
+                for (const hits of seen) expect(hits).toEqual(seen[0]);
+                for (const [id, count] of Object.entries(seen[0])) expect(count).toBeLessThanOrEqual(truth[id] ?? 0);
+            }
+            // 行き違いで断られる書き込みと、倒した当たりですぐ書く場面が、実際に起きている
+            expect(runs.reduce((sum, run) => sum + run.rejected, 0)).toBeGreaterThan(0);
+            expect(runs.reduce((sum, run) => sum + run.urgent, 0)).toBeGreaterThan(0);
+        },
+        SIMULATION_TIMEOUT_MS,
+    );
 });

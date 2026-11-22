@@ -61,7 +61,10 @@ export function parseDamageRecord(value: unknown): DamageRecord | null {
 export function stageEnemies(specs: readonly EnemySpec[]): EnemySpec[] {
     const sorted = [...specs].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     const sizes = sorted.map((spec) => JSON.stringify(spec.id).length + `:${MAX_RECORD_HITS},`.length);
-    const ends = sizes.map((_, i) => sizes.slice(0, i + 1).reduce((sum, n) => sum + n, RECORD_OVERHEAD_BYTES));
+    const ends = sizes.reduce<number[]>((acc, n) => {
+        acc.push((acc.at(-1) ?? RECORD_OVERHEAD_BYTES) + n);
+        return acc;
+    }, []);
     return sorted.filter((_, i) => ends[i] <= RECORD_BUDGET_BYTES);
 }
 
@@ -159,22 +162,29 @@ export function stepDamage(state: DamageState, input: DamageStepInput): { state:
     const user = input.user;
     if (!user) return { state: { ...state, riding }, writes: [] };
 
+    const sameAs = (a: DamageRecord | null, b: DamageRecord): boolean =>
+        a !== null && a.round === b.round && a.by === b.by && sameHits(a.hits, b.hits);
     const unwritten = (r: Riding): DamageRecord | null => {
         const record = { round: r.round, by: user, hits: ridingTotal(r) };
         const last = state.written;
-        return last &&
-            last.shipId === r.shipId &&
-            last.record.round === r.round &&
-            sameHits(last.record.hits, record.hits)
-            ? null
-            : record;
+        return last && last.shipId === r.shipId && sameAs(last.record, record) ? null : record;
     };
+    // 乗った・ラウンドが変わったフレームは、自分が前に書いた値でなく、今見えている記録と比べる
+    // （降りた後に前の人の書き込みが断られていると、自分が前に書いた値と同じでも前の人の画面がずれている）
+    const mounted = riding !== null && (prev?.shipId !== riding.shipId || prev.round !== riding.round);
 
     const left = prev && prev.shipId !== riding?.shipId ? unwritten(prev) : null;
     const leaving = prev && left ? [{ shipId: prev.shipId, record: left }] : [];
-    const pending = riding ? unwritten(riding) : null;
+    const mountRecord = riding && { round: riding.round, by: user, hits: ridingTotal(riding) };
+    const pending = mounted
+        ? mountRecord && !sameAs(parseDamageRecord(input.records.get(riding.shipId)), mountRecord)
+            ? mountRecord
+            : null
+        : riding
+          ? unwritten(riding)
+          : null;
     const due = (r: Riding, record: DamageRecord): boolean => {
-        if (Math.abs(input.now - state.lastWriteAt) >= DAMAGE_WRITE_MS) return true;
+        if (mounted || Math.abs(input.now - state.lastWriteAt) >= DAMAGE_WRITE_MS) return true;
         const others = othersHits(input, r.shipId);
         const last = state.written;
         const shown = last && last.shipId === r.shipId && last.record.round === r.round ? last.record.hits : r.base;
@@ -185,8 +195,8 @@ export function stepDamage(state: DamageState, input: DamageStepInput): { state:
     const current = riding && pending && due(riding, pending) ? [{ shipId: riding.shipId, record: pending }] : [];
     const writes = [...leaving, ...current];
     const last = writes.at(-1);
-    return {
-        state: last ? { riding, written: last, lastWriteAt: input.now } : { ...state, riding },
-        writes,
-    };
+    if (last) return { state: { riding, written: last, lastWriteAt: input.now }, writes };
+    // 乗ったときに書かなかったのは、見えている記録が書くはずの値と同じだったから
+    const seen = mounted && riding && mountRecord ? { shipId: riding.shipId, record: mountRecord } : state.written;
+    return { state: { ...state, riding, written: seen }, writes };
 }
