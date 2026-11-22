@@ -14,7 +14,7 @@ describe('core:spawn・core:warp・core:switch', () => {
         for (const type of ['core:spawn', 'core:warp', 'core:switch']) expect(isCoreComponentType(type)).toBe(true);
     });
 
-    it('最初の場所は設定を持たない', () => {
+    it('スポーンは設定を持たない', () => {
         expect(SpawnDataSchema.safeParse({}).success).toBe(true);
         expect(validateCoreComponentData('core:spawn', { x: 1 }).success).toBe(false);
     });
@@ -78,7 +78,7 @@ describe('押せる部品の見た目（look）', () => {
         ).toEqual({ targets: ['door'], label: '扉', look: 'none' });
     });
 
-    it('画像・最初の場所には無い項目', () => {
+    it('イメージ・スポーンには無い項目', () => {
         expect(validateCoreComponentData(CORE_COMPONENT_TYPES.image, { look: 'none' }).success).toBe(false);
         expect(validateCoreComponentData(CORE_COMPONENT_TYPES.spawn, { look: 'none' }).success).toBe(false);
     });

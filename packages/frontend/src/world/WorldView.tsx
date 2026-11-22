@@ -57,9 +57,9 @@ export interface WorldViewProps {
     onFailed?: (failure: InstanceFailure) => void;
     /** 部屋に入れたとき（入るたびに 1 回）。 */
     onEntered?: () => void;
-    /** 入口（core:portal）を押したときの移り方（SNS だけ）。無ければ入口は押せない。 */
+    /** ポータル（core:portal）を押したときの移り方（SNS だけ）。無ければポータルは押せない。 */
     onPortal?: PortalNavigate;
-    /** 入口に出す行き先のワールドを引く（SNS だけ）。無ければ入口は名前と印だけ。 */
+    /** ポータルに出す行き先のワールドを引く（SNS だけ）。無ければポータルは名前と印だけ。 */
     portalLookup?: PortalLookup;
     /** 入室できたあとに重ねる UI（HUD など）。 */
     children?: ReactNode;

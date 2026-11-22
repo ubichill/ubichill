@@ -16,6 +16,23 @@ describe('CORE_ENTITY_KINDS', () => {
         expect(ColliderDataSchema.safeParse(collider?.defaultData).success).toBe(true);
     });
 
+    it('本体の部品はすべて、型の名前の読みを表示名に持つ（YAML の core:portal とエディタの「ポータル」を対応させる）', () => {
+        const names = Object.fromEntries(CORE_ENTITY_KINDS.map((kind) => [kind.kind, kind.displayName]));
+        expect(names).toEqual({
+            [CORE_COMPONENT_TYPES.collider]: 'コライダー',
+            [CORE_COMPONENT_TYPES.media]: 'メディア',
+            [CORE_COMPONENT_TYPES.ui]: 'UI',
+            [CORE_COMPONENT_TYPES.image]: 'イメージ',
+            [CORE_COMPONENT_TYPES.text]: 'テキスト',
+            [CORE_COMPONENT_TYPES.portal]: 'ポータル',
+            [CORE_COMPONENT_TYPES.warp]: 'ワープ',
+            [CORE_COMPONENT_TYPES.switch]: 'スイッチ',
+            [CORE_COMPONENT_TYPES.spawn]: 'スポーン',
+        });
+        // 本体の部品を足したら、ここに名前を足す（型の名前のまま英語で並ばないように）
+        expect(Object.keys(names).sort()).toEqual(Object.values(CORE_COMPONENT_TYPES).sort());
+    });
+
     it('押せる部品の「見た目」は schema と同じ選択肢に名前を付けて出し、置いたときは data に書かない', () => {
         for (const type of [CORE_COMPONENT_TYPES.warp, CORE_COMPONENT_TYPES.switch, CORE_COMPONENT_TYPES.portal]) {
             const kind = CORE_ENTITY_KINDS.find((k) => k.kind === type);

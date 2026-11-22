@@ -8,7 +8,7 @@ import { PortalIcon } from './partIcons';
 import { type PortalDestination, usePortalLookup, usePortalNavigation } from './portalNavigation';
 import { surfacePlacement } from './surfacePlacement';
 
-const DEFAULT_LABEL = '入口';
+const DEFAULT_LABEL = 'ポータル';
 
 /** 行き先のワールドを引く（引けない・引く手段が無いときは null のまま）。 */
 function usePortalDestination(target: PortalTarget | null): PortalDestination | null {
@@ -30,7 +30,7 @@ function usePortalDestination(target: PortalTarget | null): PortalDestination | 
 }
 
 /**
- * `core:portal` の入口。行き先のワールドのサムネイルを丸い窓に出し、上に名前を出す。押すと、行き先のワールドへ移る
+ * `core:portal`（ポータル）。行き先のワールドのサムネイルを丸い窓に出し、上に名前を出す。押すと、行き先のワールドへ移る
  * （移り方は SNS の画面が決める。usePortalNavigation）。行き先が無い・移り方が渡されていない（world.html・エディタ）ときは押せない。
  */
 export const CorePortal: React.FC<{ entity: ComponentInstance }> = ({ entity }) => {

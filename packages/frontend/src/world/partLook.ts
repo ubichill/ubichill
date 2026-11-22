@@ -10,7 +10,7 @@ import type { ComponentInstance } from '@ubichill/shared';
 
 type Part = Pick<ComponentInstance, 'type' | 'data'>;
 
-/** 押せる部品（入口・ワープ・スイッチ）の見た目。押せる部品でない・data が読めないときは null。 */
+/** 押せる部品（ポータル・ワープ・スイッチ）の見た目。押せる部品でない・data が読めないときは null。 */
 export function partLook(part: Part): PartLook | null {
     const data = part.data ?? {};
     switch (part.type) {

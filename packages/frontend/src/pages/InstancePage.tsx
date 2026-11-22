@@ -121,7 +121,7 @@ export function InstancePage() {
         [failure?.replaced, toHome],
     );
 
-    // 入口（core:portal）: 確かめてから部屋を出て、行き先のワールドのページへ（そこで入室まで進む）
+    // ポータル（core:portal）: 確かめてから部屋を出て、行き先のワールドのページへ（そこで入室まで進む）
     const { leaveWorld } = useSocket();
     const goThroughPortal = useCallback(
         async (target: PortalTarget, label: string) => {
@@ -132,7 +132,7 @@ export function InstancePage() {
         [confirm, leaveWorld, navigate],
     );
 
-    // 入口に出す行き先のワールド（同じ行き先は 1 回だけ引く）
+    // ポータルに出す行き先のワールド（同じ行き先は 1 回だけ引く）
     const [portalLookup] = useState(() => createPortalLookup(fetchWorld));
 
     if (!id) return null;

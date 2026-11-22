@@ -106,13 +106,13 @@ export interface AvailableEntityKind {
 }
 
 /**
- * 押せる部品（入口・ワープ・スイッチ）の見た目。既定（standard）は data に書かない（使う部品だけが項目を持つので、
+ * 押せる部品（ポータル・ワープ・スイッチ）の見た目。既定（standard）は data に書かない（使う部品だけが項目を持つので、
  * 古い ubichill のエディタで知らない項目として出ない）。欄には選択肢の先頭（standard）が出る。
  */
 const PART_LOOK_FIELD: DataFieldSpec = {
     type: 'enum',
     options: [...PART_LOOKS],
-    optionLabels: { standard: '標準', none: 'なし（同じ Entity の画像・文字を押す）' },
+    optionLabels: { standard: '標準', none: 'なし（同じ Entity のイメージ・テキストを押す）' },
     label: '見た目',
     help: 'なしにすると何も描かず、Entity の枠いっぱいが押せる場所になります。',
 };
@@ -122,6 +122,7 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
     {
         modName: 'core',
         kind: CORE_COMPONENT_TYPES.collider,
+        displayName: 'コライダー',
         suggestSize: true,
         defaultData: { ...createDefaultColliderData() },
         viewKind: 'logic',
@@ -129,6 +130,7 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
     {
         modName: 'core',
         kind: CORE_COMPONENT_TYPES.media,
+        displayName: 'メディア',
         suggestSize: true,
         defaultTransform: { w: 640, h: 360 },
         dataFields: {
@@ -145,6 +147,7 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
     {
         modName: 'core',
         kind: CORE_COMPONENT_TYPES.ui,
+        displayName: 'UI',
         suggestSize: true,
         defaultTransform: { w: 320, h: 160 },
         defaultData: { markup: '<div style="padding: 12px; background: #fff; border-radius: 8px">ようこそ</div>' },
@@ -161,7 +164,7 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
     {
         modName: 'core',
         kind: CORE_COMPONENT_TYPES.image,
-        displayName: '画像',
+        displayName: 'イメージ',
         suggestSize: true,
         defaultTransform: { w: 320, h: 240 },
         dataFields: {
@@ -185,7 +188,7 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
     {
         modName: 'core',
         kind: CORE_COMPONENT_TYPES.text,
-        displayName: '文字',
+        displayName: 'テキスト',
         suggestSize: true,
         defaultTransform: { w: 320, h: 80 },
         dataFields: {
@@ -213,7 +216,7 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
     {
         modName: 'core',
         kind: CORE_COMPONENT_TYPES.portal,
-        displayName: '入口',
+        displayName: 'ポータル',
         suggestSize: true,
         // 行き先のサムネイルの丸い窓（幅いっぱい）と、その上の名前
         defaultTransform: { w: 180, h: 228 },
@@ -285,7 +288,7 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
     {
         modName: 'core',
         kind: CORE_COMPONENT_TYPES.spawn,
-        displayName: '最初の場所',
+        displayName: 'スポーン',
         suggestSize: true,
         defaultTransform: { w: 160, h: 48 },
         dataFields: {},

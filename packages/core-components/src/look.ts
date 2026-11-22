@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * 押せる部品（入口・ワープ・スイッチ）の見た目。standard は部品が自分で描く。none は何も描かず、Entity の矩形いっぱいを
+ * 押せる部品（ポータル・ワープ・スイッチ）の見た目。standard は部品が自分で描く。none は何も描かず、Entity の矩形いっぱいを
  * 押せる場所にする（見た目は同じ Entity の画像・文字で付ける）。
  */
 export const PART_LOOKS = ['standard', 'none'] as const;

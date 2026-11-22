@@ -3,8 +3,8 @@
  * エディタ・CLI・backend が同じ規則で確かめる。読む側（部屋・ほかのサーバー）は、足す前に公開されたワールドも読む。
  */
 
-/** サムネイルはワールドの一覧と入口（core:portal）に出す。 */
-export const WORLD_THUMBNAIL_REQUIRED = '公開するには、サムネイルを決めてください（ワールドの一覧と入口に出ます）';
+/** サムネイルはワールドの一覧とポータル（core:portal）に出す。 */
+export const WORLD_THUMBNAIL_REQUIRED = '公開するには、サムネイルを決めてください（ワールドの一覧とポータルに出ます）';
 
 /** 公開できない理由（無ければ null）。 */
 export function worldPublishProblem(spec: { thumbnail?: string | null }): string | null {
