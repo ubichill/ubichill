@@ -265,7 +265,7 @@ function buildEntries(
         return comps.map((c) => ({
             kind: 'component',
             key: `comp:${c.kind}`,
-            // 表示名があればそれ（本体の部品は「画像」「文字」など）、無ければ型の名前
+            // 表示名があればそれ（本体の部品は「イメージ」「テキスト」など、型の名前の読み）、無ければ型の名前
             name: c.displayName ?? (c.kind.split(':').slice(1).join(':') || c.kind),
             componentType: c.kind,
             modName,

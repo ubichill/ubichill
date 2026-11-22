@@ -4,13 +4,13 @@ import type { AvailableEntityKind } from './entityKinds';
 import { buildUniqueEntityId, collectEntityIds, nextRootZ } from './entityTree';
 import { placementFor } from './prefabPlacement';
 
-/** 追加する Component の初期値（kind の既定 data と、各フィールドの default）。 */
+/** 追加する Component の初期値（各フィールドの default に、kind の既定 data を重ねる）。 */
 function initialDataOf(kind: AvailableEntityKind | undefined): Record<string, unknown> {
     const base: Record<string, unknown> = kind?.defaultData ? structuredClone(kind.defaultData) : {};
     const defaults = Object.entries(kind?.dataFields ?? {})
         .filter(([, spec]) => spec.default !== undefined)
         .map(([name, spec]) => [name, spec.default] as const);
-    return { ...base, ...Object.fromEntries(defaults) };
+    return { ...Object.fromEntries(defaults), ...base };
 }
 
 /**

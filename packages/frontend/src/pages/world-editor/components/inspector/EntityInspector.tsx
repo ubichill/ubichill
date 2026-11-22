@@ -1,5 +1,7 @@
 import type { InitialEntity } from '@ubichill/shared';
+import { useMemo } from 'react';
 import { css } from '@/styled-system/css';
+import { idleButtonScripts } from '@/world/entityButton';
 import type { AvailableEntityKind } from '../../hooks/useAvailableEntityKinds';
 import { ComponentCard } from './ComponentCard';
 import { ComponentPicker } from './ComponentPicker';
@@ -31,6 +33,19 @@ interface EntityInspectorProps {
     referenceProblems: readonly string[];
 }
 
+const IDLE_PORTAL_NOTICE = 'ボタンで動くポータルは最初の 1 つだけです。このポータルは動きません';
+
+/** UI のボタンを押しても動かない Component の位置（2 つ目からのポータル）。 */
+function idleComponentIndexes(entity: InitialEntity): ReadonlySet<number> {
+    const parts = entity.components.map((c, index) => ({
+        id: String(index),
+        type: c.type,
+        data: c.data,
+        entityId: entity.id,
+    }));
+    return new Set(idleButtonScripts(parts, entity.id).map(Number));
+}
+
 /**
  * Entity 編集ペインのトップレベル composer。
  * 各セクションは個別ファイルに分割済 (EntityHeader / TagsEditor / ComponentCard 等)。
@@ -55,6 +70,7 @@ export function EntityInspector({
         onChange((prev) => ({ ...prev, transform: { ...prev.transform, ...patch } }));
     const maxW = worldSize?.width;
     const maxH = worldSize?.height;
+    const idleScripts = useMemo(() => idleComponentIndexes(entity), [entity]);
 
     return (
         <div
@@ -146,6 +162,7 @@ export function EntityInspector({
                             viewKind={availableKinds.find((k) => k.kind === c.type)?.viewKind}
                             allEntities={allEntities}
                             initiallyExpanded={ci === initiallyExpandedComponentIndex}
+                            notices={idleScripts.has(ci) ? [IDLE_PORTAL_NOTICE] : undefined}
                             onChange={onChange}
                             onDelete={() => onDeleteComponent(ci)}
                         />

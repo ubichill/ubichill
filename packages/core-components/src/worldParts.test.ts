@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+    CORE_COMPONENT_TYPES,
     isCoreComponentType,
+    readCoreComponentData,
     SpawnDataSchema,
     SwitchDataSchema,
+    UI_BORDER_WIDTH_MAX,
+    UI_RADIUS_MAX,
+    UiDataSchema,
     validateCoreComponentData,
     WarpDataSchema,
 } from './index.js';
@@ -12,7 +17,7 @@ describe('core:spawn・core:warp・core:switch', () => {
         for (const type of ['core:spawn', 'core:warp', 'core:switch']) expect(isCoreComponentType(type)).toBe(true);
     });
 
-    it('最初の場所は設定を持たない', () => {
+    it('スポーンは設定を持たない', () => {
         expect(SpawnDataSchema.safeParse({}).success).toBe(true);
         expect(validateCoreComponentData('core:spawn', { x: 1 }).success).toBe(false);
     });
@@ -33,5 +38,43 @@ describe('core:spawn・core:warp・core:switch', () => {
             false,
         );
         expect(SwitchDataSchema.safeParse({ targets: 'door' }).success).toBe(false);
+    });
+});
+
+describe('core:ui（四角・テキスト・ボタン）', () => {
+    it('書いていない項目は描かない（前の版の markup だけの UI の見た目を変えない）', () => {
+        const old = UiDataSchema.parse({ markup: '<p>案内</p>' });
+        expect(old).toMatchObject({
+            markup: '<p>案内</p>',
+            text: '',
+            fill: 'transparent',
+            border: 'transparent',
+            radius: 0,
+            button: false,
+        });
+    });
+
+    it('四角・テキスト・ボタンを持てる', () => {
+        const box = { text: 'ワープ', fill: '#ffffff', border: '#1b2a44', borderWidth: 2, radius: 12, button: true };
+        expect(validateCoreComponentData(CORE_COMPONENT_TYPES.ui, box).success).toBe(true);
+    });
+
+    it('角丸・枠線・大きさは範囲の中だけ。色は #RRGGBB か transparent', () => {
+        for (const bad of [
+            { radius: -1 },
+            { radius: UI_RADIUS_MAX + 1 },
+            { borderWidth: UI_BORDER_WIDTH_MAX + 1 },
+            { size: 7 },
+            { fill: 'red' },
+            { border: '#fff' },
+            { align: 'justify' },
+            { button: 'yes' },
+        ])
+            expect(validateCoreComponentData(CORE_COMPONENT_TYPES.ui, bad).success, JSON.stringify(bad)).toBe(false);
+    });
+
+    it('読む側は知らない項目を捨てて読む（新しい版の UI も開ける）', () => {
+        const read = readCoreComponentData(CORE_COMPONENT_TYPES.ui, { text: 'a', shadow: true });
+        expect(read.success && read.data.text).toBe('a');
     });
 });

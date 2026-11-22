@@ -1,5 +1,12 @@
-import { CORE_COMPONENT_TYPES, ColliderDataSchema } from '@ubichill/core-components';
+import {
+    CORE_COMPONENT_TYPES,
+    ColliderDataSchema,
+    isCoreComponentType,
+    validateCoreComponentData,
+} from '@ubichill/core-components';
 import { describe, expect, it } from 'vitest';
+import { displayedFieldValue } from '../components/inspector/fieldValues';
+import { withComponentAdded } from '../lib/addComponent';
 import { CORE_ENTITY_KINDS, entityKindsFromManifest, usableDataFields } from '../lib/entityKinds';
 
 describe('CORE_ENTITY_KINDS', () => {
@@ -7,6 +14,109 @@ describe('CORE_ENTITY_KINDS', () => {
         const collider = CORE_ENTITY_KINDS.find((kind) => kind.kind === CORE_COMPONENT_TYPES.collider);
         expect(collider).toMatchObject({ modName: 'core', viewKind: 'logic', suggestSize: true });
         expect(ColliderDataSchema.safeParse(collider?.defaultData).success).toBe(true);
+    });
+
+    it('本体の部品はすべて、型の名前の読みを表示名に持つ（YAML の core:portal とエディタの「ポータル」を対応させる）', () => {
+        const names = Object.fromEntries(CORE_ENTITY_KINDS.map((kind) => [kind.kind, kind.displayName]));
+        expect(names).toEqual({
+            [CORE_COMPONENT_TYPES.collider]: 'コライダー',
+            [CORE_COMPONENT_TYPES.media]: 'メディア',
+            [CORE_COMPONENT_TYPES.ui]: 'UI',
+            [CORE_COMPONENT_TYPES.image]: 'イメージ',
+            [CORE_COMPONENT_TYPES.text]: 'テキスト',
+            [CORE_COMPONENT_TYPES.portal]: 'ポータル',
+            [CORE_COMPONENT_TYPES.warp]: 'ワープ',
+            [CORE_COMPONENT_TYPES.switch]: 'スイッチ',
+            [CORE_COMPONENT_TYPES.spawn]: 'スポーン',
+        });
+        // 本体の部品を足したら、ここに名前を足す（型の名前のまま英語で並ばないように）
+        expect(Object.keys(names).sort()).toEqual(Object.values(CORE_COMPONENT_TYPES).sort());
+    });
+
+    it('置いた UI は、見える四角（白・枠線・角丸）にテキストが入り、ボタンではない。設定の選択肢には名前が付く', () => {
+        const kind = CORE_ENTITY_KINDS.find((k) => k.kind === CORE_COMPONENT_TYPES.ui);
+        const placed = withComponentAdded(
+            {
+                id: 'sign',
+                transform: { x: 0, y: 0, z: 0, scale: 1, rotation: 0 },
+                tags: [],
+                components: [],
+                children: [],
+            },
+            CORE_COMPONENT_TYPES.ui,
+            kind,
+        );
+        const data = placed.components[0]?.data;
+        expect(validateCoreComponentData(CORE_COMPONENT_TYPES.ui, data).success).toBe(true);
+        expect(data).toMatchObject({
+            text: 'テキスト',
+            size: 20,
+            fill: '#ffffff',
+            border: '#1b2a44',
+            radius: 12,
+            button: false,
+        });
+        // HTML は書いたときだけ（空の項目を足さない）
+        expect(data).not.toHaveProperty('markup');
+        expect(placed.transform).toMatchObject({ w: 200, h: 80 });
+        const align = kind?.dataFields?.align;
+        if (align?.type !== 'enum') throw new Error('揃えの欄が無い');
+        for (const option of align.options) expect(align.optionLabels?.[option], option).toBeTruthy();
+    });
+
+    it('data に無い項目の欄には、部屋で描くときの値（schema の既定値）を出す（YAML で書いた UI の欄が描いたものと食い違わない）', () => {
+        const checked = CORE_ENTITY_KINDS.flatMap((kind) => {
+            const parsed = isCoreComponentType(kind.kind) ? validateCoreComponentData(kind.kind, {}) : null;
+            if (!parsed?.success) return [];
+            const drawn: Record<string, unknown> = parsed.data;
+            return (
+                Object.entries(kind.dataFields ?? {})
+                    // 参照は data に無ければ空で出す（配線していないことを見せる）。schema の空の値と意味は同じ
+                    .filter(([, spec]) => spec.type !== 'entityRef' && spec.type !== 'entityRefArray')
+                    .map(([key, spec]) => ({
+                        field: `${kind.kind}.${key}`,
+                        shown: displayedFieldValue(spec, {}, key),
+                        drawn: drawn[key],
+                    }))
+            );
+        });
+        expect(checked.filter(({ shown, drawn }) => JSON.stringify(shown) !== JSON.stringify(drawn))).toEqual([]);
+        expect(checked.map(({ field }) => field)).toContain('core:ui.fill');
+    });
+
+    it('置いたテキストには、見える文字が入る（描く値の既定は空のまま）', () => {
+        const kind = CORE_ENTITY_KINDS.find((k) => k.kind === CORE_COMPONENT_TYPES.text);
+        const placed = withComponentAdded(
+            {
+                id: 'sign',
+                transform: { x: 0, y: 0, z: 0, scale: 1, rotation: 0 },
+                tags: [],
+                components: [],
+                children: [],
+            },
+            CORE_COMPONENT_TYPES.text,
+            kind,
+        );
+        expect(placed.components[0]?.data).toMatchObject({ text: 'ようこそ' });
+    });
+
+    it('スクリプト（ワープ・スイッチ・ポータル）は、置いても見た目の項目を持たず、そのまま検証を通る', () => {
+        for (const type of [CORE_COMPONENT_TYPES.warp, CORE_COMPONENT_TYPES.switch, CORE_COMPONENT_TYPES.portal]) {
+            const kind = CORE_ENTITY_KINDS.find((k) => k.kind === type);
+            const placed = withComponentAdded(
+                {
+                    id: 'door',
+                    transform: { x: 0, y: 0, z: 0, scale: 1, rotation: 0 },
+                    tags: [],
+                    components: [],
+                    children: [],
+                },
+                type,
+                kind,
+            ).components[0];
+            expect(Object.keys(kind?.dataFields ?? {}), type).not.toContain('look');
+            expect(validateCoreComponentData(type, placed?.data).success, type).toBe(true);
+        }
     });
 });
 
