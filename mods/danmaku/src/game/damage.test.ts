@@ -1,205 +1,294 @@
 import { describe, expect, it } from 'vitest';
 import {
-    addHits,
     DAMAGE_WRITE_MS,
-    type DamageEntry,
-    type DamageSlot,
-    type DamageWriteInput,
-    damageKey,
-    damageSlotCount,
-    damageSlotFor,
-    MAX_DAMAGE_SLOTS,
-    myDamage,
-    parseDamageSlot,
-    pendingDamageWrite,
-    readDamageSlots,
-    roundHits,
+    type DamageState,
+    type DamageStepInput,
+    type DamageWrite,
+    INITIAL_DAMAGE,
+    knownHits,
+    MAX_RECORD_HITS,
+    parseDamageRecord,
+    RECORD_BUDGET_BYTES,
+    stageEnemies,
+    stepDamage,
 } from './damage';
+import { enemySpecOf } from './enemy';
+import { hash01 } from './patterns';
+import type { Hits } from './stage';
 
-const slot = (user: string, round: number, hits: Record<string, number>): DamageSlot => ({ user, round, hits });
-const empty = (): (DamageSlot | null)[] => Array.from({ length: MAX_DAMAGE_SLOTS }, () => null);
-const withSlots = (entries: Record<number, DamageSlot>) => empty().map((s, i) => entries[i] ?? s);
+const enemy = (id: string, hp = 999) =>
+    enemySpecOf({ id, transform: { x: 0, y: 0, w: 40, h: 40 }, data: { hp, motion: 'none' } });
 
-describe('枠を読む（ほかの人が書いた値も信用しない）', () => {
-    it('崩れた枠は空きとみなし、負・NaN の数は捨てる', () => {
-        expect(parseDamageSlot(null)).toBeNull();
-        expect(parseDamageSlot({ round: 1, hits: {} })).toBeNull();
-        expect(parseDamageSlot({ round: 1, user: '', hits: {} })).toBeNull();
-        expect(parseDamageSlot({ round: 1, user: 'x'.repeat(257), hits: {} })).toBeNull();
-        expect(parseDamageSlot({ round: -1, user: 'a', hits: {} })).toBeNull();
-        expect(parseDamageSlot({ round: 1, user: 'a', hits: [3] })).toBeNull();
-        expect(parseDamageSlot({ round: 1, user: 'a', hits: { a: 3, b: -2, c: Number.NaN, d: '4' } })).toEqual(
-            slot('a', 1, { a: 3 }),
-        );
-    });
-
-    it('枠の番号のキーだけを読む（前の形の `damage:<userId>`・範囲外の番号は読まない）', () => {
-        const slots = readDamageSlots({
-            [damageKey(0)]: slot('a', 1, { e: 1 }),
-            [damageKey(MAX_DAMAGE_SLOTS - 1)]: slot('b', 1, { e: 2 }),
-            [damageKey(MAX_DAMAGE_SLOTS)]: slot('c', 1, { e: 3 }),
-            'damage:d': { round: 1, hits: { e: 4 } },
+describe('記録を読む（ほかの人が書いた値も信用しない）', () => {
+    it('崩れた記録は無いとみなし、負・NaN の数は捨て、HP の上限より多い数は上限にする', () => {
+        expect(parseDamageRecord(null)).toBeNull();
+        expect(parseDamageRecord({ round: 1, hits: {} })).toBeNull();
+        expect(parseDamageRecord({ round: 1, by: '', hits: {} })).toBeNull();
+        expect(parseDamageRecord({ round: -1, by: 'a', hits: {} })).toBeNull();
+        expect(parseDamageRecord({ round: 1, by: 'a', hits: [3] })).toBeNull();
+        expect(parseDamageRecord({ round: 1, by: 'a', hits: { a: 3, b: -2, c: Number.NaN, d: '4', e: 1e9 } })).toEqual({
             round: 1,
+            by: 'a',
+            hits: { a: 3, e: MAX_RECORD_HITS },
         });
-        expect(slots).toHaveLength(MAX_DAMAGE_SLOTS);
-        expect(slots.filter((s) => s !== null).map((s) => s?.user)).toEqual(['a', 'b']);
     });
 });
 
-describe('roundHits・myDamage', () => {
-    it('このラウンドの分だけを人ごとに足し、自分（手元の値を使う）は数えない', () => {
-        const slots = withSlots({
-            0: slot('a', 2, { e: 3, f: 1 }),
-            3: slot('b', 2, { e: 4 }),
-            5: slot('me', 2, { e: 100 }),
-            7: slot('c', 1, { e: 99 }),
-        });
-        expect(roundHits(slots, 2, 'me')).toEqual({ e: 7, f: 1 });
-        expect(roundHits(slots, 3, 'me')).toEqual({});
-    });
-
-    it('同じ人が 2 つの枠に書いていても二重に数えず、敵ごとに大きい方を取る', () => {
-        const slots = withSlots({ 1: slot('a', 2, { e: 5, f: 1 }), 9: slot('a', 2, { e: 3, f: 4 }) });
-        expect(roundHits(slots, 2)).toEqual({ e: 5, f: 4 });
-    });
-
-    it('起動したときは、部屋に残っている自分の一番新しいラウンドの分から始める', () => {
-        const slots = withSlots({
-            0: slot('me', 1, { e: 9 }),
-            2: slot('me', 3, { e: 2 }),
-            4: slot('me', 3, { f: 1 }),
-            6: slot('you', 4, { e: 1 }),
-        });
-        expect(myDamage(slots, 'me')).toEqual({ round: 3, hits: { e: 2, f: 1 } });
-        expect(myDamage(slots, 'nobody')).toBeNull();
-        expect(myDamage(slots, undefined)).toBeNull();
-    });
-
-    it('ラウンドが変わったら前の分を捨ててから足す', () => {
-        const before = { round: 1, hits: { a: 10 } };
-        expect(addHits(before, 1, { a: 2, b: 1 })).toEqual({ round: 1, hits: { a: 12, b: 1 } });
-        expect(addHits(before, 2, { b: 1 })).toEqual({ round: 2, hits: { b: 1 } });
-    });
-});
-
-describe('枠の選び方と大きさ', () => {
-    it('このラウンドの自分の枠があればそれを使い、無ければ空き・前のラウンドの枠を使う', () => {
-        const mine = withSlots({ 6: slot('me', 2, { e: 1 }) });
-        expect(damageSlotFor(mine, 'me', 2, MAX_DAMAGE_SLOTS)).toBe(6);
-        const stale = withSlots(Object.fromEntries(Array.from({ length: 16 }, (_, i) => [i, slot(`u${i}`, 1, {})])));
-        expect(damageSlotFor(stale, 'me', 2, MAX_DAMAGE_SLOTS)).not.toBeNull();
-    });
-
-    it('このラウンドのほかの人で全部埋まっていれば書かない（ほかの人の枠を上書きしない）', () => {
-        const full = withSlots(Object.fromEntries(Array.from({ length: 16 }, (_, i) => [i, slot(`u${i}`, 2, {})])));
-        expect(damageSlotFor(full, 'me', 2, MAX_DAMAGE_SLOTS)).toBeNull();
-        const oneFree = full.map((s, i) => (i === 11 ? null : s));
-        expect(damageSlotFor(oneFree, 'me', 2, MAX_DAMAGE_SLOTS)).toBe(11);
-        // 使える枠の数より後ろの空きは使わない
-        expect(damageSlotFor(oneFree, 'me', 2, 8)).toBeNull();
-    });
-
-    it('同時に書き始めた人どうしは、名前から決まる別々の枠から探し始める', () => {
-        const users = Array.from({ length: 8 }, (_, i) => `user-${i}`);
-        const first = new Set(users.map((user) => damageSlotFor(empty(), user, 1, MAX_DAMAGE_SLOTS)));
-        expect(first.size).toBeGreaterThan(4);
-    });
-
-    it.each([0, 9, 60, 300, 600])(
-        '敵 %i 体で全部の枠が埋まっても、枠の合計は Entity の上限の半分に収まる',
-        (enemies) => {
-            const count = damageSlotCount(enemies);
-            const hits = Object.fromEntries(
-                Array.from({ length: enemies }, (_, i) => [`${'x'.repeat(36)}${i}`, 100_000]),
-            );
-            const data = Object.fromEntries(
-                Array.from({ length: count }, (_, i) => [damageKey(i), slot('u'.repeat(64), 999_999, hits)]),
-            );
-            expect(count).toBeGreaterThanOrEqual(1);
-            expect(count).toBeLessThanOrEqual(MAX_DAMAGE_SLOTS);
-            expect(JSON.stringify(data).length).toBeLessThanOrEqual(32_768);
+describe('stageEnemies（記録が上限に収まる敵だけを動かす）', () => {
+    it.each([0, 9, 100, 650, 1300, 5000])(
+        '敵 %i 体（長い ID）でも、記録は上限に収まり、どの画面でも同じ敵を選ぶ',
+        (n) => {
+            const specs = Array.from({ length: n }, (_, i) => enemy(`${'x'.repeat(40)}-${i}`));
+            const chosen = stageEnemies(specs);
+            const record = {
+                round: 999_999,
+                by: 'u'.repeat(64),
+                hits: Object.fromEntries(chosen.map((s) => [s.id, MAX_RECORD_HITS])),
+            };
+            expect(JSON.stringify(record).length).toBeLessThanOrEqual(RECORD_BUDGET_BYTES);
+            expect(stageEnemies([...specs].reverse()).map((s) => s.id)).toEqual(chosen.map((s) => s.id));
+            if (n <= 100) expect(chosen).toHaveLength(n);
+            else expect(chosen.length).toBeLessThan(n);
         },
     );
-
-    it('人が何人入れ替わっても、書く枠は増えない', () => {
-        const data = Array.from({ length: 500 }, (_, i) => i).reduce<Record<string, unknown>>((acc, i) => {
-            const write = pendingDamageWrite({
-                slots: readDamageSlots(acc),
-                user: `player-${i}`,
-                mine: { round: i, hits: { e: 1 } },
-                round: i,
-                enemyCount: 9,
-                urgent: true,
-                now: i * 1000,
-                lastWriteAt: 0,
-            });
-            return write ? Object.fromEntries([...Object.entries(acc), [write.key, write.value]]) : acc;
-        }, {});
-        expect(Object.keys(data).length).toBeLessThanOrEqual(MAX_DAMAGE_SLOTS);
-    });
 });
 
-describe('pendingDamageWrite（当たるたびに書かず、まとめて書く）', () => {
-    const base = (over: Partial<DamageWriteInput>): DamageWriteInput => ({
-        slots: empty(),
-        user: 'me',
-        mine: { round: 1, hits: { e: 1 } },
-        round: 1,
-        enemyCount: 9,
-        urgent: false,
+const view = (records: Record<string, unknown>, user = 'me', round = 1) => ({
+    user,
+    round,
+    records: new Map(Object.entries(records)),
+});
+const step = (
+    state: DamageState,
+    { records = {}, ...over }: Omit<Partial<DamageStepInput>, 'records'> & { records?: Record<string, unknown> },
+) =>
+    stepDamage(state, {
+        ...view(records, over.user ?? 'me', over.round ?? 1),
+        shipId: 'ship-a',
+        hits: {},
+        enemies: [enemy('e')],
         now: 10_000,
-        lastWriteAt: 0,
         ...over,
     });
 
-    it('60fps で 1 秒撃ち続けても、書くのは間隔ごとの数回だけで、最後の分も書き残さない', () => {
-        type Run = { slots: (DamageSlot | null)[]; mine: DamageEntry | null; lastWriteAt: number; writes: number };
+describe('stepDamage・knownHits', () => {
+    it('乗っている自機の分は手元の値、ほかの自機は記録（このラウンドの分）を足す', () => {
+        const records = {
+            'ship-a': { round: 1, by: 'me', hits: { e: 1 } },
+            'ship-b': { round: 1, by: 'you', hits: { e: 4 } },
+        };
+        const { state } = step(INITIAL_DAMAGE, { records, hits: { e: 2 } });
+        // ship-a は乗った時点の記録 1（自分が前に書いた分）に、手元の 2 を足す
+        expect(knownHits(state, view(records))).toEqual({ e: 7 });
+        expect(knownHits(state, view({ ...records, 'ship-c': { round: 0, by: 'old', hits: { e: 50 } } }))).toEqual({
+            e: 7,
+        });
+    });
+
+    it('乗り始めは自機の記録（前に乗っていた人の分）から続け、その人の書き込みが後から届いたら足す', () => {
+        const first = step(INITIAL_DAMAGE, {
+            records: { 'ship-a': { round: 1, by: 'prev', hits: { e: 3 } } },
+            hits: { e: 1 },
+        });
+        expect(first.writes).toEqual([{ shipId: 'ship-a', record: { round: 1, by: 'me', hits: { e: 4 } } }]);
+        const late = { 'ship-a': { round: 1, by: 'prev', hits: { e: 5 } } };
+        const second = step(first.state, { records: late, now: 10_000 + DAMAGE_WRITE_MS });
+        expect(second.writes).toEqual([{ shipId: 'ship-a', record: { round: 1, by: 'me', hits: { e: 6 } } }]);
+        // 自分の書いた値が戻ってきても足さない
+        const echo = { 'ship-a': { round: 1, by: 'me', hits: { e: 6 } } };
+        expect(knownHits(step(second.state, { records: echo, now: 20_000 }).state, view(echo))).toEqual({ e: 6 });
+    });
+
+    it('前のラウンドの記録からは続けない', () => {
+        const { writes } = step(INITIAL_DAMAGE, {
+            records: { 'ship-a': { round: 0, by: 'me', hits: { e: 9 } } },
+            hits: { e: 1 },
+        });
+        expect(writes[0]?.record.hits).toEqual({ e: 1 });
+    });
+
+    it('当たるたびには書かず間隔ごとにまとめ、撃つのをやめても最後の分を書く', () => {
+        type Run = { state: DamageState; writes: number };
         const frames = Array.from({ length: 60 }, (_, i) => 10_000 + (i * 1000) / 60);
         const run = frames.reduce<Run>(
             (acc, now) => {
-                const mine = addHits(acc.mine, 1, { e: 1 });
-                const write = pendingDamageWrite(base({ slots: acc.slots, mine, now, lastWriteAt: acc.lastWriteAt }));
-                if (!write) return { slots: acc.slots, mine, lastWriteAt: acc.lastWriteAt, writes: acc.writes };
-                const slots = acc.slots.map((s, i) => (damageKey(i) === write.key ? write.value : s));
-                return { slots, mine, lastWriteAt: now, writes: acc.writes + 1 };
+                const next = step(acc.state, { hits: { e: 1 }, now });
+                return { state: next.state, writes: acc.writes + next.writes.length };
             },
-            { slots: empty(), mine: null, lastWriteAt: 0, writes: 0 },
+            { state: INITIAL_DAMAGE, writes: 0 },
         );
         expect(run.writes).toBeGreaterThanOrEqual(Math.floor(1000 / DAMAGE_WRITE_MS));
         expect(run.writes).toBeLessThanOrEqual(Math.ceil(1000 / DAMAGE_WRITE_MS) + 1);
-        // 撃つのをやめても、ためていた分は間隔が過ぎたら書く
-        const flush = pendingDamageWrite(
-            base({
-                slots: run.slots,
-                mine: run.mine,
-                now: run.lastWriteAt + DAMAGE_WRITE_MS,
-                lastWriteAt: run.lastWriteAt,
-            }),
-        );
-        expect(flush?.value.hits).toEqual({ e: 60 });
+        const flush = step(run.state, { now: run.state.lastWriteAt + DAMAGE_WRITE_MS });
+        expect(flush.writes[0]?.record.hits).toEqual({ e: 60 });
+        expect(step(flush.state, { now: flush.state.lastWriteAt + 10 * DAMAGE_WRITE_MS }).writes).toEqual([]);
     });
 
-    it('倒した当たりは間隔を待たずにすぐ書く', () => {
-        expect(pendingDamageWrite(base({ lastWriteAt: 9_990 }))).toBeNull();
-        expect(pendingDamageWrite(base({ lastWriteAt: 9_990, urgent: true }))?.value).toEqual(slot('me', 1, { e: 1 }));
+    it('この分で倒れる敵がいれば待たずに書く（ほかの人の記録とあわせて倒れるときも、現れたフレームに倒したときも）', () => {
+        const target = enemy('e', 5);
+        const written = step(INITIAL_DAMAGE, { enemies: [target], hits: { e: 1 } });
+        const soon = written.state.lastWriteAt + 1;
+        expect(step(written.state, { enemies: [target], hits: { e: 1 }, now: soon }).writes).toEqual([]);
+        const others = { 'ship-b': { round: 1, by: 'you', hits: { e: 3 } } };
+        const killed = step(written.state, { enemies: [target], hits: { e: 1 }, now: soon, records: others });
+        expect(killed.writes[0]?.record.hits).toEqual({ e: 2 });
+        // 書いたのが最初のフレーム（前のフレームでは生きていなかった敵）でも同じ
+        const fresh = step({ ...INITIAL_DAMAGE, lastWriteAt: 10_000 }, { enemies: [enemy('e', 1)], hits: { e: 1 } });
+        expect(fresh.writes).toHaveLength(1);
     });
 
-    it('枠に全部載っていれば書かない。ほかの人に上書きされたら、別の枠に書き直す', () => {
-        const saved = withSlots({ 4: slot('me', 1, { e: 1 }) });
-        expect(pendingDamageWrite(base({ slots: saved }))).toBeNull();
-        const taken = pendingDamageWrite(base({ slots: withSlots({ 4: slot('you', 1, { e: 7 }) }) }));
-        expect(taken).not.toBeNull();
-        expect(taken?.value.user).toBe('me');
+    it('降りたら、ためていた分をすぐ前の自機に書き、手元の分は手放す', () => {
+        const riding = step(INITIAL_DAMAGE, { hits: { e: 1 } });
+        const more = step(riding.state, { hits: { e: 2 }, now: riding.state.lastWriteAt + 1 });
+        expect(more.writes).toEqual([]);
+        const left = step(more.state, { shipId: null, now: more.state.lastWriteAt + 2 });
+        expect(left.writes).toEqual([{ shipId: 'ship-a', record: { round: 1, by: 'me', hits: { e: 3 } } }]);
+        expect(left.state.riding).toBeNull();
     });
 
-    it('書く人が分からない・ほかのラウンドの分・当たっていないときは書かない', () => {
-        expect(pendingDamageWrite(base({ user: undefined }))).toBeNull();
-        expect(pendingDamageWrite(base({ mine: { round: 0, hits: { e: 1 } } }))).toBeNull();
-        expect(pendingDamageWrite(base({ mine: { round: 1, hits: {} } }))).toBeNull();
-        expect(pendingDamageWrite(base({ mine: null }))).toBeNull();
+    it('書く人が分からないときは書かない', () => {
+        expect(step(INITIAL_DAMAGE, { user: undefined, hits: { e: 1 } }).writes).toEqual([]);
     });
+});
 
-    it('時計が戻っても待ち続けない（差の大きさで測る）', () => {
-        expect(pendingDamageWrite(base({ now: 1_000, lastWriteAt: 10_000 }))).not.toBeNull();
+/**
+ * 何人かの画面とサーバーを並べて動かす。サーバーは届いた順に上書きし（最後に書いた人が勝つ）、書いた本人には
+ * 返さない。乗っていない人の書き込みは断る（lockedBy）。届くまでの遅れは接続ごとにばらばらだが、順番は保つ。
+ */
+interface Ride {
+    readonly shipId: string;
+    readonly from: number;
+    readonly to: number;
+}
+interface Message {
+    readonly at: number;
+    readonly seq: number;
+    readonly to: 'server' | number;
+    readonly from: number;
+    readonly shipId: string;
+    readonly change:
+        | { readonly kind: 'record'; readonly record: unknown }
+        | { readonly kind: 'holder'; readonly holder: string | null };
+}
+type ShipView = { holder: string | null; record: unknown };
+
+function simulate(
+    seed: number,
+    rides: readonly (readonly Ride[])[],
+    enemies = [enemy('e0'), enemy('e1'), enemy('e2')],
+) {
+    const users = rides.map((_, i) => `user-${i}`);
+    const shipIds = [...new Set(rides.flat().map((r) => r.shipId))];
+    const freshShips = () => new Map<string, ShipView>(shipIds.map((id) => [id, { holder: null, record: undefined }]));
+    const server = freshShips();
+    const views = users.map(freshShips);
+    const states: DamageState[] = users.map(() => INITIAL_DAMAGE);
+    const truth: Record<string, number> = {};
+    const queue: Message[] = [];
+    const lastArrival = new Map<string, number>();
+    const counter = { seq: 0 };
+    const send = (from: number, to: 'server' | number, now: number, shipId: string, change: Message['change']) => {
+        const link = `${from}->${to}`;
+        const delay = 10 + 190 * hash01(seed, counter.seq, 7);
+        const at = Math.max(lastArrival.get(link) ?? 0, now + delay);
+        lastArrival.set(link, at);
+        queue.push({ at, seq: counter.seq++, to, from, shipId, change });
+    };
+    const apply = (ships: Map<string, ShipView>, shipId: string, change: Message['change']) => {
+        const ship = ships.get(shipId) as ShipView;
+        if (change.kind === 'record') ship.record = change.record;
+        else ship.holder = change.holder;
+    };
+    const deliver = (now: number) => {
+        const due = queue.filter((m) => m.at <= now).sort((a, b) => a.at - b.at || a.seq - b.seq)[0];
+        if (!due) return;
+        queue.splice(queue.indexOf(due), 1);
+        if (due.to !== 'server') {
+            apply(views[due.to], due.shipId, due.change);
+        } else {
+            const ship = server.get(due.shipId) as ShipView;
+            const writer = users[due.from];
+            const allowed =
+                due.change.kind === 'record'
+                    ? ship.holder === null || ship.holder === writer
+                    : due.change.holder === null
+                      ? ship.holder === writer
+                      : ship.holder === null || ship.holder === writer;
+            if (allowed) {
+                apply(server, due.shipId, due.change);
+                for (const other of users.keys())
+                    if (other !== due.from) send(-1, other, due.at, due.shipId, due.change);
+            }
+        }
+        deliver(now);
+    };
+
+    const FRAME = 1000 / 60;
+    for (const frame of Array.from({ length: Math.ceil(8000 / FRAME) }, (_, i) => i)) {
+        const now = frame * FRAME;
+        deliver(now);
+        for (const [i, user] of users.entries()) {
+            for (const ride of rides[i]) {
+                if (ride.from > now - FRAME && ride.from <= now) {
+                    apply(views[i], ride.shipId, { kind: 'holder', holder: user });
+                    send(i, 'server', now, ride.shipId, { kind: 'holder', holder: user });
+                }
+                if (ride.to > now - FRAME && ride.to <= now) {
+                    apply(views[i], ride.shipId, { kind: 'holder', holder: null });
+                    send(i, 'server', now, ride.shipId, { kind: 'holder', holder: null });
+                }
+            }
+            const shipId = [...views[i]].find(([, ship]) => ship.holder === user)?.[0] ?? null;
+            const roll = hash01(seed, frame, i);
+            const target = enemies[Math.floor(hash01(seed, frame, i, 1) * enemies.length)].id;
+            const hits: Hits = shipId && roll < 0.4 ? { [target]: 1 } : {};
+            if (shipId && roll < 0.4) truth[target] = (truth[target] ?? 0) + 1;
+            const records = new Map([...views[i]].map(([id, ship]) => [id, ship.record]));
+            const next = stepDamage(states[i], { user, round: 1, records, shipId, hits, enemies, now });
+            states[i] = next.state;
+            for (const write of next.writes as DamageWrite[]) {
+                apply(views[i], write.shipId, { kind: 'record', record: write.record });
+                send(i, 'server', now, write.shipId, { kind: 'record', record: write.record });
+            }
+        }
+    }
+    deliver(Number.POSITIVE_INFINITY);
+    const seen = users.map((user, i) =>
+        knownHits(states[i], {
+            user,
+            round: 1,
+            records: new Map([...views[i]].map(([id, ship]) => [id, ship.record])),
+        }),
+    );
+    return { truth, seen };
+}
+
+describe('何人かが同時に撃つ（サーバーは最後に書いた人が勝ち、書いた本人には返さない）', () => {
+    const seeds = Array.from({ length: 40 }, (_, i) => i + 1);
+
+    it.each([2, 8])(
+        '%i 人がそれぞれの自機で 300ms 以内に撃ち始めても、落ち着いたら全員の HP が同じで、当たりが消えも増えもしない',
+        (n) => {
+            for (const seed of seeds) {
+                const rides = Array.from({ length: n }, (_, i) => [
+                    { shipId: `ship-${i}`, from: 300 * hash01(seed, i, 99), to: 2500 + 300 * hash01(seed, i, 98) },
+                ]);
+                const { truth, seen } = simulate(seed, rides);
+                for (const hits of seen) expect(hits).toEqual(truth);
+            }
+        },
+    );
+
+    it('1 つの自機を乗り継いでも、前の人の分は消えず、二重にも数えない', () => {
+        for (const seed of seeds) {
+            const handoff = 1000 + 500 * hash01(seed, 0, 97);
+            const rides = [
+                [{ shipId: 'ship-0', from: 0, to: handoff }],
+                [{ shipId: 'ship-0', from: handoff + 400, to: 3000 }],
+                [{ shipId: 'ship-1', from: 100, to: 3000 }],
+            ];
+            const { truth, seen } = simulate(seed, rides);
+            for (const hits of seen) expect(hits).toEqual(truth);
+        }
     });
 });

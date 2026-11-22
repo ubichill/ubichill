@@ -10,13 +10,13 @@ import type { ComponentConfig, ComponentInstance } from 'ubichill';
 import { DanmakuEvents } from './events';
 import { areaOf } from './game/area';
 import {
-    addHits,
+    type DamageState,
+    type DamageView,
+    knownHits as damageHits,
     damageKey,
-    MAX_DAMAGE_SLOTS,
-    myDamage,
-    pendingDamageWrite,
-    readDamageSlots,
-    roundHits,
+    INITIAL_DAMAGE,
+    stageEnemies,
+    stepDamage,
 } from './game/damage';
 import { type EnemySpec, enemySpecOf } from './game/enemy';
 import { stepFrame } from './game/frame';
@@ -36,7 +36,6 @@ import {
     type StageStatus,
     stageStatus,
     startsOnBoard,
-    sumHits,
 } from './game/stage';
 
 export const config: ComponentConfig = {
@@ -63,13 +62,6 @@ type HudKind = StageStatus['kind'];
 const stage = Ubi.state.define({
     round: Ubi.state.sync(0, { editable: false }),
     startedAt: Ubi.state.sync(0, { editable: false }),
-    // 各自のダメージの枠（damage0〜。持ち方は game/damage.ts）
-    ...Object.fromEntries(
-        Array.from({ length: MAX_DAMAGE_SLOTS }, (_, i) => [
-            damageKey(i),
-            Ubi.state.sync<unknown>(null, { editable: false }),
-        ]),
-    ),
     hudKind: 'idle' as HudKind,
     hudRound: 0,
     hudDefeated: 0,
@@ -82,13 +74,15 @@ const stage = Ubi.state.define({
     hudH: 600,
 });
 
-/** ダメージの枠（damage0〜）は名前を組み立てて読み書きする。 */
-const stageData: Record<string, unknown> = stage.local;
+/** 乗っている自機の data に、この範囲で与えたダメージを書くキー（持ち方は game/damage.ts）。 */
+const DAMAGE_KEY = damageKey(Ubi.componentInstanceId ?? 'field');
 
 interface ShipInfo {
     readonly id: string;
     readonly box: Rect;
     readonly holder: string | null;
+    /** この範囲で、この自機が与えたダメージの記録（data の値そのまま）。 */
+    readonly record: unknown;
 }
 
 interface LocalShip {
@@ -122,8 +116,7 @@ const sim = {
      * 自分のダメージはこの画面が正（書くのは自分だけ）。同期された値はほかの人の書き込みと行き違うと
      * 書く前の値が一瞬返ってくるので読み戻さない。起動時だけ、部屋に残っている値から始める。
      */
-    damage: myDamage(readDamageSlots(stageData), Ubi.myUserId),
-    damageWrittenAt: 0,
+    damage: INITIAL_DAMAGE as DamageState,
 };
 
 function acceptCanvas(entity: ComponentInstance): void {
@@ -140,7 +133,14 @@ function acceptShip(entity: ComponentInstance): void {
     const center = rectCenter(entity.transform);
     if (inArea(center)) sim.effects = [...sim.effects, ...shipEffects(sim.shipMarks.get(entity.id), marks, center)];
     sim.shipMarks.set(entity.id, marks);
-    sim.ships.set(entity.id, { id: entity.id, box: entity.transform, holder: entity.lockedBy ?? null });
+    const data =
+        typeof entity.data === 'object' && entity.data !== null ? (entity.data as Record<string, unknown>) : {};
+    sim.ships.set(entity.id, {
+        id: entity.id,
+        box: entity.transform,
+        holder: entity.lockedBy ?? null,
+        record: data[DAMAGE_KEY],
+    });
 }
 
 DanmakuEvents.on('entity:danmaku:canvas', acceptCanvas);
@@ -161,12 +161,18 @@ Promise.all([
 
 const inArea = (point: Vec): boolean => rectContains(sim.area, point);
 const shipsInArea = (): ShipInfo[] => [...sim.ships.values()].filter((ship) => inArea(rectCenter(ship.box)));
-const enemiesInArea = (): EnemySpec[] => [...sim.enemies.values()].filter((spec) => inArea(spec.home));
+const enemiesInArea = (): EnemySpec[] => stageEnemies([...sim.enemies.values()].filter((spec) => inArea(spec.home)));
 const currentClock = () => readClock(stage.local.round, stage.local.startedAt);
 
+const damageView = (round: number): DamageView => ({
+    user: Ubi.myUserId,
+    round,
+    // 範囲の外へ出た自機の記録も数える（記録はこの範囲の敵の分だけ）
+    records: new Map([...sim.ships.values()].map((ship) => [ship.id, ship.record])),
+});
+
 function knownHits(round: number): Hits {
-    const mine = sim.damage?.round === round ? sim.damage.hits : {};
-    return sumHits([roundHits(readDamageSlots(stageData), round, Ubi.myUserId), mine]);
+    return damageHits(sim.damage, damageView(round));
 }
 
 function startRound(now: number): void {
@@ -267,20 +273,19 @@ Ubi.registerSystem((_entities, deltaTime) => {
             { scope: 'world', targetType: 'danmaku:player' },
         );
     }
-    if (t !== null && Object.keys(frame.myHits).length > 0) sim.damage = addHits(sim.damage, clock.round, frame.myHits);
-    const write = pendingDamageWrite({
-        slots: readDamageSlots(stageData),
-        user: Ubi.myUserId,
-        mine: sim.damage,
-        round: clock.round,
-        enemyCount: specs.length,
-        urgent: frame.defeated.some(({ spec }) => (frame.myHits[spec.id] ?? 0) > 0),
+    const riding = ships.find((ship) => ship.holder !== null && ship.holder === Ubi.myUserId) ?? null;
+    const damage = stepDamage(sim.damage, {
+        ...damageView(clock.round),
+        shipId: riding?.id ?? null,
+        hits: t === null ? {} : frame.myHits,
+        enemies: specs,
         now,
-        lastWriteAt: sim.damageWrittenAt,
     });
-    if (write) {
-        stageData[write.key] = write.value;
-        sim.damageWrittenAt = now;
+    sim.damage = damage.state;
+    for (const { shipId, record } of damage.writes) {
+        Ubi.entity(shipId)
+            .update({ data: { [DAMAGE_KEY]: record } })
+            .catch((err: unknown) => Ubi.log(`[danmaku:canvas] ダメージの記録に失敗: ${String(err)}`, 'warn'));
     }
     sim.shots = frame.shots;
     sim.alive = frame.alive;

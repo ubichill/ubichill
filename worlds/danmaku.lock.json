@@ -4,11 +4,11 @@
     "danmaku": {
       "id": "danmaku",
       "version": "2.0.0",
-      "manifestIntegrity": "sha256-HMmi2FxMhvAcZl4PotYTqGP9FVLxmgf1PfLB782nmII=",
+      "manifestIntegrity": "sha256-68ylmAg6aPSwAAZlFaX4egl+AouGyf2kz7apalOcH90=",
       "components": {
         "danmaku:canvas": {
-          "workerUrl": "./canvas/index.8382a560.js",
-          "integrity": "sha256-g4KlYO1JMsTcDthKZjyMljzF2n1CuTblvcRypbCxlvQ=",
+          "workerUrl": "./canvas/index.9bfa6822.js",
+          "integrity": "sha256-m/poIj5FDUT+/nLzHJ5V65rBUx8PzQauoLp56ACM38w=",
           "capabilities": [
             "canvas:draw",
             "event:emit",
