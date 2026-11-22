@@ -90,6 +90,19 @@ describe('groupBounds', () => {
         expect(groupBounds(flattenForStage(wide), [0])).toEqual({ x: -20, y: 5, width: 150, height: 235 });
     });
 
+    it('Component にだけ大きさのある子も、描かれる大きさで囲む（置いたプレハブの枠を中身に合わせる）', () => {
+        const placed = [
+            entity('sign-set', {
+                prefab: link,
+                transform: { x: 400, y: 360, z: 1, scale: 1, rotation: 0 },
+                children: [
+                    entity('sign', { components: [{ type: 'demo:sign', data: {}, transform: { w: 200, h: 80 } }] }),
+                ],
+            }),
+        ];
+        expect(groupBounds(flattenForStage(placed), [0])).toEqual({ x: 400, y: 360, width: 200, height: 80 });
+    });
+
     it('大きさのある Entity が無ければ null（囲む枠を出さない）', () => {
         expect(groupBounds(flattenForStage([entity('empty', { children: [entity('dot')] })]), [0])).toBeNull();
     });

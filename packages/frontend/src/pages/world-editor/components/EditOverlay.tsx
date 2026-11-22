@@ -3,15 +3,9 @@ import { useEffect, useState } from 'react';
 import { css } from '@/styled-system/css';
 import { COMPONENT_DRAG_MIME, decodePrefabDrag, PREFAB_DRAG_MIME, type PrefabDragRef } from '../lib/dnd';
 import { applyDrag, type DragMode, type DragState } from '../lib/dragHelpers';
+import type { StageRect } from '../lib/drawnBounds';
 import { type EntityPath, type FlatEntityNode, isDescendantOrSelf, pathKey } from '../lib/entityTree';
-import {
-    entityLabel,
-    groupBounds,
-    isInsidePrefab,
-    outermostPrefabRoot,
-    pressOnStage,
-    type StageRect,
-} from '../lib/stageSelection';
+import { entityLabel, groupBounds, isInsidePrefab, outermostPrefabRoot, pressOnStage } from '../lib/stageSelection';
 import { PrefabIcon } from './hierarchy/hierarchyIcons';
 
 interface EditOverlayProps {

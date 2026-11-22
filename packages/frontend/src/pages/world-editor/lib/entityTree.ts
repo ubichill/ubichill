@@ -284,7 +284,7 @@ export interface FlatEntityNode {
 }
 
 /** ツリーを Stage 表示用に flatten する純関数。親基準の transform.x/y を絶対化する。 */
-export function flattenForStage(entities: InitialEntity[]): FlatEntityNode[] {
+export function flattenForStage(entities: readonly InitialEntity[]): FlatEntityNode[] {
     const out: FlatEntityNode[] = [];
     const walk = (entity: InitialEntity, path: EntityPath, origin: { x: number; y: number; z: number }) => {
         const t = entity.transform;

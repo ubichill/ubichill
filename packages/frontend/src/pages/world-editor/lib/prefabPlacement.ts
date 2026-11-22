@@ -1,23 +1,15 @@
 import type { InitialEntity } from '@ubichill/shared';
-import type { StageRect } from './stageSelection';
+import { drawnBoxesOf, enclosing, type StageRect } from './drawnBounds';
+import { flattenForStage } from './entityTree';
 
-/** 親の原点からの位置で、中身のうち大きさのある Entity が占める範囲。無ければ null。 */
-export function contentBounds(entities: readonly InitialEntity[]): StageRect | null {
-    const rects = entities.flatMap(function walk(e: InitialEntity): { l: number; t: number; r: number; b: number }[] {
-        const { x, y, w = 0, h = 0 } = e.transform;
-        const own = w > 0 && h > 0 ? [{ l: x, t: y, r: x + w, b: y + h }] : [];
-        const children = e.children.flatMap(walk).map((c) => ({ l: c.l + x, t: c.t + y, r: c.r + x, b: c.b + y }));
-        return [...own, ...children];
-    });
-    if (rects.length === 0) return null;
-    const left = Math.min(...rects.map((r) => r.l));
-    const top = Math.min(...rects.map((r) => r.t));
-    return {
-        x: left,
-        y: top,
-        width: Math.max(...rects.map((r) => r.r)) - left,
-        height: Math.max(...rects.map((r) => r.b)) - top,
-    };
+/** 親の原点からの位置で、中身が描かれる範囲（描く側と同じ大きさ）。大きさの分かる Entity が無ければ null。 */
+export const contentBounds = (entities: readonly InitialEntity[]): StageRect | null =>
+    enclosing(flattenForStage(entities).flatMap(drawnBoxesOf));
+
+/** 子として置くときの既定の場所: 親が描かれている範囲の真ん中（親の原点から）。大きさが無ければ親の原点。 */
+export function centerOf(parent: InitialEntity): { x: number; y: number } {
+    const b = enclosing(drawnBoxesOf({ entity: parent, absX: 0, absY: 0 }));
+    return b ? { x: b.x + b.width / 2, y: b.y + b.height / 2 } : { x: 0, y: 0 };
 }
 
 // -0 を YAML に書かない

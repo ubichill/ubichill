@@ -3,7 +3,7 @@ import { useCallback } from 'react';
 import type { EditorPackage } from '@/lib/mods/packages';
 import type { PrefabDragRef } from '../lib/dnd';
 import { type EntityPath, getEntityAt, insertEntity, nextRootZ } from '../lib/entityTree';
-import { contentBounds, placementFor } from '../lib/prefabPlacement';
+import { centerOf, contentBounds, placementFor } from '../lib/prefabPlacement';
 
 const DEFAULT_WORLD_SIZE = { width: 2000, height: 1500 };
 
@@ -45,9 +45,7 @@ export function usePrefabPlacement({
             const worldSize = definition.spec.environment?.worldSize ?? DEFAULT_WORLD_SIZE;
             const point =
                 where.point ??
-                (parent
-                    ? { x: (parent.transform.w ?? 0) / 2, y: (parent.transform.h ?? 0) / 2 }
-                    : (viewCenter() ?? { x: worldSize.width / 2, y: worldSize.height / 2 }));
+                (parent ? centerOf(parent) : (viewCenter() ?? { x: worldSize.width / 2, y: worldSize.height / 2 }));
             const at = placementFor(point, contentBounds(prefab.entities), parent ? undefined : worldSize);
             try {
                 const placed = instantiatePrefab(pkg.entry, ref.name, prefab, pkg.manifest.components, entities, {

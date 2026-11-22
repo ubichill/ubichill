@@ -1,12 +1,6 @@
 import type { InitialEntity } from '@ubichill/shared';
+import { drawnBoxesOf, enclosing, type StageRect } from './drawnBounds';
 import { type EntityPath, type FlatEntityNode, getEntityAt, isDescendantOrSelf } from './entityTree';
-
-export interface StageRect {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-}
 
 const samePath = (a: EntityPath | null, b: EntityPath | null): boolean =>
     !!a && !!b && a.length === b.length && a.every((v, i) => v === b[i]);
@@ -37,27 +31,9 @@ export function pressOnStage(
     return { select: root, enterOnClick: enter };
 }
 
-/** path とその子孫のうち、大きさのある Entity が占める範囲（ワールド座標）。無ければ null。 */
-export function groupBounds(nodes: readonly FlatEntityNode[], path: EntityPath): StageRect | null {
-    const rects = nodes
-        .filter((n) => isDescendantOrSelf(n.path, path))
-        .filter((n) => (n.entity.transform.w ?? 0) > 0 && (n.entity.transform.h ?? 0) > 0)
-        .map((n) => ({
-            left: n.absX,
-            top: n.absY,
-            right: n.absX + (n.entity.transform.w ?? 0),
-            bottom: n.absY + (n.entity.transform.h ?? 0),
-        }));
-    if (rects.length === 0) return null;
-    const left = Math.min(...rects.map((r) => r.left));
-    const top = Math.min(...rects.map((r) => r.top));
-    return {
-        x: left,
-        y: top,
-        width: Math.max(...rects.map((r) => r.right)) - left,
-        height: Math.max(...rects.map((r) => r.bottom)) - top,
-    };
-}
+/** path とその子孫が描かれる範囲（ワールド座標・描く側と同じ大きさ）。無ければ null。 */
+export const groupBounds = (nodes: readonly FlatEntityNode[], path: EntityPath): StageRect | null =>
+    enclosing(nodes.filter((n) => isDescendantOrSelf(n.path, path)).flatMap(drawnBoxesOf));
 
 /** 矢印キーで選んだ Entity を動かす量（Shift で 10px）。矢印でなければ null。 */
 export function nudgeFor(key: string, shift: boolean): { dx: number; dy: number } | null {
