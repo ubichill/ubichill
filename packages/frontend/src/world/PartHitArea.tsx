@@ -57,7 +57,9 @@ const editorOutline = css({
     position: 'absolute',
     inset: '1',
     display: 'flex',
-    alignItems: 'flex-start',
+    // 名札は右下に寄せる（文字や絵は左上から置かれることが多いので、隠しにくい）
+    alignItems: 'flex-end',
+    justifyContent: 'flex-end',
     p: '1',
     border: '1.5px dashed',
     borderColor: 'primaryHighlight',
