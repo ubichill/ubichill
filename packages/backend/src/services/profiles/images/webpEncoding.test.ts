@@ -11,10 +11,15 @@ describe('hasFewColors', () => {
         expect(hasFewColors(rgbaOf(257, 10_000))).toBe(false);
     });
 
-    it('同じ RGB でも透明度が違えば別の色', () => {
-        const rgba = new Uint8Array([1, 2, 3, 255, 1, 2, 3, 0]);
-        expect(hasFewColors(rgba, 1)).toBe(false);
-        expect(hasFewColors(rgba, 2)).toBe(true);
+    it('透明度は数えない（RGB が同じなら同じ色）', () => {
+        const rgba = new Uint8Array([1, 2, 3, 255, 1, 2, 3, 0, 1, 2, 3, 128]);
+        expect(hasFewColors(rgba, 1)).toBe(true);
+    });
+
+    it('上位のビットの違う色（R・G・B のどれか）も別に数える', () => {
+        const rgba = new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255]);
+        expect(hasFewColors(rgba, 3)).toBe(false);
+        expect(hasFewColors(rgba, 4)).toBe(true);
     });
 
     it('4 の倍数でない位置から始まる配列も読める', () => {

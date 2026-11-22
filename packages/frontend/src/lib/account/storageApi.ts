@@ -7,7 +7,7 @@ import {
 } from '@ubichill/shared';
 import { API_BASE } from '../api';
 import { errorMessage } from '../apiError';
-import { chunksOf } from './storage';
+import { deleteInChunks } from './storage';
 
 const ENDPOINT = `${API_BASE}/api/v1/users/me/storage`;
 
@@ -37,19 +37,22 @@ export const updateMyStorageSettings = async (settings: StorageSettings): Promis
         }),
     );
 
-/** まとめて消す（1 回 100 個ずつ順に）。消せたもの（もう無かったものは入らない）を返す。途中で失敗したら投げる。 */
-export async function deleteStoredFiles(files: readonly StoredFileRef[]): Promise<StoredFileRef[]> {
-    return chunksOf(
+/**
+ * まとめて消す（1 回 100 個ずつ順に）。done は送れた分（もう無かったものも含む）。途中で失敗したら error に文を入れて止める。
+ */
+export const deleteStoredFiles = (
+    files: readonly StoredFileRef[],
+): Promise<{ done: StoredFileRef[]; error: string | null }> =>
+    deleteInChunks(
         files.map(({ kind, id }) => ({ kind, id })),
         STORED_FILE_DELETE_MAX,
-    ).reduce<Promise<StoredFileRef[]>>(async (done, chunk) => {
-        const removed = await done;
-        const res = await fetch(`${ENDPOINT}/files/delete`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ files: chunk }),
-        });
-        return [...removed, ...(await json<{ removed: StoredFileRef[] }>(res)).removed];
-    }, Promise.resolve([]));
-}
+        async (chunk) => {
+            const res = await fetch(`${ENDPOINT}/files/delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ files: chunk }),
+            });
+            await json<{ removed: StoredFileRef[] }>(res);
+        },
+    );

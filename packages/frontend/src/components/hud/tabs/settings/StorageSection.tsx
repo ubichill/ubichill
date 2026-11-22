@@ -4,7 +4,18 @@ import { HudIcon } from '@/components/hud/HudIcon';
 import { socialButton } from '@/components/social/buttons';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { Switch } from '@/components/ui/Switch';
-import { deleteConfirmation, fileKey, usageRatio, usageTone, withoutFiles, withPage } from '@/lib/account/storage';
+import {
+    autoLoads,
+    deleteConfirmation,
+    fileKey,
+    INITIAL_MORE_LOAD,
+    type MoreLoadState,
+    moreLoadAfter,
+    usageRatio,
+    usageTone,
+    withoutFiles,
+    withPage,
+} from '@/lib/account/storage';
 import {
     deleteStoredFiles,
     fetchMyStorage,
@@ -28,7 +39,7 @@ export function StorageSection() {
     const [savingSettings, setSavingSettings] = useState(false);
     const [deleting, setDeleting] = useState<ReadonlySet<string>>(new Set());
     const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
-    const [loadingMore, setLoadingMore] = useState(false);
+    const [more, setMore] = useState<MoreLoadState>(INITIAL_MORE_LOAD);
 
     useEffect(() => {
         const ctrl = { cancelled: false };
@@ -53,14 +64,14 @@ export function StorageSection() {
     };
 
     const loadMore = async (cursor: string) => {
-        setLoadingMore(true);
+        setMore((state) => moreLoadAfter(state, 'start'));
         try {
             const page = await fetchMyStoredFiles(cursor);
             setOverview((current) => current && withPage(current, page));
+            setMore((state) => moreLoadAfter(state, 'success'));
         } catch (e) {
             pushToast(e instanceof Error ? e.message : '読み込めませんでした', 'error');
-        } finally {
-            setLoadingMore(false);
+            setMore((state) => moreLoadAfter(state, 'failure'));
         }
     };
 
@@ -77,16 +88,13 @@ export function StorageSection() {
             return next;
         };
         setDeleting(mark(true));
-        try {
-            // 頼んだものは、もう無かったもの（ほかの端末で消した）も含めて一覧から外す
-            await deleteStoredFiles(files);
-            setOverview((current) => current && withoutFiles(current, files));
-            setChecked(mark(false));
-        } catch (e) {
-            pushToast(e instanceof Error ? e.message : '消せませんでした', 'error');
-        } finally {
-            setDeleting(mark(false));
-        }
+        // 送れた分は、もう無かったもの（ほかの端末で消した）も含めて一覧から外す。途中で失敗しても、そこまでは外す
+        const { done, error: failed } = await deleteStoredFiles(files);
+        const doneKeys = new Set(done.map(fileKey));
+        setOverview((current) => current && withoutFiles(current, done));
+        setChecked((prev) => new Set([...prev].filter((key) => !doneKeys.has(key))));
+        setDeleting(mark(false));
+        if (failed) pushToast(failed, 'error');
     };
 
     if (!overview) {
@@ -196,7 +204,8 @@ export function StorageSection() {
                         </ul>
                         {overview.files.next && (
                             <MoreButton
-                                loading={loadingMore}
+                                loading={more.loading}
+                                auto={autoLoads(more, overview.files.next)}
                                 onMore={() => overview.files.next && void loadMore(overview.files.next)}
                             />
                         )}
@@ -207,20 +216,23 @@ export function StorageSection() {
     );
 }
 
-/** 続きを読む。見えるところまでスクロールしたら自動で読み、押しても読める。 */
-function MoreButton({ loading, onMore }: { loading: boolean; onMore: () => void }) {
+/** 続きを読む。auto の間は見えるところまでスクロールしたら自動で読み、押せばいつでも読む（失敗の後もこれで読み直す）。 */
+function MoreButton({ loading, auto, onMore }: { loading: boolean; auto: boolean; onMore: () => void }) {
     const ref = useRef<HTMLButtonElement>(null);
     const latest = useRef(onMore);
     latest.current = onMore;
     useEffect(() => {
         const target = ref.current;
-        if (!target || loading || typeof IntersectionObserver === 'undefined') return;
+        if (!target || !auto || typeof IntersectionObserver === 'undefined') return;
         const observer = new IntersectionObserver((entries) => {
-            if (entries.some((entry) => entry.isIntersecting)) latest.current();
+            if (entries.some((entry) => entry.isIntersecting)) {
+                observer.disconnect();
+                latest.current();
+            }
         });
         observer.observe(target);
         return () => observer.disconnect();
-    }, [loading]);
+    }, [auto]);
     return (
         <button
             ref={ref}

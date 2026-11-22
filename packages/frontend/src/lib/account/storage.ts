@@ -69,3 +69,44 @@ export function withoutFiles(overview: StorageOverview, removed: readonly Stored
 export function chunksOf<T>(items: readonly T[], size: number): T[][] {
     return Array.from({ length: Math.ceil(items.length / size) }, (_, n) => items.slice(n * size, (n + 1) * size));
 }
+
+/**
+ * 続きを読む状態。見えたら自動で読むのは、前の読み込みが成功している間だけ（失敗したら「もっと見る」を押すまで止める。
+ * 止めないと、読み込みが終わるたびにまた「見えた」と知らされて、失敗を繰り返し続ける）。
+ */
+export interface MoreLoadState {
+    loading: boolean;
+    auto: boolean;
+}
+
+export const INITIAL_MORE_LOAD: MoreLoadState = { loading: false, auto: true };
+
+export function moreLoadAfter(state: MoreLoadState, event: 'start' | 'success' | 'failure'): MoreLoadState {
+    if (event === 'start') return { ...state, loading: true };
+    return { loading: false, auto: event === 'success' };
+}
+
+/** 見えたときに自動で読んでよいか。 */
+export const autoLoads = (state: MoreLoadState, next: string | null): boolean => !!next && state.auto && !state.loading;
+
+/**
+ * まとめて消す（1 回で消せる数ずつ順に送る）。途中で失敗したら、そこまでに送れた分と、失敗の文を返す
+ * （送れた分は一覧と量から除く）。
+ */
+export async function deleteInChunks<T>(
+    files: readonly T[],
+    size: number,
+    send: (chunk: T[]) => Promise<void>,
+): Promise<{ done: T[]; error: string | null }> {
+    return chunksOf(files, size).reduce<Promise<{ done: T[]; error: string | null }>>(
+        async (previous, chunk) => {
+            const sofar = await previous;
+            if (sofar.error) return sofar;
+            return send(chunk).then(
+                () => ({ done: [...sofar.done, ...chunk], error: null }),
+                (e: unknown) => ({ done: sofar.done, error: e instanceof Error ? e.message : '消せませんでした' }),
+            );
+        },
+        Promise.resolve({ done: [], error: null }),
+    );
+}

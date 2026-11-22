@@ -9,23 +9,38 @@ import type { WebpOptions } from 'sharp';
 
 export const LOSSY_WEBP: WebpOptions = { quality: 82 };
 export const LOSSLESS_WEBP: WebpOptions = { lossless: true };
-/** 可逆を作るのにかけてよい秒数（色が少なければ数十 ms で終わる。越えたら非可逆を使う） */
+/**
+ * 可逆を作るのにかけてよい秒数（越えたら非可逆を使う）。sharp の timeout は秒単位で数えるので、実際に止まるのは 1〜2 秒後。
+ * 256 色以下なら 2048×2048 でも数十 ms で終わるので、ふつうは届かない。
+ */
 export const LOSSLESS_TIMEOUT_SECONDS = 1;
 
 const LOSSLESS_CANDIDATES: ReadonlySet<string> = new Set(['png', 'gif']);
 const MAX_PALETTE = 256;
 
-/** RGBA の画素の色が max 色以下か（越えた時点でやめる）。 */
+/**
+ * RGBA の画素の色（RGB）が max 色以下か（越えた時点でやめる）。透明度は数えない（判定の目安なので RGB で足りる）。
+ * main thread で全画素を見るので、Set（数を箱に入れる）を使わず、24 ビットの RGB の印（2 MiB）と数の配列だけで数える
+ * （2048×2048 を 1 回なめて数 ms。色が多ければすぐ抜ける）。
+ */
 export function hasFewColors(rgba: Uint8Array, max = MAX_PALETTE): boolean {
-    // 4 バイトずつ数で比べる（Uint32Array は 4 の倍数の位置からしか作れないので、ずれていれば写す）
+    // 4 バイトずつ数で読む（Int32Array は 4 の倍数の位置からしか作れないので、ずれていれば写す）
     const pixels =
         rgba.byteOffset % 4 === 0
-            ? new Uint32Array(rgba.buffer, rgba.byteOffset, Math.floor(rgba.byteLength / 4))
-            : new Uint32Array(rgba.slice().buffer, 0, Math.floor(rgba.byteLength / 4));
-    const seen = new Set<number>();
+            ? new Int32Array(rgba.buffer, rgba.byteOffset, Math.floor(rgba.byteLength / 4))
+            : new Int32Array(rgba.slice().buffer, 0, Math.floor(rgba.byteLength / 4));
+    const seen = new Uint8Array(1 << 21);
+    const count = new Int32Array(1);
     for (const pixel of pixels) {
-        seen.add(pixel);
-        if (seen.size > max) return false;
+        // リトルエンディアンなので下の 24 ビットが RGB
+        const rgb = pixel & 0xffffff;
+        const mask = 1 << (rgb & 7);
+        const at = rgb >>> 3;
+        if ((seen[at] & mask) === 0) {
+            seen[at] |= mask;
+            count[0] += 1;
+            if (count[0] > max) return false;
+        }
     }
     return true;
 }
