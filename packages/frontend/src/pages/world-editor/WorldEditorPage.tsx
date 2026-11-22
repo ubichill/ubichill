@@ -1,4 +1,3 @@
-import { instantiatePrefab, WorldDefinitionSchema } from '@ubichill/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ConsolePanel } from '@/components/console/ConsolePanel';
@@ -14,7 +13,7 @@ import { type BottomDockTab, BottomDockTabs } from './components/BottomDockTabs'
 import { ControlPanelTabs } from './components/ControlPanelTabs';
 import { DockSlot } from './components/DockSlot';
 import { EditorHeader } from './components/EditorHeader';
-import { EditorStage } from './components/EditorStage';
+import { EditorStage, stageViewCenter } from './components/EditorStage';
 import { WorldInfoForm } from './components/forms/WorldInfoForm';
 import { YamlEditorForm } from './components/forms/YamlEditorForm';
 import { EditorHierarchy } from './components/hierarchy/EditorHierarchy';
@@ -28,6 +27,7 @@ import { PrefabControls } from './components/PrefabControls';
 import { PublishPanel } from './components/PublishPanel';
 import { PublishSetupDialog } from './components/PublishSetupDialog';
 import type { ThumbnailTaken } from './components/ThumbnailCamera';
+import { useArrowNudge } from './hooks/useArrowNudge';
 import { useAvailableEntityKinds } from './hooks/useAvailableEntityKinds';
 import { useDefinition } from './hooks/useDefinition';
 import { useLogNewWarnings } from './hooks/useEditorConsole';
@@ -35,6 +35,7 @@ import { useEditorModals } from './hooks/useEditorModals';
 import { useEntityOps } from './hooks/useEntityOps';
 import { useEntitySelection } from './hooks/useEntitySelection';
 import { useMobilePanels } from './hooks/useMobilePanels';
+import { usePrefabPlacement } from './hooks/usePrefabPlacement';
 import { usePublishSetup } from './hooks/usePublishSetup';
 import { type SaveResult, useWorldEditorApi } from './hooks/useWorldEditorApi';
 import { failureTitle, stageLabel } from './lib/actionFailure';
@@ -140,7 +141,18 @@ export function WorldEditorPage() {
     }, [loading, modals.openControlPanel]);
 
     const selection = useEntitySelection();
-    const ops = useEntityOps({ definition, updateEntities, kinds, selection });
+    const stageRoot = useRef<HTMLDivElement>(null);
+    const viewCenter = useCallback(() => stageViewCenter(stageRoot.current), []);
+    const ops = useEntityOps({ definition, updateEntities, kinds, selection, viewCenter });
+    const reportPlacementError = useCallback((message: string) => reportError('配置', message), [reportError]);
+    const placePrefab = usePrefabPlacement({
+        definition,
+        setDefinition,
+        packages,
+        selectEntity: selection.selectEntity,
+        viewCenter,
+        onError: reportPlacementError,
+    });
     const entityProblemList = useMemo(
         () => [
             ...editorReferenceProblems(definition.spec.initialEntities, kinds),
@@ -311,6 +323,17 @@ export function WorldEditorPage() {
         if (ok && isEdit) navigate(-1);
     }, [saveDraft, isEdit, navigate]);
 
+    const selectedEntity = selection.selectedPath
+        ? getEntityAt(definition.spec.initialEntities, selection.selectedPath)
+        : null;
+    const nudgeSelected = useCallback(
+        (position: { x: number; y: number }) => {
+            if (selection.selectedPath) ops.patchEntityTransform(selection.selectedPath, position);
+        },
+        [selection.selectedPath, ops.patchEntityTransform],
+    );
+    useArrowNudge({ selected: selectedEntity, enabled: !modals.open && !shooting, onNudge: nudgeSelected });
+
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
             if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 's') return;
@@ -334,9 +357,6 @@ export function WorldEditorPage() {
         );
     }
 
-    const selectedEntity = selection.selectedPath
-        ? getEntityAt(definition.spec.initialEntities, selection.selectedPath)
-        : null;
     const title =
         (definition.spec.displayName?.trim() || (isEdit ? 'ワールドを編集' : '新しいワールド')) +
         (isEdit ? '' : ' (未保存)');
@@ -395,6 +415,7 @@ export function WorldEditorPage() {
                     onDeleteComponent={ops.handleDeleteComponent}
                     onToggleHidden={selection.toggleHidden}
                     onDropComponent={ops.handleAddComponentToEntity}
+                    onDropPrefab={(ref, parent) => placePrefab(ref, { parent, point: null })}
                     onMoveEntity={ops.handleMoveEntity}
                     onEnterChild={ops.handleEnterChild}
                     onCopyEntity={ops.handleCopyEntity}
@@ -413,9 +434,12 @@ export function WorldEditorPage() {
                     hiddenPathKeys={selection.hiddenPaths}
                     hiddenRootIndices={selection.hiddenRootIndices}
                     snapStep={mobile.snapEnabled ? SNAP_STEP : 0}
+                    rootRef={stageRoot}
                     onSelect={selection.selectEntity}
                     onPatchTransform={ops.patchEntityTransform}
                     onDropComponent={ops.handleAddComponentToEntity}
+                    onDropComponentAt={ops.handleCreateEntityAt}
+                    onDropPrefab={(ref, point) => placePrefab(ref, { parent: null, point })}
                     camera={camera}
                 />
             </div>
@@ -462,10 +486,8 @@ export function WorldEditorPage() {
                                 const path = selection.selectedPath;
                                 if (path) ops.handleDeleteEntity(path);
                             }}
-                            onRenameEntity={(id) => {
-                                const path = selection.selectedPath;
-                                if (path) ops.handleRenameEntity(path, id);
-                            }}
+                            onRenameEntity={ops.handleRenameEntity}
+                            onSetName={ops.handleSetEntityName}
                         />
                     </>
                 ) : (
@@ -492,31 +514,9 @@ export function WorldEditorPage() {
                         loading={kindsLoading}
                         dependencies={definition.spec.dependencies ?? []}
                         packages={packages}
-                        onAddPrefab={(pkg, name) => {
-                            try {
-                                const prefab = pkg.manifest.prefabs?.[name];
-                                if (!prefab) return;
-                                const next = instantiatePrefab(
-                                    pkg.entry,
-                                    name,
-                                    prefab,
-                                    pkg.manifest.components,
-                                    definition.spec.initialEntities,
-                                    `prefab-${crypto.randomUUID().slice(0, 12)}`,
-                                );
-                                setDefinition(
-                                    WorldDefinitionSchema.parse({
-                                        ...definition,
-                                        spec: {
-                                            ...definition.spec,
-                                            initialEntities: [...definition.spec.initialEntities, next],
-                                        },
-                                    }),
-                                );
-                            } catch (e) {
-                                reportError('配置', e instanceof Error ? e.message : '配置できません');
-                            }
-                        }}
+                        onAddPrefab={(pkg, name) =>
+                            placePrefab({ modId: pkg.entry.id, name }, { parent: null, point: null })
+                        }
                     />
                 )}
                 {bottomTab !== 'console' && latestEntry && (

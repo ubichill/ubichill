@@ -8,7 +8,9 @@ import {
     type WorldContextType,
 } from '@ubichill/react';
 import {
+    absoluteEntityTransform,
     type ComponentInstance,
+    componentTransformOf,
     hiddenGameObjects,
     type InitialEntity,
     initiallyHiddenEntities,
@@ -109,33 +111,9 @@ export function EditorPreview({
             pathPrefix: number[],
             parentEntityId: string | undefined,
         ) => {
-            const t = entity.transform;
-            const absX = origin.x + t.x;
-            const absY = origin.y + t.y;
-            const absZ = origin.z + (t.z ?? 0);
-            const transform: ComponentInstance['transform'] = {
-                x: absX,
-                y: absY,
-                z: absZ,
-                w: t.w ?? 0,
-                h: t.h ?? 0,
-                scale: t.scale ?? 1,
-                rotation: t.rotation ?? 0,
-            };
+            const transform = absoluteEntityTransform(entity.transform, origin);
             entity.components.forEach((c, ci) => {
                 const id = `edit-${pathPrefix.join('-')}-c${ci}`;
-                const ct = c.transform;
-                const componentTransform: ComponentInstance['transform'] = ct
-                    ? {
-                          x: ct.x ?? transform.x,
-                          y: ct.y ?? transform.y,
-                          z: ct.z ?? transform.z,
-                          w: ct.w ?? transform.w,
-                          h: ct.h ?? transform.h,
-                          scale: ct.scale ?? transform.scale,
-                          rotation: ct.rotation ?? transform.rotation,
-                      }
-                    : transform;
                 map.set(id, {
                     id,
                     type: c.type,
@@ -147,11 +125,11 @@ export function EditorPreview({
                     // 落とすと EditorOverlayStage が一致せず、編集画面だけスクロールしてしまう。
                     overlay: c.overlay,
                     data: (c.data as Record<string, unknown> | undefined) ?? {},
-                    transform: componentTransform,
+                    transform: componentTransformOf(transform, c.transform),
                 });
             });
             entity.children?.forEach((child, childIdx) => {
-                walk(child, { x: absX, y: absY, z: absZ }, [...pathPrefix, childIdx], entity.id);
+                walk(child, transform, [...pathPrefix, childIdx], entity.id);
             });
         };
         definition.spec.initialEntities.forEach((e, ei) => {
@@ -400,6 +378,7 @@ function PreviewStage({
 
     return (
         <div
+            data-editor-world
             onMouseDown={(e) => {
                 if (e.target === e.currentTarget) onBackgroundMouseDown?.();
             }}

@@ -152,6 +152,22 @@ describe('flattenGameObject', () => {
         expect(result[0].transform.h).toBe(240);
     });
 
+    it('子の Component が w だけ上書きすれば、位置は親から足し、h は子 Entity から継ぐ', () => {
+        const [, sign] = flattenGameObject(
+            makeEntity({
+                transform: { x: 10, y: 20, z: 0, scale: 2, rotation: 0 },
+                children: [
+                    makeEntity({
+                        id: 'sign',
+                        transform: { x: 5, y: 6, z: 0, h: 80, scale: 1, rotation: 0 },
+                        components: [{ type: 'demo:sign', data: {}, transform: { w: 200 } }],
+                    }),
+                ],
+            }),
+        );
+        expect(sign.transform).toEqual({ x: 15, y: 26, z: 0, w: 200, h: 80, scale: 1, rotation: 0 });
+    });
+
     // overlay は「画面固定HUDとして描画するか」を Host のレンダラへ伝える唯一の経路なので、
     // ここで落ちると mod 側からは原因が全く見えないまま HUD がワールド座標へ流れる。
     it('overlay（画面固定の基準の角）を ComponentInstance へ引き継ぐ', () => {

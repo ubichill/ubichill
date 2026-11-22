@@ -1,4 +1,4 @@
-import { type DataFieldsLike, type InitialEntity, remapRefs } from '@ubichill/shared';
+import { type DataFieldsLike, type InitialEntity, LIMITS, remapRefs } from '@ubichill/shared';
 import { WORLD_NAME_MAX_LENGTH as ENTITY_ID_MAX_LENGTH, toWorldName } from '../../../lib/worlds/worldName';
 
 /** Component 型 → その dataFields（参照フィールドを見分けるのに使う）。mod の取得前は undefined。 */
@@ -189,6 +189,30 @@ export function renameEntity(
     return remapEntityRefs(renamed, new Map([[self.id, newId]]), fieldsOf);
 }
 
+/** id の Entity の id を変える（使われていれば番号を付け、参照も付け替える）。その id の Entity が無ければ変えない。 */
+export function renameEntityById(
+    entities: InitialEntity[],
+    id: string,
+    input: string,
+    fieldsOf: RefFieldsOf,
+): InitialEntity[] {
+    const path = findEntityPath(entities, id);
+    const newId = toRenamedEntityId(
+        input,
+        collectEntityIds(entities).filter((taken) => taken !== id),
+    );
+    return path && newId ? renameEntity(entities, path, newId, fieldsOf) : entities;
+}
+
+/** id の Entity の表示名を変える（空なら外して id を出す）。その id の Entity が無ければ変えない。 */
+export function setEntityName(entities: InitialEntity[], id: string, input: string): InitialEntity[] {
+    const path = findEntityPath(entities, id);
+    const name = input.trim().slice(0, LIMITS.MAX_ENTITY_NAME_LENGTH);
+    return path
+        ? updateEntityAt(entities, path, ({ name: _old, ...rest }) => (name ? { ...rest, name } : rest))
+        : entities;
+}
+
 /**
  * Entity subtree をディープコピーし、自分と子孫全ての id を `taken` と衝突しないよう採番する。
  * children を含む全 entity が新 id を持つ (= 永続化したときに id 競合しない)。
@@ -284,7 +308,7 @@ export interface FlatEntityNode {
 }
 
 /** ツリーを Stage 表示用に flatten する純関数。親基準の transform.x/y を絶対化する。 */
-export function flattenForStage(entities: InitialEntity[]): FlatEntityNode[] {
+export function flattenForStage(entities: readonly InitialEntity[]): FlatEntityNode[] {
     const out: FlatEntityNode[] = [];
     const walk = (entity: InitialEntity, path: EntityPath, origin: { x: number; y: number; z: number }) => {
         const t = entity.transform;
