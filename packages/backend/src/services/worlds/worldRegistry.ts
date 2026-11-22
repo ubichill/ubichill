@@ -45,10 +45,17 @@ import { isAuthorKey, resolveAuthorDisplayName } from '../authors/authorKeyServi
 import { selfAccount, selfDomain } from '../authors/authorKeys';
 import { type BackendEvents, backendEvents } from '../cluster/backendEvents';
 import { SYSTEM_USER_ID } from '../users/systemUser';
-import { authorSharePath, localAuthorWorldOf, worldConfirmation } from './externalWorks';
+import {
+    authorSharePath,
+    authorWorldOf,
+    canonicalWorldUrl,
+    localAuthorWorldOf,
+    worldConfirmation,
+} from './externalWorks';
 import { federatedCandidates, uniqueByWorldId } from './federatedWorlds';
 import { createRemoteWorldCache } from './remoteWorldCache';
 import {
+    asRemotePrivateWorld,
     normalizeWorldUrl,
     resolveBundle,
     resolveWorldFromUrl,
@@ -155,6 +162,16 @@ export function asUnsignedRepositoryWorld(hosted: HostedWorldDocument): HostedWo
 }
 
 const serveUnsignedRepositoryWorlds = (): boolean => process.env.WORLDS_SERVE_UNSIGNED_REPOSITORY === 'true';
+
+/** 同じワールドのファイルか（開発の http も同じとみなすので、スキームは比べない）。 */
+function sameWorldFile(a: string, b: string): boolean {
+    try {
+        const [x, y] = [new URL(normalizeWorldUrl(a)), new URL(normalizeWorldUrl(b))];
+        return x.host === y.host && x.pathname === y.pathname && x.search === y.search;
+    } catch {
+        return false;
+    }
+}
 
 /** 一覧（このサーバーの一覧・お気に入り・連合のピアへの一覧）に出すか。プライベートは作者のマイワールドにだけ出す。 */
 const isListed = (world: { visibility?: WorldVisibility }): boolean => world.visibility !== 'private';
@@ -618,9 +635,41 @@ class WorldRegistry {
         }
     }
 
-    /** 外部（他インスタンス/任意 URL）のワールドをその場で解決する（連合）。TTL キャッシュ（失敗も短時間）。 */
-    private _resolveRemote(url: string): Promise<WorldResolution> {
-        return this._remoteCache.resolve(url);
+    /**
+     * 外部（他インスタンス/任意 URL）のワールドをその場で解決する（連合）。TTL キャッシュ（失敗も短時間）。
+     * 公開範囲は取ってきた URL ではなく署名の作者で決める（_withAuthorVisibility）。
+     */
+    private async _resolveRemote(url: string): Promise<WorldResolution> {
+        return this._withAuthorVisibility(url, await this._remoteCache.resolve(url));
+    }
+
+    /**
+     * 署名の作者の公開範囲を当てる。プライベートのワールドのファイル（誰にでも配る）を別の場所に置き直しても、
+     * 同じ署名の作者のワールドとして部屋を作らせないため。
+     * - 作者がこのサーバーのアカウント: その作者のワールド（以前の名前を含む）の今の公開範囲と作者の ID
+     * - 作者がほかのサーバー: 作者のサーバーの正規の URL のヘッダー（外部のワールドと同じく 5 分覚える）。正規の URL を
+     *   取れない・無い（消した・名前を変えたあと）ならパブリック。取ってきた URL がそのワールドの正規の URL なら、そのヘッダーのまま
+     * 署名の無い写し（署名を外して置き直したもの）は別のワールド（未署名）なので、ここでは扱えない。
+     */
+    private async _withAuthorVisibility(url: string, resolution: WorldResolution): Promise<WorldResolution> {
+        if (!resolution.ok) return resolution;
+        const { world } = resolution;
+        const owner = authorWorldOf(world.identity);
+        if (!owner) return resolution;
+        if (owner.domain === selfDomain()) {
+            if (world.identity?.status === 'verified' && world.identity.authorPending) return resolution;
+            const located = await this._locate(owner.handle, owner.name);
+            if (!located?.record) return resolution;
+            const local = await this.resolveLocal(located.id);
+            const visibility: WorldVisibility = local.ok ? (local.world.visibility ?? 'public') : 'private';
+            return { ok: true, world: { ...world, visibility, authorId: located.record.authorId } };
+        }
+        const canonical = canonicalWorldUrl(owner);
+        if (sameWorldFile(url, canonical)) return resolution;
+        const upstream = await this._remoteCache.resolve(canonical);
+        return upstream.ok && upstream.world.visibility === 'private'
+            ? { ok: true, world: asRemotePrivateWorld(world) }
+            : resolution;
     }
 
     /** 外部のワールドを取り直して解決する（作者が公開し直したのを確かめ直すとき。呼び出し側で回数を抑えること）。 */
