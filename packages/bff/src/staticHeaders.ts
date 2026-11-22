@@ -5,7 +5,7 @@ import { isSandboxWorkerScriptPath, SANDBOX_WORKER_CSP } from '@ubichill/shared'
  * - Sandbox Worker のスクリプト: Worker 専用の CSP（Worker の CSP はページではなくこのレスポンスで決まる）。
  * - /mods 配下: no-cache。ハッシュ付きファイル: immutable。
  * - フロントの version.json: no-store（更新の有無の確認に使う）。
- * - 公式ワールドのサムネイル: ほかのサーバーのエディタが入口ごと撮れるように、どのオリジンからも読ませる。
+ * - 公式ワールドのサムネイル: ほかのサーバーのエディタがポータルごと撮れるように、どのオリジンからも読ませる。
  */
 export function staticAssetHeaders(filePath: string): Record<string, string> {
     const csp: Record<string, string> = isSandboxWorkerScriptPath(filePath)

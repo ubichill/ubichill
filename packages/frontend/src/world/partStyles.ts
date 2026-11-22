@@ -1,6 +1,6 @@
 import { css } from '@/styled-system/css';
 
-/** 本体の部品のボタン（入口・ワープ・スイッチ）。Entity の矩形いっぱいに置く。 */
+/** 本体の部品のボタン（ポータル・ワープ・スイッチ）。Entity の矩形いっぱいに置く。 */
 export const partButton = css({
     display: 'flex',
     alignItems: 'center',

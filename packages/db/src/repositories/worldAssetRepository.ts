@@ -186,12 +186,14 @@ export const worldAssetRepository = {
      * 消したものを返す。自動で消すのを止めた人（user_settings.world_asset_auto_cleanup）の画像は消さない。だれのワールドから指されていても残す（複製したワールドはほかの人の画像を指す）。
      * 定義は 1 回だけ読んでハッシュを抜き出す（画像ごとに全部の定義を探すと、画像の数 × 定義の大きさになる）。
      * 掃除と同時の上げ直し（created_at を今にする）が先に終われば、DELETE が行を読み直して消さない。
-     * 定義の保存とは {@link lockWorldAssetReferences} で順番にする（1 回の間、保存を待たせるので limit を小さく保つ）。
+     * 定義の保存とは {@link lockWorldAssetReferences} で順番にする（1 回の間、保存を待たせる）。
+     * DELETE のスナップショットをロックの後に取るため READ COMMITTED に固定する（REPEATABLE READ だと最初の文で決まり、競合が戻る）。
      */
     async removeUnreferenced(cutoff: Date, limit: number): Promise<RemovedWorldAsset[]> {
-        return db.transaction(async (tx) => {
-            await lockWorldAssetReferences(tx, 'sweep');
-            const rows = await tx.execute<{ owner_id: string; hash: string; byte_size: number }>(sql`
+        return db.transaction(
+            async (tx) => {
+                await lockWorldAssetReferences(tx, 'sweep');
+                const rows = await tx.execute<{ owner_id: string; hash: string; byte_size: number }>(sql`
                 WITH referenced AS MATERIALIZED (
                     SELECT DISTINCT m[1] AS hash
                     FROM (
@@ -216,8 +218,10 @@ export const worldAssetRepository = {
                 WHERE a.owner_id = doomed.owner_id AND a.hash = doomed.hash
                   AND a.created_at < ${cutoff.toISOString()}::timestamptz
                 RETURNING a.owner_id, a.hash, a.byte_size`);
-            return rows.map((row) => ({ ownerId: row.owner_id, hash: row.hash, byteSize: row.byte_size }));
-        });
+                return rows.map((row) => ({ ownerId: row.owner_id, hash: row.hash, byteSize: row.byte_size }));
+            },
+            { isolationLevel: 'read committed' },
+        );
     },
 
     /** 消せたら true。ほかの人が同じ画像を上げていれば、その人の分は残る（URL は使い続けられる）。 */

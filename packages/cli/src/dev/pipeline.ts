@@ -178,10 +178,7 @@ export function synthesizeFromArtifacts(mods: ReadonlyMap<string, ModArtifacts>)
         const prefab = manifest.prefabs?.[name];
         if (!prefab) continue;
         const rest = spec.initialEntities.filter((e) => e.id !== mod.id);
-        spec.initialEntities = [
-            ...rest,
-            instantiatePrefab(mod.lockEntry, name, prefab, manifest.components, rest, mod.id),
-        ];
+        spec.initialEntities = [...rest, instantiatePrefab(mod.lockEntry, name, prefab, manifest.components, rest)];
     }
     return world;
 }

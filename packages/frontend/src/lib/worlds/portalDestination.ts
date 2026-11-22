@@ -15,7 +15,7 @@ export function portalWorldRef(target: PortalTarget): string {
 }
 
 /**
- * 入口の行き先を引く関数を作る。同じ行き先は 1 回だけ引く（部屋に同じ入口がいくつあっても、描き直しても）。
+ * ポータルの行き先を引く関数を作る。同じ行き先は 1 回だけ引く（部屋に同じポータルがいくつあっても、描き直しても）。
  * 引けなかった行き先も覚える（無いワールドを何度も問い合わせない。部屋を入り直せば引き直す）。
  */
 export function createPortalLookup(

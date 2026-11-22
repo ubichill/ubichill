@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 import { scrollWorldTo } from './scrollWorld';
 import { spawnCenter } from './worldPlaces';
 
-/** 部屋に入ったとき 1 回だけ、最初の場所（core:spawn）が画面の中心に来るようにする。引っ越しで届き直すスナップショットでは動かさない。 */
+/** 部屋に入ったとき 1 回だけ、スポーン（core:spawn）が画面の中心に来るようにする。引っ越しで届き直すスナップショットでは動かさない。 */
 export function useSpawnScroll(): void {
     const { entities, environment, hiddenEntities } = useWorld();
     const placed = useRef(false);

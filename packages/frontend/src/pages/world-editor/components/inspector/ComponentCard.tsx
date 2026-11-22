@@ -30,12 +30,16 @@ interface ComponentCardProps {
     /** entityRef/entityRefArray フィールドの D&D 解決に使うワールド全体の Entity ツリー。 */
     allEntities?: InitialEntity[];
     initiallyExpanded: boolean;
+    /** この Component について作者に知らせること（畳んでいても見せる） */
+    notices?: readonly string[];
     onChange: (updater: (prev: InitialEntity) => InitialEntity) => void;
     onDelete: () => void;
 }
 
 /** 既知だがスキーマを持たない（= 編集可能設定が無い）コンポーネント用の空スキーマ（参照固定）。 */
 const EMPTY_SCHEMA: DataFields = {};
+
+const NO_NOTICES: readonly string[] = [];
 
 const OVERLAY_MODE_LABELS: Record<(typeof OVERLAY_MODES)[number], string> = {
     'top-left': '左上を基準',
@@ -57,6 +61,7 @@ export function ComponentCard({
     viewKind,
     allEntities,
     initiallyExpanded,
+    notices = NO_NOTICES,
     onChange,
     onDelete,
 }: ComponentCardProps) {
@@ -127,6 +132,11 @@ export function ComponentCard({
                     <CloseIcon />
                 </button>
             </div>
+            {notices.length > 0 && (
+                <div className={css({ px: '10px', pb: '8px' })}>
+                    <EditorNotices messages={notices} />
+                </div>
+            )}
             {expanded && (
                 <div
                     className={css({

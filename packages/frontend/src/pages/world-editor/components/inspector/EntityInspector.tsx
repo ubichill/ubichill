@@ -1,5 +1,7 @@
 import type { InitialEntity } from '@ubichill/shared';
+import { useMemo } from 'react';
 import { css } from '@/styled-system/css';
+import { idleButtonScripts } from '@/world/entityButton';
 import type { AvailableEntityKind } from '../../hooks/useAvailableEntityKinds';
 import { ComponentCard } from './ComponentCard';
 import { ComponentPicker } from './ComponentPicker';
@@ -23,9 +25,25 @@ interface EntityInspectorProps {
     onAddComponent: (type: string) => void;
     onDeleteComponent: (componentIndex: number) => void;
     onDeleteEntity: () => void;
-    onRenameEntity: (newId: string) => void;
+    /** entityId は編集を始めたときの Entity（確定までに選び直しても、そちらは変えない） */
+    onRenameEntity: (entityId: string, newId: string) => void;
+    /** 表示名を変える（空なら外す） */
+    onSetName: (entityId: string, name: string) => void;
     /** この Entity の Component の参照の問題（未設定の必須参照・動画面の競合など）。 */
     referenceProblems: readonly string[];
+}
+
+const IDLE_PORTAL_NOTICE = 'ボタンで動くポータルは最初の 1 つだけです。このポータルは動きません';
+
+/** UI のボタンを押しても動かない Component の位置（2 つ目からのポータル）。 */
+function idleComponentIndexes(entity: InitialEntity): ReadonlySet<number> {
+    const parts = entity.components.map((c, index) => ({
+        id: String(index),
+        type: c.type,
+        data: c.data,
+        entityId: entity.id,
+    }));
+    return new Set(idleButtonScripts(parts, entity.id).map(Number));
 }
 
 /**
@@ -44,6 +62,7 @@ export function EntityInspector({
     onDeleteComponent,
     onDeleteEntity,
     onRenameEntity,
+    onSetName,
     referenceProblems,
 }: EntityInspectorProps) {
     const t = entity.transform;
@@ -51,6 +70,7 @@ export function EntityInspector({
         onChange((prev) => ({ ...prev, transform: { ...prev.transform, ...patch } }));
     const maxW = worldSize?.width;
     const maxH = worldSize?.height;
+    const idleScripts = useMemo(() => idleComponentIndexes(entity), [entity]);
 
     return (
         <div
@@ -63,7 +83,7 @@ export function EntityInspector({
                 gap: '4',
             })}
         >
-            <EntityHeader entity={entity} onDelete={onDeleteEntity} onRename={onRenameEntity} />
+            <EntityHeader entity={entity} onDelete={onDeleteEntity} onRename={onRenameEntity} onSetName={onSetName} />
             <EditorNotices messages={referenceProblems} />
 
             <Section label={isChild ? 'Transform (親基準)' : 'Transform'}>
@@ -142,6 +162,7 @@ export function EntityInspector({
                             viewKind={availableKinds.find((k) => k.kind === c.type)?.viewKind}
                             allEntities={allEntities}
                             initiallyExpanded={ci === initiallyExpandedComponentIndex}
+                            notices={idleScripts.has(ci) ? [IDLE_PORTAL_NOTICE] : undefined}
                             onChange={onChange}
                             onDelete={() => onDeleteComponent(ci)}
                         />
