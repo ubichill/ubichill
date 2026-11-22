@@ -3,6 +3,7 @@
  * 画面の URL（`/instance/:住所`）・招待の通知・フレンドの現在地で同じ形を使い、どのサーバーの部屋でも同じ流れで入れる。
  */
 import { isServerDomain } from '../../account/handle';
+import { hostOf } from '../urls';
 
 /** 部屋の ID（nanoid・UUID）。`@` を含まないので住所と取り違えない。 */
 const ROOM_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
@@ -13,15 +14,22 @@ export interface RoomAddress {
     domain: string | null;
 }
 
+/**
+ * ドメインを URL のホストと同じ形にそろえる（https の既定のポート `:443` を外し、ポートの頭の 0 を外す）。
+ * 部屋の URL のホスト（hostOf）・このサーバーのドメイン（URL の host）と同じ読み方にするため。ポートが範囲の外なら null。
+ */
+const normalizedDomain = (domain: string): string | null => hostOf(`https://${domain}`);
+
 /** 住所を分解する。自分のドメインを付けた住所はこのサーバーの部屋として扱う。不正なら null。 */
 export function parseRoomAddress(input: string, selfDomain: string): RoomAddress | null {
     const at = input.lastIndexOf('@');
     const id = at < 0 ? input : input.slice(0, at);
     if (!ROOM_ID_PATTERN.test(id)) return null;
     if (at < 0) return { id, domain: null };
-    const domain = input.slice(at + 1).toLowerCase();
-    if (!isServerDomain(domain)) return null;
-    return { id, domain: domain === selfDomain.toLowerCase() ? null : domain };
+    const raw = input.slice(at + 1).toLowerCase();
+    const domain = isServerDomain(raw) ? normalizedDomain(raw) : null;
+    if (domain === null || !isServerDomain(domain)) return null;
+    return { id, domain: domain === (normalizedDomain(selfDomain.toLowerCase()) ?? '') ? null : domain };
 }
 
 /**
