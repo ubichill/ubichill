@@ -111,3 +111,22 @@ export function CameraIcon({ size = 14 }: { size?: number }) {
         </svg>
     );
 }
+
+/** 置いたプレハブ（重なった 2 つの箱）。 */
+export function PrefabIcon({ size = 14 }: { size?: number }) {
+    return (
+        <svg
+            width={size}
+            height={size}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinejoin="round"
+            aria-hidden="true"
+        >
+            <rect x="3" y="9" width="10" height="10" rx="2" />
+            <rect x="11" y="4" width="10" height="10" rx="2" />
+        </svg>
+    );
+}

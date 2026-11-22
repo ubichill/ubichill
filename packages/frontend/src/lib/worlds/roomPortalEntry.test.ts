@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { type RoomStatus, roomPortalRefusal, roomRefusal } from './roomPortalEntry';
+import { ROOM_STATUS_TIMEOUT_MS, type RoomStatus, roomPortalRefusal, roomRefusal } from './roomPortalEntry';
 
 const room = (currentUsers: number, overrides: Partial<RoomStatus> = {}): RoomStatus => ({
     canJoin: true,
@@ -30,11 +30,17 @@ describe('roomRefusal', () => {
     });
 });
 
+describe('ROOM_STATUS_TIMEOUT_MS', () => {
+    it('ほかのサーバーの部屋を backend が尋ねる上限（25 秒ほど）より長い', () => {
+        expect(ROOM_STATUS_TIMEOUT_MS).toBeGreaterThan(25_000);
+    });
+});
+
 describe('roomPortalRefusal', () => {
     it('出る直前に部屋を引き直す: ポータルを出したあとに満員になった部屋には入らない', async () => {
         const fetchRoom = vi.fn(async () => room(4));
         expect(await roomPortalRefusal(fetchRoom, 'abc@room.example', 'me')).toBe('full');
-        expect(fetchRoom).toHaveBeenCalledWith('abc@room.example');
+        expect(fetchRoom).toHaveBeenCalledWith('abc@room.example', expect.any(AbortSignal));
     });
 
     it('満員だった部屋に空きができていれば入る', async () => {
@@ -59,9 +65,22 @@ describe('roomPortalRefusal', () => {
     it('応答が無ければ時間で諦め、入らずに unknown（移る流れを止め続けない）', async () => {
         vi.useFakeTimers();
         try {
-            const hung = roomPortalRefusal(() => new Promise<RoomStatus | null>(() => undefined), 'abc', 'me', 1000);
-            await vi.advanceTimersByTimeAsync(1000);
+            const signals: AbortSignal[] = [];
+            const hung = roomPortalRefusal(
+                (_address, signal) => {
+                    if (signal) signals.push(signal);
+                    return new Promise<RoomStatus | null>(() => undefined);
+                },
+                'abc',
+                'me',
+                1000,
+            );
+            await vi.advanceTimersByTimeAsync(999);
+            expect(signals[0]?.aborted).toBe(false);
+            await vi.advanceTimersByTimeAsync(1);
             expect(await hung).toBe('unknown');
+            // 時間切れの問い合わせは取り消す（応答を待ち続けない）
+            expect(signals[0]?.aborted).toBe(true);
         } finally {
             vi.useRealTimers();
         }

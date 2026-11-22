@@ -7,6 +7,8 @@ import {
     type RefFieldsOf,
     remapEntityRefs,
     renameEntity,
+    renameEntityById,
+    setEntityName,
     toRenamedEntityId,
 } from './entityTree';
 
@@ -140,6 +142,50 @@ describe('renameEntity', () => {
     it('同じ id への改名・存在しない path は何も変えない', () => {
         expect(renameEntity(world, [0, 0], 'tv', fieldsOf)).toBe(world);
         expect(renameEntity(world, [9], 'x', fieldsOf)).toBe(world);
+    });
+});
+
+describe('名前・ID の確定は、編集を始めた Entity（id）に書く', () => {
+    // alpha の名前を書いている途中で beta を選び直しても、確定は alpha に付く（選んでいる場所では決めない）
+    const world = [
+        entity('alpha', []),
+        entity('beta', [], [entity('tv', [{ type: 'core:media', data: {} }])]),
+        entity('remote', [{ type: 'vp:controls', data: { screen: 'tv' } }]),
+    ];
+
+    it('表示名は id の Entity にだけ付け、前後の空白を落とす', () => {
+        const next = setEntityName(world, 'alpha', '  テーブル ');
+        expect(next[0]?.name).toBe('テーブル');
+        expect(next[1]?.name).toBeUndefined();
+    });
+
+    it('子孫の Entity も id で探す。空にすると名前を外す（空文字を残さない）', () => {
+        const named = setEntityName(world, 'tv', '画面');
+        expect(getEntityAt(named, [1, 0])?.name).toBe('画面');
+        const cleared = setEntityName(named, 'tv', '   ');
+        expect(getEntityAt(cleared, [1, 0])).not.toHaveProperty('name');
+    });
+
+    it('長すぎる名前は上限で切る', () => {
+        expect(setEntityName(world, 'alpha', 'あ'.repeat(80))[0]?.name).toHaveLength(50);
+    });
+
+    it('確定までにその Entity が消えた・id が変わったなら、何も変えない（別の Entity に書かない）', () => {
+        expect(setEntityName(world, 'gone', 'x')).toBe(world);
+        expect(renameEntityById(world, 'gone', 'x', fieldsOf)).toBe(world);
+    });
+
+    it('ID は id の Entity を変え、参照も付け替える', () => {
+        const next = renameEntityById(world, 'tv', 'screen', fieldsOf);
+        expect(getEntityAt(next, [1, 0])?.id).toBe('screen');
+        expect(next[2]?.components[0]?.data.screen).toBe('screen');
+        expect(next[0]?.id).toBe('alpha');
+    });
+
+    it('ほかの Entity の ID にすれば番号を付け、自分の ID のままなら変えない', () => {
+        expect(renameEntityById(world, 'alpha', 'beta', fieldsOf)[0]?.id).toBe('beta2');
+        expect(renameEntityById(world, 'alpha', 'alpha', fieldsOf)).toBe(world);
+        expect(renameEntityById(world, 'alpha', '---', fieldsOf)).toBe(world);
     });
 });
 

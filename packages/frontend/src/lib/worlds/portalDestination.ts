@@ -24,7 +24,7 @@ const destinationOf = (world: WorldLook): PortalDestination => ({
 
 /** 部屋へのポータルの行き先を引く手段。部屋の詳細（無い・見る人に見えなければ null）と、満員の判定に使う見る人。 */
 export interface PortalRoomSource {
-    fetch: (address: string) => Promise<(RoomStatus & { world: WorldLook }) | null>;
+    fetch: (address: string, signal?: AbortSignal) => Promise<(RoomStatus & { world: WorldLook }) | null>;
     viewerId: string | null;
 }
 
@@ -57,7 +57,7 @@ export function createPortalLookup(
     const lastRooms = new Map<string, PortalDestination | null>();
 
     const loadRoom = (source: PortalRoomSource, room: string): Promise<PortalDestination | null> =>
-        withinTime(source.fetch(room), timeoutMs)
+        withinTime((signal) => source.fetch(room, signal), timeoutMs)
             .then(
                 (found): PortalDestination | null =>
                     found && {

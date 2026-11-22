@@ -42,12 +42,13 @@ export async function fetchInstances(worldId?: string): Promise<Instance[]> {
     return data.instances ?? [];
 }
 
-export async function fetchInstance(instanceId: string): Promise<Instance> {
+export async function fetchInstance(instanceId: string, signal?: AbortSignal): Promise<Instance> {
     const via = viaOf(instanceId);
     const query = via.length > 0 ? `?${new URLSearchParams(via.map((v) => ['via', v])).toString()}` : '';
     const res = await fetch(`${API_BASE}/api/v1/instances/${encodeURIComponent(instanceId)}${query}`, {
         credentials: 'include',
         cache: 'no-store',
+        signal,
     });
     if (res.status === 404)
         throw new InstanceNotFoundError(await readErrorMessage(res, 'インスタンスが見つかりません'));

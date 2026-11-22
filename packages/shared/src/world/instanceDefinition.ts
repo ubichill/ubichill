@@ -7,10 +7,11 @@ import {
     type AvailableComponent,
     type ComponentInstance,
     EMPTY_ENTITY_TYPE,
+    type EntityTransform,
     type WorldEnvironmentData,
 } from '../mod/entities';
 import type { ModLock } from '../schemas/modLock.schema';
-import type { InitialEntity, ResolvedWorld } from '../schemas/world.schema';
+import type { EntityComponentDef, InitialEntity, ResolvedWorld } from '../schemas/world.schema';
 
 /**
  * ワールドスナップショットペイロード（flat ComponentInstance 単位）。
@@ -40,6 +41,42 @@ export interface InstanceDefinition {
 }
 
 /**
+ * Entity の transform を親の原点で絶対化し、省略を埋める。w/h の省略は 0（大きさを中身に任せる）。
+ * 実行時（flattenGameObject）とエディタの描画・範囲計算が同じ値を使うように 1 か所にする。
+ */
+export function absoluteEntityTransform(
+    t: InitialEntity['transform'],
+    parentOrigin: { x: number; y: number; z: number },
+): EntityTransform {
+    return {
+        x: parentOrigin.x + t.x,
+        y: parentOrigin.y + t.y,
+        z: parentOrigin.z + (t.z ?? 0),
+        w: t.w ?? 0,
+        h: t.h ?? 0,
+        scale: t.scale ?? 1,
+        rotation: t.rotation ?? 0,
+    };
+}
+
+/** Component の transform 上書きを Entity の絶対 transform に当てる。x/y も相対ではなく絶対値で上書きする。 */
+export function componentTransformOf(
+    entity: EntityTransform,
+    override: EntityComponentDef['transform'],
+): EntityTransform {
+    if (!override) return entity;
+    return {
+        x: override.x ?? entity.x,
+        y: override.y ?? entity.y,
+        z: override.z ?? entity.z,
+        w: override.w ?? entity.w,
+        h: override.h ?? entity.h,
+        scale: override.scale ?? entity.scale,
+        rotation: override.rotation ?? entity.rotation,
+    };
+}
+
+/**
  * GameObject ツリーを 1 Component = 1 ComponentInstance に展開する純関数。
  * 子 Entity の transform.x/y は親基準の相対座標 → 親 origin を加算して絶対化する。
  * w/h は未指定 (undefined) なら 0 を入れて「サイズ未指定 = 自然サイズ尊重」を表す。
@@ -53,19 +90,7 @@ export function flattenGameObject(
     parentOrigin: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 },
     parentEntityId?: string,
 ): ComponentInstance[] {
-    const t = gameObject.transform;
-    const absX = parentOrigin.x + t.x;
-    const absY = parentOrigin.y + t.y;
-    const absZ = parentOrigin.z + (t.z ?? 0);
-    const transform: ComponentInstance['transform'] = {
-        x: absX,
-        y: absY,
-        z: absZ,
-        w: t.w ?? 0,
-        h: t.h ?? 0,
-        scale: t.scale ?? 1,
-        rotation: t.rotation ?? 0,
-    };
+    const transform = absoluteEntityTransform(gameObject.transform, parentOrigin);
     const components = gameObject.components ?? [];
     const own: ComponentInstance[] =
         components.length === 0
@@ -81,36 +106,22 @@ export function flattenGameObject(
                       data: {},
                   },
               ]
-            : components.map((c, i) => {
-                  const ct = c.transform;
-                  const componentTransform: ComponentInstance['transform'] = ct
-                      ? {
-                            x: ct.x ?? transform.x,
-                            y: ct.y ?? transform.y,
-                            z: ct.z ?? transform.z,
-                            w: ct.w ?? transform.w,
-                            h: ct.h ?? transform.h,
-                            scale: ct.scale ?? transform.scale,
-                            rotation: ct.rotation ?? transform.rotation,
-                        }
-                      : transform;
-                  return {
-                      // 永続 id (c.id) があればそれを使い、並べ替え・挿入・削除をしても他
-                      // Component の flat id が変わらないようにする。省略時 (旧データ) は
-                      // 従来通り index フォールバックにする。
-                      id: `${gameObject.id}::${c.id ?? i}`,
-                      type: c.type,
-                      entityId: gameObject.id,
-                      parentEntityId,
-                      ownerId: null,
-                      lockedBy: null,
-                      overlay: c.overlay,
-                      transform: componentTransform,
-                      data: c.data ?? {},
-                  };
-              });
+            : components.map((c, i) => ({
+                  // 永続 id (c.id) があればそれを使い、並べ替え・挿入・削除をしても他
+                  // Component の flat id が変わらないようにする。省略時 (旧データ) は
+                  // 従来通り index フォールバックにする。
+                  id: `${gameObject.id}::${c.id ?? i}`,
+                  type: c.type,
+                  entityId: gameObject.id,
+                  parentEntityId,
+                  ownerId: null,
+                  lockedBy: null,
+                  overlay: c.overlay,
+                  transform: componentTransformOf(transform, c.transform),
+                  data: c.data ?? {},
+              }));
     const fromChildren = (gameObject.children ?? []).flatMap((child) =>
-        flattenGameObject(child, { x: absX, y: absY, z: absZ }, gameObject.id),
+        flattenGameObject(child, transform, gameObject.id),
     );
     return [...own, ...fromChildren];
 }

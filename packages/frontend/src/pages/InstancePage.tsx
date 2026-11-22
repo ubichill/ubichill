@@ -18,7 +18,7 @@ import { blockedAuthorsOf, blockedIdsOf } from '@/lib/social/blocksState';
 import { dismissToast, pushToast } from '@/lib/toast';
 import { createInstance, fetchInstance, fetchInstances, fetchWorld } from '@/lib/worlds/instancesApi';
 import { createPortalLookup, portalWorldRef } from '@/lib/worlds/portalDestination';
-import { portalRoomPath } from '@/lib/worlds/portalPath';
+import { canonicalRoomId, portalRoomPath } from '@/lib/worlds/portalPath';
 import { ROOM_PORTAL_REFUSAL_MESSAGES, roomPortalRefusal } from '@/lib/worlds/roomPortalEntry';
 import { useRemoteVisit } from '@/lib/worlds/useRemoteVisit';
 import { worldPortalInstance } from '@/lib/worlds/worldPortalEntry';
@@ -30,8 +30,8 @@ const RETURN_HOME_MS = 5000;
 const RETRY_MESSAGE = '元の部屋には入れませんでした';
 
 /** 部屋を引く。無い・見る人に見えない部屋（404）は null、ほかの失敗はそのまま。 */
-const fetchRoomOrGone = (address: string): Promise<Instance | null> =>
-    fetchInstance(address).catch((error: unknown) => {
+const fetchRoomOrGone = (address: string, signal?: AbortSignal): Promise<Instance | null> =>
+    fetchInstance(address, signal).catch((error: unknown) => {
         if (error instanceof InstanceNotFoundError) return null;
         throw error;
     });
@@ -102,6 +102,19 @@ export function InstancePage() {
 
     // 入れなかった部屋へ戻る導線は、ホームに入れてから出し、この部屋を出たら消す
     const retryToast = useRef<number | null>(null);
+    // 自分のドメインを付けた住所で来たら、このサーバーの部屋の ID のページに置き換える（招待・来訪の知らせを同じ部屋に向ける）
+    const handleInstanceId = useCallback(
+        (fetchedId: string) => {
+            const local = id ? canonicalRoomId(id, fetchedId) : null;
+            if (!local) return false;
+            navigate(`${portalRoomPath(local)}${location.search}`, {
+                replace: true,
+                state: location.state,
+            });
+            return true;
+        },
+        [id, location.search, location.state, navigate],
+    );
     const handleEntered = useCallback(() => {
         recordEntryOutcome(sessionStorage, 'entered');
         const { retryPath } = entry;
@@ -177,7 +190,7 @@ export function InstancePage() {
     const portalLookup = useMemo(
         () =>
             createPortalLookup(fetchWorld, {
-                fetch: (room) => fetchRoomOrGone(roomPortalAddressFor(room, id ?? '')),
+                fetch: (room, signal) => fetchRoomOrGone(roomPortalAddressFor(room, id ?? ''), signal),
                 viewerId,
             }),
         [id, viewerId],
@@ -198,6 +211,7 @@ export function InstancePage() {
             recovery={recovery}
             onFailed={handleFailed}
             onEntered={handleEntered}
+            onInstanceId={handleInstanceId}
             onPortal={goThroughPortal}
             portalLookup={portalLookup}
         >

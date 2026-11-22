@@ -19,14 +19,22 @@ export function roomRefusal(room: RoomStatus, viewerId: string | null): 'closed'
     return isFullFor(room, viewerId) ? 'full' : null;
 }
 
-/** 部屋を引くのを待つ上限（ms）。応答の無い問い合わせで、その部屋の引き直しや移る前の確認を止め続けない。 */
-export const ROOM_STATUS_TIMEOUT_MS = 8_000;
+/**
+ * 部屋を引くのを待つ上限（ms）。応答の無い問い合わせで、その部屋の引き直しや移る前の確認を止め続けない。
+ * ほかのサーバーの部屋は backend が部屋のサーバーに尋ねるので、その上限（対応の確認・部屋の作りの取得 10 秒・
+ * ワールドの確認 5 秒で、合わせて 25 秒ほど）より長くする（遅くても答えるサーバーの部屋を「確かめられない」にしない）。
+ */
+export const ROOM_STATUS_TIMEOUT_MS = 30_000;
 
-/** ms のうちに決まらなければ失敗にする。 */
-export function withinTime<T>(promise: Promise<T>, ms: number): Promise<T> {
+/** ms のうちに決まらなければ失敗にし、start に渡した signal で問い合わせも取り消す。 */
+export function withinTime<T>(start: (signal: AbortSignal) => Promise<T>, ms: number): Promise<T> {
+    const controller = new AbortController();
     return new Promise<T>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('timeout')), ms);
-        promise.then(
+        const timer = setTimeout(() => {
+            controller.abort();
+            reject(new Error('timeout'));
+        }, ms);
+        start(controller.signal).then(
             (value) => {
                 clearTimeout(timer);
                 resolve(value);
@@ -45,12 +53,12 @@ export function withinTime<T>(promise: Promise<T>, ms: number): Promise<T> {
  * 入れない・確かめられなければわけを返し、呼ぶ側は今の部屋に残る。
  */
 export function roomPortalRefusal(
-    fetchRoom: (address: string) => Promise<RoomStatus | null>,
+    fetchRoom: (address: string, signal?: AbortSignal) => Promise<RoomStatus | null>,
     address: string,
     viewerId: string | null,
     timeoutMs = ROOM_STATUS_TIMEOUT_MS,
 ): Promise<RoomPortalRefusal | null> {
-    return withinTime(fetchRoom(address), timeoutMs).then(
+    return withinTime((signal) => fetchRoom(address, signal), timeoutMs).then(
         (room) => (room ? roomRefusal(room, viewerId) : 'gone'),
         () => 'unknown' as const,
     );
