@@ -101,6 +101,11 @@ const sim = {
     clearedSince: null as number | null,
     seenRound: -1,
     hitSentAt: 0,
+    /**
+     * 自分のダメージはこの画面が正（書くのは自分だけ）。同期された値はほかの人の書き込みと行き違うと
+     * 書く前の値が一瞬返ってくるので読み戻さない。起動時だけ、部屋に残っている値から始める。
+     */
+    damage: parseDamageEntry(stage.local.damage),
 };
 
 function acceptCanvas(entity: ComponentInstance): void {
@@ -142,11 +147,9 @@ const inArea = (point: Vec): boolean => rectContains(sim.area, point);
 const shipsInArea = (): ShipInfo[] => [...sim.ships.values()].filter((ship) => inArea(rectCenter(ship.box)));
 const enemiesInArea = (): EnemySpec[] => [...sim.enemies.values()].filter((spec) => inArea(spec.home));
 const currentClock = () => readClock(stage.local.round, stage.local.startedAt);
-const myDamage = () => parseDamageEntry(stage.local.damage);
 
 function knownHits(round: number): Hits {
-    const mine = myDamage();
-    return totalHits([...othersDamage(sim.canvasData, Ubi.myUserId), ...(mine ? [mine] : [])], round);
+    return totalHits([...othersDamage(sim.canvasData, Ubi.myUserId), ...(sim.damage ? [sim.damage] : [])], round);
 }
 
 function startRound(now: number): void {
@@ -241,7 +244,8 @@ Ubi.registerSystem((_entities, deltaTime) => {
         );
     }
     if (t !== null && Object.keys(frame.myHits).length > 0) {
-        stage.local.damage = addHits(myDamage(), clock.round, frame.myHits);
+        sim.damage = addHits(sim.damage, clock.round, frame.myHits);
+        stage.local.damage = sim.damage;
     }
     sim.shots = frame.shots;
     sim.alive = frame.alive;

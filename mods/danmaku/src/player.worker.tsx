@@ -64,7 +64,9 @@ const player = Ubi.state.define({
     hp: Ubi.state.sync<unknown>(5, { editable: false }),
     hitAt: Ubi.state.sync<unknown>(0, { editable: false }),
     downAt: Ubi.state.sync<unknown>(0, { editable: false }),
-    // 見た目（この画面だけ）。点滅と復活までの秒が変わったときだけ描き直す。
+    // 見た目（この画面だけ）。値が変わったときだけ描き直す。
+    shownHp: 0,
+    shownDown: false,
     shown: true,
     countdown: 0,
 });
@@ -82,13 +84,22 @@ const ship = {
     box: null as Transform | null,
     areas: new Map<string, Rect>(),
     cooldown: 0,
+    /**
+     * 乗っている間の HP などはこの画面が正。同期された値は、毎フレームの移動の書き込みと行き違うと
+     * 書く前の値が一瞬返ってくるので、規則の判定には使わない（ほかの人の画面の表示にだけ使う）。
+     */
+    status: null as ShipStatus | null,
 };
 
 const rules = () => shipRulesOf(player.local);
 const controls = () => shipControlsOf(player.local);
-const status = (): ShipStatus => shipStatusOf(player.local.hp, player.local.hitAt, player.local.downAt, rules());
+const status = (): ShipStatus =>
+    ride.isMine && ship.status
+        ? ship.status
+        : shipStatusOf(player.local.hp, player.local.hitAt, player.local.downAt, rules());
 
 function writeStatus(next: ShipStatus): void {
+    ship.status = next;
     player.local.hp = next.hp;
     player.local.hitAt = next.hitAt;
     player.local.downAt = next.downAt;
@@ -137,7 +148,10 @@ Promise.all([
 ride.onChange((next) => {
     keyboardPressed.clear();
     padPressed.clear();
-    if (next === null || next !== Ubi.myUserId) return;
+    if (next === null || next !== Ubi.myUserId) {
+        ship.status = null;
+        return;
+    }
     writeStatus(freshShip(rules()));
     if (Ubi.componentInstanceId) {
         DanmakuEvents.emit(
@@ -190,8 +204,11 @@ Ubi.registerSystem((_entities, deltaTime) => {
     const now = Date.now();
     const current = status();
     const shipRules = rules();
-    player.local.shown = ride.holder === null || shipVisible(current, shipRules, now);
-    player.local.countdown = ride.holder === null ? 0 : respawnCountdown(current, shipRules, now);
+    const ridden = ride.holder !== null;
+    player.local.shownHp = ridden ? current.hp : 0;
+    player.local.shownDown = ridden && isDown(current);
+    player.local.shown = !ridden || shipVisible(current, shipRules, now);
+    player.local.countdown = ridden ? respawnCountdown(current, shipRules, now) : 0;
 
     const box = ship.box;
     if (!box || !ride.isMine || !Ubi.componentInstanceId) return;
@@ -293,10 +310,8 @@ function ShipShape(props: { mine: boolean }) {
 }
 
 export default function PlayerView() {
-    const shipRules = rules();
     const ridden = ride.holder !== null;
-    const current = status();
-    const down = ridden && isDown(current);
+    const down = player.local.shownDown;
     return (
         <div
             onUbiClick={() => ride.toggle()}
@@ -321,7 +336,7 @@ export default function PlayerView() {
             <div style={{ width: '100%', height: '100%', opacity: down ? '0' : player.local.shown ? '1' : '0.2' }}>
                 <ShipShape mine={ride.isMine} />
             </div>
-            {ridden && !down && <HpPips hp={current.hp} maxHp={shipRules.maxHp} />}
+            {ridden && !down && <HpPips hp={player.local.shownHp} maxHp={rules().maxHp} />}
             {down && <DownLabel countdown={player.local.countdown} />}
         </div>
     );

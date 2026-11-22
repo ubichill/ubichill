@@ -4,11 +4,11 @@
     "danmaku": {
       "id": "danmaku",
       "version": "2.0.0",
-      "manifestIntegrity": "sha256-qUvgnJVw1pImgcrsKCF5DSGYFr7dJWqp5oNHXsRSV2M=",
+      "manifestIntegrity": "sha256-2EmWKmmSlitC0xvKk9lPobZHdIuwdOohAP10rBNH4Yg=",
       "components": {
         "danmaku:canvas": {
-          "workerUrl": "./canvas/index.603bed8d.js",
-          "integrity": "sha256-YDvtjTiQth7cMIsTjusV1/H0l2ChW8XWBigFih4jZr4=",
+          "workerUrl": "./canvas/index.e95fd1fa.js",
+          "integrity": "sha256-6V/R+m8gW1Y7/bkdoCnksIovzItCWH2WG+oh9Mfz9bY=",
           "capabilities": [
             "canvas:draw",
             "event:emit",
@@ -18,8 +18,8 @@
           ]
         },
         "danmaku:player": {
-          "workerUrl": "./player/index.667f2554.js",
-          "integrity": "sha256-Zn8lVGFFs/MXvSwX6uC1OzvhweYAXUyKljkqWxvMr+M=",
+          "workerUrl": "./player/index.0c6c88c8.js",
+          "integrity": "sha256-DGyIyIcbgfTgGZGlTKlx+j90ykhSb8BooaO44DclaRY=",
           "capabilities": [
             "event:broadcast",
             "event:emit",
