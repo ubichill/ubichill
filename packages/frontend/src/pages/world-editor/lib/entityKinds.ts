@@ -7,6 +7,8 @@ import {
     SWITCH_MAX_TARGETS,
     TEXT_ALIGNS,
     TEXT_SIZE_RANGE,
+    UI_BORDER_WIDTH_MAX,
+    UI_RADIUS_MAX,
     WARP_LABEL_MAX_LENGTH,
 } from '@ubichill/core-components';
 import { createDefaultColliderData } from '@ubichill/runtime';
@@ -32,7 +34,15 @@ export type DataFieldSpec =
     | { type: 'url'; default?: string; placeholder?: string; label?: string; help?: string }
     // 画像の URL。このサーバーに画像を上げるボタンも出す（core:image）
     | { type: 'image'; default?: string; label?: string; help?: string }
-    | { type: 'enum'; default?: string; options: string[]; label?: string; help?: string }
+    // optionLabels: 選択肢に出す名前（無ければ値をそのまま出す）
+    | {
+          type: 'enum';
+          default?: string;
+          options: string[];
+          optionLabels?: Readonly<Record<string, string>>;
+          label?: string;
+          help?: string;
+      }
     | { type: 'json'; default?: unknown; label?: string; help?: string }
     // 配列: 各要素を item スキーマで編集する。エディタは「行リスト＋追加/削除」で描画する。
     | { type: 'array'; default?: unknown[]; item: DataFields; label?: string; help?: string }
@@ -84,7 +94,10 @@ export interface AvailableEntityKind {
     }>;
     /** インスペクタで必ず表示する data フィールドの宣言 */
     dataFields?: DataFields;
-    /** Component追加時にそのまま使うdata。dataFieldsの単純な既定値では表せない組み込みComponent向け。 */
+    /**
+     * Component を足したときの data。dataFields の default（data に無いときに描く値）より優先する。
+     * 置いてすぐ見えるようにしたい値は、描く値を変えずにここで書く。
+     */
     defaultData?: Record<string, unknown>;
     /** 見た目の画像（manifest の `thumbnail`。assetIntegrity で hash を固定したものだけ） */
     thumbnail?: PreviewImageSource;
@@ -96,11 +109,16 @@ export interface AvailableEntityKind {
     overlay?: OverlayMode;
 }
 
+/** スクリプト（ワープ・スイッチ・ポータル）の名前の欄の説明。動かし方は UI のボタンか、標準のボタン */
+const SCRIPT_TRIGGER_HELP =
+    '同じ Entity の UI を「ボタンにする」と、その UI を押したときに動きます。UI のボタンが無ければ、この名前の標準のボタンを出します。';
+
 /** modのインストール有無に関係なく、Hostが必ず提供する組み込みComponent。 */
 export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
     {
         modName: 'core',
         kind: CORE_COMPONENT_TYPES.collider,
+        displayName: 'コライダー',
         suggestSize: true,
         defaultData: { ...createDefaultColliderData() },
         viewKind: 'logic',
@@ -108,6 +126,7 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
     {
         modName: 'core',
         kind: CORE_COMPONENT_TYPES.media,
+        displayName: 'メディア',
         suggestSize: true,
         defaultTransform: { w: 640, h: 360 },
         dataFields: {
@@ -124,15 +143,70 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
     {
         modName: 'core',
         kind: CORE_COMPONENT_TYPES.ui,
+        displayName: 'UI',
         suggestSize: true,
-        defaultTransform: { w: 320, h: 160 },
-        defaultData: { markup: '<div style="padding: 12px; background: #fff; border-radius: 8px">ようこそ</div>' },
+        defaultTransform: { w: 200, h: 80 },
+        // 置いたときは白い角丸の四角にテキストが入る。data に無い項目は描かない（YAML で書いた UI と同じ）
+        defaultData: { text: 'テキスト', size: 20, fill: '#ffffff', border: '#1b2a44', radius: 12 },
         dataFields: {
+            text: { type: 'string', multiline: true, default: '', label: 'テキスト' },
+            size: {
+                type: 'number',
+                default: 24,
+                min: TEXT_SIZE_RANGE.min,
+                max: TEXT_SIZE_RANGE.max,
+                step: 1,
+                label: '文字の大きさ（px）',
+            },
+            color: { type: 'color', default: '#1b2a44', label: '文字の色' },
+            align: {
+                type: 'enum',
+                options: [...TEXT_ALIGNS],
+                optionLabels: { left: '左', center: '中央', right: '右' },
+                default: 'center',
+                label: '揃え',
+            },
+            bold: { type: 'boolean', default: false, label: '太字' },
+            fill: {
+                type: 'string',
+                default: 'transparent',
+                label: '塗りの色',
+                help: '#RRGGBB か transparent（塗りなし）。',
+            },
+            border: {
+                type: 'string',
+                default: 'transparent',
+                label: '枠線の色',
+                help: '#RRGGBB か transparent（枠線なし）。',
+            },
+            borderWidth: {
+                type: 'number',
+                default: 2,
+                min: 0,
+                max: UI_BORDER_WIDTH_MAX,
+                step: 1,
+                label: '枠線の太さ（px）',
+            },
+            radius: {
+                type: 'number',
+                default: 0,
+                min: 0,
+                max: UI_RADIUS_MAX,
+                step: 1,
+                label: '角丸（px）',
+                help: '大きくすると丸くなります。',
+            },
+            button: {
+                type: 'boolean',
+                default: false,
+                label: 'ボタンにする',
+                help: '押せるようにして、押したときに同じ Entity のスクリプト（ワープ・スイッチ・ポータル）を動かします。',
+            },
             markup: {
                 type: 'string',
                 multiline: true,
-                label: 'UI データ（HTML 風）',
-                help: '看板・説明・リンクなど。使えるタグ・属性は mod の UI と同じ（script やイベント属性は動かない）。リンクは新しいタブで開く。',
+                label: 'HTML（上級者向け）',
+                help: 'テキストの代わりに、看板・説明・リンクなどを HTML 風に書けます。使えるタグ・属性は mod の UI と同じ（script やイベント属性は動かない）。リンクは新しいタブで開く。ボタンにした UI では見た目だけで、リンクは押せない。',
             },
         },
         viewKind: 'jsx',
@@ -140,7 +214,7 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
     {
         modName: 'core',
         kind: CORE_COMPONENT_TYPES.image,
-        displayName: '画像',
+        displayName: 'イメージ',
         suggestSize: true,
         defaultTransform: { w: 320, h: 240 },
         dataFields: {
@@ -164,11 +238,12 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
     {
         modName: 'core',
         kind: CORE_COMPONENT_TYPES.text,
-        displayName: '文字',
+        displayName: 'テキスト',
         suggestSize: true,
         defaultTransform: { w: 320, h: 80 },
+        defaultData: { text: 'ようこそ' },
         dataFields: {
-            text: { type: 'string', multiline: true, default: 'ようこそ', label: '文字' },
+            text: { type: 'string', multiline: true, default: '', label: '文字' },
             size: {
                 type: 'number',
                 default: 24,
@@ -192,7 +267,7 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
     {
         modName: 'core',
         kind: CORE_COMPONENT_TYPES.portal,
-        displayName: '入口',
+        displayName: 'ポータル',
         suggestSize: true,
         // 行き先のサムネイルの丸い窓（幅いっぱい）と、その上の名前
         defaultTransform: { w: 180, h: 228 },
@@ -209,7 +284,7 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
                 default: '',
                 placeholder: '行き先のワールドの名前',
                 label: `名前（${PORTAL_LABEL_MAX_LENGTH} 文字まで）`,
-                help: '空なら、行き先のワールドの名前を出します。',
+                help: `空なら、行き先のワールドの名前を出します。${SCRIPT_TRIGGER_HELP}`,
             },
         },
         viewKind: 'jsx',
@@ -232,6 +307,7 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
                 default: '',
                 placeholder: 'ワープ',
                 label: `名前（${WARP_LABEL_MAX_LENGTH} 文字まで）`,
+                help: SCRIPT_TRIGGER_HELP,
             },
         },
         viewKind: 'jsx',
@@ -254,6 +330,7 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
                 default: '',
                 placeholder: 'スイッチ',
                 label: `名前（${SWITCH_LABEL_MAX_LENGTH} 文字まで）`,
+                help: SCRIPT_TRIGGER_HELP,
             },
         },
         viewKind: 'jsx',
@@ -261,7 +338,7 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
     {
         modName: 'core',
         kind: CORE_COMPONENT_TYPES.spawn,
-        displayName: '最初の場所',
+        displayName: 'スポーン',
         suggestSize: true,
         defaultTransform: { w: 160, h: 48 },
         dataFields: {},

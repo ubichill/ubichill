@@ -7,7 +7,7 @@
  */
 import type { InitialEntity, WorldDefinition } from '@ubichill/shared';
 import { useCallback, useMemo } from 'react';
-import { withComponentAdded } from '../lib/addComponent';
+import { entityWithComponentAt, withComponentAdded } from '../lib/addComponent';
 import { DEFAULT_H, DEFAULT_W } from '../lib/dragHelpers';
 import {
     adjustPathAfterDelete,
@@ -22,13 +22,16 @@ import {
     moveEntity,
     nextRootZ,
     pathKey,
-    renameEntity,
-    toRenamedEntityId,
+    renameEntityById,
+    setEntityName,
     updateEntityAt,
 } from '../lib/entityTree';
+import { placementFor } from '../lib/prefabPlacement';
 import { fieldsOfKinds } from '../lib/referenceProblems';
 import type { AvailableEntityKind } from './useAvailableEntityKinds';
 import { useEntityClipboard } from './useEntityClipboard';
+
+const DEFAULT_WORLD_SIZE = { width: 2000, height: 1500 };
 
 interface UseEntityOpsOptions {
     definition: WorldDefinition;
@@ -41,6 +44,8 @@ interface UseEntityOpsOptions {
         setSelectedComponentIndex: React.Dispatch<React.SetStateAction<number | null>>;
         setHiddenPaths: React.Dispatch<React.SetStateAction<Set<string>>>;
     };
+    /** いま見えている範囲の真ん中（ワールド座標）。新しく置くものはここに出す。分からなければ null */
+    viewCenter: () => { x: number; y: number } | null;
 }
 
 export interface UseEntityOpsResult {
@@ -48,7 +53,12 @@ export interface UseEntityOpsResult {
     handleAddComponentToEntity: (path: EntityPath, componentType: string) => void;
     handleDeleteEntity: (path: EntityPath) => void;
     handleDeleteComponent: (path: EntityPath, componentIndex: number) => void;
-    handleRenameEntity: (path: EntityPath, newId: string) => void;
+    /** id で指す（編集を始めた後に選び直しても、始めた Entity を変える） */
+    handleRenameEntity: (id: string, newId: string) => void;
+    /** 表示名を変える（空なら外して id を出す）。id で指す */
+    handleSetEntityName: (id: string, name: string) => void;
+    /** ワールドの空いたところに部品を落としたとき、その場所にその部品の Entity を作る */
+    handleCreateEntityAt: (componentType: string, point: { x: number; y: number }) => void;
     handleMoveEntity: (from: EntityPath, to: EntityPath | null) => void;
     handleCopyEntity: (path: EntityPath) => void;
     handlePasteEntity: (parentPath: EntityPath | null) => void;
@@ -63,6 +73,7 @@ export function useEntityOps({
     updateEntities,
     kinds,
     selection,
+    viewCenter,
 }: UseEntityOpsOptions): UseEntityOpsResult {
     const clipboard = useEntityClipboard();
     // 複製・貼り付け・改名で参照を付け替えるのに、どのフィールドが参照かを mod の宣言から引く
@@ -77,18 +88,22 @@ export function useEntityOps({
         [updateEntities],
     );
 
+    const worldSize = definition.spec.environment?.worldSize ?? DEFAULT_WORLD_SIZE;
+    const placeCenter = useCallback(
+        () => viewCenter() ?? { x: worldSize.width / 2, y: worldSize.height / 2 },
+        [viewCenter, worldSize.width, worldSize.height],
+    );
+
     const handleCreateEmptyEntity = useCallback(
         (parentPath: EntityPath | null) => {
-            const env = definition.spec.environment;
-            const worldSize = env?.worldSize ?? { width: 2000, height: 1500 };
             const entities = definition.spec.initialEntities;
+            const size = { x: 0, y: 0, width: DEFAULT_W, height: DEFAULT_H };
             const newEntity: InitialEntity = {
                 id: buildUniqueEntityId('entity', collectEntityIds(entities)),
                 transform: parentPath
                     ? { x: 0, y: 0, z: 1, w: DEFAULT_W, h: DEFAULT_H, scale: 1, rotation: 0 }
                     : {
-                          x: Math.round(worldSize.width / 2 - DEFAULT_W / 2),
-                          y: Math.round(worldSize.height / 2 - DEFAULT_H / 2),
+                          ...placementFor(placeCenter(), size, worldSize),
                           z: nextRootZ(entities),
                           w: DEFAULT_W,
                           h: DEFAULT_H,
@@ -109,7 +124,19 @@ export function useEntityOps({
             }
             selection.selectComponent(null);
         },
-        [definition.spec.initialEntities, definition.spec.environment, updateEntities, selection],
+        [definition.spec.initialEntities, placeCenter, worldSize, updateEntities, selection],
+    );
+
+    const handleCreateEntityAt = useCallback(
+        (componentType: string, point: { x: number; y: number }) => {
+            const entities = definition.spec.initialEntities;
+            const kind = kinds.find((k) => k.kind === componentType);
+            const created = entityWithComponentAt(componentType, kind, point, entities, worldSize);
+            updateEntities((prev) => [...prev, created]);
+            selection.selectEntity([entities.length]);
+            selection.selectComponent(0);
+        },
+        [definition.spec.initialEntities, kinds, worldSize, updateEntities, selection],
     );
 
     const handleAddComponentToEntity = useCallback(
@@ -161,14 +188,13 @@ export function useEntityOps({
     );
 
     const handleRenameEntity = useCallback(
-        (path: EntityPath, newId: string) => {
-            const taken = new Set(collectEntityIds(definition.spec.initialEntities));
-            const self = getEntityAt(definition.spec.initialEntities, path);
-            if (self) taken.delete(self.id);
-            const uniqueId = toRenamedEntityId(newId, taken);
-            if (uniqueId) updateEntities((prev) => renameEntity(prev, path, uniqueId, fieldsOf));
-        },
-        [updateEntities, definition.spec.initialEntities, fieldsOf],
+        (id: string, newId: string) => updateEntities((prev) => renameEntityById(prev, id, newId, fieldsOf)),
+        [updateEntities, fieldsOf],
+    );
+
+    const handleSetEntityName = useCallback(
+        (id: string, name: string) => updateEntities((prev) => setEntityName(prev, id, name)),
+        [updateEntities],
     );
 
     const handleMoveEntity = useCallback(
@@ -248,6 +274,8 @@ export function useEntityOps({
         handleDeleteEntity,
         handleDeleteComponent,
         handleRenameEntity,
+        handleSetEntityName,
+        handleCreateEntityAt,
         handleMoveEntity,
         handleCopyEntity,
         handlePasteEntity,

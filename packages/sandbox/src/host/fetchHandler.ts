@@ -264,12 +264,17 @@ export async function fetchDirect(
  * これにより「相対 URL でホスト内部 API を credential 付きで叩く」抜け道を塞ぐ。
  * null が返った URL は呼び出し側でドメイン allowlist 検査に回す。
  */
-export function resolveModAssetUrl(url: string, modBase: string | undefined): string | null {
+export function resolveModAssetUrl(
+    url: string,
+    modBase: string | undefined,
+    // 自ホストの `/mods` から配るとき modBase はパスだけなので、開いているページの origin で解決する
+    pageUrl: string | undefined = globalThis.location?.href,
+): string | null {
     if (!modBase) return null;
     let base: URL;
     try {
         // 末尾スラッシュを付けてディレクトリとして解決させる (最後のセグメントを basename 扱いしない)
-        base = new URL(modBase.endsWith('/') ? modBase : `${modBase}/`);
+        base = new URL(modBase.endsWith('/') ? modBase : `${modBase}/`, pageUrl);
     } catch {
         return null;
     }

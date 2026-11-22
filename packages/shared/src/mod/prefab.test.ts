@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { createModLock, ModLockSchema } from '../schemas/modLock.schema';
+import { InitialEntitiesSchema } from '../schemas/world.schema';
 import { formatPackageRef, parsePackageRef } from './packageRef';
-import { instantiatePrefab, PrefabSchema, unpackPrefab, updatePrefabInstance, validatePackagePrefabs } from './prefab';
+import {
+    instantiatePrefab,
+    PrefabSchema,
+    prefabRootId,
+    unpackPrefab,
+    updatePrefabInstance,
+    validatePackagePrefabs,
+} from './prefab';
 
 const prefab = (text = '元の内容', x = 10) =>
     PrefabSchema.parse({
@@ -46,14 +54,40 @@ describe('package identity', () => {
 });
 describe('linked prefab', () => {
     it('二つ置いても参照が混ざらず、同じ文字列の表示名は変えない', () => {
-        const first = instantiatePrefab(entry, 'set', prefab(), fields, [], 'root-a');
-        const second = instantiatePrefab(entry, 'set', prefab(), fields, [first], 'root-b');
+        const first = instantiatePrefab(entry, 'set', prefab(), fields, []);
+        const second = instantiatePrefab(entry, 'set', prefab(), fields, [first]);
         expect(second.children[0].id).not.toBe(first.children[0].id);
         expect(second.children[1].components[0].data).toEqual({ target: second.children[0].id, label: 'label' });
     });
+    it('親はプレハブの名前の id と表示名で、置いた場所に出す。名前が重なれば番号を付ける', () => {
+        const first = instantiatePrefab(entry, 'set', prefab(), fields, [], { x: 40, y: 60, z: 3 });
+        expect(first).toMatchObject({ id: 'set', name: 'セット', transform: { x: 40, y: 60, z: 3 } });
+        const second = instantiatePrefab(entry, 'set', prefab(), fields, [first]);
+        expect(second.id).toBe('set-2');
+        expect(second.transform).toMatchObject({ x: 0, y: 0, z: 0 });
+        // 子の id とも重ならない
+        const ids = [second.id, ...second.children.map((c) => c.id)];
+        expect(new Set([...ids, first.id, ...first.children.map((c) => c.id)]).size).toBe(6);
+    });
+    it('名前の id は 50 文字に収め、表示名もスキーマの上限に切る', () => {
+        const long = 'a'.repeat(50);
+        const taken = [
+            {
+                id: long,
+                transform: { x: 0, y: 0, z: 0, scale: 1, rotation: 0 },
+                components: [],
+                tags: [],
+                children: [],
+            },
+        ];
+        expect(prefabRootId(long, taken)).toBe(`${'a'.repeat(48)}-2`);
+        const named = instantiatePrefab(entry, 'set', { ...prefab(), name: 'あ'.repeat(100) }, fields, []);
+        expect(named.name).toHaveLength(50);
+        expect(InitialEntitiesSchema.safeParse([named]).success).toBe(true);
+    });
     it('作者側の変更を取り込み、配置側の位置と競合したテキストを保持する', () => {
         const original = prefab();
-        const placed = instantiatePrefab(entry, 'set', original, fields, [], 'root');
+        const placed = instantiatePrefab(entry, 'set', original, fields, []);
         placed.children[0].transform.x = 88;
         placed.children[0].components[0].data.markup = '配置側の編集';
         const result = updatePrefabInstance(
@@ -68,13 +102,13 @@ describe('linked prefab', () => {
         expect(result.entity.prefab?.version).toBe('2.0.0');
     });
     it('Unpack は構成を保ち、関連だけを外す', () => {
-        const placed = instantiatePrefab(entry, 'set', prefab(), fields, [], 'root');
+        const placed = instantiatePrefab(entry, 'set', prefab(), fields, []);
         expect(unpackPrefab(placed)).not.toHaveProperty('prefab');
         expect(unpackPrefab(placed).children).toEqual(placed.children);
     });
     it('別作者への置換と外部 Entity への参照を拒否する', () => {
         const original = prefab();
-        const placed = instantiatePrefab(entry, 'set', original, fields, [], 'root');
+        const placed = instantiatePrefab(entry, 'set', original, fields, []);
         expect(() =>
             updatePrefabInstance(
                 placed,
