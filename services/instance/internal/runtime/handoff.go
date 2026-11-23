@@ -112,6 +112,8 @@ func (r *Room) thaw() {
 			r.armGrace(id, m, r.grace)
 		}
 	}
+	// 凍結の間に期限の来たポータルは、タイマーが何もしなかったので張り直して消す
+	r.armPortalsLocked()
 }
 
 // handOver は付け替えの済んだ部屋を閉じ、参加者の接続を返す。接続は閉じない（中継に切り替える）。
@@ -121,6 +123,7 @@ func (r *Room) handOver(s *Server) (relayed []*peer, links []*relayLink) {
 	defer r.mu.Unlock()
 	r.closed = true
 	r.stopCursorsLocked()
+	r.stopPortalsLocked()
 	for _, m := range r.members {
 		if m.timer != nil {
 			m.timer.Stop()
@@ -190,6 +193,8 @@ func (r *Room) arrive(grace, cursorBatch time.Duration) {
 	for id, m := range r.members {
 		r.armGrace(id, m, migratedGrace(grace))
 	}
+	// 移ってきたポータルも期限（元の Pod の時計の epoch ms）で消す
+	r.armPortalsLocked()
 }
 
 // candidate は引っ越し先の候補。

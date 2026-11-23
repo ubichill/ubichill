@@ -4,10 +4,10 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { FavoriteButton } from '@/components/worlds/FavoriteButton';
-import { useInstances } from '@/components/worlds/useInstances';
+import { useNewInstance } from '@/components/worlds/useNewInstance';
 import { WorldDetailModal } from '@/components/worlds/WorldDetailModal';
 import { useBlockedIds } from '@/lib/social/blocks';
-import { fetchInstance } from '@/lib/worlds/instancesApi';
+import { createInstance, fetchInstance } from '@/lib/worlds/instancesApi';
 import { instanceWorldRef, worldCopyConfirmText, worldEditTarget } from '@/lib/worlds/worldRef';
 import { css } from '@/styled-system/css';
 import { sectionHeading, tabPanel, tabSection } from './shared';
@@ -42,11 +42,9 @@ export function InstanceTab({ currentInstanceId, onNavigate }: InstanceTabProps)
     const navigate = useNavigate();
     const confirm = useConfirm();
     const { users, currentUser } = useSocket();
-    const { createInstance } = useInstances();
     const blockedIds = useBlockedIds();
 
     const [instance, setInstance] = useState<Instance | null>(null);
-    const [creating, setCreating] = useState(false);
     const [showModal, setShowModal] = useState(false);
 
     const handleJoinInstance = (
@@ -92,26 +90,22 @@ export function InstanceTab({ currentInstanceId, onNavigate }: InstanceTabProps)
         window.location.reload();
     };
 
-    const handleCreateNew = async () => {
-        if (!world || creating) return;
-        if (!(await confirm('新しいインスタンスを作成して移動しますか？'))) return;
-        setCreating(true);
-        try {
-            // 外部ワールドは id では自サーバーで解決できないので URL で作る
-            const created = await createInstance({ worldId: instanceWorldRef(world) });
-            if (created) {
-                onNavigate?.();
-                navigate(`/instance/${created.id}`, {
-                    state: {
-                        worldId: created.world.id,
-                        worldData: { thumbnail: created.world.thumbnail, displayName: created.world.displayName },
-                    },
-                });
-            }
-        } finally {
-            setCreating(false);
-        }
-    };
+    const newInstance = useNewInstance({
+        // 外部ワールドは id では自サーバーで解決できないので URL で作る
+        create: async (options) => {
+            if (!world) throw new Error('ワールドを読み込んでいます');
+            return createInstance({ worldId: instanceWorldRef(world), ...options });
+        },
+        enter: (created) => {
+            onNavigate?.();
+            navigate(`/instance/${created.id}`, {
+                state: {
+                    worldId: created.world.id,
+                    worldData: { thumbnail: created.world.thumbnail, displayName: created.world.displayName },
+                },
+            });
+        },
+    });
 
     const editTarget = world ? worldEditTarget(world) : null;
     const handleEdit = async () => {
@@ -129,6 +123,7 @@ export function InstanceTab({ currentInstanceId, onNavigate }: InstanceTabProps)
 
     return (
         <div className={tabPanel} onClick={(e) => e.stopPropagation()}>
+            {newInstance.dialog}
             {/* インスタンス概要 + アクション */}
             <div className={tabSection}>
                 <div
@@ -259,8 +254,8 @@ export function InstanceTab({ currentInstanceId, onNavigate }: InstanceTabProps)
                     </button>
                     <button
                         type="button"
-                        onClick={() => void handleCreateNew()}
-                        disabled={!world || creating}
+                        onClick={newInstance.start}
+                        disabled={!world || newInstance.busy}
                         className={css(actionButtonBase, { bg: 'primary', color: 'textOnPrimary' })}
                     >
                         <svg
@@ -273,7 +268,7 @@ export function InstanceTab({ currentInstanceId, onNavigate }: InstanceTabProps)
                         >
                             <path d="M12 5v14M5 12h14" />
                         </svg>
-                        {creating ? '作成中...' : '新しいインスタンス'}
+                        {newInstance.busy ? '作成中...' : '新しいインスタンス'}
                     </button>
                     {isAuthor && (
                         <button

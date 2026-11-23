@@ -13,6 +13,7 @@ import { AuthorAccountLabel } from './AuthorAccountLabel';
 import { FavoriteButton } from './FavoriteButton';
 import { InstanceCard } from './InstanceCard';
 import { InstanceDetailOverlay } from './InstanceDetailOverlay';
+import { useNewInstance } from './useNewInstance';
 import { useWorldPagePath } from './useWorldPagePath';
 import { WorldIdentityBadge } from './WorldIdentityBadge';
 
@@ -42,7 +43,6 @@ export function WorldDetailModal({
     const pagePath = useWorldPagePath({ ...world, id: world?.id ?? worldId });
     const [instances, setInstances] = useState<Instance[]>([]);
     const [loading, setLoading] = useState(true);
-    const [creating, setCreating] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     const [detailInstance, setDetailInstance] = useState<Instance | null>(null);
@@ -81,24 +81,17 @@ export function WorldDetailModal({
     const [accessType, setAccessType] = useState<AccessType>('public');
     const editTarget = worldEditTarget({ id: world?.id ?? worldId, source: world?.source });
 
-    const handleCreate = async () => {
-        if (creating) return;
-        setCreating(true);
-        setError(null);
-        const worldRef = world?.url ?? worldId;
-        try {
-            const instance = await createInstance({ worldId: worldRef, access: { type: accessType } });
+    const newInstance = useNewInstance({
+        create: (options) =>
+            createInstance({ worldId: world?.url ?? worldId, access: { type: accessType }, ...options }),
+        enter: (instance) => {
             onJoinInstance(instance.id, instance.world.id, {
                 thumbnail: instance.world.thumbnail,
                 displayName: instance.world.displayName,
             });
             onClose();
-        } catch (e: unknown) {
-            setError(e instanceof Error ? e.message : 'インスタンスの作成に失敗しました');
-        } finally {
-            setCreating(false);
-        }
-    };
+        },
+    });
 
     const handleCopyUrl = () => {
         // ユーザーに配る共有 URL（/@handle/name）。canonical(機械URL) からも共有形へ変換。
@@ -285,8 +278,8 @@ export function WorldDetailModal({
                                     <AccessTypeSelect value={accessType} onChange={setAccessType} />
                                     <button
                                         type="button"
-                                        onClick={handleCreate}
-                                        disabled={creating}
+                                        onClick={newInstance.start}
+                                        disabled={newInstance.busy}
                                         className={css({
                                             flex: 1,
                                             py: '2',
@@ -302,7 +295,7 @@ export function WorldDetailModal({
                                             _disabled: { opacity: 0.6, cursor: 'not-allowed' },
                                         })}
                                     >
-                                        {creating ? '作成中...' : '新しくインスタンス作成'}
+                                        {newInstance.busy ? '作成中...' : '新しくインスタンス作成'}
                                     </button>
                                     {session && world?.authorId === session.user.id && (
                                         <button
@@ -373,6 +366,7 @@ export function WorldDetailModal({
                     </div>
                 </div>
             </div>
+            {newInstance.dialog}
             {detailInstance && (
                 <InstanceDetailOverlay
                     instance={detailInstance}

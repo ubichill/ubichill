@@ -41,4 +41,33 @@ describe.skipIf(!RUN)('instances の時刻（timestamptz, DB統合）', () => {
             await client.end({ timeout: 5 });
         }
     });
+
+    it('held_until は作成で書いた瞬間のまま一覧（reaper が読む）に出る。指定しなければ NULL', async () => {
+        const userId = `held-it-${stamp}`;
+        try {
+            await userRepository.create({
+                id: userId,
+                name: userId,
+                email: `${userId}@example.com`,
+                handle: `held_${stamp}`,
+            });
+            const heldUntil = new Date(Date.now() + 60_000);
+            const held = await instanceRepository.create({
+                worldRef: 'https://world.test/held.yaml',
+                leaderId: userId,
+                heldUntil,
+            });
+            const plain = await instanceRepository.create({
+                worldRef: 'https://world.test/held.yaml',
+                leaderId: userId,
+            });
+            expect(held.heldUntil?.getTime()).toBe(heldUntil.getTime());
+
+            const listed = new Map((await instanceRepository.findAll()).map((row) => [row.id, row]));
+            expect(listed.get(held.id)?.heldUntil?.getTime()).toBe(heldUntil.getTime());
+            expect(listed.get(plain.id)?.heldUntil).toBeNull();
+        } finally {
+            await userRepository.deleteById(userId);
+        }
+    });
 });

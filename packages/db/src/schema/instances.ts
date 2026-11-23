@@ -33,6 +33,8 @@ export const instances = pgTable(
         maxUsers: integer('max_users').notNull().default(10),
         createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
         expiresAt: timestamp('expires_at', { withTimezone: true }),
+        /** この時刻までは空でも消さない（ポータルの先に作った部屋。誰も入らないまま待つ）。ふつうの部屋は NULL。 */
+        heldUntil: timestamp('held_until', { withTimezone: true }),
         /** 使わない（部屋のパスワードは廃止。0029 で招待のみに移した）。デプロイ中の古い Pod が読むので、列は次の PR で消す。 */
         passwordHash: varchar('password_hash', { length: 255 }),
     },

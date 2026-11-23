@@ -37,6 +37,9 @@ type Room struct {
 	cursorBatch time.Duration
 	cursors     map[string]Object
 	cursorTimer *time.Timer
+	// portalLifetime は部屋へのポータルが消えるまでの時間（テストで縮める）。portalTimer は一番早く消えるものに張る（portals.go）。
+	portalLifetime time.Duration
+	portalTimer    *time.Timer
 	// owner の世代。割り当てのたびに新しい Room を作るので、作ったあとは変わらない。
 	gen   string
 	epoch int64
@@ -52,8 +55,9 @@ type member struct {
 	timer   *time.Timer
 	// migrated は引っ越しで移ってきて、まだ繋ぎ直していない参加者。繋ぎ直しでは user:joined を出さない。
 	migrated bool
-	// lastSwitch は最後にスイッチを押した時刻（visibility.go）。
+	// lastSwitch は最後にスイッチを押した時刻（visibility.go）。lastPortal は最後にポータルを置いた時刻（portals.go）。
 	lastSwitch time.Time
+	lastPortal time.Time
 }
 
 // errUnavailable は部屋が閉じた・自己停止したとき。クライアントはチケットを取り直して入り直せる。
@@ -67,7 +71,7 @@ func newRoom(d Definition) (*Room, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := &Room{definition: d, entities: map[string]Object{}, sizes: map[string]int{}, order: map[string]uint64{}, members: map[string]*member{}, hidden: hidden, state: map[string]*stateEntry{}, emptySince: time.Now().UnixMilli(), now: time.Now}
+	r := &Room{definition: d, entities: map[string]Object{}, sizes: map[string]int{}, order: map[string]uint64{}, members: map[string]*member{}, hidden: hidden, state: map[string]*stateEntry{}, emptySince: time.Now().UnixMilli(), portalLifetime: roomPortalLifetime, now: time.Now}
 	for _, e := range d.Snapshot.Entities {
 		id := str(e["id"])
 		if id == "" || len(id) > 200 {
@@ -347,6 +351,7 @@ func (r *Room) close(announce bool) {
 func (r *Room) shutdownLocked(announce bool) {
 	r.closed = true
 	r.stopCursorsLocked()
+	r.stopPortalsLocked()
 	if announce {
 		r.broadcast("instance:closing", "インスタンスが終了しました", nil, false)
 	}

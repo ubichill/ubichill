@@ -3,6 +3,7 @@ import {
     FEDERATION_LIMITS,
     isRemoteUserId,
     ListInstancesQuerySchema,
+    localRoomIdOf,
 } from '@ubichill/shared';
 import { type Request, type Response, Router } from 'express';
 import rateLimit from 'express-rate-limit';
@@ -10,6 +11,7 @@ import { appConfig } from '../config';
 import { redis } from '../lib/redis';
 import { sharedRateLimit } from '../lib/sharedRateLimit';
 import { optionalAuth, requireAuth } from '../middleware/auth';
+import { selfDomain } from '../services/authors/authorKeys';
 import { type Federation, federation } from '../services/federation';
 import { remoteInstanceOf } from '../services/federation/ubichill/remoteInstance';
 import type { TravelError } from '../services/federation/ubichill/travel';
@@ -53,6 +55,9 @@ function viaOf(raw: unknown, f: Federation): string[] {
         .map((id) => (isRemoteUserId(id) ? id : f.identity.actorUrl(id)));
 }
 
+/** ほかのサーバーの部屋の作りを尋ねる上限（ms）。画面が部屋を確かめる上限（ROOM_STATUS_TIMEOUT_MS = 30 秒）より短くする。 */
+const REMOTE_DESCRIBE_TIMEOUT_MS = 20_000;
+
 /** ワールドを見る人のサーバーで確かめる（入る前の確認に使う。確かめられなければ作者を確認できないワールドとして扱う）。 */
 async function checkedWorld(url: string) {
     const resolved = await Promise.race([
@@ -62,6 +67,9 @@ async function checkedWorld(url: string) {
     return resolved ?? undefined;
 }
 
+/** このサーバーのドメインを付けた住所（ほかのサーバーの部屋に置かれたポータルの行き先など）も、このサーバーの部屋として読む。 */
+const localRoomId = (id: string): string => localRoomIdOf(id, selfDomain());
+
 /** ほかのサーバーの部屋なら連合で答える（答えたら true）。 */
 async function remoteInstance(req: Request, res: Response, id: string): Promise<boolean> {
     const address = federation?.remoteAddressOf(id);
@@ -70,7 +78,13 @@ async function remoteInstance(req: Request, res: Response, id: string): Promise<
         res.status(404).json({ error: TRAVEL_ERRORS['not-found'].error });
         return true;
     }
-    const described = await federation.travel.describe(req.user.id, address, viaOf(req.query.via, federation));
+    // 初めての相手は対応の確認（nodeinfo・actor）も入って 40 秒を超えうるので打ち切る（画面は 30 秒待つ。ワールドの確認 5 秒と合わせて 25 秒）
+    const described = await Promise.race([
+        federation.travel.describe(req.user.id, address, viaOf(req.query.via, federation)),
+        new Promise<{ ok: false; error: 'unavailable' }>((resolve) =>
+            setTimeout(() => resolve({ ok: false, error: 'unavailable' }), REMOTE_DESCRIBE_TIMEOUT_MS).unref(),
+        ),
+    ]);
     if (!described.ok) {
         const { status, error } = TRAVEL_ERRORS[described.error];
         res.status(status === 403 ? 404 : status).json({ error });
@@ -165,7 +179,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
         const id = req.params.id as string;
         if (await remoteInstance(req, res, id)) return;
         // 公開範囲で入れない人には、インスタンスがあることも伏せる
-        const instance = await instanceManager.getInstanceFor(id, req.user?.id ?? null);
+        const instance = await instanceManager.getInstanceFor(localRoomId(id), req.user?.id ?? null);
 
         if (!instance) {
             res.status(404).json({
@@ -203,7 +217,7 @@ router.post('/:id/join', requireAuth, async (req, res) => {
     // このサーバーの部屋に入るなら、ほかのサーバーへの来訪は終わり
     if (federation) void federation.travel.leave(req.user.id).catch(() => undefined);
     try {
-        return res.json(await instanceManager.join(String(req.params.id), { id: req.user.id, name: req.user.name }));
+        return res.json(await instanceManager.join(localRoomId(id), { id: req.user.id, name: req.user.name }));
     } catch (error) {
         if (error instanceof InstanceJoinRejected) return res.status(403).json({ error: error.message });
         logger.error('インスタンス参加エラー:', error);

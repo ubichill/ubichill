@@ -228,6 +228,23 @@ func (r *Room) handle(p *peer, f Frame) {
 			r.broadcast("entity:visibility", Object{"hiddenEntities": nonNil(r.hiddenList())}, nil, false)
 		}
 		p.reply(f.ID, Object{"success": true})
+	case "portal:open":
+		if f.ID == "" {
+			p.reject("", "request ID is required")
+			return
+		}
+		if err := r.openPortal(m, p.userID, data); err != nil {
+			p.reject(f.ID, err.Error())
+			return
+		}
+		p.reply(f.ID, Object{"success": true})
+	case "portal:close":
+		if f.ID == "" {
+			p.reject("", "request ID is required")
+			return
+		}
+		r.closePortal(p.userID)
+		p.reply(f.ID, Object{"success": true})
 	case "state:get":
 		key := str(data["key"])
 		if !validStateKey(key) {

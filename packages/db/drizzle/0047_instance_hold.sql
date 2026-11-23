@@ -1,0 +1,1 @@
+ALTER TABLE "instances" ADD COLUMN "held_until" timestamp with time zone;

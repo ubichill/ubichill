@@ -81,6 +81,12 @@
         "switch:press": {
           "$ref": "#/components/messages/switch:press"
         },
+        "portal:open": {
+          "$ref": "#/components/messages/portal:open"
+        },
+        "portal:close": {
+          "$ref": "#/components/messages/portal:close"
+        },
         "user:joined": {
           "$ref": "#/components/messages/user:joined"
         },
@@ -141,6 +147,12 @@
         },
         {
           "$ref": "#/channels/instance/messages/switch:press"
+        },
+        {
+          "$ref": "#/channels/instance/messages/portal:open"
+        },
+        {
+          "$ref": "#/channels/instance/messages/portal:close"
         }
       ]
     },
@@ -1073,6 +1085,73 @@
           "additionalProperties": false
         },
         "description": "core:switch を押す。サーバーが、押されたのが core:switch の Component か・対象が部屋にあるかを確かめ、対象の見える・見えないを切り替えて entity:visibility を全員に送る。"
+      },
+      "portal:open": {
+        "name": "portal:open",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event",
+            "id",
+            "data"
+          ],
+          "properties": {
+            "event": {
+              "const": "portal:open"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "room": {
+                  "type": "string",
+                  "maxLength": 320,
+                  "description": "行き先の部屋の住所（部屋のサーバーから見た形。このサーバーの部屋は ID、ほかのサーバーの部屋は <ID>@<ドメイン>）"
+                },
+                "x": {
+                  "type": "number",
+                  "description": "ポータルの真ん中の x（ワールド座標）"
+                },
+                "y": {
+                  "type": "number",
+                  "description": "ポータルの真ん中の y（ワールド座標）"
+                }
+              },
+              "required": [
+                "room",
+                "x",
+                "y"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "description": "部屋へのポータルを置く（どのワールドの部屋でも）。サーバーが core:portal の Entity（data は room・expiresAt・ownerName。ownerName は参加者の名前をサーバーが入れる）を作り、entity:created で置いた本人を含む全員に送る。1人1つで、置き直すと前のものを entity:deleted で消す。置き直せる間隔は3秒、1部屋64まで。60秒で消して entity:deleted を全員に送る（引っ越しでも引き継ぐ）。置いた人が部屋を出ても消さない。"
+      },
+      "portal:close": {
+        "name": "portal:close",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event",
+            "id"
+          ],
+          "properties": {
+            "event": {
+              "const": "portal:close"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          "additionalProperties": false
+        },
+        "description": "自分の置いたポータルを閉じる（entity:deleted を全員に送る）。置いていなくても成功を返す。ポータルは entity:patch・entity:delete では動かせない・消せない。"
       },
       "entity:visibility": {
         "name": "entity:visibility",

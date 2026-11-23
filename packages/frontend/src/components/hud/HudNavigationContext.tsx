@@ -18,6 +18,15 @@ export interface HudNavigation {
     openConversation: (userId: string) => void;
     /** 部屋へ移る（ほかの人がいれば確認し、今の部屋を抜けてから） */
     joinInstance: JoinInstanceHandler;
+    /** 今いる部屋に、部屋へのポータルを置く */
+    portal: PortalOpener;
+}
+
+export interface PortalOpener {
+    /** 置けないときの理由。置けるなら null */
+    unavailable: string | null;
+    /** 行き先（このサーバーから見た部屋の住所）へのポータルを置く。置けたらランチパッドを閉じ、失敗はトーストで知らせる */
+    open: (room: string) => Promise<boolean>;
 }
 
 export const HudNavigationContext = createContext<HudNavigation | null>(null);

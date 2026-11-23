@@ -58,6 +58,11 @@ export interface WorldViewProps {
     onFailed?: (failure: InstanceFailure) => void;
     /** 部屋に入れたとき（入るたびに 1 回）。 */
     onEntered?: () => void;
+    /**
+     * 引いた部屋の ID が instanceId と違ったとき（自分のドメインを付けた住所で来た）。正しい ID へ移るなら true を返し、
+     * ここでは入らない（SNS がその ID のページへ置き換える）。
+     */
+    onInstanceId?: (instanceId: string) => boolean;
     /** ポータル（core:portal）を押したときの移り方（SNS だけ）。無ければポータルは押せない。 */
     onPortal?: PortalNavigate;
     /** ポータルに出す行き先のワールドを引く（SNS だけ）。無ければポータルは名前と印だけ。 */
@@ -80,6 +85,7 @@ export function WorldView({
     recovery,
     onFailed,
     onEntered,
+    onInstanceId,
     onPortal,
     portalLookup,
     children,
@@ -150,6 +156,7 @@ export function WorldView({
                 setLoadError({ message: `入室できません: ${fetched.error}`, gone: fetched.gone });
                 return;
             }
+            if (fetched.instance.id !== instanceId && onInstanceId?.(fetched.instance.id)) return;
             const { displayName, thumbnail } = fetched.instance.world;
             setFetchedLook({ instanceId, look: { displayName, thumbnail } });
             const entryKey = unverifiedEntryKey(fetched.instance.world);
@@ -176,7 +183,7 @@ export function WorldView({
             });
         };
         void connect();
-    }, [authPending, instanceId, userName, fetchInstance, confirmEntry, joinWorld, resetWorld]);
+    }, [authPending, instanceId, userName, fetchInstance, confirmEntry, joinWorld, resetWorld, onInstanceId]);
 
     const loading = useInstanceLoading({
         instanceId,

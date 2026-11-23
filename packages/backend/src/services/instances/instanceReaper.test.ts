@@ -116,6 +116,69 @@ describe('InstanceReaper', () => {
         expect(await newReaper().sweepOnce()).toBe(1);
         expect(mocks.delete).toHaveBeenCalledWith('room');
     });
+    describe('held_until（ポータルの先に作った部屋）', () => {
+        const HOLD_MS = 180_000;
+        const heldRoom = { id: 'room', createdAt: new Date(T0), heldUntil: new Date(T0 + HOLD_MS) };
+
+        it('誰も入らないまま猶予を過ぎても、held_until までは消さず、過ぎてから猶予を数える', async () => {
+            mocks.findAll.mockResolvedValue([heldRoom]);
+            mocks.presence.mockResolvedValue(runtimeRoom([], T0));
+            const reaper = newReaper();
+            for (const at of [T0 + 60_000, T0 + HOLD_MS - 1, T0 + HOLD_MS, T0 + HOLD_MS + 59_999]) {
+                vi.setSystemTime(at);
+                expect(await reaper.sweepOnce()).toBe(0);
+            }
+            vi.setSystemTime(T0 + HOLD_MS + 60_000);
+            expect(await reaper.sweepOnce()).toBe(1);
+            expect(mocks.delete).toHaveBeenCalledWith('room');
+        });
+        it('Go に部屋が無くても held_until までは消さない（復旧の猶予はその後から）', async () => {
+            mocks.findAll.mockResolvedValue([heldRoom]);
+            mocks.presence.mockResolvedValue(new Map());
+            const reaper = newReaper();
+            expect(await reaper.sweepOnce()).toBe(0);
+            vi.setSystemTime(T0 + HOLD_MS + 59_999);
+            expect(await reaper.sweepOnce()).toBe(0);
+            vi.setSystemTime(T0 + HOLD_MS + 60_000);
+            expect(await reaper.sweepOnce()).toBe(1);
+        });
+        it('過ぎた held_until は猶予を延ばさない（ずっと前に作った部屋はふつうに消す）', async () => {
+            mocks.findAll.mockResolvedValue([{ ...old, heldUntil: new Date(T0 - DAY + HOLD_MS) }]);
+            mocks.presence.mockResolvedValue(runtimeRoom([], T0 - 60_000));
+            expect(await newReaper().sweepOnce()).toBe(1);
+        });
+        it('held_until の後に誰かが入って出たら、空になった時刻から数える（猶予を縮めない）', async () => {
+            mocks.findAll.mockResolvedValue([heldRoom]);
+            mocks.presence.mockResolvedValue(runtimeRoom([], T0 + HOLD_MS + 30_000));
+            const reaper = newReaper();
+            vi.setSystemTime(T0 + HOLD_MS + 89_999);
+            expect(await reaper.sweepOnce()).toBe(0);
+            vi.setSystemTime(T0 + HOLD_MS + 90_000);
+            expect(await reaper.sweepOnce()).toBe(1);
+        });
+        it('held_until の間でも、中に人がいれば当然消さない。在席の判定は変えない', async () => {
+            mocks.findAll.mockResolvedValue([heldRoom]);
+            mocks.presence.mockResolvedValue(runtimeRoom(['alice'], 0));
+            vi.setSystemTime(T0 + DAY);
+            expect(await newReaper().sweepOnce()).toBe(0);
+        });
+        it('ほかの部屋の held_until は、ふつうの部屋の掃除に影響しない', async () => {
+            mocks.findAll.mockResolvedValue([
+                heldRoom,
+                { id: 'plain', createdAt: new Date(T0 - DAY), heldUntil: null },
+            ]);
+            mocks.presence.mockResolvedValue(
+                new Map([
+                    ['room', { id: 'room', memberIds: [], emptySince: T0, gen: 'g1', epoch: 1 }],
+                    ['plain', { id: 'plain', memberIds: [], emptySince: T0 - 60_000, gen: 'g2', epoch: 1 }],
+                ]),
+            );
+            expect(await newReaper().sweepOnce()).toBe(1);
+            expect(mocks.delete).toHaveBeenCalledWith('plain');
+            expect(mocks.delete).not.toHaveBeenCalledWith('room');
+        });
+    });
+
     it('Go に到達できなければ何も消さない', async () => {
         mocks.presence.mockRejectedValue(new Error('runtime down'));
         await expect(newReaper().sweepOnce()).rejects.toThrow('runtime down');

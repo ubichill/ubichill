@@ -30,6 +30,8 @@ import { instanceRuntime } from './instanceRuntime';
  *   - 作成時刻は DB の created_at（timestamptz）だけを使う。プロセス内に持つと、backend が
  *     複数あるとき作成した Pod 以外では猶予が効かない。timestamptz は瞬間を保存するので、
  *     DB のセッションの TimeZone に関係なく getTime() は実時刻と一致する。
+ *   - held_until（ポータルの先に作った部屋）があれば、その時刻を遅い作成時刻として扱う。
+ *     作った人が入らないので、ポータルが消えるまで空のまま残し、過ぎたらふつうの猶予で消す。
  */
 export class InstanceReaper {
     private timer: NodeJS.Timeout | null = null;
@@ -94,9 +96,10 @@ export class InstanceReaper {
             const runtime = presence.get(inst.id);
             const isEmpty = !runtime || runtime.memberIds.length === 0;
             const bornMs = inst.createdAt.getTime();
+            const heldMs = inst.heldUntil?.getTime() ?? 0;
             const emptySince = runtime ? runtime.emptySince : (absentSince.get(inst.id) ?? now);
             const requiredGraceMs = runtime ? graceMs : appConfig.instance.recoveryGraceMs;
-            const isPastGrace = now - Math.max(bornMs, emptySince) >= requiredGraceMs;
+            const isPastGrace = now - Math.max(bornMs, heldMs, emptySince) >= requiredGraceMs;
             return isEmpty && isPastGrace;
         });
 

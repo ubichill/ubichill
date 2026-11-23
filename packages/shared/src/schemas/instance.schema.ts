@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ROOM_PORTAL } from '../world/roomPortal';
 import { WorldModSchema, WorldRequirementsSchema, WorldSourceSchema } from './world.schema';
 import { WorldIdentitySchema } from './worldIdentity.schema';
 
@@ -114,6 +115,11 @@ export const CreateInstanceRequestSchema = z.object({
             maxUsers: z.number().int().positive().optional(),
         })
         .optional(),
+    /**
+     * 作ってからこの間（ms）は、空でも消さない。ポータルの先に作る部屋は、置いた人が入らずに残るので、
+     * ポータルが消えるまで待つ（長くはできない。誰も来ない部屋を残し続けない）。
+     */
+    holdEmptyMs: z.number().int().min(1).max(ROOM_PORTAL.LIFETIME_MS).optional(),
 });
 
 export type CreateInstanceRequest = z.infer<typeof CreateInstanceRequestSchema>;

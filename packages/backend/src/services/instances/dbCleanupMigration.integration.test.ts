@@ -69,6 +69,11 @@ const def = (name: string, label: string, version = '1.0.0') => ({
     },
 });
 const LOCK = { lockVersion: 1, mods: {} };
+/**
+ * 後片付けより後のマイグレーションで足した列のうち、今のコードが読むもの。当てる前の応答を控える間だけ足し、当てる前に外す
+ * （後片付けとは関係が無い。足さないと今のコードが当てる前の DB を読めない）。
+ */
+const LATER_COLUMNS = [{ table: 'instances', column: 'held_until', type: 'timestamptz' }] as const;
 const json = (v: unknown) => (v === null || v === undefined ? null : JSON.stringify(v));
 
 type Modules = {
@@ -269,7 +274,14 @@ function defineCleanupSuite(from: string): void {
             };
             await seed();
             await registry.worldRegistry.initialize();
+            const { sql } = state.m;
+            for (const c of LATER_COLUMNS) {
+                await db.db.execute(sql.raw(`ALTER TABLE "${c.table}" ADD COLUMN "${c.column}" ${c.type}`));
+            }
             state.before = await observe();
+            for (const c of LATER_COLUMNS) {
+                await db.db.execute(sql.raw(`ALTER TABLE "${c.table}" DROP COLUMN "${c.column}"`));
+            }
 
             await migrate(db.db, { migrationsFolder: MIGRATIONS });
             await db.backfillWorldContentHashes(db.db);

@@ -1,11 +1,16 @@
-import type { PortalTarget } from '@ubichill/core-components';
 import { useSocket } from '@ubichill/react';
+import { type Instance, roomPortalAddressFor } from '@ubichill/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { InstanceHUD } from '@/components/hud/InstanceHUD';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { signInPath } from '@/lib/account/authEntry';
-import { afterInstanceFailure, readInstanceEntryState, recordEntryOutcome } from '@/lib/home/home';
+import {
+    afterInstanceFailure,
+    type InstanceEntryState,
+    readInstanceEntryState,
+    recordEntryOutcome,
+} from '@/lib/home/home';
 import { HOST_MOD_SOURCE } from '@/lib/mods/modCdn';
 import { useSession } from '@/lib/session';
 import { useBlocks } from '@/lib/social/blocks';
@@ -13,14 +18,23 @@ import { blockedAuthorsOf, blockedIdsOf } from '@/lib/social/blocksState';
 import { dismissToast, pushToast } from '@/lib/toast';
 import { fetchInstance, fetchWorld } from '@/lib/worlds/instancesApi';
 import { createPortalLookup } from '@/lib/worlds/portalDestination';
-import { portalPath } from '@/lib/worlds/portalPath';
+import { canonicalRoomId, portalPath } from '@/lib/worlds/portalPath';
+import { createPortalTrips } from '@/lib/worlds/portalTrip';
+import { ROOM_PORTAL_REFUSAL_MESSAGES, roomPortalRefusal } from '@/lib/worlds/roomPortalEntry';
 import { useRemoteVisit } from '@/lib/worlds/useRemoteVisit';
-import { type InstanceFailure, WorldView } from '@/world';
+import { type InstanceFailure, InstanceNotFoundError, type PortalGoal, WorldView } from '@/world';
 
 /** 失敗したら一定時間後に自動でホームへ戻す（ロード画面で詰まらないように）。 */
 const RETURN_HOME_MS = 5000;
 
 const RETRY_MESSAGE = '元の部屋には入れませんでした';
+
+/** 部屋を引く。無い・見る人に見えない部屋（404）は null、ほかの失敗はそのまま。 */
+const fetchRoomOrGone = (address: string, signal?: AbortSignal): Promise<Instance | null> =>
+    fetchInstance(address, signal).catch((error: unknown) => {
+        if (error instanceof InstanceNotFoundError) return null;
+        throw error;
+    });
 
 /**
  * SNS のインスタンス画面。ワールドを動かすのは `WorldView` で、ここは認証の確認・ホームへの導線・HUD を足すだけ。
@@ -65,6 +79,19 @@ export function InstancePage() {
 
     // 入れなかった部屋へ戻る導線は、ホームに入れてから出し、この部屋を出たら消す
     const retryToast = useRef<number | null>(null);
+    // 自分のドメインを付けた住所で来たら、このサーバーの部屋の ID のページに置き換える（招待・来訪の知らせを同じ部屋に向ける）
+    const handleInstanceId = useCallback(
+        (fetchedId: string) => {
+            const local = id ? canonicalRoomId(id, fetchedId) : null;
+            if (!local) return false;
+            navigate(`${portalPath({ kind: 'room', room: local })}${location.search}`, {
+                replace: true,
+                state: location.state,
+            });
+            return true;
+        },
+        [id, location.search, location.state, navigate],
+    );
     const handleEntered = useCallback(() => {
         recordEntryOutcome(sessionStorage, 'entered');
         const { retryPath } = entry;
@@ -121,19 +148,53 @@ export function InstancePage() {
         [failure?.replaced, toHome],
     );
 
-    // ポータル（core:portal）: 確かめてから部屋を出て、行き先のワールドのページへ（そこで入室まで進む）
+    // ポータル（core:portal）: 確かめてから部屋を出て、行き先へ。ワールドへのポータルはワールドのページ（そこで入室まで進む）、
+    // 部屋へのポータルはその部屋（読み込み画面に行き先のサムネイルを出す）
+    // 部屋へのポータルは、出る直前に行き先の部屋を引き直し、入れなければ今の部屋に残る（ポータルの鍵は少し前のもの）
     const { leaveWorld } = useSocket();
+    const viewerId = session?.user.id ?? null;
+    // 移る流れは 1 つのページで 1 つだけ（押し直し・確かめている間の押し直しは無視）。部屋を移った・ページを閉じたら取り消す
+    const [trips] = useState(createPortalTrips);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: id は部屋を移ったときに取り消すための合図
+    useEffect(() => () => trips.cancel(), [id, trips]);
     const goThroughPortal = useCallback(
-        async (target: PortalTarget, label: string) => {
-            if (!(await confirm(`「${label}」へ移りますか？今の部屋から退出します。`))) return;
-            await leaveWorld();
-            navigate(portalPath(target));
+        async (goal: PortalGoal, label: string, look?: { displayName: string; thumbnail?: string }) => {
+            const signal = id ? trips.begin() : null;
+            if (!id || !signal) return;
+            const checking: { toast: number | null } = { toast: null };
+            try {
+                if (!(await confirm(`「${label}」へ移りますか？今の部屋から退出します。`)) || signal.aborted) return;
+                if (goal.kind !== 'room') {
+                    await leaveWorld();
+                    if (signal.aborted) return;
+                    return navigate(portalPath(goal));
+                }
+                const room = roomPortalAddressFor(goal.room, id);
+                checking.toast = pushToast('ポータルの先の部屋を確かめています', 'info', undefined, { sticky: true });
+                const refusal = await roomPortalRefusal(fetchRoomOrGone, room, viewerId, { signal });
+                if (signal.aborted) return;
+                if (refusal) return void pushToast(ROOM_PORTAL_REFUSAL_MESSAGES[refusal], 'warn');
+                await leaveWorld();
+                if (signal.aborted) return;
+                const state: InstanceEntryState | undefined = look ? { worldData: look } : undefined;
+                navigate(portalPath({ kind: 'room', room }), { state });
+            } finally {
+                if (checking.toast !== null) dismissToast(checking.toast);
+                trips.end(signal);
+            }
         },
-        [confirm, leaveWorld, navigate],
+        [confirm, id, leaveWorld, navigate, viewerId, trips],
     );
 
-    // ポータルに出す行き先のワールド（同じ行き先は 1 回だけ引く）
-    const [portalLookup] = useState(() => createPortalLookup(fetchWorld));
+    // ポータルに出す行き先。部屋へのポータルは、見る人が入れるかも引く（入れるかは少しずつ引き直す）
+    const portalLookup = useMemo(
+        () =>
+            createPortalLookup(fetchWorld, {
+                fetch: (room, signal) => fetchRoomOrGone(roomPortalAddressFor(room, id ?? ''), signal),
+                viewerId,
+            }),
+        [id, viewerId],
+    );
 
     if (!id) return null;
     return (
@@ -150,6 +211,7 @@ export function InstancePage() {
             recovery={recovery}
             onFailed={handleFailed}
             onEntered={handleEntered}
+            onInstanceId={handleInstanceId}
             onPortal={goThroughPortal}
             portalLookup={portalLookup}
         >
