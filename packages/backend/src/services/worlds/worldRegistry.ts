@@ -176,19 +176,6 @@ function hostOfUrl(url: string): string | undefined {
     }
 }
 
-/**
- * 取ってきた URL が作者のサーバーの正規の URL そのものか。https で、オリジン（スキーム・ホスト・ポート）とパスが同じときだけ
- * （http やほかのポートで配られたものはヘッダーが付いていなくても正規の URL とみなさず、正規の URL を確かめに行く）。
- */
-function isCanonicalFile(url: string, canonical: string): boolean {
-    try {
-        const [x, y] = [new URL(normalizeWorldUrl(url)), new URL(canonical)];
-        return y.protocol === 'https:' && x.origin === y.origin && x.pathname === y.pathname && x.search === '';
-    } catch {
-        return false;
-    }
-}
-
 /** 一覧（このサーバーの一覧・お気に入り・連合のピアへの一覧）に出すか。プライベートは作者のマイワールドにだけ出す。 */
 const isListed = (world: { visibility?: WorldVisibility }): boolean => world.visibility !== 'private';
 
@@ -690,19 +677,19 @@ class WorldRegistry {
      * 公開範囲は取ってきた URL ではなく署名の作者で決める（_withAuthorVisibility）。
      */
     private async _resolveRemote(url: string): Promise<WorldResolution> {
-        return this._withAuthorVisibility(url, await this._remoteCache.resolve(url));
+        return this._withAuthorVisibility(await this._remoteCache.resolve(url));
     }
 
     /**
      * 署名の作者の公開範囲を当てる。プライベートのワールドのファイル（誰にでも配る）を別の場所に置き直しても、
-     * 同じ署名の作者のワールドとして部屋を作らせないため。
-     * - 作者がこのサーバーのアカウント: その作者のワールド（以前の名前を含む）の今の公開範囲と作者の ID
-     * - 作者がほかのサーバー: 作者のサーバーの正規の URL のヘッダー（外部のワールドと同じく 5 分覚える）。正規の URL を
-     *   取れない・無い（消した・名前を変えたあと）ならパブリック。取ってきた URL がそのワールドの正規の URL なら、そのヘッダーのまま
-     * 作者を確かめられなかった間（名乗っているだけ）は閉じる側にだけ当てる（プライベートにはするが、作者の ID は付けず、
-     * パブリックにもしない）。署名の無い写し（署名を外して置き直したもの）は別のワールド（未署名）なので、ここでは扱えない。
+     * 同じ署名の作者のワールドとして部屋を作らせないため。作者は確かめられたかにかかわらず署名が名乗る作者で決める
+     * （確かめられていない名乗りは閉じる側にだけ使う）。
+     * - 作者がこのサーバーのアカウント: その作者のワールド（以前の名前を含む）の今の公開範囲。作者を確かめられたときだけ作者の ID も
+     * - 作者がほかのサーバー: 作者のサーバーの正規の URL を HEAD で確かめる。private（前の結果でも）なら閉じ、期限の内に
+     *   public（または 404・410）と決められたときだけ開く。決められなければ visibilityUnconfirmed（部屋は作らせない）
+     * 署名の無い写し（署名を外して置き直したもの）は別のワールド（未署名）なので、ここでは扱えない。
      */
-    private async _withAuthorVisibility(url: string, resolution: WorldResolution): Promise<WorldResolution> {
+    private async _withAuthorVisibility(resolution: WorldResolution): Promise<WorldResolution> {
         if (!resolution.ok) return resolution;
         const { world } = resolution;
         const owner = authorWorldOf(world.identity);
@@ -716,9 +703,8 @@ class WorldRegistry {
             if (!owner.confirmed) return visibility === 'private' ? closed : resolution;
             return { ok: true, world: { ...world, visibility, authorId: located.record.authorId } };
         }
-        const canonical = canonicalWorldUrl(owner);
-        if (isCanonicalFile(url, canonical)) return resolution;
-        const upstream = await this._canonicalVisibility.of(canonical, owner.domain);
+        if (world.visibility === 'private') return closed;
+        const upstream = await this._canonicalVisibility.of(canonicalWorldUrl(owner), owner.domain);
         if (upstream === 'private') return closed;
         // 決められなければ見せはするが部屋は作らせない（作者のサーバーに 429 を返させてパブリックにさせない）
         return upstream === 'unknown' ? { ok: true, world: { ...world, visibilityUnconfirmed: true } } : resolution;

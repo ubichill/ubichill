@@ -210,15 +210,15 @@ type IdentityLike =
 
 /**
  * 署名の作者のワールド（作者のアカウントのドメイン・ID と、ワールドの名前）。識別子が作者と食い違う・形が違うなら undefined。
- * confirmed は作者の鍵を確かめられたか。確かめられなかった間（authorPending）は、署名が名乗る作者（claimedAuthor）と
- * 署名の対象の名前で返す。名乗っているだけなので、公開範囲を閉じる側にだけ使う。
+ * confirmed は作者の鍵を確かめられたか。確かめられなかったとき（確認待ち・鍵が違った・確認が古い）は、署名が名乗る作者
+ * （claimedAuthor）と署名の対象の名前で返す。名乗っているだけなので、公開範囲を閉じる側にだけ使う。
  */
 export function authorWorldOf(
     identity: IdentityLike,
 ): { handle: string; domain: string; name: string; confirmed: boolean } | undefined {
     if (identity?.status !== 'verified') return undefined;
     const confirmed = !!identity.author && !identity.authorPending;
-    const author = confirmed ? identity.author : identity.authorPending ? identity.claimedAuthor : undefined;
+    const author = confirmed ? identity.author : identity.claimedAuthor;
     const account = author ? parseAuthorAccount(author) : null;
     if (!author || !account) return undefined;
     const worldId = identity.worldId ?? '';

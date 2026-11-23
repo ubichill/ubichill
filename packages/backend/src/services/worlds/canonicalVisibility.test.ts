@@ -45,12 +45,27 @@ describe('createCanonicalVisibility', () => {
         }
     });
 
-    it('決められない間は、前に決められた結果を使う（期限を過ぎていても）', async () => {
+    it('決められない間、前の private は期限を過ぎても使う（閉じる側）', async () => {
         const { canonical, head, clock } = setup();
         expect(await canonical.of(URL, 'author.example')).toBe('private');
         head.mockRejectedValue(new Error('down'));
         clock.t = 5000;
         expect(await canonical.of(URL, 'author.example')).toBe('private');
+    });
+
+    it('期限を過ぎた public は、決められなければ使わない（上限を使い切らせても、古い public で開かない）', async () => {
+        const allow = { ok: true };
+        const { canonical, head, clock } = setup({ tryAcquire: () => allow.ok });
+        head.mockResolvedValue({ status: 200, visibility: 'public' });
+        expect(await canonical.of(URL, 'author.example')).toBe('public');
+        clock.t = 999;
+        expect(await canonical.of(URL, 'author.example')).toBe('public');
+        allow.ok = false;
+        clock.t = 1000;
+        expect(await canonical.of(URL, 'author.example')).toBe('unknown');
+        allow.ok = true;
+        head.mockRejectedValue(new Error('429'));
+        expect(await canonical.of(URL, 'author.example')).toBe('unknown');
     });
 
     it('期限の内は問い合わせず、同時の問い合わせは 1 回にまとめ、期限を過ぎたら取り直す', async () => {

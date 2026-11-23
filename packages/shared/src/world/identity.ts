@@ -169,7 +169,9 @@ export async function verifyWorldSignature(
         worldId: worldIdOf(envelope.publicKey, envelope.subject),
         publicKey: envelope.publicKey,
         contentHash,
-        ...(check.status === 'pending' ? { authorPending: true as const, claimedAuthor: envelope.author } : {}),
+        // 名乗る作者は、確かめられなかったわけ（確認待ち・違った・確認が古い）にかかわらず残す（閉じる側にだけ使う）
+        claimedAuthor: envelope.author,
+        ...(check.status === 'pending' ? { authorPending: true as const } : {}),
     };
 }
 

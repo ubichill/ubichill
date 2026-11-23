@@ -129,6 +129,7 @@ describe('signWorld / verifyWorldSignature', () => {
             worldId: worldIdOf(key.publicKey, 'my-world'),
             publicKey: key.publicKey,
             contentHash: sig.contentHash,
+            claimedAuthor: SIGNER,
         });
     });
 
@@ -282,6 +283,8 @@ describe('作者アカウント（author）', () => {
             worldId: worldIdOf(attacker.publicKey, 'my-world'),
             publicKey: attacker.publicKey,
             contentHash: sig.contentHash,
+            // 名乗りは残すが author にはしない（公開範囲を閉じる側にだけ使う）
+            claimedAuthor: AUTHOR,
         });
     });
 
@@ -327,7 +330,9 @@ describe('作者アカウント（author）', () => {
         }
         const unconfirmed = await verifyWorldSignature(doc, sig, fakeCrypto, resolverFor({}));
         expect(unconfirmed).not.toHaveProperty('authorPending');
-        expect(unconfirmed).not.toHaveProperty('claimedAuthor');
+        // 鍵が作者のものと確かめられなくても、名乗る作者は残す（閉じる側にだけ使う）
+        expect(unconfirmed).toMatchObject({ claimedAuthor: AUTHOR });
+        expect(unconfirmed).not.toHaveProperty('author');
     });
 
     it('確認の古さは、作者が付いていて確認時刻があるときだけ判定する（自サーバー・未署名は古くならない）', () => {

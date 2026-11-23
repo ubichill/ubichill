@@ -18,6 +18,8 @@ const mocks = vi.hoisted(() => ({
     findState: vi.fn(),
     /** 鍵を確かめられない作者（作者のサーバーへの取得の上限を使い切られたときなど） */
     pending: new Set<string>(),
+    /** 鍵を作者のものと確かめられなかった作者（確認が 24 時間より古く、その内容を前に確かめていないときなど） */
+    unconfirmed: new Set<string>(),
 }));
 
 vi.mock('../../lib/safeFetch', () => ({
@@ -32,7 +34,11 @@ vi.mock('../../lib/safeFetch', () => ({
 }));
 vi.mock('../authors/authorKeyService', () => ({
     isAuthorKey: vi.fn(async (author: string) =>
-        mocks.pending.has(author) ? { status: 'pending' } : { status: 'confirmed' },
+        mocks.pending.has(author)
+            ? { status: 'pending' }
+            : mocks.unconfirmed.has(author)
+              ? { status: 'unconfirmed' }
+              : { status: 'confirmed' },
     ),
     resolveAuthorDisplayName: vi.fn(async () => undefined),
     invalidateAuthorKey: vi.fn(),
@@ -146,6 +152,7 @@ beforeAll(() => {
 beforeEach(() => {
     mocks.files.clear();
     mocks.pending.clear();
+    mocks.unconfirmed.clear();
     mocks.created.length = 0;
     worldRegistry.invalidateResolvedWorlds();
     mocks.findByHandle.mockImplementation(async (handle: string) =>
@@ -248,19 +255,42 @@ describe('作者がほかのサーバーのアカウントのワールドの写�
         expect(yamlFetches).toHaveLength(120);
     });
 
-    it('正規の URL そのものなら、そのヘッダーだけで決める（もう一度取りに行かない）', async () => {
+    it('正規の URL から取っても、ヘッダーが private なら閉じる', async () => {
         await host(canonical('direct'), 'aya@author.example', 'direct', { [WORLD_VISIBILITY_HEADER]: 'private' });
-        const { safeFetch } = await import('../../lib/safeFetch');
-        vi.mocked(safeFetch).mockClear();
         expect(await instanceManager.createInstance({ worldId: canonical('direct') }, 'bob')).toMatchObject({
             reason: 'forbidden',
         });
-        // YAML・lock・署名の 3 つだけ
-        expect(vi.mocked(safeFetch).mock.calls.map(([u]) => u)).toHaveLength(3);
+    });
+
+    it('期限を過ぎた public は使わない: 正規の URL を確かめられなければ 503（上限を使い切らせても古い public で開かない）', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        try {
+            vi.setSystemTime(new Date('2026-11-23T00:00:00Z'));
+            await host(canonical('aging'), 'aya@author.example', 'aging', { [WORLD_VISIBILITY_HEADER]: 'public' });
+            const url = mirror('aging');
+            await host(url, 'aya@author.example', 'aging');
+            expect(await instanceManager.createInstance({ worldId: url }, 'bob')).not.toHaveProperty('reason');
+            // 作者がプライベートにしたあと、作者のサーバーに届かなくなった（429 にさせられた）
+            mocks.files.set(canonical('aging'), { body: '', status: 429 });
+            vi.setSystemTime(new Date('2026-11-23T00:05:01Z'));
+            expect(await instanceManager.createInstance({ worldId: url }, 'bob')).toMatchObject({
+                reason: 'retry',
+                error: expect.stringContaining('作者のサーバーで公開範囲を確かめられない'),
+            });
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('署名の無い写しは作者の公開範囲と関係なく作れる（別のワールド。保証しないこと）', async () => {
+        await host(canonical('nosig'), 'aya@author.example', 'nosig', { [WORLD_VISIBILITY_HEADER]: 'private' });
+        const url = mirror('nosig');
+        mocks.files.set(url, { body: yaml.stringify(definitionOf('nosig')) });
+        expect(await instanceManager.createInstance({ worldId: url }, 'bob')).not.toHaveProperty('reason');
     });
 });
 
-describe('作者を確かめられない間（名乗っているだけ）の写し', () => {
+describe('作者を確かめられない（確認待ち・確認が古い）写し', () => {
     const canonical = (name: string) => `https://author.example/api/v1/authors/aya/worlds/${name}.yaml`;
 
     it('ほかのサーバーの作者: 正規の URL が private なら、確かめられなくても 403（取得の上限を使い切らせても抜けない）', async () => {
@@ -276,16 +306,33 @@ describe('作者を確かめられない間（名乗っているだけ）の写�
         }
     });
 
-    it('正規の URL が public でも、作者を確かめられるまでは作らない（少し待って試し直す）', async () => {
+    it('作者を確かめられなくても、正規の URL が期限の内に public と決まれば作れる（決め方は 1 つ）', async () => {
         mocks.pending.add('aya@author.example');
         await host(canonical('wait'), 'aya@author.example', 'wait', { [WORLD_VISIBILITY_HEADER]: 'public' });
         const url = mirror('wait');
         await host(url, 'aya@author.example', 'wait');
-        expect(await instanceManager.createInstance({ worldId: url }, 'bob')).toMatchObject({ reason: 'retry' });
-        expect(mocks.created).toEqual([]);
+        expect(await instanceManager.createInstance({ worldId: url }, 'bob')).not.toHaveProperty('reason');
     });
 
-    it('このサーバーの作者のプライベートのワールドを名乗れば 403。パブリックでも作者の ID は付けない', async () => {
+    it('確認が古い（24 時間より前）作者は unconfirmed になるが、名乗る作者で正規の URL を確かめる: private なら 403、public なら作れる', async () => {
+        mocks.unconfirmed.add('aya@author.example');
+        await host(canonical('stale'), 'aya@author.example', 'stale', { [WORLD_VISIBILITY_HEADER]: 'private' });
+        const url = mirror('stale');
+        await host(url, 'aya@author.example', 'stale');
+        const resolution = await worldRegistry.resolveRefDetailed(url);
+        expect(resolution.ok && resolution.world.identity).toMatchObject({ claimedAuthor: 'aya@author.example' });
+        expect(resolution.ok && resolution.world.identity).not.toHaveProperty('author');
+        expect(await instanceManager.createInstance({ worldId: url }, 'bob')).toMatchObject({ reason: 'forbidden' });
+
+        await host(canonical('stale-open'), 'aya@author.example', 'stale-open', {
+            [WORLD_VISIBILITY_HEADER]: 'public',
+        });
+        const open = mirror('stale-open');
+        await host(open, 'aya@author.example', 'stale-open');
+        expect(await instanceManager.createInstance({ worldId: open }, 'bob')).not.toHaveProperty('reason');
+    });
+
+    it('このサーバーの作者のプライベートのワールドを名乗れば（確かめられなくても）403。パブリックなら作れるが作者の ID は付けない', async () => {
         mocks.pending.add('aya@ubichill.example');
         await ayaWorld('secret2', 'private');
         const url = mirror('claim');
@@ -303,12 +350,13 @@ describe('作者を確かめられない間（名乗っているだけ）の写�
         await host(open, 'aya@ubichill.example', 'open2');
         const resolution = await worldRegistry.resolveRefDetailed(open);
         expect(resolution.ok && resolution.world.authorId).toBeUndefined();
-        expect(await instanceManager.createInstance({ worldId: open }, 'bob')).toMatchObject({ reason: 'retry' });
+        // このサーバーの作者のパブリックのワールドはだれでも作れる（名乗りからは作者の ID を付けない）
+        expect(await instanceManager.createInstance({ worldId: open }, 'bob')).not.toHaveProperty('reason');
     });
 });
 
-describe('正規の URL とみなす条件', () => {
-    it('http・ほかのポートで同じパスに置いたもの（ヘッダー無し）は正規の URL とみなさず、https の正規の URL を確かめる', async () => {
+describe('正規の URL の確かめ方', () => {
+    it('http・ほかのポートで同じパスに置いたもの（ヘッダー無し）も、https の正規の URL を確かめる', async () => {
         await host('https://author.example/api/v1/authors/aya/worlds/scheme.yaml', 'aya@author.example', 'scheme', {
             [WORLD_VISIBILITY_HEADER]: 'private',
         });

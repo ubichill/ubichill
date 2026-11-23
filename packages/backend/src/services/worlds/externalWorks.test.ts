@@ -409,11 +409,12 @@ describe('authorWorldOf', () => {
         ).toEqual({ handle: 'aya', domain: 'author.example', name: 'garden', confirmed: false });
     });
 
-    it('作者を名乗らない・確かめて違った（pending でない鍵だけの識別）・形の違う名前は undefined', () => {
+    it('作者を名乗らない・形の違う名前は undefined', () => {
         expect(authorWorldOf({ status: 'verified', worldId: 'ed25519:abc/garden' })).toBeUndefined();
+        // 鍵が作者のものと確かめられなかった（確認が古いなど）ときも、名乗る作者で返す（閉じる側にだけ使う）
         expect(
             authorWorldOf({ status: 'verified', worldId: 'ed25519:abc/garden', claimedAuthor: 'aya@author.example' }),
-        ).toBeUndefined();
+        ).toEqual({ handle: 'aya', domain: 'author.example', name: 'garden', confirmed: false });
         expect(
             authorWorldOf({
                 status: 'verified',
