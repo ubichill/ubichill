@@ -147,6 +147,33 @@ describe('webFingerLinks', () => {
         expect(fetched).toEqual(['https://ubichill.com/.well-known/webfinger?resource=acct%3Ayoukan%40ubichill.com']);
     });
 
+    it('一時的に取れない（429・5xx・時間切れで例外）は pending（作者が無い unconfirmed にしない）。少しの間は問い合わせ直さない', async () => {
+        const clock = { t: 1_000_000 };
+        const fetched: string[] = [];
+        const state = { failing: true };
+        const directory = createAuthorKeyDirectory({
+            bindings: { find: async () => undefined, save: async () => undefined },
+            confirmedContents: memoryConfirmedContents(),
+            fetchJson: async (url) => {
+                fetched.push(url);
+                if (state.failing) throw new Error('HTTP 429');
+                return undefined;
+            },
+            allowHttp: false,
+            now: () => clock.t,
+        });
+        expect(await directory.isAuthorKey('aya@author.example', 'B'.repeat(43), HASH)).toEqual({ status: 'pending' });
+        expect(await directory.isAuthorKey('aya@author.example', 'B'.repeat(43), HASH)).toEqual({ status: 'pending' });
+        expect(fetched).toHaveLength(1);
+        // 30 秒たてば問い合わせ直す。今度は「無い」（404）なら unconfirmed
+        state.failing = false;
+        clock.t += 30_000;
+        expect(await directory.isAuthorKey('aya@author.example', 'B'.repeat(43), HASH)).toEqual({
+            status: 'unconfirmed',
+        });
+        expect(fetched).toHaveLength(2);
+    });
+
     it('表示名が不正（制御文字・長すぎ・文字列でない）なら捨てる', () => {
         for (const bad of ['a\u0000b', 'x'.repeat(31), 42, '']) {
             const links = webFingerLinks(

@@ -14,6 +14,7 @@ import {
 } from '@ubichill/db';
 import {
     type AuthorAccount,
+    createFetchGuard,
     ENV_KEYS,
     effectiveWorldVisibility,
     HANDLE_PATTERN,
@@ -25,6 +26,7 @@ import {
     parseStoredDefinition,
     type ResolvedWorld,
     SERVER_CONFIG,
+    WORLD_VISIBILITY_HEADER,
     type WorldDefinition,
     WorldDefinitionSchema,
     type WorldDocument,
@@ -35,6 +37,7 @@ import {
     WorldSourceKind,
     type WorldVisibility,
     worldPublishProblem,
+    worldVisibilityFromHeader,
 } from '@ubichill/shared';
 import yaml from 'yaml';
 import { assertPublicUrl, safeFetch } from '../../lib/safeFetch';
@@ -45,6 +48,7 @@ import { isAuthorKey, resolveAuthorDisplayName } from '../authors/authorKeyServi
 import { selfAccount, selfDomain } from '../authors/authorKeys';
 import { type BackendEvents, backendEvents } from '../cluster/backendEvents';
 import { SYSTEM_USER_ID } from '../users/systemUser';
+import { createCanonicalVisibility } from './canonicalVisibility';
 import {
     authorSharePath,
     authorWorldOf,
@@ -163,6 +167,15 @@ export function asUnsignedRepositoryWorld(hosted: HostedWorldDocument): HostedWo
 
 const serveUnsignedRepositoryWorlds = (): boolean => process.env.WORLDS_SERVE_UNSIGNED_REPOSITORY === 'true';
 
+/** URL のホスト（読めなければ undefined）。外部のワールドを取りに行く回数をドメインごとに数える。 */
+function hostOfUrl(url: string): string | undefined {
+    try {
+        return new URL(url).host.toLowerCase();
+    } catch {
+        return undefined;
+    }
+}
+
 /**
  * 取ってきた URL が作者のサーバーの正規の URL そのものか。https で、オリジン（スキーム・ホスト・ポート）とパスが同じときだけ
  * （http やほかのポートで配られたものはヘッダーが付いていなくても正規の URL とみなさず、正規の URL を確かめに行く）。
@@ -260,12 +273,27 @@ class WorldRegistry {
     private static readonly REMOTE_CACHE_MAX = 2000;
     /** 作者をいま確かめられなかった（pending）ワールドは、すぐ確認し直せるよう短くキャッシュする。 */
     private static readonly REMOTE_PENDING_TTL_MS = 30 * 1000;
+    /**
+     * 外部のワールドを取りに行く回数の、ドメインごとの上限（1 分あたり。1 回で YAML・lock・署名の 3 つを取る）。
+     * 認証の要らない解決の API から読ませ続けて、作者のサーバーにこのサーバーを 429 にさせないため（作者のサーバーの
+     * 1 IP の上限より十分少なくする）。超えた分は取らずに失敗にする。
+     */
+    private static readonly REMOTE_FETCH_LIMIT = 120;
+    private readonly _remoteFetchGuard = createFetchGuard({
+        limit: WorldRegistry.REMOTE_FETCH_LIMIT,
+        windowMs: 60 * 1000,
+        now: () => Date.now(),
+    });
     private readonly _remoteCache = createRemoteWorldCache<ResolvedWorld>({
-        load: (url) =>
-            resolveWorldFromUrl(url, this._externalSource(url), {
+        load: (url) => {
+            const host = hostOfUrl(url);
+            if (!host || !this._remoteFetchGuard.tryAcquire(host))
+                return Promise.reject(new Error(`取りに行く回数の上限です: ${url}`));
+            return resolveWorldFromUrl(url, this._externalSource(url), {
                 isAuthorKey,
                 resolveAuthorName: resolveAuthorDisplayName,
-            }),
+            });
+        },
         isIntegrityError: (err): err is WorldIntegrityError => err instanceof WorldIntegrityError,
         onFailure: (url, err) => logger.error(`外部ワールド解決失敗: ${url}`, err),
         ttlMs: WorldRegistry.REMOTE_TTL_MS,
@@ -274,6 +302,25 @@ class WorldRegistry {
                 ? WorldRegistry.REMOTE_PENDING_TTL_MS
                 : WorldRegistry.REMOTE_TTL_MS,
         failureTtlMs: WorldRegistry.REMOTE_FAILURE_TTL_MS,
+        max: WorldRegistry.REMOTE_CACHE_MAX,
+    });
+
+    /** 作者のサーバーの正規の URL の公開範囲（ヘッダーだけを HEAD で見る。ドメインごとの上限は外部のワールドと別に数える） */
+    private readonly _canonicalFetchGuard = createFetchGuard({
+        limit: WorldRegistry.REMOTE_FETCH_LIMIT,
+        windowMs: 60 * 1000,
+        now: () => Date.now(),
+    });
+    private readonly _canonicalVisibility = createCanonicalVisibility({
+        head: async (url) => {
+            const response = await safeFetch(url, { method: 'HEAD' });
+            return {
+                status: response.status,
+                visibility: worldVisibilityFromHeader(response.headers.get(WORLD_VISIBILITY_HEADER)),
+            };
+        },
+        tryAcquire: (domain) => this._canonicalFetchGuard.tryAcquire(domain),
+        ttlMs: WorldRegistry.REMOTE_TTL_MS,
         max: WorldRegistry.REMOTE_CACHE_MAX,
     });
 
@@ -671,8 +718,10 @@ class WorldRegistry {
         }
         const canonical = canonicalWorldUrl(owner);
         if (isCanonicalFile(url, canonical)) return resolution;
-        const upstream = await this._remoteCache.resolve(canonical);
-        return upstream.ok && upstream.world.visibility === 'private' ? closed : resolution;
+        const upstream = await this._canonicalVisibility.of(canonical, owner.domain);
+        if (upstream === 'private') return closed;
+        // 決められなければ見せはするが部屋は作らせない（作者のサーバーに 429 を返させてパブリックにさせない）
+        return upstream === 'unknown' ? { ok: true, world: { ...world, visibilityUnconfirmed: true } } : resolution;
     }
 
     /** 外部のワールドを取り直して解決する（作者が公開し直したのを確かめ直すとき。呼び出し側で回数を抑えること）。 */

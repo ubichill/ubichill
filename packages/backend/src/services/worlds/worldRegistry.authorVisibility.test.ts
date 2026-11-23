@@ -9,7 +9,7 @@ import { nodeWorldCrypto } from './worldCrypto';
  * 取得（safeFetch）・DB・作者の鍵の確認を偽物にして、本物の worldRegistry と instanceManager を通す。
  */
 const mocks = vi.hoisted(() => ({
-    files: new Map<string, { body: string; headers?: Record<string, string> } | 'down'>(),
+    files: new Map<string, { body: string; headers?: Record<string, string>; status?: number } | 'down'>(),
     created: [] as string[],
     findByHandle: vi.fn(),
     findById: vi.fn(),
@@ -25,8 +25,8 @@ vi.mock('../../lib/safeFetch', () => ({
         const file = mocks.files.get(url);
         if (file === 'down') throw new Error('ECONNREFUSED');
         return file
-            ? new Response(file.body, { status: 200, headers: file.headers })
-            : new Response('', { status: 404 });
+            ? new Response(file.body || null, { status: file.status ?? 200, headers: file.headers })
+            : new Response(null, { status: 404 });
     }),
     assertPublicUrl: vi.fn(),
 }));
@@ -207,13 +207,45 @@ describe('作者がほかのサーバーのアカウントのワールドの写�
         }
     });
 
-    it('正規の URL が無い（消した・名前を変えた）・つながらないときはパブリック（閉じない。判断は design に書いた）', async () => {
+    it('正規の URL が無い（404。消した・名前を変えた）ならパブリック', async () => {
+        const url = mirror('gone');
+        await host(url, 'aya@author.example', 'gone');
+        expect(await instanceManager.createInstance({ worldId: url }, 'bob')).not.toHaveProperty('reason');
+    });
+
+    it('正規の URL を確かめられない（429・5xx・通信の失敗）なら、見せはするが部屋は作らない（503 で試し直す）', async () => {
         mocks.files.set(canonical('down'), 'down');
-        for (const name of ['gone', 'down']) {
+        mocks.files.set(canonical('busy'), { body: '', status: 429 });
+        for (const name of ['down', 'busy']) {
             const url = mirror(name);
             await host(url, 'aya@author.example', name);
-            expect(await instanceManager.createInstance({ worldId: url }, 'bob')).not.toHaveProperty('reason');
+            const resolution = await worldRegistry.resolveRefDetailed(url);
+            expect(resolution.ok && resolution.world.visibilityUnconfirmed).toBe(true);
+            expect(await instanceManager.createInstance({ worldId: url }, 'bob')).toMatchObject({ reason: 'retry' });
         }
+        expect(mocks.created).toEqual([]);
+    });
+
+    it('前に private と確かめたら、確かめられなくなっても private のまま', async () => {
+        await host(canonical('sticky'), 'aya@author.example', 'sticky', { [WORLD_VISIBILITY_HEADER]: 'private' });
+        const first = mirror('sticky');
+        await host(first, 'aya@author.example', 'sticky');
+        expect(await instanceManager.createInstance({ worldId: first }, 'bob')).toMatchObject({ reason: 'forbidden' });
+        mocks.files.set(canonical('sticky'), 'down');
+        const second = mirror('sticky');
+        await host(second, 'aya@author.example', 'sticky');
+        expect(await instanceManager.createInstance({ worldId: second }, 'bob')).toMatchObject({ reason: 'forbidden' });
+    });
+
+    it('同じドメインへ取りに行く回数に上限がある（解決の API から読ませ続けて、作者のサーバーに 429 を返させない）', async () => {
+        const { safeFetch } = await import('../../lib/safeFetch');
+        const host2 = `flood-${Math.random().toString(36).slice(2)}.example`;
+        const urls = Array.from({ length: 130 }, (_, i) => `https://${host2}/w${i}.yaml`);
+        for (const url of urls) mocks.files.set(url, { body: yaml.stringify(definitionOf('flood')) });
+        vi.mocked(safeFetch).mockClear();
+        await Promise.all(urls.map((url) => worldRegistry.resolveRefDetailed(url)));
+        const yamlFetches = vi.mocked(safeFetch).mock.calls.filter(([u]) => String(u).endsWith('.yaml'));
+        expect(yamlFetches).toHaveLength(120);
     });
 
     it('正規の URL そのものなら、そのヘッダーだけで決める（もう一度取りに行かない）', async () => {

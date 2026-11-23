@@ -37,6 +37,9 @@ export class InstanceJoinRejected extends Error {}
  */
 export type InstanceCreateFailure = { error: string; reason?: 'forbidden' | 'retry' };
 
+export const VISIBILITY_UNCONFIRMED_MESSAGE =
+    'ワールドの作者のサーバーで公開範囲を確かめられません。少し待ってからもう一度試してください';
+
 export const AUTHOR_PENDING_MESSAGE = 'ワールドの作者をまだ確認できていません。少し待ってからもう一度試してください';
 
 export const PRIVATE_WORLD_MESSAGE = 'プライベートのワールドには、作者しかインスタンスを作れません';
@@ -60,6 +63,7 @@ class InstanceManager {
         }
         const world = resolution.world;
         if (!canStartInstance(world, leaderId)) return { error: PRIVATE_WORLD_MESSAGE, reason: 'forbidden' };
+        if (world.visibilityUnconfirmed) return { error: VISIBILITY_UNCONFIRMED_MESSAGE, reason: 'retry' };
         // 作者を名乗る外部のワールドは、作者を確かめられるまで作らない（確かめられない間は公開範囲も確かめきれないため）
         if (
             world.identity?.status === 'verified' &&

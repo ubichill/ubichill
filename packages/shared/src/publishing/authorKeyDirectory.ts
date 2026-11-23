@@ -141,7 +141,10 @@ export interface AuthorKeyDirectoryDeps {
         record: (account: string, contentHash: string) => Promise<void>;
         has: (account: string, contentHash: string) => Promise<boolean>;
     };
-    /** JSON の取得。失敗・非 2xx は undefined を返すこと。 */
+    /**
+     * JSON の取得。無い（404・410）は undefined を返す。一時的な失敗（429・5xx・時間切れ・通信の失敗）は例外にする
+     * （作者が無いのではなく、いま確かめられないだけ。pending として扱う）。区別しない実装は undefined を返してよい。
+     */
     fetchJson: (url: string) => Promise<unknown>;
     /** 開発（localhost 間）だけ http も試す。本番は https のみ。 */
     allowHttp: boolean;
@@ -170,6 +173,8 @@ export const AUTHOR_KEYS_FRESH_MS = 60 * 60 * 1000;
 export const AUTHOR_KEYS_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 /** 確認に失敗したアカウントを問い合わせ直さない時間（取得失敗で毎回ネットワークに出ないように）。 */
 const FETCH_RETRY_MS = 5 * 60 * 1000;
+/** 一時的な失敗（429・5xx・時間切れ）のあと問い合わせ直さない時間。この間は pending を返す。 */
+const TRANSIENT_RETRY_MS = 30 * 1000;
 /**
  * 知らない鍵のために取り直す最短間隔。作者を名乗って毎回違う鍵で署名したワールドを読ませ、
  * 作者のサーバーへの問い合わせを増幅させないため。新しい公開環境の反映はこの時間だけ遅れ得る。
@@ -218,26 +223,31 @@ export function createAuthorKeyDirectory(deps: AuthorKeyDirectoryDeps): AuthorKe
     const now = deps.now ?? Date.now;
     const freshMs = deps.freshMs ?? AUTHOR_KEYS_FRESH_MS;
     const maxAgeMs = deps.maxAgeMs ?? AUTHOR_KEYS_MAX_AGE_MS;
-    const failedAt = new Map<string, number>();
-    const inFlight = new Map<string, Promise<AuthorProfile | undefined>>();
+    const failedAt = new Map<string, { at: number; transient: boolean }>();
+    const inFlight = new Map<string, Promise<AuthorProfile | undefined | 'deferred'>>();
     const guard = createFetchGuard({ limit: DOMAIN_FETCH_LIMIT, windowMs: DOMAIN_FETCH_WINDOW_MS, now });
 
-    const fetchProfile = async (account: string, domain: string): Promise<AuthorProfile | undefined> => {
+    /** 作者の鍵一覧を取る。無ければ undefined、一時的に取れなければ 'transient'。 */
+    const fetchProfile = async (account: string, domain: string): Promise<AuthorProfile | undefined | 'transient'> => {
         const path = `/.well-known/webfinger?resource=${encodeURIComponent(`acct:${account}`)}`;
         const schemes = deps.allowHttp ? ['https', 'http'] : ['https'];
-        return schemes.reduce<Promise<AuthorProfile | undefined>>(async (prev, scheme) => {
-            const found = await prev;
-            if (found) return found;
+        const transient = { seen: false };
+        const fetchOrNote = (url: string) =>
+            deps.fetchJson(url).catch(() => {
+                transient.seen = true;
+                return undefined;
+            });
+        const found = await schemes.reduce<Promise<AuthorProfile | undefined>>(async (prev, scheme) => {
+            const done = await prev;
+            if (done) return done;
             const origin = `${scheme}://${domain}`;
-            const jrd = await deps.fetchJson(`${origin}${path}`).catch(() => undefined);
+            const jrd = await fetchOrNote(`${origin}${path}`);
             const links = webFingerLinks(jrd, account, origin, deps.resolveSameOrigin);
             if (!links?.signingKeysUrl) return undefined;
-            const list = parseSigningKeyList(
-                await deps.fetchJson(links.signingKeysUrl).catch(() => undefined),
-                account,
-            );
+            const list = parseSigningKeyList(await fetchOrNote(links.signingKeysUrl), account);
             return list ? { keys: list.keys, displayName: links.displayName } : undefined;
         }, Promise.resolve(undefined));
+        return found ?? (transient.seen ? 'transient' : undefined);
     };
 
     /**
@@ -252,13 +262,19 @@ export function createAuthorKeyDirectory(deps: AuthorKeyDirectoryDeps): AuthorKe
         const pending = inFlight.get(account);
         if (pending) return pending;
         const failed = failedAt.get(account);
-        if (failed !== undefined && now() - failed < FETCH_RETRY_MS) return Promise.resolve(undefined);
+        if (failed?.transient && now() - failed.at < TRANSIENT_RETRY_MS) return Promise.resolve('deferred');
+        if (failed && !failed.transient && now() - failed.at < FETCH_RETRY_MS) return Promise.resolve(undefined);
         // 上限に達していたら取得しない（失敗としては記録せず、窓が空けば次のアクセスで取得する）
         if (purpose === 'discover' && !guard.tryAcquire(domain)) return Promise.resolve('deferred');
         const task = fetchProfile(account, domain)
-            .then(async (profile) => {
+            .then(async (profile): Promise<AuthorProfile | undefined | 'deferred'> => {
+                // 一時的に取れないのは「作者が無い」ではない（pending。作者のサーバーに 429 を返させても unconfirmed にさせない）
+                if (profile === 'transient') {
+                    setBounded(failedAt, account, { at: now(), transient: true }, MAX_TRACKED_ACCOUNTS);
+                    return 'deferred';
+                }
                 if (!profile) {
-                    setBounded(failedAt, account, now(), MAX_TRACKED_ACCOUNTS);
+                    setBounded(failedAt, account, { at: now(), transient: false }, MAX_TRACKED_ACCOUNTS);
                     return undefined;
                 }
                 failedAt.delete(account);

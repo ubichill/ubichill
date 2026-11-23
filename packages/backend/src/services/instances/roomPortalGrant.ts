@@ -14,7 +14,9 @@ export interface RoomPortalGrantDeps {
     selfDomain: () => string;
     findRoom: (id: string) => Promise<{ leaderId: string; worldRef: string } | undefined>;
     /** ワールドをいま解決する（部屋を作った時の公開範囲ではなく、いまの公開範囲を見る） */
-    resolveWorld: (ref: string) => Promise<{ ok: true; world: { visibility?: WorldVisibility } } | { ok: false }>;
+    resolveWorld: (
+        ref: string,
+    ) => Promise<{ ok: true; world: { visibility?: WorldVisibility; visibilityUnconfirmed?: true } } | { ok: false }>;
     sign: (claims: RoomPortalGrantClaims) => string;
     now: () => number;
 }
@@ -40,7 +42,11 @@ export function createRoomPortalGrants(deps: RoomPortalGrantDeps): RoomPortalGra
         if (!room) return { ok: false, status: 404, error: 'インスタンスが見つかりません' };
         if (room.leaderId === userId) return null;
         const resolution = await deps.resolveWorld(room.worldRef);
-        const visibility: WorldVisibility = resolution.ok ? (resolution.world.visibility ?? 'public') : 'private';
+        // 確かめられない公開範囲はプライベートとして扱う（作った人だけ）
+        const visibility: WorldVisibility =
+            resolution.ok && !resolution.world.visibilityUnconfirmed
+                ? (resolution.world.visibility ?? 'public')
+                : 'private';
         return canOpenRoomPortalTo({ leaderId: room.leaderId, world: { visibility } }, userId)
             ? null
             : { ok: false, status: 403, error: PRIVATE_ROOM_PORTAL_MESSAGE };
