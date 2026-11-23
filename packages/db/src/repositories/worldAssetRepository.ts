@@ -1,7 +1,7 @@
 import { WORLD_ASSET_REFERENCE_PATTERN } from '@ubichill/shared';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../index';
-import { worldAssets, worldDrafts, worldVersions } from '../schema';
+import { userSettings, worldAssets, worldDrafts, worlds, worldVersions } from '../schema';
 import { lockWorldAssetReferences } from './worldAssetReferenceLock';
 
 export interface WorldAssetBlob {
@@ -19,7 +19,22 @@ export interface WorldAssetRecord {
     createdAt: Date;
 }
 
-export type AddWorldAssetOutcome = 'added' | 'exists' | 'over-quota';
+/** 一覧の続きの位置（created_at のマイクロ秒と、同じ時刻の中のハッシュ） */
+export interface WorldAssetCursor {
+    createdAtMicros: number;
+    hash: string;
+}
+
+/** 自分のワールドのうち、画像を使っているもの */
+export interface WorldAssetUse {
+    worldId: string;
+    worldName: string;
+}
+
+export type AddWorldAssetOutcome =
+    | { status: 'added' | 'exists' }
+    /** usedBytes は今置いている合計 */
+    | { status: 'over-quota'; usedBytes: number };
 
 export interface RemovedWorldAsset {
     ownerId: string;
@@ -40,13 +55,9 @@ export const worldAssetRepository = {
     /**
      * 上限の内なら足す。同じ人が同じ画像を上げ直したときは数えず、created_at だけ今にする
      * （使われていない画像の掃除の猶予を数え直す。上げ直してまだ保存していない画像を消さない）。
-     * 同じ人の同時のアップロードで上限を越えないよう、持ち主ごとに順番に数える。
+     * 同じ人の同時のアップロードで上限（合計のバイト数）を越えないよう、持ち主ごとに順番に数える。
      */
-    async add(
-        ownerId: string,
-        image: WorldAssetBlob,
-        quota: { count: number; bytes: number },
-    ): Promise<AddWorldAssetOutcome> {
+    async add(ownerId: string, image: WorldAssetBlob, quotaBytes: number): Promise<AddWorldAssetOutcome> {
         return db.transaction(async (tx) => {
             await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`world-assets:${ownerId}`}, 0))`);
             // 掃除が同じ行を消している途中なら、消し終わるのを待って 0 行になり、下で足し直す
@@ -55,20 +66,13 @@ export const worldAssetRepository = {
                 .set({ createdAt: sql`now()` })
                 .where(and(eq(worldAssets.ownerId, ownerId), eq(worldAssets.hash, image.hash)))
                 .returning({ hash: worldAssets.hash });
-            if (existing) return 'exists';
+            if (existing) return { status: 'exists' };
             const [usage] = await tx
-                .select({
-                    count: sql<number>`count(*)::int`,
-                    bytes: sql<number>`coalesce(sum(${worldAssets.byteSize}), 0)::bigint`,
-                })
+                .select({ bytes: sql<string>`coalesce(sum(${worldAssets.byteSize}), 0)::bigint` })
                 .from(worldAssets)
                 .where(eq(worldAssets.ownerId, ownerId));
-            if (
-                (usage?.count ?? 0) + 1 > quota.count ||
-                Number(usage?.bytes ?? 0) + image.bytes.byteLength > quota.bytes
-            ) {
-                return 'over-quota';
-            }
+            const usedBytes = Number(usage?.bytes ?? 0);
+            if (usedBytes + image.bytes.byteLength > quotaBytes) return { status: 'over-quota', usedBytes };
             await tx.insert(worldAssets).values({
                 ownerId,
                 hash: image.hash,
@@ -77,7 +81,7 @@ export const worldAssetRepository = {
                 width: image.width,
                 height: image.height,
             });
-            return 'added';
+            return { status: 'added' };
         });
     },
 
@@ -104,18 +108,82 @@ export const worldAssetRepository = {
         return row;
     },
 
-    /** 持ち主の画像（新しい順）。 */
-    async listByOwner(ownerId: string): Promise<WorldAssetRecord[]> {
-        return db
-            .select(metadata)
+    /**
+     * 持ち主の画像の 1 ページ（新しい順。同じ時刻はハッシュの逆順）と、それを使っている持ち主のワールド（下書き・版のどれかの
+     * 定義に出てくるもの）。next は次のページの始まり（無ければ null）。created_at はマイクロ秒まで持つので、続きの位置も
+     * マイクロ秒で渡す（ミリ秒の Date にすると、同じミリ秒の画像を飛ばす）。
+     * 使っているかの見方は掃除（{@link removeUnreferenced}）と同じ。ほかの人のワールドは見ない。
+     */
+    async listPageByOwner(
+        ownerId: string,
+        page: { limit: number; after?: WorldAssetCursor },
+    ): Promise<{ rows: Array<WorldAssetRecord & { usedBy: WorldAssetUse[] }>; next: WorldAssetCursor | null }> {
+        const after = page.after
+            ? sql`(${worldAssets.createdAt}, ${worldAssets.hash}) < (timestamptz 'epoch' + ${page.after.createdAtMicros}::bigint * interval '1 microsecond', ${page.after.hash})`
+            : undefined;
+        const [rows, uses] = await Promise.all([
+            db
+                .select({
+                    ...metadata,
+                    createdAtMicros: sql<string>`(extract(epoch from ${worldAssets.createdAt}) * 1000000)::bigint`,
+                })
+                .from(worldAssets)
+                .where(and(eq(worldAssets.ownerId, ownerId), after))
+                .orderBy(desc(worldAssets.createdAt), desc(worldAssets.hash))
+                .limit(page.limit + 1),
+            db.execute<{ hash: string; world_id: string; world_name: string }>(sql`
+                SELECT DISTINCT m[1] AS hash, w.id AS world_id, w.world_name
+                FROM ${worlds} w
+                CROSS JOIN LATERAL (
+                    SELECT d.definition::text AS body FROM ${worldDrafts} d WHERE d.world_id = w.id
+                    UNION ALL
+                    SELECT v.definition::text AS body FROM ${worldVersions} v WHERE v.world_id = w.id
+                ) defs
+                CROSS JOIN LATERAL regexp_matches(defs.body, ${WORLD_ASSET_REFERENCE_PATTERN}, 'g') AS m
+                WHERE w.author_id = ${ownerId}
+                ORDER BY w.world_name`),
+        ]);
+        const byHash = Map.groupBy(uses, (use) => use.hash);
+        const shown = rows.slice(0, page.limit);
+        const last = shown.at(-1);
+        return {
+            rows: shown.map(({ createdAtMicros: _, ...row }) => ({
+                ...row,
+                usedBy: (byHash.get(row.hash) ?? []).map((use) => ({
+                    worldId: use.world_id,
+                    worldName: use.world_name,
+                })),
+            })),
+            next:
+                rows.length > page.limit && last
+                    ? { createdAtMicros: Number(last.createdAtMicros), hash: last.hash }
+                    : null,
+        };
+    },
+
+    /** 持ち主が置いている合計と数。 */
+    async usageOf(ownerId: string): Promise<{ bytes: number; count: number }> {
+        const [row] = await db
+            .select({
+                bytes: sql<string>`coalesce(sum(${worldAssets.byteSize}), 0)::bigint`,
+                count: sql<number>`count(*)::int`,
+            })
             .from(worldAssets)
-            .where(eq(worldAssets.ownerId, ownerId))
-            .orderBy(desc(worldAssets.createdAt));
+            .where(eq(worldAssets.ownerId, ownerId));
+        return { bytes: Number(row?.bytes ?? 0), count: row?.count ?? 0 };
+    },
+
+    /** サーバー全体で置いている画像の合計（バイト）。 */
+    async totalBytes(): Promise<number> {
+        const [row] = await db
+            .select({ bytes: sql<string>`coalesce(sum(${worldAssets.byteSize}), 0)::bigint` })
+            .from(worldAssets);
+        return Number(row?.bytes ?? 0);
     },
 
     /**
      * created_at が cutoff より前で、このサーバーのどのワールドの定義（下書き・版）にも出てこない画像を limit 枚まで消し、
-     * 消したものを返す。だれのワールドから指されていても残す（複製したワールドはほかの人の画像を指す）。
+     * 消したものを返す。自動で消すのを止めた人（user_settings.world_asset_auto_cleanup）の画像は消さない。だれのワールドから指されていても残す（複製したワールドはほかの人の画像を指す）。
      * 定義は 1 回だけ読んでハッシュを抜き出す（画像ごとに全部の定義を探すと、画像の数 × 定義の大きさになる）。
      * 掃除と同時の上げ直し（created_at を今にする）が先に終われば、DELETE が行を読み直して消さない。
      * 定義の保存とは {@link lockWorldAssetReferences} で順番にする（1 回の間、保存を待たせる）。
@@ -139,6 +207,10 @@ export const worldAssetRepository = {
                     SELECT a.owner_id, a.hash FROM ${worldAssets} a
                     WHERE a.created_at < ${cutoff.toISOString()}::timestamptz
                       AND NOT EXISTS (SELECT 1 FROM referenced r WHERE r.hash = a.hash)
+                      AND NOT EXISTS (
+                          SELECT 1 FROM ${userSettings} s
+                          WHERE s.user_id = a.owner_id AND NOT s.world_asset_auto_cleanup
+                      )
                     LIMIT ${limit}
                     FOR UPDATE SKIP LOCKED
                 )
@@ -159,5 +231,15 @@ export const worldAssetRepository = {
             .where(and(eq(worldAssets.ownerId, ownerId), eq(worldAssets.hash, hash)))
             .returning({ hash: worldAssets.hash });
         return rows.length > 0;
+    },
+
+    /** 持ち主の画像をまとめて消し、消せたハッシュを返す（無いもの・ほかの人のものは飛ばす）。 */
+    async removeMany(ownerId: string, hashes: readonly string[]): Promise<string[]> {
+        if (hashes.length === 0) return [];
+        const rows = await db
+            .delete(worldAssets)
+            .where(and(eq(worldAssets.ownerId, ownerId), inArray(worldAssets.hash, [...hashes])))
+            .returning({ hash: worldAssets.hash });
+        return rows.map((row) => row.hash);
     },
 };

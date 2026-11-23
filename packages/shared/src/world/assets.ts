@@ -9,8 +9,19 @@ export const WORLD_ASSET_MAX_BYTES = 10 * 1024 * 1024;
 export const WORLD_ASSET_MAX_PIXELS = 40_000_000;
 /** 長い辺をこれ以下に縮める（小さい画像は大きくしない） */
 export const WORLD_ASSET_MAX_EDGE = 2048;
-/** 1 人が置ける数と合計の大きさ（作り直した後の WebP で数える） */
-export const WORLD_ASSET_QUOTA = { count: 200, bytes: 200 * 1024 * 1024 } as const;
+const MB = 1024 * 1024;
+const GB = 1024 * MB;
+/**
+ * 1 人が置ける合計の大きさ（作り直した後の WebP で数える）。管理者がコントロールパネルで min〜max の間で変える。
+ * 数は数えない（大きさの上限を上げても、数の上限が先に効いて意味がなくなるため）。
+ */
+export const WORLD_ASSET_QUOTA_BYTES = { default: 200 * MB, min: 10 * MB, max: 10 * GB } as const;
+/** コントロールパネルで選べる値 */
+export const WORLD_ASSET_QUOTA_PRESETS: readonly number[] = [50, 100, 200, 500, 1024, 2048, 5120, 10240].map(
+    (mb) => mb * MB,
+);
+/** どのワールドにも使われていない画像を、上げて（上げ直して）から何日で消すか（本人が止められる） */
+export const WORLD_ASSET_UNUSED_GRACE_DAYS = 7;
 
 /** 配信するパス（`PUBLIC_BASE_URL` の後ろに付ける） */
 export const worldAssetPath = (hash: string): string => `/api/v1/assets/${hash}.webp`;
@@ -35,11 +46,4 @@ export interface WorldAsset {
     height: number;
     bytes: number;
     createdAt: string;
-}
-
-/** 上げた画像の一覧と、使っている量 */
-export interface WorldAssetList {
-    assets: WorldAsset[];
-    usage: { count: number; bytes: number };
-    quota: typeof WORLD_ASSET_QUOTA;
 }

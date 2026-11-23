@@ -3,6 +3,7 @@ import { botProtectionService } from '../../services/auth/botProtection/botProte
 import { featuredServerService } from '../../services/auth/fediverse/featuredServerService';
 import { roleService } from '../../services/roles/roleService';
 import { serverInfoService } from '../../services/server/serverInfoService';
+import { storageQuotaService } from '../../services/storage/storageService';
 import { createAdminRouter } from './router';
 
 export const router = createAdminRouter({
@@ -12,4 +13,5 @@ export const router = createAdminRouter({
     featuredServers: featuredServerService,
     botProtection: botProtectionService,
     serverInfo: serverInfoService,
+    storage: storageQuotaService,
 });

@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../index';
 import { users, worldAssets, worldDrafts, worlds } from '../schema';
 import { userRepository } from './userRepository';
+import { userSettingsRepository } from './userSettingsRepository';
 import { worldAssetRepository } from './worldAssetRepository';
 import { worldRepository } from './worldRepository';
 
@@ -31,26 +32,44 @@ describe.skipIf(!RUN)('worldAssetRepository (DB統合)', () => {
     });
 
     it('足す・同じ画像は数えない・中身はハッシュで引ける', async () => {
-        const quota = { count: 5, bytes: 1000 };
-        expect(await worldAssetRepository.add(alice, image(`${stamp}-1`), quota)).toBe('added');
-        expect(await worldAssetRepository.add(alice, image(`${stamp}-1`), quota)).toBe('exists');
-        expect(await worldAssetRepository.add(bob, image(`${stamp}-1`), quota)).toBe('added');
+        const quota = 1000;
+        expect(await worldAssetRepository.add(alice, image(`${stamp}-1`), quota)).toEqual({ status: 'added' });
+        expect(await worldAssetRepository.add(alice, image(`${stamp}-1`), quota)).toEqual({ status: 'exists' });
+        expect(await worldAssetRepository.add(bob, image(`${stamp}-1`), quota)).toEqual({ status: 'added' });
         expect(await worldAssetRepository.findByHash(`${stamp}-1`)).toMatchObject({ width: 4, height: 3 });
         expect((await worldAssetRepository.findByHash(`${stamp}-1`))?.bytes).toEqual(new Uint8Array(10).fill(7));
-        expect(await worldAssetRepository.listByOwner(alice)).toHaveLength(1);
+        expect(await worldAssetRepository.usageOf(alice)).toEqual({ bytes: 10, count: 1 });
     });
 
-    it('同時に上げても上限を越えない', async () => {
-        const quota = { count: 3, bytes: 10_000 };
+    it('同時に上げても合計の上限を越えない。越えるときは今の合計を返す', async () => {
+        // bob は前の試験で 10 バイト持っているので、10 バイトの画像を足せるのは 2 枚
         const outcomes = await Promise.all(
-            Array.from({ length: 6 }, (_, n) => worldAssetRepository.add(bob, image(`${stamp}-c${n}`), quota)),
+            Array.from({ length: 6 }, (_, n) => worldAssetRepository.add(bob, image(`${stamp}-c${n}`), 30)),
         );
-        // bob は前の試験で 1 枚持っているので、足せるのは 2 枚
-        expect(outcomes.filter((o) => o === 'added')).toHaveLength(2);
-        expect(outcomes.filter((o) => o === 'over-quota')).toHaveLength(4);
-        expect(await worldAssetRepository.add(bob, image(`${stamp}-big`, 20_000), { count: 100, bytes: 10_000 })).toBe(
-            'over-quota',
-        );
+        expect(outcomes.filter((o) => o.status === 'added')).toHaveLength(2);
+        expect(outcomes.filter((o) => o.status === 'over-quota')).toHaveLength(4);
+        expect(await worldAssetRepository.add(bob, image(`${stamp}-big`, 20_000), 10_000)).toEqual({
+            status: 'over-quota',
+            usedBytes: 30,
+        });
+        // ちょうど上限までは置ける
+        expect(await worldAssetRepository.add(bob, image(`${stamp}-edge`, 5), 35)).toEqual({ status: 'added' });
+    });
+
+    it('数は数えない（小さい画像なら 200 枚を越えて置ける）', async () => {
+        const many = Array.from({ length: 201 }, (_, n) => image(`${stamp}-many-${n}`, 1));
+        for (const one of many) {
+            expect((await worldAssetRepository.add(alice, one, 1000)).status).toBe('added');
+        }
+        expect((await worldAssetRepository.usageOf(alice)).count).toBe(202);
+        await db.delete(worldAssets).where(like(worldAssets.hash, `${stamp}-many-%`));
+    });
+
+    it('サーバー全体の合計', async () => {
+        const before = await worldAssetRepository.totalBytes();
+        await worldAssetRepository.add(alice, image(`${stamp}-total`, 123), 100_000);
+        expect((await worldAssetRepository.totalBytes()) - before).toBe(123);
+        await worldAssetRepository.remove(alice, `${stamp}-total`);
     });
 
     it('消せるのは自分の分だけで、ほかの人が上げた同じ画像は残る', async () => {
@@ -63,7 +82,7 @@ describe.skipIf(!RUN)('worldAssetRepository (DB統合)', () => {
         // ほかの試験の画像（今の時刻）に触れないよう、ずっと前の時刻で試す
         const cutoff = new Date('2001-01-02T00:00:00Z');
         const old = new Date('2001-01-01T00:00:00Z');
-        const quota = { count: 100, bytes: 100_000 };
+        const quota = 100_000;
         const hashOf = (label: string) => createHash('sha256').update(`${stamp}:${label}`).digest('base64url');
         const url = (label: string) => `https://ubi.example${worldAssetPath(hashOf(label))}`;
         const draft = (definition: unknown) => ({ definition, lock: null, unpublish: false });
@@ -75,7 +94,7 @@ describe.skipIf(!RUN)('worldAssetRepository (DB統合)', () => {
             contentHash: `${stamp}-${version}-${JSON.stringify(definition).length}`,
         });
         const upload = async (ownerId: string, label: string, createdAt: Date) => {
-            expect(await worldAssetRepository.add(ownerId, image(hashOf(label)), quota)).toBe('added');
+            expect(await worldAssetRepository.add(ownerId, image(hashOf(label)), quota)).toEqual({ status: 'added' });
             await db
                 .update(worldAssets)
                 .set({ createdAt })
@@ -154,7 +173,9 @@ describe.skipIf(!RUN)('worldAssetRepository (DB統合)', () => {
             const labels = ['reuploaded', 'deleted-world'];
             await upload(alice, 'reuploaded', old);
             await upload(alice, 'deleted-world', old);
-            expect(await worldAssetRepository.add(alice, image(hashOf('reuploaded')), quota)).toBe('exists');
+            expect(await worldAssetRepository.add(alice, image(hashOf('reuploaded')), quota)).toEqual({
+                status: 'exists',
+            });
             const saved = await worldRepository.saveDraft(
                 { authorId: alice, worldName: `sweep-gone-${stamp}` },
                 draft({ spec: { thumbnail: url('deleted-world') } }),
@@ -315,6 +336,125 @@ describe.skipIf(!RUN)('worldAssetRepository (DB統合)', () => {
             await sweepAll(labels);
             expect(await remaining(labels)).toEqual([]);
             expect(await worldAssetRepository.removeUnreferenced(cutoff, 2)).toEqual([]);
+        });
+
+        it('自動で消すのを止めた人の画像は消さない。戻せば次の掃除で消える', async () => {
+            const labels = ['kept-by-choice', 'not-chosen'];
+            await upload(alice, 'kept-by-choice', old);
+            await upload(bob, 'not-chosen', old);
+            expect(await userSettingsRepository.getStorage(alice)).toEqual({ autoCleanup: true });
+            await userSettingsRepository.setStorage(alice, { autoCleanup: false });
+            expect(await userSettingsRepository.getStorage(alice)).toEqual({ autoCleanup: false });
+
+            expect(await sweepAll(labels)).toEqual(['bob:not-chosen']);
+            expect(await remaining(labels)).toEqual(['alice:kept-by-choice']);
+
+            await userSettingsRepository.setStorage(alice, { autoCleanup: true });
+            expect(await sweepAll(labels)).toEqual(['alice:kept-by-choice']);
+        });
+    });
+
+    describe('listPageByOwner', () => {
+        const hashOf = (label: string) => createHash('sha256').update(`${stamp}:list:${label}`).digest('base64url');
+        const url = (label: string) => `https://ubi.example${worldAssetPath(hashOf(label))}`;
+
+        it('自分のワールドの下書き・版から指されていれば、そのワールドを 1 回ずつ名前の順に返す。ほかの人のワールドは数えない', async () => {
+            for (const label of ['both', 'version-only', 'bobs-only', 'unused']) {
+                await worldAssetRepository.add(alice, image(hashOf(label)), 100_000);
+            }
+            const published = await worldRepository.publish(
+                { authorId: alice, worldName: `b-list-${stamp}` },
+                {
+                    version: '1.0.0',
+                    definition: { spec: { thumbnail: url('both'), image: url('version-only') } },
+                    lock: null,
+                    signature: {} as WorldSignature,
+                    contentHash: `${stamp}-list`,
+                },
+            );
+            if (published.status !== 'published') throw new Error('公開できませんでした');
+            // 公開した後の下書きでも同じ画像を 2 回使う
+            await worldRepository.saveDraft(
+                { authorId: alice, worldName: `b-list-${stamp}`, worldId: published.worldId },
+                { definition: { a: url('both'), b: url('both') }, lock: null, unpublish: false },
+            );
+            const drafted = await worldRepository.saveDraft(
+                { authorId: alice, worldName: `a-list-${stamp}` },
+                { definition: { a: url('both') }, lock: null, unpublish: false },
+            );
+            if (drafted.status !== 'draft') throw new Error('下書きを保存できませんでした');
+            await worldRepository.saveDraft(
+                { authorId: bob, worldName: `list-${stamp}` },
+                { definition: { a: url('bobs-only') }, lock: null, unpublish: false },
+            );
+
+            const usedBy = new Map(
+                (await worldAssetRepository.listPageByOwner(alice, { limit: 1000 })).rows.map(
+                    (row) => [row.hash, row.usedBy] as const,
+                ),
+            );
+            expect(usedBy.get(hashOf('both'))).toEqual([
+                { worldId: drafted.worldId, worldName: `a-list-${stamp}` },
+                { worldId: published.worldId, worldName: `b-list-${stamp}` },
+            ]);
+            expect(usedBy.get(hashOf('version-only'))).toEqual([
+                { worldId: published.worldId, worldName: `b-list-${stamp}` },
+            ]);
+            expect(usedBy.get(hashOf('bobs-only'))).toEqual([]);
+            expect(usedBy.get(hashOf('unused'))).toEqual([]);
+        });
+
+        it('ページに分けて、同じ時刻（マイクロ秒まで同じ・ミリ秒だけ同じ）の画像も重ならず抜けずに読める', async () => {
+            const carol = `wa-${stamp}-carol`;
+            await userRepository.create({
+                id: carol,
+                name: carol,
+                email: `${carol}@example.com`,
+                handle: `wa_${stamp}_c`,
+                emailVerified: true,
+            });
+            const labels = Array.from({ length: 7 }, (_, n) => `page-${n}`);
+            for (const label of labels) await worldAssetRepository.add(carol, image(hashOf(label)), 100_000);
+            // 2 個はマイクロ秒まで同じ、2 個は同じミリ秒の中で違うマイクロ秒
+            const times = [
+                '2026-11-01T00:00:00.000100Z',
+                '2026-11-01T00:00:00.000100Z',
+                '2026-11-01T00:00:00.000900Z',
+                '2026-11-01T00:00:00.000200Z',
+                '2026-11-02T00:00:00Z',
+                '2026-11-03T00:00:00Z',
+                '2026-11-03T00:00:00Z',
+            ];
+            for (const [n, label] of labels.entries()) {
+                await db.execute(
+                    sql`UPDATE world_assets SET created_at = ${times[n]}::timestamptz WHERE owner_id = ${carol} AND hash = ${hashOf(label)}`,
+                );
+            }
+            const readAll = async (
+                after: Parameters<typeof worldAssetRepository.listPageByOwner>[1]['after'],
+                seen: string[],
+            ): Promise<string[]> => {
+                const page = await worldAssetRepository.listPageByOwner(carol, { limit: 2, after });
+                const next = [...seen, ...page.rows.map((row) => row.hash)];
+                return page.next ? readAll(page.next, next) : next;
+            };
+            const ids = await readAll(undefined, []);
+            expect(ids).toHaveLength(7);
+            expect(new Set(ids).size).toBe(7);
+            // 新しい順
+            expect(ids.slice(0, 2).sort()).toEqual([hashOf('page-5'), hashOf('page-6')].sort());
+            expect(ids[2]).toBe(hashOf('page-4'));
+            expect(ids[3]).toBe(hashOf('page-2'));
+            expect(ids[4]).toBe(hashOf('page-3'));
+            expect(await worldAssetRepository.usageOf(carol)).toEqual({ bytes: 70, count: 7 });
+
+            // まとめて消す: 自分のものだけ・無いものは飛ばす
+            expect(
+                (await worldAssetRepository.removeMany(carol, [hashOf('page-0'), hashOf('page-1'), 'missing'])).sort(),
+            ).toEqual([hashOf('page-0'), hashOf('page-1')].sort());
+            expect(await worldAssetRepository.removeMany(alice, [hashOf('page-2')])).toEqual([]);
+            expect(await worldAssetRepository.removeMany(carol, [])).toEqual([]);
+            expect((await worldAssetRepository.usageOf(carol)).count).toBe(5);
         });
     });
 });

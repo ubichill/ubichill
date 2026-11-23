@@ -12,15 +12,17 @@ import { ModPermissionsSettings } from './settings/ModPermissionsSettings';
 import { PasswordSection } from './settings/PasswordSection';
 import { PrivacySection } from './settings/PrivacySection';
 import { SessionsSection } from './settings/SessionsSection';
+import { StorageSection } from './settings/StorageSection';
 import { TwoFactorSection } from './settings/TwoFactorSection';
 
-export type SettingsSection = 'home' | 'privacy' | 'fediverse' | 'publishing' | 'account' | 'mods';
+export type SettingsSection = 'home' | 'privacy' | 'fediverse' | 'publishing' | 'storage' | 'account' | 'mods';
 
 const SECTIONS: ReadonlyArray<SplitTabItem<SettingsSection>> = [
     { id: 'home', label: 'ホーム', icon: 'home' },
     { id: 'privacy', label: 'プライバシー', icon: 'lock' },
     { id: 'fediverse', label: 'フェディバース', icon: 'fediverse' },
     { id: 'publishing', label: '公開', icon: 'key' },
+    { id: 'storage', label: 'ストレージ', icon: 'hardDrive' },
     { id: 'account', label: 'アカウント', icon: 'user' },
     { id: 'mods', label: 'mod の権限', icon: 'puzzle' },
 ];
@@ -30,7 +32,7 @@ const NEEDS_ACCOUNT: ReadonlySet<SettingsSection> = new Set(['publishing', 'acco
 
 /**
  * 設定タブ。ホーム・プライバシー（だれに何を見せるか）・フェディバース（フォローの受け方とフォロワー）・
- * 公開（公開環境）・アカウント（パスワード・ログイン方法・ログイン中の端末・削除）・mod の権限を、左で切り替える。
+ * 公開（公開環境）・ストレージ（上げた画像）・アカウント（パスワード・ログイン方法・ログイン中の端末・削除）・mod の権限を、左で切り替える。
  * プロフィールはプロフィールの画面でその場で編集する。管理者の設定（連合・お知らせ）はコントロールパネル。
  */
 export function SettingsTab({
@@ -78,6 +80,7 @@ export function SettingsTab({
                         refreshKey={account.environmentsVersion}
                     />
                 )}
+                {current === 'storage' && <StorageSection />}
                 {current === 'account' && (
                     <p className={css({ fontSize: '13px', color: 'textMuted', lineHeight: '1.6' })}>
                         パスワード・二段階認証・ログイン方法・ログイン中の端末など、アカウントの安全に関わる設定です。
