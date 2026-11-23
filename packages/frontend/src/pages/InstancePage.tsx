@@ -166,6 +166,7 @@ export function InstancePage() {
                 if (!(await confirm(`「${label}」へ移りますか？今の部屋から退出します。`)) || signal.aborted) return;
                 if (goal.kind !== 'room') {
                     await leaveWorld();
+                    if (signal.aborted) return;
                     return navigate(portalPath(goal));
                 }
                 const room = roomPortalAddressFor(goal.room, id);
@@ -174,6 +175,7 @@ export function InstancePage() {
                 if (signal.aborted) return;
                 if (refusal) return void pushToast(ROOM_PORTAL_REFUSAL_MESSAGES[refusal], 'warn');
                 await leaveWorld();
+                if (signal.aborted) return;
                 const state: InstanceEntryState | undefined = look ? { worldData: look } : undefined;
                 navigate(portalPath({ kind: 'room', room }), { state });
             } finally {
