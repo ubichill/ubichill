@@ -19,6 +19,7 @@ import { dismissToast, pushToast } from '@/lib/toast';
 import { fetchInstance, fetchWorld } from '@/lib/worlds/instancesApi';
 import { createPortalLookup } from '@/lib/worlds/portalDestination';
 import { canonicalRoomId, portalPath } from '@/lib/worlds/portalPath';
+import { createPortalTrips } from '@/lib/worlds/portalTrip';
 import { ROOM_PORTAL_REFUSAL_MESSAGES, roomPortalRefusal } from '@/lib/worlds/roomPortalEntry';
 import { useRemoteVisit } from '@/lib/worlds/useRemoteVisit';
 import { type InstanceFailure, InstanceNotFoundError, type PortalGoal, WorldView } from '@/world';
@@ -152,21 +153,35 @@ export function InstancePage() {
     // 部屋へのポータルは、出る直前に行き先の部屋を引き直し、入れなければ今の部屋に残る（ポータルの鍵は少し前のもの）
     const { leaveWorld } = useSocket();
     const viewerId = session?.user.id ?? null;
+    // 移る流れは 1 つのページで 1 つだけ（押し直し・確かめている間の押し直しは無視）。部屋を移った・ページを閉じたら取り消す
+    const [trips] = useState(createPortalTrips);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: id は部屋を移ったときに取り消すための合図
+    useEffect(() => () => trips.cancel(), [id, trips]);
     const goThroughPortal = useCallback(
         async (goal: PortalGoal, label: string, look?: { displayName: string; thumbnail?: string }) => {
-            if (!id || !(await confirm(`「${label}」へ移りますか？今の部屋から退出します。`))) return;
-            if (goal.kind !== 'room') {
+            const signal = id ? trips.begin() : null;
+            if (!id || !signal) return;
+            const checking: { toast: number | null } = { toast: null };
+            try {
+                if (!(await confirm(`「${label}」へ移りますか？今の部屋から退出します。`)) || signal.aborted) return;
+                if (goal.kind !== 'room') {
+                    await leaveWorld();
+                    return navigate(portalPath(goal));
+                }
+                const room = roomPortalAddressFor(goal.room, id);
+                checking.toast = pushToast('ポータルの先の部屋を確かめています', 'info', undefined, { sticky: true });
+                const refusal = await roomPortalRefusal(fetchRoomOrGone, room, viewerId, { signal });
+                if (signal.aborted) return;
+                if (refusal) return void pushToast(ROOM_PORTAL_REFUSAL_MESSAGES[refusal], 'warn');
                 await leaveWorld();
-                return navigate(portalPath(goal));
+                const state: InstanceEntryState | undefined = look ? { worldData: look } : undefined;
+                navigate(portalPath({ kind: 'room', room }), { state });
+            } finally {
+                if (checking.toast !== null) dismissToast(checking.toast);
+                trips.end(signal);
             }
-            const room = roomPortalAddressFor(goal.room, id);
-            const refusal = await roomPortalRefusal(fetchRoomOrGone, room, viewerId);
-            if (refusal) return void pushToast(ROOM_PORTAL_REFUSAL_MESSAGES[refusal], 'warn');
-            await leaveWorld();
-            const state: InstanceEntryState | undefined = look ? { worldData: look } : undefined;
-            navigate(portalPath({ kind: 'room', room }), { state });
         },
-        [confirm, id, leaveWorld, navigate, viewerId],
+        [confirm, id, leaveWorld, navigate, viewerId, trips],
     );
 
     // ポータルに出す行き先。部屋へのポータルは、見る人が入れるかも引く（入れるかは少しずつ引き直す）

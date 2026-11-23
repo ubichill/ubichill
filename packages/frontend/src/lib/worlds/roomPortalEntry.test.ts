@@ -73,7 +73,7 @@ describe('roomPortalRefusal', () => {
                 },
                 'abc',
                 'me',
-                1000,
+                { timeoutMs: 1000 },
             );
             await vi.advanceTimersByTimeAsync(999);
             expect(signals[0]?.aborted).toBe(false);
@@ -88,5 +88,32 @@ describe('roomPortalRefusal', () => {
 
     it('招待が要るようになった部屋には入らない', async () => {
         expect(await roomPortalRefusal(async () => room(1, { canJoin: false }), 'abc', 'me')).toBe('closed');
+    });
+});
+
+describe('roomPortalRefusal を取り消す', () => {
+    it('部屋を移った・ページを閉じたら、確かめている途中の問い合わせを取り消して入らない', async () => {
+        const outer = new AbortController();
+        const signals: AbortSignal[] = [];
+        const pending = roomPortalRefusal(
+            (_address, signal) => {
+                if (signal) signals.push(signal);
+                return new Promise<RoomStatus | null>(() => undefined);
+            },
+            'abc',
+            'me',
+            { signal: outer.signal },
+        );
+        outer.abort();
+        expect(await pending).toBe('unknown');
+        expect(signals[0]?.aborted).toBe(true);
+    });
+
+    it('もう取り消されていれば、問い合わせない', async () => {
+        const outer = new AbortController();
+        outer.abort();
+        const fetchRoom = vi.fn(async () => ({ leaderId: 'x', stats: { currentUsers: 0, maxUsers: 4 } }));
+        expect(await roomPortalRefusal(fetchRoom, 'abc', 'me', { signal: outer.signal })).toBe('unknown');
+        expect(fetchRoom).not.toHaveBeenCalled();
     });
 });
