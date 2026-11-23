@@ -50,3 +50,15 @@ export const portalWindow = css({
 });
 
 export const portalImage = css({ w: 'full', h: 'full', objectFit: 'cover' });
+
+/** 見る人が入れない行き先。窓の上を暗くして鍵を出す（窓を囲む position: relative の要素の中に置く）。 */
+export const portalLockShade = css({
+    position: 'absolute',
+    inset: '0',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 'full',
+    bg: 'bannerShade',
+    color: 'textOnPrimary',
+});

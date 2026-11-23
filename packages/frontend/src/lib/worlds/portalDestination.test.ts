@@ -31,6 +31,18 @@ describe('createPortalLookup', () => {
         expect(await lookup({ kind: 'id', id: 'old' })).toEqual({ name: '古いワールド' });
     });
 
+    it('プライベートのワールドは locked（作者のワールドに置いたポータルでも）。パブリック・公開範囲の無いワールドは付けない', async () => {
+        const worlds: Record<string, { displayName: string; visibility?: 'private' | 'public' }> = {
+            secret: { displayName: '秘密', visibility: 'private' },
+            open: { displayName: '広場', visibility: 'public' },
+            external: { displayName: '外部' },
+        };
+        const lookup = createPortalLookup(async (ref) => worlds[ref] ?? { displayName: ref });
+        expect(await lookup({ kind: 'id', id: 'secret' })).toEqual({ name: '秘密', locked: true });
+        expect(await lookup({ kind: 'id', id: 'open' })).toEqual({ name: '広場' });
+        expect(await lookup({ kind: 'id', id: 'external' })).toEqual({ name: '外部' });
+    });
+
     it('引けなければ null を返し、何度も問い合わせない', async () => {
         const fetchWorld = vi.fn(async () => {
             throw new Error('World not found');

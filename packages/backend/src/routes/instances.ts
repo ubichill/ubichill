@@ -159,7 +159,9 @@ router.post('/', requireAuth, createInstanceLimiter, async (req, res) => {
         const result = await instanceManager.createInstance(bodyResult.data, leaderId);
 
         if ('error' in result) {
-            res.status(400).json({ error: result.error });
+            res.status(result.reason === 'forbidden' ? 403 : result.reason === 'retry' ? 503 : 400).json({
+                error: result.error,
+            });
             return;
         }
 

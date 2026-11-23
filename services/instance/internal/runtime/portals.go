@@ -1,6 +1,10 @@
 package runtime
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"math"
 	"regexp"
@@ -21,7 +25,16 @@ const (
 	maxRoomAddressLength = 320
 )
 
+// 部屋へのポータルを置く許可（backend が発行する。形は shared の ROOM_PORTAL_GRANT と同じ）。
+// プライベートのワールドの部屋へは部屋を作った人だけが置ける、という判定は backend がして、ここでは署名・宛先・本人・期限だけを見る。
+const (
+	// portalGrantKeyLabel は管理トークンから許可の鍵を派生するときの用途の名前。変えると backend の出す許可が通らなくなる。
+	portalGrantKeyLabel  = "ubichill room portal grant v1"
+	maxPortalGrantLength = 1024
+)
+
 var (
+	errPortalGrant    = errors.New("ポータルを置く許可を確かめられません")
 	errPortalRoom     = errors.New("行き先の部屋が正しくありません")
 	errPortalPosition = errors.New("不正な座標です")
 	errPortalTooFast  = errors.New("少し待ってから置き直してください")
@@ -52,6 +65,62 @@ func validRoomAddress(value string) bool {
 		return c
 	}, value[at+1:])
 	return roomIDPattern.MatchString(value[:at]) && len(domain) <= 253 && serverDomainPattern.MatchString(domain)
+}
+
+// portalGrantKey は管理トークンから許可の鍵を派生する（backend の roomPortalGrantKey と同じ）。
+// 管理トークンの無い単体モード（backend が無い）は nil で、許可を求めない。
+func portalGrantKey(c Config) []byte {
+	if c.AdminToken == "" {
+		return nil
+	}
+	mac := hmac.New(sha256.New, []byte(c.AdminToken))
+	mac.Write([]byte(portalGrantKeyLabel))
+	return mac.Sum(nil)
+}
+
+type portalGrant struct {
+	Room   string `json:"room"`
+	UserID string `json:"userId"`
+	Exp    int64  `json:"exp"`
+}
+
+// verifyPortalGrant は許可が、この人（userID）がこの住所（portal:open の room と同じ文字列）へ置くために出されたもので、
+// 期限（epoch 秒）の前かを確かめる。
+func verifyPortalGrant(key []byte, value, room, userID string, now time.Time) error {
+	payload, sig, ok := strings.Cut(value, ".")
+	if !ok || len(value) > maxPortalGrantLength || len(key) == 0 {
+		return errPortalGrant
+	}
+	got, err := base64.RawURLEncoding.DecodeString(sig)
+	if err != nil {
+		return errPortalGrant
+	}
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(payload))
+	if !hmac.Equal(got, mac.Sum(nil)) {
+		return errPortalGrant
+	}
+	body, err := base64.RawURLEncoding.DecodeString(payload)
+	var g portalGrant
+	if err != nil || json.Unmarshal(body, &g) != nil {
+		return errPortalGrant
+	}
+	if g.UserID == "" || g.UserID != userID || g.Room != room || g.Exp <= now.Unix() {
+		return errPortalGrant
+	}
+	return nil
+}
+
+// checkPortalGrant は portal:open に backend の許可を求める（管理トークンのある運用だけ）。ほかのイベントは通す。
+// 中継された接続も owner の Pod のここを通る（鍵は全 Pod で同じ）。
+func (s *Server) checkPortalGrant(p *peer, f Frame) error {
+	if f.Event != "portal:open" || s.portalGrantKey == nil {
+		return nil
+	}
+	data, _ := object(f.Data)
+	room, _ := data["room"].(string)
+	grant, _ := data["grant"].(string)
+	return verifyPortalGrant(s.portalGrantKey, grant, room, p.userID, s.now())
 }
 
 // isRoomPortal は部屋へのポータルか。ワールドの定義の Entity は ownerId が null（shared の flattenGameObject）で、

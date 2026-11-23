@@ -14,6 +14,7 @@ const world = {
     authorId: 'a',
     worldName: 'hello',
     currentVersionId: null,
+    visibility: 'public' as const,
     createdAt: new Date(0),
     updatedAt: new Date(0),
 };

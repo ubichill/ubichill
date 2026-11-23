@@ -14,7 +14,9 @@ import {
 } from '@ubichill/db';
 import {
     type AuthorAccount,
+    createFetchGuard,
     ENV_KEYS,
+    effectiveWorldVisibility,
     HANDLE_PATTERN,
     isPublishable,
     limitsFor,
@@ -24,6 +26,7 @@ import {
     parseStoredDefinition,
     type ResolvedWorld,
     SERVER_CONFIG,
+    WORLD_VISIBILITY_HEADER,
     type WorldDefinition,
     WorldDefinitionSchema,
     type WorldDocument,
@@ -32,7 +35,9 @@ import {
     type WorldSignatureInvalidReason,
     type WorldSource,
     WorldSourceKind,
+    type WorldVisibility,
     worldPublishProblem,
+    worldVisibilityFromHeader,
 } from '@ubichill/shared';
 import yaml from 'yaml';
 import { assertPublicUrl, safeFetch } from '../../lib/safeFetch';
@@ -43,10 +48,18 @@ import { isAuthorKey, resolveAuthorDisplayName } from '../authors/authorKeyServi
 import { selfAccount, selfDomain } from '../authors/authorKeys';
 import { type BackendEvents, backendEvents } from '../cluster/backendEvents';
 import { SYSTEM_USER_ID } from '../users/systemUser';
-import { authorSharePath, localAuthorWorldOf, worldConfirmation } from './externalWorks';
+import { createCanonicalVisibility } from './canonicalVisibility';
+import {
+    authorSharePath,
+    authorWorldOf,
+    canonicalWorldUrl,
+    localAuthorWorldOf,
+    worldConfirmation,
+} from './externalWorks';
 import { federatedCandidates, uniqueByWorldId } from './federatedWorlds';
 import { createRemoteWorldCache } from './remoteWorldCache';
 import {
+    asRemotePrivateWorld,
     normalizeWorldUrl,
     resolveBundle,
     resolveWorldFromUrl,
@@ -74,8 +87,11 @@ const NOT_FOUND: WorldResolution = { ok: false, reason: 'not-found', message: 'W
 /** ワールドはあるが、その版（content_hash）はもう残っていない（古い版を消した）。 */
 export type VersionResolution = WorldResolution | { ok: false; reason: 'gone'; message: string };
 
-/** 配るファイル。リポジトリのものはファイルのパス、DB のものは中身。 */
-export type WorldFile = { contentType: string } & ({ path: string } | { body: string });
+/**
+ * 配るファイル。リポジトリのものはファイルのパス、DB のものは中身と公開範囲（公開の有無を含めたもの。
+ * WORLD_VISIBILITY_HEADER でほかのサーバーに知らせる）。
+ */
+export type WorldFile = { contentType: string } & ({ path: string } | { body: string; visibility: WorldVisibility });
 
 /** 本体が配信するワールドの生の値（署名検証の対象そのもの）。 */
 export interface HostedWorldDocument extends WorldDocument {
@@ -151,6 +167,18 @@ export function asUnsignedRepositoryWorld(hosted: HostedWorldDocument): HostedWo
 
 const serveUnsignedRepositoryWorlds = (): boolean => process.env.WORLDS_SERVE_UNSIGNED_REPOSITORY === 'true';
 
+/** URL のホスト（読めなければ undefined）。外部のワールドを取りに行く回数をドメインごとに数える。 */
+function hostOfUrl(url: string): string | undefined {
+    try {
+        return new URL(url).host.toLowerCase();
+    } catch {
+        return undefined;
+    }
+}
+
+/** 一覧（このサーバーの一覧・お気に入り・連合のピアへの一覧）に出すか。プライベートは作者のマイワールドにだけ出す。 */
+const isListed = (world: { visibility?: WorldVisibility }): boolean => world.visibility !== 'private';
+
 function claimedAuthorOf(hosted: HostedWorldDocument | undefined): AuthorAccount | null {
     const claimed = (hosted?.signature as { author?: unknown } | null | undefined)?.author;
     return typeof claimed === 'string' ? parseAuthorAccount(claimed) : null;
@@ -222,19 +250,37 @@ class WorldRegistry {
     private static readonly LIST_RESOLVE_CONCURRENCY = 8;
     private static readonly LOCAL_TTL_MS = 5 * 60 * 1000;
     private static readonly LOCAL_FAILURE_TTL_MS = 60 * 1000;
-    /** 外部（他インスタンス/URL）ワールドの解決キャッシュ（連合、TTL 付き） */
+    /**
+     * 外部（他インスタンス/URL）ワールドの解決キャッシュ（連合、TTL 付き）。作者のサーバーで公開範囲を変えたのも、
+     * この間をおいて取り直したときに届く（取り直せなかった間は前の結果のまま）。
+     */
     private static readonly REMOTE_TTL_MS = 5 * 60 * 1000;
     /** 取得できなかった外部 URL を取り直さない時間（お気に入りなどで外部への取得を繰り返し起こされないように）。 */
     private static readonly REMOTE_FAILURE_TTL_MS = 60 * 1000;
     private static readonly REMOTE_CACHE_MAX = 2000;
     /** 作者をいま確かめられなかった（pending）ワールドは、すぐ確認し直せるよう短くキャッシュする。 */
     private static readonly REMOTE_PENDING_TTL_MS = 30 * 1000;
+    /**
+     * 外部のワールドを取りに行く回数の、ドメインごとの上限（1 分あたり。1 回で YAML・lock・署名の 3 つを取る）。
+     * 認証の要らない解決の API から読ませ続けて、作者のサーバーにこのサーバーを 429 にさせないため（作者のサーバーの
+     * 1 IP の上限より十分少なくする）。超えた分は取らずに失敗にする。
+     */
+    private static readonly REMOTE_FETCH_LIMIT = 120;
+    private readonly _remoteFetchGuard = createFetchGuard({
+        limit: WorldRegistry.REMOTE_FETCH_LIMIT,
+        windowMs: 60 * 1000,
+        now: () => Date.now(),
+    });
     private readonly _remoteCache = createRemoteWorldCache<ResolvedWorld>({
-        load: (url) =>
-            resolveWorldFromUrl(url, this._externalSource(url), {
+        load: (url) => {
+            const host = hostOfUrl(url);
+            if (!host || !this._remoteFetchGuard.tryAcquire(host))
+                return Promise.reject(new Error(`取りに行く回数の上限です: ${url}`));
+            return resolveWorldFromUrl(url, this._externalSource(url), {
                 isAuthorKey,
                 resolveAuthorName: resolveAuthorDisplayName,
-            }),
+            });
+        },
         isIntegrityError: (err): err is WorldIntegrityError => err instanceof WorldIntegrityError,
         onFailure: (url, err) => logger.error(`外部ワールド解決失敗: ${url}`, err),
         ttlMs: WorldRegistry.REMOTE_TTL_MS,
@@ -243,6 +289,25 @@ class WorldRegistry {
                 ? WorldRegistry.REMOTE_PENDING_TTL_MS
                 : WorldRegistry.REMOTE_TTL_MS,
         failureTtlMs: WorldRegistry.REMOTE_FAILURE_TTL_MS,
+        max: WorldRegistry.REMOTE_CACHE_MAX,
+    });
+
+    /** 作者のサーバーの正規の URL の公開範囲（ヘッダーだけを HEAD で見る。ドメインごとの上限は外部のワールドと別に数える） */
+    private readonly _canonicalFetchGuard = createFetchGuard({
+        limit: WorldRegistry.REMOTE_FETCH_LIMIT,
+        windowMs: 60 * 1000,
+        now: () => Date.now(),
+    });
+    private readonly _canonicalVisibility = createCanonicalVisibility({
+        head: async (url) => {
+            const response = await safeFetch(url, { method: 'HEAD' });
+            return {
+                status: response.status,
+                visibility: worldVisibilityFromHeader(response.headers.get(WORLD_VISIBILITY_HEADER)),
+            };
+        },
+        tryAcquire: (domain) => this._canonicalFetchGuard.tryAcquire(domain),
+        ttlMs: WorldRegistry.REMOTE_TTL_MS,
         max: WorldRegistry.REMOTE_CACHE_MAX,
     });
 
@@ -346,7 +411,7 @@ class WorldRegistry {
         return scope === 'local' ? this._listLocalWorlds() : this._listGlobalWorlds();
     }
 
-    /** 自インスタンスのワールド一覧（署名検証済みのみ。未署名は URL を知っている人だけが入れる）。 */
+    /** 自インスタンスのワールド一覧（署名検証済みでパブリックのものだけ。未署名は URL を知っている人だけが入れる）。 */
     private async _listLocalWorlds(): Promise<WorldListItem[]> {
         // 下書き（公開中の版が無い）は一覧に出ないので引かない
         const allRecords = await worldRepository.findPublished(WorldRegistry.LOCAL_LIST_MAX);
@@ -376,7 +441,7 @@ class WorldRegistry {
         const repositoryListed = repositoryItems
             .flat()
             .filter((w) => isPublishable(w.identity) || serveUnsignedRepositoryWorlds());
-        return [...repositoryListed, ...dbItems.flat().filter((w) => isPublishable(w.identity))];
+        return [...repositoryListed, ...dbItems.flat().filter((w) => isPublishable(w.identity) && isListed(w))];
     }
 
     /**
@@ -395,7 +460,8 @@ class WorldRegistry {
         const verified = await Promise.all(
             candidates.map(async (item): Promise<WorldListItem | null> => {
                 const resolution = await this._resolveRemote(normalizeWorldUrl(item.url));
-                if (!resolution.ok || !isPublishable(resolution.world.identity)) return null;
+                if (!resolution.ok || !isPublishable(resolution.world.identity) || !isListed(resolution.world))
+                    return null;
                 // 表示する値（名前・説明・作者・識別）はピアの申告ではなく、自分で取得して確かめたワールドから作る。
                 // どのピアから知ったか（source）だけはピアの一覧の値を使う
                 return { ...this._toListItem(resolution.world), source: item.source };
@@ -606,9 +672,42 @@ class WorldRegistry {
         }
     }
 
-    /** 外部（他インスタンス/任意 URL）のワールドをその場で解決する（連合）。TTL キャッシュ（失敗も短時間）。 */
-    private _resolveRemote(url: string): Promise<WorldResolution> {
-        return this._remoteCache.resolve(url);
+    /**
+     * 外部（他インスタンス/任意 URL）のワールドをその場で解決する（連合）。TTL キャッシュ（失敗も短時間）。
+     * 公開範囲は取ってきた URL ではなく署名の作者で決める（_withAuthorVisibility）。
+     */
+    private async _resolveRemote(url: string): Promise<WorldResolution> {
+        return this._withAuthorVisibility(await this._remoteCache.resolve(url));
+    }
+
+    /**
+     * 署名の作者の公開範囲を当てる。プライベートのワールドのファイル（誰にでも配る）を別の場所に置き直しても、
+     * 同じ署名の作者のワールドとして部屋を作らせないため。作者は確かめられたかにかかわらず署名が名乗る作者で決める
+     * （確かめられていない名乗りは閉じる側にだけ使う）。
+     * - 作者がこのサーバーのアカウント: その作者のワールド（以前の名前を含む）の今の公開範囲。作者を確かめられたときだけ作者の ID も
+     * - 作者がほかのサーバー: 作者のサーバーの正規の URL を HEAD で確かめる。private（前の結果でも）なら閉じ、期限の内に
+     *   public（または 404・410）と決められたときだけ開く。決められなければ visibilityUnconfirmed（部屋は作らせない）
+     * 署名の無い写し（署名を外して置き直したもの）は別のワールド（未署名）なので、ここでは扱えない。
+     */
+    private async _withAuthorVisibility(resolution: WorldResolution): Promise<WorldResolution> {
+        if (!resolution.ok) return resolution;
+        const { world } = resolution;
+        const owner = authorWorldOf(world.identity);
+        if (!owner) return resolution;
+        const closed: WorldResolution = { ok: true, world: asRemotePrivateWorld(world) };
+        if (owner.domain === selfDomain()) {
+            const located = await this._locate(owner.handle, owner.name);
+            if (!located?.record) return resolution;
+            const local = await this.resolveLocal(located.id);
+            const visibility: WorldVisibility = local.ok ? (local.world.visibility ?? 'public') : 'private';
+            if (!owner.confirmed) return visibility === 'private' ? closed : resolution;
+            return { ok: true, world: { ...world, visibility, authorId: located.record.authorId } };
+        }
+        if (world.visibility === 'private') return closed;
+        const upstream = await this._canonicalVisibility.of(canonicalWorldUrl(owner), owner.domain);
+        if (upstream === 'private') return closed;
+        // 決められなければ見せはするが部屋は作らせない（作者のサーバーに 429 を返させてパブリックにさせない）
+        return upstream === 'unknown' ? { ok: true, world: { ...world, visibilityUnconfirmed: true } } : resolution;
     }
 
     /** 外部のワールドを取り直して解決する（作者が公開し直したのを確かめ直すとき。呼び出し側で回数を抑えること）。 */
@@ -903,10 +1002,14 @@ class WorldRegistry {
     // 単発で入るなら resolveRef(URL)→instance 作成、永続的に見たいならピアをフォローする。
 
     /** エディタ用: 下書きがあれば下書き、無ければ本体の定義と、公開状態。 */
-    async getEditorDefinition(
-        worldId: string,
-    ): Promise<
-        | { definition: WorldDefinition; hasDraft: boolean; published: boolean; publishedVersion: string | null }
+    async getEditorDefinition(worldId: string): Promise<
+        | {
+              definition: WorldDefinition;
+              hasDraft: boolean;
+              published: boolean;
+              publishedVersion: string | null;
+              visibility: WorldVisibility;
+          }
         | undefined
     > {
         const state = await worldRepository.findState(worldId);
@@ -934,7 +1037,19 @@ class WorldRegistry {
             published: isPublishable(world?.identity),
             // エディタが公開のたびに版を自動で上げるため（作者に版を意識させない）
             publishedVersion: state?.current?.version ?? null,
+            // 作者の決めた公開範囲（公開するまでは、これにかかわらずプライベート）
+            visibility: state?.world.visibility ?? 'public',
         };
+    }
+
+    /** 作者がワールドの公開範囲を変える。作者のワールドでなければ false。 */
+    async setVisibility(worldId: string, authorId: string, visibility: WorldVisibility): Promise<boolean> {
+        const changed = await worldRepository.setVisibility(worldId, authorId, visibility);
+        if (changed) {
+            this._forgetResolved(worldId);
+            this.events.broadcast({ type: 'world.changed', worldId });
+        }
+        return changed;
     }
 
     async deleteWorld(worldId: string): Promise<boolean> {
@@ -1077,10 +1192,13 @@ class WorldRegistry {
         }
         const state = located?.record ? await worldRepository.findState(located.record.id) : undefined;
         const served = state ? servedWorldOf(state) : undefined;
-        if (!served) return undefined;
-        if (kind === 'yaml') return { contentType, body: yaml.stringify(served.definition) };
+        if (!located || !served) return undefined;
+        // 確かめられないワールドはどこでも部屋を作れないので、プライベートとして知らせる
+        const resolution = await this.resolveLocal(located.id);
+        const visibility: WorldVisibility = resolution.ok ? (resolution.world.visibility ?? 'public') : 'private';
+        if (kind === 'yaml') return { contentType, body: yaml.stringify(served.definition), visibility };
         const value = kind === 'lock.json' ? served.lock : served.signature;
-        return value ? { contentType, body: JSON.stringify(value) } : undefined;
+        return value ? { contentType, body: JSON.stringify(value), visibility } : undefined;
     }
 
     // ================================================================
@@ -1167,7 +1285,10 @@ class WorldRegistry {
             { definition: served.definition, lock: served.lock, signature: served.signature },
             record.authorId,
         );
-        return resolution.ok && served.versionId ? { ...resolution, versionId: served.versionId } : resolution;
+        if (!resolution.ok) return resolution;
+        const published = !!served.versionId && isPublishable(resolution.world.identity);
+        const world = { ...resolution.world, visibility: effectiveWorldVisibility(record.visibility, published) };
+        return served.versionId ? { ok: true, world, versionId: served.versionId } : { ok: true, world };
     }
 
     /**
@@ -1235,7 +1356,8 @@ class WorldRegistry {
      */
     async publishableListItem(ref: string): Promise<WorldListItem | undefined> {
         const resolution = await this.resolveRefDetailed(ref);
-        if (!resolution.ok || !isPublishable(resolution.world.identity)) return undefined;
+        if (!resolution.ok || !isPublishable(resolution.world.identity) || !isListed(resolution.world))
+            return undefined;
         return this._toListItem(resolution.world);
     }
 
@@ -1266,6 +1388,7 @@ class WorldRegistry {
             authorName: w.authorName,
             mods: w.mods,
             identity: w.identity,
+            visibility: w.visibility,
             createdAt: rec ? rec.createdAt.toISOString() : undefined,
             updatedAt: rec ? rec.updatedAt.toISOString() : undefined,
         };

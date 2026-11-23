@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { hostOf } from '../urls';
 import { formatRoomAddress, isRemoteRoom, localRoomIdOf, parseRoomAddress, roomIdOf } from './roomAddress';
 
 const SELF = 'home.example';
@@ -15,6 +16,27 @@ describe('parseRoomAddress', () => {
 
     it('自分のドメインを付けた住所は、このサーバーの部屋として扱う（自分に問い合わせない）', () => {
         expect(parseRoomAddress('abc@home.example', SELF)).toEqual({ id: 'abc', domain: null });
+    });
+
+    it('既定のポート（:443）・頭に 0 の付いたポートは、URL のホストと同じ形にそろえる（自分のドメインも同じ）', () => {
+        expect(parseRoomAddress('abc@home.example:443', SELF)).toEqual({ id: 'abc', domain: null });
+        expect(parseRoomAddress('abc@HOME.example:0443', SELF)).toEqual({ id: 'abc', domain: null });
+        expect(parseRoomAddress('abc@other.example:443', SELF)).toEqual({ id: 'abc', domain: 'other.example' });
+        expect(parseRoomAddress('abc@other.example:08443', SELF)).toEqual({ id: 'abc', domain: 'other.example:8443' });
+        expect(parseRoomAddress('abc@localhost:3201', 'localhost:03201')).toEqual({ id: 'abc', domain: null });
+        expect(parseRoomAddress('abc@other.example:99999', SELF)).toBeNull();
+    });
+
+    it('住所のドメインは、部屋の URL のホスト（hostOf）と同じ読み方になる（入る前の確認で食い違わない）', () => {
+        for (const domain of [
+            'other.example',
+            'Other.Example:443',
+            'other.example:0443',
+            'other.example:8443',
+            'localhost:3201',
+        ]) {
+            expect(parseRoomAddress(`abc@${domain}`, SELF)?.domain).toBe(hostOf(`https://${domain}/ap/instances/abc`));
+        }
     });
 
     it.each([

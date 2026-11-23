@@ -1,15 +1,20 @@
-import { type Instance, ROOM_PORTAL } from '@ubichill/shared';
+import { canStartInstance, type Instance, ROOM_PORTAL, type WorldVisibility } from '@ubichill/shared';
 import { type ReactNode, useState } from 'react';
 import { HudIcon, type HudIconName } from '@/components/hud/HudIcon';
 import { useHudNavigation } from '@/components/hud/HudNavigationContext';
 import { Dialog } from '@/components/ui/Dialog';
+import { useSession } from '@/lib/session';
 import { pushToast } from '@/lib/toast';
 import { css } from '@/styled-system/css';
 
 export type NewInstanceCreate = (options: { holdEmptyMs?: number }) => Promise<Instance>;
 
+export const PRIVATE_WORLD_START_MESSAGE = 'プライベートのワールドです。インスタンスを作れるのは作者だけです';
+
 export interface NewInstance {
     busy: boolean;
+    /** 作れない理由（プライベートのワールドで作者でない）。作れるなら null。ボタンを押せなくして title に出す */
+    blocked: string | null;
     /** 作り始める。部屋の中では入るかポータルを置くかを選ぶダイアログを出し、部屋の外ではそのまま作って入る */
     start: () => void;
     /** 選ぶダイアログ（部屋の外では null）。呼び出し側のどこかに置く */
@@ -22,13 +27,18 @@ export interface NewInstance {
  * ポータルがある間は消さないよう頼んで作る。
  */
 export function useNewInstance({
+    world,
     create,
     enter,
 }: {
+    /** 公開範囲を見るワールド（読み込む前は null。作れるかは作るときに backend も確かめる） */
+    world: { visibility?: WorldVisibility; authorId?: string } | null;
     create: NewInstanceCreate;
     enter: (instance: Instance) => void;
 }): NewInstance {
     const portal = useHudNavigation()?.portal ?? null;
+    const viewerId = useSession().data?.user.id ?? null;
+    const blocked = world && !canStartInstance(world, viewerId) ? PRIVATE_WORLD_START_MESSAGE : null;
     const [choosing, setChoosing] = useState(false);
     const [busy, setBusy] = useState(false);
 
@@ -51,8 +61,9 @@ export function useNewInstance({
 
     return {
         busy,
+        blocked,
         start: () => {
-            if (busy) return;
+            if (busy || blocked) return;
             if (portal) setChoosing(true);
             else void run('enter');
         },

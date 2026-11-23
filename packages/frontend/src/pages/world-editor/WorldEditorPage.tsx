@@ -1,3 +1,4 @@
+import type { WorldVisibility } from '@ubichill/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ConsolePanel } from '@/components/console/ConsolePanel';
@@ -7,6 +8,7 @@ import { signInPath } from '@/lib/account/authEntry';
 import { consoleCounts } from '@/lib/console/console';
 import { appConsole, logConsole } from '@/lib/console/consoleStore';
 import { useSession } from '@/lib/session';
+import { saveWorldVisibility } from '@/lib/worlds/instancesApi';
 import { css } from '@/styled-system/css';
 import { EditorAssets } from './components/assets/EditorAssets';
 import { type BottomDockTab, BottomDockTabs } from './components/BottomDockTabs';
@@ -93,6 +95,8 @@ export function WorldEditorPage() {
         updateEntities,
         publishState,
         setPublishState,
+        visibility,
+        setVisibility,
     } = useDefinition({
         isEdit,
         worldId,
@@ -110,6 +114,31 @@ export function WorldEditorPage() {
         const message = result.stage === 'publish' ? '公開しました' : '下書きを保存しました';
         logConsole({ level: 'info', source: stageLabel(result.stage), message });
     }, []);
+
+    // 公開範囲は定義の外（署名しない）なので、保存・公開を待たずにその場で変える
+    const changeVisibility = useCallback(
+        async (next: WorldVisibility) => {
+            if (!worldId || next === visibility) return;
+            const previous = visibility;
+            setVisibility(next);
+            try {
+                await saveWorldVisibility(worldId, next);
+                logConsole({
+                    level: 'info',
+                    source: '公開範囲',
+                    message: next === 'public' ? 'パブリックにしました' : 'プライベートにしました',
+                });
+            } catch (e) {
+                setVisibility(previous);
+                logConsole({
+                    level: 'error',
+                    source: '公開範囲',
+                    message: e instanceof Error ? e.message : '公開範囲を変えられませんでした',
+                });
+            }
+        },
+        [worldId, visibility, setVisibility],
+    );
 
     const publishSetup = usePublishSetup();
     const editorApi = useWorldEditorApi({
@@ -545,6 +574,9 @@ export function WorldEditorPage() {
                         onCreateInstance={editorApi.createInstance}
                         onSaveDraft={handleSave}
                         onPublish={() => void publish()}
+                        visibility={visibility}
+                        published={publishState.published}
+                        onVisibilityChange={(next) => void changeVisibility(next)}
                     />
                 }
             >

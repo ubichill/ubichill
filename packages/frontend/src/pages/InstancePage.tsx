@@ -16,12 +16,13 @@ import { useSession } from '@/lib/session';
 import { useBlocks } from '@/lib/social/blocks';
 import { blockedAuthorsOf, blockedIdsOf } from '@/lib/social/blocksState';
 import { dismissToast, pushToast } from '@/lib/toast';
-import { fetchInstance, fetchWorld } from '@/lib/worlds/instancesApi';
-import { createPortalLookup } from '@/lib/worlds/portalDestination';
-import { canonicalRoomId, portalPath } from '@/lib/worlds/portalPath';
+import { createInstance, fetchInstance, fetchInstances, fetchWorld } from '@/lib/worlds/instancesApi';
+import { createPortalLookup, portalWorldRef } from '@/lib/worlds/portalDestination';
+import { canonicalRoomId, portalRoomPath } from '@/lib/worlds/portalPath';
 import { createPortalTrips } from '@/lib/worlds/portalTrip';
 import { ROOM_PORTAL_REFUSAL_MESSAGES, roomPortalRefusal } from '@/lib/worlds/roomPortalEntry';
 import { useRemoteVisit } from '@/lib/worlds/useRemoteVisit';
+import { worldPortalInstance } from '@/lib/worlds/worldPortalEntry';
 import { type InstanceFailure, InstanceNotFoundError, type PortalGoal, WorldView } from '@/world';
 
 /** 失敗したら一定時間後に自動でホームへ戻す（ロード画面で詰まらないように）。 */
@@ -35,6 +36,36 @@ const fetchRoomOrGone = (address: string, signal?: AbortSignal): Promise<Instanc
         if (error instanceof InstanceNotFoundError) return null;
         throw error;
     });
+
+/**
+ * ポータルで入る部屋。入れなければトーストを出して null（今の部屋に残る）。
+ * - ワールドに置くポータル: 行き先のワールドのパブリックの部屋（無ければ作る）
+ * - 部屋へのポータル: その部屋を引き直して入れるか確かめる（ポータルの鍵は少し前に引いたもの）
+ */
+function portalRoom(
+    goal: PortalGoal,
+    currentRoom: string,
+    viewerId: string,
+    signal: AbortSignal,
+): Promise<string | null> {
+    if (goal.kind === 'room') {
+        const room = roomPortalAddressFor(goal.room, currentRoom);
+        return roomPortalRefusal(fetchRoomOrGone, room, viewerId, { signal }).then((refusal) => {
+            if (signal.aborted) return null;
+            if (!refusal) return room;
+            pushToast(ROOM_PORTAL_REFUSAL_MESSAGES[refusal], 'warn');
+            return null;
+        });
+    }
+    return worldPortalInstance({ fetchWorld, fetchInstances, createInstance }, portalWorldRef(goal), viewerId).then(
+        (instance) => (signal.aborted ? null : instance.id),
+        (e: unknown) => {
+            if (!signal.aborted)
+                pushToast(e instanceof Error ? e.message : 'ポータルの先の部屋に入れませんでした', 'error');
+            return null;
+        },
+    );
+}
 
 /**
  * SNS のインスタンス画面。ワールドを動かすのは `WorldView` で、ここは認証の確認・ホームへの導線・HUD を足すだけ。
@@ -84,7 +115,7 @@ export function InstancePage() {
         (fetchedId: string) => {
             const local = id ? canonicalRoomId(id, fetchedId) : null;
             if (!local) return false;
-            navigate(`${portalPath({ kind: 'room', room: local })}${location.search}`, {
+            navigate(`${portalRoomPath(local)}${location.search}`, {
                 replace: true,
                 state: location.state,
             });
@@ -148,9 +179,7 @@ export function InstancePage() {
         [failure?.replaced, toHome],
     );
 
-    // ポータル（core:portal）: 確かめてから部屋を出て、行き先へ。ワールドへのポータルはワールドのページ（そこで入室まで進む）、
-    // 部屋へのポータルはその部屋（読み込み画面に行き先のサムネイルを出す）
-    // 部屋へのポータルは、出る直前に行き先の部屋を引き直し、入れなければ今の部屋に残る（ポータルの鍵は少し前のもの）
+    // ポータル（core:portal）: 確かめてから、入る部屋を決めて今の部屋を出る（決められなければ今の部屋に残る）
     const { leaveWorld } = useSocket();
     const viewerId = session?.user.id ?? null;
     // 移る流れは 1 つのページで 1 つだけ（押し直し・確かめている間の押し直しは無視）。部屋を移った・ページを閉じたら取り消す
@@ -159,25 +188,18 @@ export function InstancePage() {
     useEffect(() => () => trips.cancel(), [id, trips]);
     const goThroughPortal = useCallback(
         async (goal: PortalGoal, label: string, look?: { displayName: string; thumbnail?: string }) => {
-            const signal = id ? trips.begin() : null;
-            if (!id || !signal) return;
+            const signal = id && viewerId ? trips.begin() : null;
+            if (!id || !viewerId || !signal) return;
             const checking: { toast: number | null } = { toast: null };
             try {
                 if (!(await confirm(`「${label}」へ移りますか？今の部屋から退出します。`)) || signal.aborted) return;
-                if (goal.kind !== 'room') {
-                    await leaveWorld();
-                    if (signal.aborted) return;
-                    return navigate(portalPath(goal));
-                }
-                const room = roomPortalAddressFor(goal.room, id);
                 checking.toast = pushToast('ポータルの先の部屋を確かめています', 'info', undefined, { sticky: true });
-                const refusal = await roomPortalRefusal(fetchRoomOrGone, room, viewerId, { signal });
-                if (signal.aborted) return;
-                if (refusal) return void pushToast(ROOM_PORTAL_REFUSAL_MESSAGES[refusal], 'warn');
+                const room = await portalRoom(goal, id, viewerId, signal);
+                if (!room || signal.aborted) return;
                 await leaveWorld();
                 if (signal.aborted) return;
                 const state: InstanceEntryState | undefined = look ? { worldData: look } : undefined;
-                navigate(portalPath({ kind: 'room', room }), { state });
+                navigate(portalRoomPath(room), { state });
             } finally {
                 if (checking.toast !== null) dismissToast(checking.toast);
                 trips.end(signal);

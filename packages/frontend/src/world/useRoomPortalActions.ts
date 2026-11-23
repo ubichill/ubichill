@@ -14,21 +14,21 @@ type Outcome = Promise<string | null>;
 
 /**
  * 部屋へのポータルを置く・閉じる。置く場所は見ている所の真ん中で、インスタンスが Entity を作って全員に配る
- * （自分の画面にも entity:created で届く）。
+ * （自分の画面にも entity:created で届く）。grant は SNS の backend が出した置く許可（単体モードでは無い）。
  */
-export function useRoomPortalActions(): { open: (room: string) => Outcome; close: () => Outcome } {
+export function useRoomPortalActions(): { open: (room: string, grant?: string) => Outcome; close: () => Outcome } {
     const { socket } = useSocket();
     const { environment } = useWorld();
     return useMemo(() => {
         const failed = (fallback: string) => (response: { success: boolean; error?: string }) =>
             response.success ? null : (response.error ?? fallback);
         return {
-            open: (room) =>
+            open: (room, grant) =>
                 new Promise((resolve) => {
                     if (!socket) return resolve('接続が切れています');
                     const size = environment.worldSize;
                     const at = roomPortalCenter(viewCenter() ?? { x: size.width / 2, y: size.height / 2 }, size);
-                    socket.emit('portal:open', { room, ...at }, (response) =>
+                    socket.emit('portal:open', { room, ...at, ...(grant ? { grant } : {}) }, (response) =>
                         resolve(failed('ポータルを置けませんでした')(response)),
                     );
                 }),

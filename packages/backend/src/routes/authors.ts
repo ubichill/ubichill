@@ -1,4 +1,4 @@
-import { HANDLE_PATTERN } from '@ubichill/shared';
+import { HANDLE_PATTERN, WORLD_VISIBILITY_HEADER } from '@ubichill/shared';
 import { Router } from 'express';
 import { publishingEnvironmentService } from '../services/authors/publishingEnvironmentService';
 import { modCatalog, modDescriptor } from '../services/mods/catalog';
@@ -44,6 +44,7 @@ router.get('/:handle/signing-keys', async (req, res) => {
 /**
  * GET /api/v1/authors/:handle/worlds/:name.yaml（と兄弟の .lock.json / .sig.json）
  * ワールドの公開の URL（共有 URL `/@handle/name` から決まる）。DB のワールドもリポジトリのワールドも、外部ホストと同じ形で配る。
+ * DB のワールドには公開範囲のヘッダー（`Ubichill-World-Visibility: private|public`）を付ける。
  * GET /api/v1/authors/:handle/worlds/:name は画面向けの ResolvedWorld(JSON)。名前を変えたワールドは以前の名前でもたどれる。
  */
 router.get('/:handle/worlds/:file', async (req, res) => {
@@ -59,8 +60,14 @@ router.get('/:handle/worlds/:file', async (req, res) => {
             // 更新・署名し直しをすぐ届ける（ETag で再検証する）
             res.set('Cache-Control', 'no-cache');
             res.type(found.contentType);
-            if ('path' in found) res.sendFile(found.path);
-            else res.send(found.body);
+            if ('path' in found) {
+                res.sendFile(found.path);
+                return;
+            }
+            // プライベートでも配る（作者の部屋に入る人・ほかのサーバーが読む）。部屋を作らせるかは読む側のサーバーが決める
+            res.set(WORLD_VISIBILITY_HEADER, found.visibility);
+            res.set('Access-Control-Expose-Headers', WORLD_VISIBILITY_HEADER);
+            res.send(found.body);
             return;
         }
         const resolution = await worldRegistry.resolveByAuthorName(handle, file);

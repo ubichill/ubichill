@@ -73,7 +73,11 @@ const LOCK = { lockVersion: 1, mods: {} };
  * 後片付けより後のマイグレーションで足した列のうち、今のコードが読むもの。当てる前の応答を控える間だけ足し、当てる前に外す
  * （後片付けとは関係が無い。足さないと今のコードが当てる前の DB を読めない）。
  */
-const LATER_COLUMNS = [{ table: 'instances', column: 'held_until', type: 'timestamptz' }] as const;
+const LATER_COLUMNS = [
+    { table: 'instances', column: 'held_until', type: 'timestamptz' },
+    // 0048 の enum（world_visibility）はまだ無いので、読めるだけの text で足す
+    { table: 'worlds', column: 'visibility', type: "text NOT NULL DEFAULT 'public'" },
+] as const;
 const json = (v: unknown) => (v === null || v === undefined ? null : JSON.stringify(v));
 
 type Modules = {

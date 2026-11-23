@@ -2,6 +2,7 @@ import { type AccessType, type Instance, type WorldListItem, worldSourceLabel } 
 import { useEffect, useEffectEvent, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { SetHomeControl } from '@/components/home/SetHomeControl';
+import { HudIcon } from '@/components/hud/HudIcon';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { useDialogLayer } from '@/components/ui/dialogLayer';
 import { useSession } from '@/lib/session';
@@ -82,6 +83,7 @@ export function WorldDetailModal({
     const editTarget = worldEditTarget({ id: world?.id ?? worldId, source: world?.source });
 
     const newInstance = useNewInstance({
+        world,
         create: (options) =>
             createInstance({ worldId: world?.url ?? worldId, access: { type: accessType }, ...options }),
         enter: (instance) => {
@@ -232,6 +234,12 @@ export function WorldDetailModal({
                                         </span>
                                     )}
                                     <WorldIdentityBadge identity={world?.identity} className={css({ ml: '2' })} />
+                                    {world?.visibility === 'private' && (
+                                        <span className={privateBadge}>
+                                            <HudIcon name="lock" size={12} />
+                                            プライベート
+                                        </span>
+                                    )}
                                     {world?.identity?.status === 'verified' && world.identity.author && (
                                         <p className={css({ mt: '1', fontSize: '12px', color: 'textMuted' })}>
                                             作者 <AuthorAccountLabel author={world.identity.author} />
@@ -279,7 +287,8 @@ export function WorldDetailModal({
                                     <button
                                         type="button"
                                         onClick={newInstance.start}
-                                        disabled={newInstance.busy}
+                                        disabled={newInstance.busy || newInstance.blocked !== null}
+                                        title={newInstance.blocked ?? undefined}
                                         className={css({
                                             flex: 1,
                                             py: '2',
@@ -385,3 +394,17 @@ export function WorldDetailModal({
         </>
     );
 }
+
+const privateBadge = css({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '1',
+    ml: '2',
+    px: '6px',
+    py: '2px',
+    bg: 'secondary',
+    borderRadius: '4px',
+    fontSize: '11px',
+    color: 'textMuted',
+    verticalAlign: 'middle',
+});

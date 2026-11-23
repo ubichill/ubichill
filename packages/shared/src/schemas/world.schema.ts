@@ -4,6 +4,7 @@ import { OVERLAY_MODES } from '../mod/entities';
 import { PackageAuthorSchema } from '../mod/packageRef';
 import { ModLockSchema } from './modLock.schema';
 import { WorldIdentitySchema } from './worldIdentity.schema';
+import { WorldVisibilitySchema } from './worldVisibility.schema';
 
 // ============================================
 // 定数
@@ -534,6 +535,16 @@ export const ResolvedWorldSchema = z.object({
     /** 識別結果（署名検証済み / 未署名）。解決側が付与する。 */
     identity: WorldIdentitySchema.optional(),
     requires: WorldRequirementsSchema.optional(),
+    /**
+     * ワールドの公開範囲（公開の有無を含めたもの）。このサーバーのワールドと、作者のサーバーがプライベートと知らせた
+     * 外部のワールドに付く。ほかの外部・同梱のワールドは付かない（パブリック）。
+     */
+    visibility: WorldVisibilitySchema.optional(),
+    /**
+     * 作者のサーバーで公開範囲を確かめられなかった（正規の URL が 429・5xx・時間切れなどで、前に確かめた結果も無い）。
+     * 見せはするが、部屋は作らせない（少し待って試し直す）。
+     */
+    visibilityUnconfirmed: z.literal(true).optional(),
 });
 
 export type ResolvedWorld = z.infer<typeof ResolvedWorldSchema>;

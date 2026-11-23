@@ -1,6 +1,14 @@
-import { type Instance, isFullFor, type WorldListItem, WorldSourceKind, worldSourceLabel } from '@ubichill/shared';
+import {
+    canStartInstance,
+    type Instance,
+    isFullFor,
+    type WorldListItem,
+    WorldSourceKind,
+    worldSourceLabel,
+} from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
+import { PRIVATE_WORLD_START_MESSAGE } from '@/components/worlds/useNewInstance';
 import { signInPath } from '@/lib/account/authEntry';
 import { useSession } from '@/lib/session';
 import { createInstance, fetchInstances, fetchWorld } from '@/lib/worlds/instancesApi';
@@ -186,7 +194,15 @@ export function WorldPage() {
                 })}
             >
                 {/* 大サムネ + タイトル + 作成者 + 主要バッジ + 参加導線 */}
-                <HeroSection world={world} instances={instances} onCreate={handleCreate} creating={creating} />
+                <HeroSection
+                    world={world}
+                    instances={instances}
+                    onCreate={handleCreate}
+                    creating={creating}
+                    blocked={
+                        world && !canStartInstance(world, session?.user.id ?? null) ? PRIVATE_WORLD_START_MESSAGE : null
+                    }
+                />
                 {/* 説明 + 詳細情報（VRChat のワールド情報に相当。ここを優先表示） */}
                 <DetailsSection world={world} />
                 {/* 参加可能なインスタンス */}
@@ -235,9 +251,11 @@ interface HeroSectionProps {
     instances: Instance[];
     onCreate: () => void;
     creating: boolean;
+    /** 作れない理由（プライベートのワールドで作者でない） */
+    blocked: string | null;
 }
 
-function HeroSection({ world, instances, onCreate, creating }: HeroSectionProps) {
+function HeroSection({ world, instances, onCreate, creating, blocked }: HeroSectionProps) {
     const totalCurrentUsers = instances.reduce((sum, i) => sum + i.stats.currentUsers, 0);
     return (
         <section className={css({ width: 'full', display: 'flex', flexDir: 'column', gap: 5 })}>
@@ -298,6 +316,7 @@ function HeroSection({ world, instances, onCreate, creating }: HeroSectionProps)
                 <div
                     className={css({ display: 'flex', gap: 3, flexWrap: 'wrap', color: 'textSubtle', fontSize: 'sm' })}
                 >
+                    {world?.visibility === 'private' && <MetaBadge icon="lock" label="プライベート" />}
                     {world?.source && <MetaBadge icon="globe" label={worldSourceLabel(world.source)} />}
                     {world?.version && <MetaBadge icon="tag" label={`v${world.version}`} />}
                     {world?.capacity && <MetaBadge icon="users" label={`最大 ${world.capacity.max} 人`} />}
@@ -310,7 +329,8 @@ function HeroSection({ world, instances, onCreate, creating }: HeroSectionProps)
                 <button
                     type="button"
                     onClick={onCreate}
-                    disabled={creating}
+                    disabled={creating || blocked !== null}
+                    title={blocked ?? undefined}
                     className={css({
                         px: 8,
                         py: 4,
@@ -444,8 +464,23 @@ function DetailsSection({ world }: { world: WorldListItem | null }) {
     );
 }
 
-function MetaBadge({ icon, label }: { icon: 'user' | 'tag' | 'users' | 'activity' | 'globe'; label: string }) {
+function MetaBadge({ icon, label }: { icon: 'user' | 'tag' | 'users' | 'activity' | 'globe' | 'lock'; label: string }) {
     const iconSvg = {
+        lock: (
+            <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            >
+                <rect x="4" y="11" width="16" height="10" rx="2" />
+                <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+            </svg>
+        ),
         globe: (
             <svg
                 width="16"

@@ -1,5 +1,5 @@
 import type { PortalTarget } from '@ubichill/core-components';
-import type { WorldListItem } from '@ubichill/shared';
+import { isPortalDestination, type WorldListItem } from '@ubichill/shared';
 import type { PortalDestination, PortalLookup } from '@/world';
 import { ROOM_STATUS_TIMEOUT_MS, type RoomStatus, roomRefusal, withinTime } from './roomPortalEntry';
 
@@ -15,7 +15,7 @@ export function portalWorldRef(target: PortalTarget): string {
     }
 }
 
-type WorldLook = Pick<WorldListItem, 'displayName' | 'thumbnail'>;
+type WorldLook = Pick<WorldListItem, 'displayName' | 'thumbnail' | 'visibility'>;
 
 const destinationOf = (world: WorldLook): PortalDestination => ({
     name: world.displayName,
@@ -37,10 +37,10 @@ export const UNKNOWN_ROOM: PortalDestination = { unknown: true };
 /**
  * ポータルの行き先を引く関数を作る。ワールドは 1 回だけ引く（部屋に同じポータルがいくつあっても、描き直しても）。
  * 引けなかったワールドも覚える（無いワールドを何度も問い合わせない。部屋を入り直せば引き直す）。
- * 部屋へのポータルは、見る人が入れない部屋（公開範囲・招待・満員）を locked にする。入れるかは人数で変わるので
- * ROOM_STATUS_TTL_MS を過ぎたら引き直す（引いている途中は同じ問い合わせにまとめる。応答が無ければ timeoutMs で諦める）。
- * 無くなった部屋は null。一時的に引けなかったときは前の結果のまま、前の結果も無ければ UNKNOWN_ROOM（鍵は出さない）。
- * rooms が無ければ部屋は引かない。
+ * ワールドへのポータルはプライベートのワールドを、部屋へのポータルは見る人が入れない部屋（公開範囲・招待・満員）を
+ * locked にする。部屋に入れるかは人数で変わるので ROOM_STATUS_TTL_MS を過ぎたら引き直す（引いている途中は同じ
+ * 問い合わせにまとめる。応答が無ければ timeoutMs で諦める）。無くなった部屋は null。一時的に引けなかったときは
+ * 前の結果のまま、前の結果も無ければ UNKNOWN_ROOM（鍵は出さない）。rooms が無ければ部屋は引かない。
  */
 export function createPortalLookup(
     fetchWorld: (ref: string) => Promise<WorldLook>,
@@ -89,7 +89,13 @@ export function createPortalLookup(
         const key = portalWorldRef(goal);
         const cached = worlds.get(key);
         if (cached) return cached;
-        const pending = fetchWorld(key).then(destinationOf, () => null);
+        const pending = fetchWorld(key).then(
+            (world): PortalDestination => ({
+                ...destinationOf(world),
+                ...(isPortalDestination(world) ? {} : { locked: true }),
+            }),
+            () => null,
+        );
         worlds.set(key, pending);
         return pending;
     };

@@ -279,6 +279,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, relayed bool) {
 			p.stopAfterSend()
 			returnAfterSend(p)
 			return
+		} else if err := s.checkPortalGrant(p, f); err != nil {
+			p.reject(f.ID, err.Error())
 		} else {
 			p.room.handle(p, f)
 		}

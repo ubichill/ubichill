@@ -4,7 +4,7 @@
  * リクエスト形状やエラーメッセージが少しずつ食い違っていたため、単一の実装に集約する。
  * ここは純粋な fetch ラッパーのみで、React の状態は持たない（呼び出し側の hooks/component が持つ）。
  */
-import type { CreateInstanceRequest, Instance, WorldListItem } from '@ubichill/shared';
+import type { CreateInstanceRequest, Instance, WorldListItem, WorldVisibility } from '@ubichill/shared';
 import { InstanceNotFoundError } from '@/world';
 import { API_BASE } from '../api';
 import { viaOf } from './joinVia';
@@ -88,4 +88,32 @@ export function endVisit(instanceId: string): void {
         credentials: 'include',
         keepalive: true,
     }).catch(() => undefined);
+}
+
+/** ワールドの公開範囲を変える（作者のみ）。 */
+export async function saveWorldVisibility(worldId: string, visibility: WorldVisibility): Promise<void> {
+    const res = await fetch(`${API_BASE}/api/v1/worlds/${encodeURIComponent(worldId)}/visibility`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ visibility }),
+    });
+    if (!res.ok) throw new Error(await readErrorMessage(res, '公開範囲を変えられませんでした'));
+}
+
+/**
+ * 部屋へのポータルを置く許可を backend にもらう（インスタンスが portal:open で確かめる）。room は portal:open に送るのと
+ * 同じ住所。プライベートのワールドの部屋で、部屋を作った人でなければ断られる。
+ */
+export async function requestRoomPortalGrant(room: string): Promise<string> {
+    const res = await fetch(`${API_BASE}/api/v1/room-portals/grants`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ room }),
+    });
+    if (!res.ok) throw new Error(await readErrorMessage(res, 'ポータルを置けませんでした'));
+    const data = (await res.json()) as { grant?: unknown };
+    if (typeof data.grant !== 'string') throw new Error('ポータルを置けませんでした');
+    return data.grant;
 }

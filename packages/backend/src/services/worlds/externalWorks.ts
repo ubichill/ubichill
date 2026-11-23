@@ -204,19 +204,47 @@ export function worldConfirmation<
 /** 作者の共有ページのパス（`/@handle/name`）。 */
 export const authorSharePath = (handle: string, name: string): string => `/@${handle}/${name}`;
 
+type IdentityLike =
+    | { status: string; worldId?: string; author?: string; authorPending?: true; claimedAuthor?: string }
+    | undefined;
+
+/**
+ * 署名の作者のワールド（作者のアカウントのドメイン・ID と、ワールドの名前）。識別子が作者と食い違う・形が違うなら undefined。
+ * confirmed は作者の鍵を確かめられたか。確かめられなかったとき（確認待ち・鍵が違った・確認が古い）は、署名が名乗る作者
+ * （claimedAuthor）と署名の対象の名前で返す。名乗っているだけなので、公開範囲を閉じる側にだけ使う。
+ */
+export function authorWorldOf(
+    identity: IdentityLike,
+): { handle: string; domain: string; name: string; confirmed: boolean } | undefined {
+    if (identity?.status !== 'verified') return undefined;
+    const confirmed = !!identity.author && !identity.authorPending;
+    const author = confirmed ? identity.author : identity.claimedAuthor;
+    const account = author ? parseAuthorAccount(author) : null;
+    if (!author || !account) return undefined;
+    const worldId = identity.worldId ?? '';
+    // 確かめた作者の識別子は `acct:<作者>/<名前>`、確かめられなかった間は `ed25519:<鍵>/<名前>`
+    const name = confirmed
+        ? worldId.startsWith(authorWorldIdOf(author, ''))
+            ? worldId.slice(authorWorldIdOf(author, '').length)
+            : ''
+        : worldId.slice(worldId.lastIndexOf('/') + 1);
+    return /^[a-z0-9-]+$/.test(name) ? { handle: account.handle, domain: account.domain, name, confirmed } : undefined;
+}
+
 /**
  * 外部のワールドの作者が、このサーバーのアカウントだと署名で確かめられたときの、その ID とワールドの名前。
  * 作者が別のサーバーの人・確認できていない（確認待ちを含む）・識別子が作者と食い違うなら undefined。
  */
 export function localAuthorWorldOf(
-    identity: { status: string; worldId?: string; author?: string; authorPending?: true } | undefined,
+    identity: IdentityLike,
     domain: string,
 ): { handle: string; name: string } | undefined {
-    if (identity?.status !== 'verified' || !identity.author || identity.authorPending) return undefined;
-    const at = identity.author.lastIndexOf('@');
-    const handle = identity.author.slice(0, at);
-    if (at <= 0 || identity.author.slice(at + 1).toLowerCase() !== domain.toLowerCase()) return undefined;
-    const prefix = authorWorldIdOf(identity.author, '');
-    const name = identity.worldId?.startsWith(prefix) ? identity.worldId.slice(prefix.length) : '';
-    return name && !name.includes('/') ? { handle, name } : undefined;
+    const owner = authorWorldOf(identity);
+    return owner?.confirmed && owner.domain === domain.toLowerCase()
+        ? { handle: owner.handle, name: owner.name }
+        : undefined;
 }
+
+/** 作者のサーバーがそのワールドを配る正規の URL（公開範囲のヘッダーはここに付く）。 */
+export const canonicalWorldUrl = (owner: { handle: string; domain: string; name: string }): string =>
+    `https://${owner.domain}/api/v1/authors/${owner.handle}/worlds/${owner.name}.yaml`;

@@ -25,7 +25,10 @@ const authorKeys = createAuthorKeyDirectory({
             headers: { Accept: 'application/jrd+json, application/json' },
             signal: AbortSignal.timeout(5000),
         });
-        return res.ok ? ((await res.json()) as unknown) : undefined;
+        if (res.ok) return (await res.json()) as unknown;
+        // 無い（404・410）だけを「無い」にし、429・5xx などは一時的な失敗として例外にする（pending。作者が無いとはしない）
+        if (res.status === 404 || res.status === 410) return undefined;
+        throw new Error(`HTTP ${res.status}: ${url}`);
     },
     allowHttp: process.env.WORLDS_FETCH_ALLOW_PRIVATE === 'true',
 });

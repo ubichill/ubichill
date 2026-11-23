@@ -188,13 +188,23 @@ export function OwnedWorldCard({
                     </p>
                 )}
                 <div
-                    className={css({ display: 'flex', gap: '8px', fontSize: '11px', color: 'textSubtle', mt: 'auto' })}
+                    className={css({
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
+                        gap: '4px 8px',
+                        fontSize: '11px',
+                        color: 'textSubtle',
+                        mt: 'auto',
+                        '& > span': { whiteSpace: 'nowrap' },
+                    })}
                 >
                     <span>
                         {world.capacity.default}〜{world.capacity.max}人
                     </span>
                     <span>v{world.version}</span>
                     {editable && <WorldIdentityBadge identity={world.identity} />}
+                    {editable && world.visibility === 'private' && <span>プライベート</span>}
                 </div>
                 {editable && world.problem && (
                     <p className={css({ fontSize: '11px', color: 'errorText', lineHeight: '1.4' })}>

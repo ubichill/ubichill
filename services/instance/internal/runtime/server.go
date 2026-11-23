@@ -92,6 +92,8 @@ type Server struct {
 	// retryAt は引っ越しに失敗した部屋を次に試す時刻（s.mu で守る）。
 	retryAt        map[*Room]time.Time
 	handoffTimeout time.Duration
+	// portalGrantKey は部屋へのポータルを置く許可の鍵（portals.go）。単体モードは nil。
+	portalGrantKey []byte
 	// maintaining は heartbeat・延長を 1 本ずつにする（周期の loop と、draining に入った直後の書き直し）。
 	maintaining sync.Mutex
 	// rejectedJoins は接続数の上限で断った world:join の数。
@@ -131,7 +133,7 @@ func newServer(config Config) *Server {
 	return &Server{
 		rooms: map[string]*Room{}, active: map[string]*peer{}, key: ticketKey(config), config: config,
 		dir: config.Directory, node: config.Node, now: config.Clock, fencing: config.Fencing.withDefaults(), started: time.Now(),
-		relayKey: relayKey(config), relays: map[*relayLink]struct{}{}, clients: map[*peer]struct{}{},
+		relayKey: relayKey(config), portalGrantKey: portalGrantKey(config), relays: map[*relayLink]struct{}{}, clients: map[*peer]struct{}{},
 		pending: map[string]*pendingHandoff{}, retryAt: map[*Room]time.Time{}, handoffTimeout: 10 * time.Second,
 	}
 }

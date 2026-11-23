@@ -38,6 +38,8 @@ export async function myWorldsOf(user: Parameters<typeof limitsFor>[0] & { id: s
                       }
                     : {}),
                 identity: resolution.ok ? resolution.world.identity : undefined,
+                /** 作者の決めた公開範囲（公開するまではこれにかかわらずプライベート） */
+                visibility: r.visibility,
                 ...(resolution.ok
                     ? {}
                     : {

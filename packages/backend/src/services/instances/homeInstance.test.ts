@@ -117,6 +117,33 @@ describe('createHomeService', () => {
         });
     });
 
+    it('ホームのワールドがほかの人のプライベートになっていたら既定のワールドで入る（作者は自分のホームで入れる）', async () => {
+        const secret = { ...world(HOME_URL), authorId: 'aya', visibility: 'private' as const };
+        const home = { worldRef: HOME_URL, accessType: 'invite_only' as const };
+        const worlds = { [DEFAULT_HOME_WORLD_REF]: world(DEFAULT_URL, 'd1'), [HOME_URL]: secret };
+        const other = fakeDeps({ worlds, home });
+        expect(await createHomeService(other.deps).ensureInstance(ME)).toMatchObject({
+            ok: true,
+            value: { fallback: 'unresolvable' },
+        });
+        expect(other.state.created[0]?.worldRef).toBe(DEFAULT_URL);
+
+        const author = fakeDeps({ worlds, home });
+        expect(await createHomeService(author.deps).ensureInstance('aya')).toMatchObject({ ok: true });
+        expect(author.state.created[0]?.worldRef).toBe(HOME_URL);
+    });
+
+    it('ほかの人のプライベートのワールドはホームにできず、設定を変えない', async () => {
+        const secret = { ...world(HOME_URL), authorId: 'aya', visibility: 'private' as const };
+        const { deps, state } = fakeDeps({ worlds: { [HOME_URL]: secret } });
+        expect(await createHomeService(deps).update(ME, { worldRef: HOME_URL })).toMatchObject({
+            ok: false,
+            status: 403,
+        });
+        expect(state.home).toEqual(DEFAULT_HOME_SETTINGS);
+        expect(await createHomeService(deps).update('aya', { worldRef: HOME_URL })).toMatchObject({ ok: true });
+    });
+
     it('共有 URL で設定しても正規 URL で保存する（今いる部屋がホームかを URL で比べられるように）', async () => {
         const { deps, state } = fakeDeps();
         const result = await createHomeService(deps).update(ME, { worldRef: '@youkan/cafe' });

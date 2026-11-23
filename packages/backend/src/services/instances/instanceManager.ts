@@ -7,11 +7,13 @@ import type {
     WorldMod,
     WorldRequirements,
     WorldSource,
+    WorldVisibility,
 } from '@ubichill/shared';
 import {
     blockedByCapacity,
     canJoinInstance,
     canSeeInstance,
+    canStartInstance,
     type InstanceAudience,
     isPublishable,
 } from '@ubichill/shared';
@@ -29,6 +31,17 @@ export type CloseInstanceResult =
 export class InstanceJoinRejected extends Error {}
 
 /**
+ * 作れなかった理由。forbidden はワールドの公開範囲で断ったもの（送り直しても変わらない）。retry は外部のワールドの公開範囲を
+ * 作者のサーバーでいま確かめられないもの（少し待てば作れることがある）。
+ */
+export type InstanceCreateFailure = { error: string; reason?: 'forbidden' | 'retry' };
+
+export const VISIBILITY_UNCONFIRMED_MESSAGE =
+    '作者のサーバーで公開範囲を確かめられないため、いまは部屋を作れません。少し待ってからもう一度試してください';
+
+export const PRIVATE_WORLD_MESSAGE = 'プライベートのワールドには、作者しかインスタンスを作れません';
+
+/**
  * インスタンスマネージャー
  * インスタンスの CRUD と公開データ変換を担う（DBベース）。
  * 空インスタンスの掃除（寿命管理）は責務を分離し instanceReaper が担当する。
@@ -37,7 +50,7 @@ class InstanceManager {
     /**
      * 新しいインスタンスを作成
      */
-    async createInstance(request: CreateInstanceRequest, leaderId: string): Promise<Instance | { error: string }> {
+    async createInstance(request: CreateInstanceRequest, leaderId: string): Promise<Instance | InstanceCreateFailure> {
         // worldId は id でも URL でもよい（URL の場合は自ホスト/外部＝連合を解決する）
         const resolution = await worldRegistry.resolveRefDetailed(request.worldId);
         if (!resolution.ok) {
@@ -46,6 +59,8 @@ class InstanceManager {
             };
         }
         const world = resolution.world;
+        if (!canStartInstance(world, leaderId)) return { error: PRIVATE_WORLD_MESSAGE, reason: 'forbidden' };
+        if (world.visibilityUnconfirmed) return { error: VISIBILITY_UNCONFIRMED_MESSAGE, reason: 'retry' };
 
         const maxUsers = request.settings?.maxUsers ?? world.capacity.default;
         const cappedMaxUsers = Math.min(maxUsers, world.capacity.max);
@@ -349,6 +364,7 @@ class InstanceManager {
             mods?: WorldMod[];
             identity?: WorldIdentity;
             requires?: WorldRequirements;
+            visibility?: WorldVisibility;
         },
         knownPresence?: Map<string, RoomPresence>,
     ): Promise<Instance> {
@@ -381,6 +397,7 @@ class InstanceManager {
                 mods: world.mods ?? [],
                 identity: world.identity,
                 ...(world.requires ? { requires: world.requires } : {}),
+                ...(world.visibility ? { visibility: world.visibility } : {}),
             },
 
             access,

@@ -180,10 +180,11 @@ export interface ClientToServerEvents {
     /**
      * 見ている所に、部屋へのポータルを置く（どのワールドでも。1 人 1 つで、置き直すと前のものは消える）。インスタンスが
      * core:portal の Entity を作って entity:created で全員に配り、ROOM_PORTAL.LIFETIME_MS で消す（entity:deleted）。
-     * x・y はポータルの真ん中（roomPortalCenter）、room は部屋のサーバーから見た行き先の住所。
+     * x・y はポータルの真ん中（roomPortalCenter）、room は部屋のサーバーから見た行き先の住所。grant は backend の出した
+     * 置く許可（ROOM_PORTAL_GRANT。backend のいる運用では必須、単体モードでは要らない）。
      */
     'portal:open': (
-        payload: { room: string; x: number; y: number },
+        payload: { room: string; x: number; y: number; grant?: string },
         callback: (response: { success: boolean; error?: string }) => void,
     ) => void;
 
@@ -293,6 +294,7 @@ export * from './schemas';
 export { createModLock, lockedMods } from './schemas/modLock.schema';
 export * from './schemas/url.schema';
 export { withoutWorldLock } from './schemas/world.schema';
+export * from './schemas/worldVisibility.schema';
 export * from './server/serverInfo';
 export {
     confirmEnvelopeAuthor,
@@ -324,3 +326,4 @@ export * from './world/requirements';
 export * from './world/resolve';
 export * from './world/roomPortal';
 export * from './world/visibility';
+export * from './world/worldVisibility';
