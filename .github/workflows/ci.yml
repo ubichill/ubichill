@@ -158,7 +158,9 @@ jobs:
         env:
           DATABASE_URL: postgresql://ubichill:password@localhost:5432/ubichill
           REDIS_URL: redis://localhost:6379
-        run: pnpm exec vitest run .integration.test
+        # 1 つの DB を共有し、画像の掃除のテストは全体に掛かるロックを取るので、ファイルを並べて走らせると
+        # 遅いランナーで互いを待って時間切れになる。ファイルは順に走らせる（手元で CPU を絞った DB でも 45 秒ほど）
+        run: pnpm exec vitest run .integration.test --no-file-parallelism
 
   typecheck:
     name: Typecheck
