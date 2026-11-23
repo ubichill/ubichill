@@ -283,9 +283,10 @@ describe('createCommandBudget（1 tick に受け付けるコマンドの数）',
         expect(takeMany(createCommandBudget(Number.POSITIVE_INFINITY), 10_000).every((r) => r === 'accept')).toBe(true);
     });
 
-    it('正規の mod の 1 tick 分（danmaku の自機・弾・壁と、起動時にまとめて作る Entity）は上限に届かない', () => {
-        // danmaku: 自機の移動（SCENE_UPDATE_ENTITY）・発射（EVENT_EMIT）・弾の描画（CANVAS_FRAME）・UI_RENDER・ログ
-        const danmakuTick = 5;
+    it('正規の mod の 1 tick 分（danmaku の自機・範囲と、起動時にまとめて作る Entity）は上限に届かない', () => {
+        // danmaku の自機: 移動（SCENE_UPDATE_ENTITY）・発射と位置（EVENT_EMIT × 2）・発射の共有（NETWORK_BROADCAST）・HP（SCENE_UPDATE_ENTITY）・UI_RENDER・ログ
+        // 範囲: 描画（CANVAS_FRAME）・被弾（EVENT_EMIT）・ダメージとラウンド（SCENE_UPDATE_ENTITY）・UI_RENDER
+        const danmakuTick = 7;
         // 起動時の取得とまとめての生成（SCENE_GET_ENTITY・SCENE_QUERY_ENTITIES・SCENE_CREATE_ENTITY × 200）
         const startupBurst = 2 + 200;
         expect(danmakuTick + startupBurst).toBeLessThan(MAX_COMMANDS_PER_TICK);

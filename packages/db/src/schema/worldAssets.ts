@@ -7,7 +7,7 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({
 
 /**
  * ワールドの作者が上げた画像（サーバーで作り直した WebP。core:image・背景に使う）。プロフィール画像と同じく中身を DB に置く。
- * URL は中身のハッシュで決まり、だれが上げても同じ画像は同じ URL になる。持ち主ごとに数と大きさの上限を掛ける。
+ * URL は中身のハッシュで決まり、だれが上げても同じ画像は同じ URL になる。持ち主ごとに合計の大きさの上限を掛ける。
  */
 export const worldAssets = pgTable(
     'world_assets',
@@ -23,5 +23,10 @@ export const worldAssets = pgTable(
         height: integer('height').notNull(),
         createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     },
-    (table) => [primaryKey({ columns: [table.ownerId, table.hash] }), index('world_assets_hash_idx').on(table.hash)],
+    (table) => [
+        primaryKey({ columns: [table.ownerId, table.hash] }),
+        index('world_assets_hash_idx').on(table.hash),
+        // 設定の「ストレージ」の一覧（持ち主ごとに新しい順のページ）
+        index('world_assets_owner_created_idx').on(table.ownerId, table.createdAt, table.hash),
+    ],
 );

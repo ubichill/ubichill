@@ -141,10 +141,14 @@ export interface ComponentConfig {
     /** コンポーネントの説明 */
     description?: string;
     /**
-     * data-only コンポーネント（Worker を持たない）。mod が spawn して持ち回るだけの Entity の型を宣言する
-     * （例: pen の `stroke.worker.ts` が `pen:stroke` を宣言する）。宣言しない型を spawn しても Host は
-     * コードを実行せずデータとして扱うが、打ち間違いと区別できないので開発者向けにコンソールへ知らせる。
-     * このファイルのコードはバンドル・実行されない。
+     * data-only コンポーネント（Worker を持たない）。データだけを持つ Entity の型を宣言する。
+     * - 設定欄（`dataFields`）が無いもの: mod が spawn して持ち回るだけ（例: pen の `stroke.worker.ts` が `pen:stroke` を宣言する）。
+     *   World Editor の部品の一覧には出ない。
+     * - 設定欄があるもの: World Editor で置いて設定できる部品になる（例: 弾幕の `danmaku:enemy`。
+     *   同じ mod のほかの Component の Worker が読んで動かす）。
+     *
+     * 宣言しない型を spawn しても Host はコードを実行せずデータとして扱うが、打ち間違いと区別できないので
+     * 開発者向けにコンソールへ知らせる。このファイルのコードはバンドル・実行されない。
      */
     dataOnly?: boolean;
     /**

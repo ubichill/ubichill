@@ -1,14 +1,8 @@
 /**
  * ワールドの作者が上げる画像（core:image・背景）。送られた画像は作り直してから置き（EXIF を消し、長い辺を縮めた WebP）、
- * 中身のハッシュを URL にする。持ち主ごとに数と大きさの上限を掛ける。
+ * 中身のハッシュを URL にする。持ち主ごとに合計の大きさの上限（管理者が決める）を掛ける。一覧は設定の「ストレージ」（services/storage）。
  */
-import {
-    WORLD_ASSET_MAX_EDGE,
-    WORLD_ASSET_QUOTA,
-    type WorldAsset,
-    type WorldAssetList,
-    worldAssetPath,
-} from '@ubichill/shared';
+import { formatBytes, WORLD_ASSET_MAX_EDGE, type WorldAsset, worldAssetPath } from '@ubichill/shared';
 import { JobGateFullError } from '../../utils/jobGate';
 import type { ImageRejectionCode, ProcessImageResult } from '../profiles/images/processImage';
 
@@ -32,15 +26,16 @@ export interface WorldAssetDeps {
         add(
             ownerId: string,
             image: WorldAssetBlob,
-            quota: { count: number; bytes: number },
-        ): Promise<'added' | 'exists' | 'over-quota'>;
+            quotaBytes: number,
+        ): Promise<{ status: 'added' | 'exists' } | { status: 'over-quota'; usedBytes: number }>;
         find(ownerId: string, hash: string): Promise<WorldAssetRow | undefined>;
         findByHash(hash: string): Promise<WorldAssetBlob | undefined>;
-        listByOwner(ownerId: string): Promise<WorldAssetRow[]>;
         remove(ownerId: string, hash: string): Promise<boolean>;
     };
     /** 送られた画像を作り直す（同時に走らせる数の制限込み。混んでいれば JobGateFullError） */
     process(input: Uint8Array, target: { width: number; height: number; fit: 'inside' }): Promise<ProcessImageResult>;
+    /** 1 人が置ける合計（管理者の設定） */
+    quotaBytes(): Promise<number>;
     publicBaseUrl: string;
 }
 
@@ -49,8 +44,6 @@ export type WorldAssetErrorCode = ImageRejectionCode | 'quota-exceeded' | 'busy'
 export type WorldAssetOutcome<T> =
     | { ok: true; value: T }
     | { ok: false; status: 400 | 404 | 409 | 413 | 415 | 503; code: WorldAssetErrorCode; error: string };
-
-const MB = 1024 * 1024;
 
 const REJECTION_STATUS: Record<ImageRejectionCode, 400 | 413 | 415> = {
     empty: 400,
@@ -97,27 +90,19 @@ export function createWorldAssets(deps: WorldAssetDeps) {
                 };
             }
             const { hash, bytes, width, height } = processed.image;
-            const added = await deps.repository.add(ownerId, { hash, bytes, width, height }, WORLD_ASSET_QUOTA);
-            if (added === 'over-quota') {
+            const quotaBytes = await deps.quotaBytes();
+            const added = await deps.repository.add(ownerId, { hash, bytes, width, height }, quotaBytes);
+            if (added.status === 'over-quota') {
                 return {
                     ok: false,
                     status: 409,
                     code: 'quota-exceeded',
-                    error: `画像は ${WORLD_ASSET_QUOTA.count} 枚・${WORLD_ASSET_QUOTA.bytes / MB} MB まで置けます。使っていない画像を消してから試してください`,
+                    error: `画像は 1 人 ${formatBytes(quotaBytes)} まで置けます。今 ${formatBytes(added.usedBytes)} 使っていて、この画像（${formatBytes(bytes.byteLength)}）は入りません。設定の「ストレージ」で使っていない画像を消してから試してください`,
                 };
             }
             const row = await deps.repository.find(ownerId, hash);
             if (!row) return { ok: false, status: 404, code: 'not-found', error: '画像が見つかりません' };
             return { ok: true, value: toAsset(row) };
-        },
-
-        async list(ownerId: string): Promise<WorldAssetList> {
-            const rows = await deps.repository.listByOwner(ownerId);
-            return {
-                assets: rows.map(toAsset),
-                usage: { count: rows.length, bytes: rows.reduce((sum, row) => sum + row.byteSize, 0) },
-                quota: WORLD_ASSET_QUOTA,
-            };
         },
 
         async remove(ownerId: string, hash: string): Promise<WorldAssetOutcome<null>> {
