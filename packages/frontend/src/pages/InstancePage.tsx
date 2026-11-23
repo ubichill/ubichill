@@ -19,6 +19,7 @@ import { dismissToast, pushToast } from '@/lib/toast';
 import { createInstance, fetchInstance, fetchInstances, fetchWorld } from '@/lib/worlds/instancesApi';
 import { createPortalLookup, portalWorldRef } from '@/lib/worlds/portalDestination';
 import { canonicalRoomId, portalRoomPath } from '@/lib/worlds/portalPath';
+import { createPortalTrips } from '@/lib/worlds/portalTrip';
 import { ROOM_PORTAL_REFUSAL_MESSAGES, roomPortalRefusal } from '@/lib/worlds/roomPortalEntry';
 import { useRemoteVisit } from '@/lib/worlds/useRemoteVisit';
 import { worldPortalInstance } from '@/lib/worlds/worldPortalEntry';
@@ -41,19 +42,26 @@ const fetchRoomOrGone = (address: string, signal?: AbortSignal): Promise<Instanc
  * - ワールドに置くポータル: 行き先のワールドのパブリックの部屋（無ければ作る）
  * - 部屋へのポータル: その部屋を引き直して入れるか確かめる（ポータルの鍵は少し前に引いたもの）
  */
-function portalRoom(goal: PortalGoal, currentRoom: string, viewerId: string): Promise<string | null> {
+function portalRoom(
+    goal: PortalGoal,
+    currentRoom: string,
+    viewerId: string,
+    signal: AbortSignal,
+): Promise<string | null> {
     if (goal.kind === 'room') {
         const room = roomPortalAddressFor(goal.room, currentRoom);
-        return roomPortalRefusal(fetchRoomOrGone, room, viewerId).then((refusal) => {
+        return roomPortalRefusal(fetchRoomOrGone, room, viewerId, { signal }).then((refusal) => {
+            if (signal.aborted) return null;
             if (!refusal) return room;
             pushToast(ROOM_PORTAL_REFUSAL_MESSAGES[refusal], 'warn');
             return null;
         });
     }
     return worldPortalInstance({ fetchWorld, fetchInstances, createInstance }, portalWorldRef(goal), viewerId).then(
-        (instance) => instance.id,
+        (instance) => (signal.aborted ? null : instance.id),
         (e: unknown) => {
-            pushToast(e instanceof Error ? e.message : 'ポータルの先の部屋に入れませんでした', 'error');
+            if (!signal.aborted)
+                pushToast(e instanceof Error ? e.message : 'ポータルの先の部屋に入れませんでした', 'error');
             return null;
         },
     );
@@ -174,16 +182,29 @@ export function InstancePage() {
     // ポータル（core:portal）: 確かめてから、入る部屋を決めて今の部屋を出る（決められなければ今の部屋に残る）
     const { leaveWorld } = useSocket();
     const viewerId = session?.user.id ?? null;
+    // 移る流れは 1 つのページで 1 つだけ（押し直し・確かめている間の押し直しは無視）。部屋を移った・ページを閉じたら取り消す
+    const [trips] = useState(createPortalTrips);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: id は部屋を移ったときに取り消すための合図
+    useEffect(() => () => trips.cancel(), [id, trips]);
     const goThroughPortal = useCallback(
         async (goal: PortalGoal, label: string, look?: { displayName: string; thumbnail?: string }) => {
-            if (!id || !viewerId || !(await confirm(`「${label}」へ移りますか？今の部屋から退出します。`))) return;
-            const room = await portalRoom(goal, id, viewerId);
-            if (!room) return;
-            await leaveWorld();
-            const state: InstanceEntryState | undefined = look ? { worldData: look } : undefined;
-            navigate(portalRoomPath(room), { state });
+            const signal = id && viewerId ? trips.begin() : null;
+            if (!id || !viewerId || !signal) return;
+            const checking: { toast: number | null } = { toast: null };
+            try {
+                if (!(await confirm(`「${label}」へ移りますか？今の部屋から退出します。`)) || signal.aborted) return;
+                checking.toast = pushToast('ポータルの先の部屋を確かめています', 'info', undefined, { sticky: true });
+                const room = await portalRoom(goal, id, viewerId, signal);
+                if (!room || signal.aborted) return;
+                await leaveWorld();
+                const state: InstanceEntryState | undefined = look ? { worldData: look } : undefined;
+                navigate(portalRoomPath(room), { state });
+            } finally {
+                if (checking.toast !== null) dismissToast(checking.toast);
+                trips.end(signal);
+            }
         },
-        [confirm, id, leaveWorld, navigate, viewerId],
+        [confirm, id, leaveWorld, navigate, viewerId, trips],
     );
 
     // ポータルに出す行き先。部屋へのポータルは、見る人が入れるかも引く（入れるかは少しずつ引き直す）

@@ -55,6 +55,9 @@ function viaOf(raw: unknown, f: Federation): string[] {
         .map((id) => (isRemoteUserId(id) ? id : f.identity.actorUrl(id)));
 }
 
+/** ほかのサーバーの部屋の作りを尋ねる上限（ms）。画面が部屋を確かめる上限（ROOM_STATUS_TIMEOUT_MS = 30 秒）より短くする。 */
+const REMOTE_DESCRIBE_TIMEOUT_MS = 20_000;
+
 /** ワールドを見る人のサーバーで確かめる（入る前の確認に使う。確かめられなければ作者を確認できないワールドとして扱う）。 */
 async function checkedWorld(url: string) {
     const resolved = await Promise.race([
@@ -75,7 +78,13 @@ async function remoteInstance(req: Request, res: Response, id: string): Promise<
         res.status(404).json({ error: TRAVEL_ERRORS['not-found'].error });
         return true;
     }
-    const described = await federation.travel.describe(req.user.id, address, viaOf(req.query.via, federation));
+    // 初めての相手は対応の確認（nodeinfo・actor）も入って 40 秒を超えうるので打ち切る（画面は 30 秒待つ。ワールドの確認 5 秒と合わせて 25 秒）
+    const described = await Promise.race([
+        federation.travel.describe(req.user.id, address, viaOf(req.query.via, federation)),
+        new Promise<{ ok: false; error: 'unavailable' }>((resolve) =>
+            setTimeout(() => resolve({ ok: false, error: 'unavailable' }), REMOTE_DESCRIBE_TIMEOUT_MS).unref(),
+        ),
+    ]);
     if (!described.ok) {
         const { status, error } = TRAVEL_ERRORS[described.error];
         res.status(status === 403 ? 404 : status).json({ error });
