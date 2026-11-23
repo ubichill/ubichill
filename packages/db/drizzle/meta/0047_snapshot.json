@@ -1,6 +1,6 @@
 {
-  "id": "c5fbe4ba-2921-46e8-a042-859a2b30f67e",
-  "prevId": "d1c6dc1b-a7ae-456d-86d4-3edf6de53a31",
+  "id": "cdd310bc-bfb2-42e0-b9ce-42b0137c3d93",
+  "prevId": "7c19f7ed-ffae-4aea-bcc8-f56a7dc4af1b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3278,6 +3278,44 @@
       },
       "isRLSEnabled": false
     },
+    "public.storage_settings": {
+      "name": "storage_settings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "'current'"
+        },
+        "world_asset_quota_bytes": {
+          "name": "world_asset_quota_bytes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "storage_settings_single_row": {
+          "name": "storage_settings_single_row",
+          "value": "\"storage_settings\".\"id\" = 'current'"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.two_factor_challenges": {
       "name": "two_factor_challenges",
       "schema": "",
@@ -4031,6 +4069,13 @@
           "notNull": true,
           "default": "'location'"
         },
+        "world_asset_auto_cleanup": {
+          "name": "world_asset_auto_cleanup",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -4498,14 +4543,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "visibility": {
-          "name": "visibility",
-          "type": "world_visibility",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'public'"
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -4643,6 +4680,33 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "world_assets_owner_created_idx": {
+          "name": "world_assets_owner_created_idx",
+          "columns": [
+            {
+              "expression": "owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -4719,14 +4783,6 @@
         "location",
         "online",
         "hidden"
-      ]
-    },
-    "public.world_visibility": {
-      "name": "world_visibility",
-      "schema": "public",
-      "values": [
-        "private",
-        "public"
       ]
     }
   },

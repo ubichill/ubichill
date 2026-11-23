@@ -3,10 +3,12 @@ import {
     DEFAULT_FEDIVERSE_SETTINGS,
     DEFAULT_HOME_SETTINGS,
     DEFAULT_PRESENCE_VISIBILITY,
+    DEFAULT_STORAGE_SETTINGS,
     type FavoritesVisibility,
     type FediverseSettings,
     type HomeSettings,
     type PresenceVisibility,
+    type StorageSettings,
 } from '@ubichill/shared';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../index';
@@ -133,5 +135,24 @@ export const userSettingsRepository = {
             });
         if (!row) throw new Error('フェディバースの設定を保存できません');
         return row;
+    },
+
+    /** ストレージの設定。設定の行が無いユーザーは初期値（自動で消す）。 */
+    async getStorage(userId: string): Promise<StorageSettings> {
+        const [row] = await db
+            .select({ autoCleanup: userSettings.worldAssetAutoCleanup })
+            .from(userSettings)
+            .where(eq(userSettings.userId, userId));
+        return row ?? DEFAULT_STORAGE_SETTINGS;
+    },
+
+    async setStorage(userId: string, settings: StorageSettings): Promise<StorageSettings> {
+        const now = new Date();
+        const set = { worldAssetAutoCleanup: settings.autoCleanup, updatedAt: now };
+        await db
+            .insert(userSettings)
+            .values({ userId, ...set, createdAt: now })
+            .onConflictDoUpdate({ target: userSettings.userId, set });
+        return settings;
     },
 };

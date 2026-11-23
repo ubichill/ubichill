@@ -5,4 +5,5 @@ export { FediverseServersSection } from './FediverseServersSection';
 export { RolesSection } from './RolesSection';
 export { ServerInfoSection } from './ServerInfoSection';
 export { ServerPoliciesSection } from './ServerPoliciesSection';
+export { StorageQuotaSection } from './StorageQuotaSection';
 export { WorldPeersSection } from './WorldPeersSection';

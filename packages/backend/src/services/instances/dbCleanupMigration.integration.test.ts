@@ -75,7 +75,7 @@ const LOCK = { lockVersion: 1, mods: {} };
  */
 const LATER_COLUMNS = [
     { table: 'instances', column: 'held_until', type: 'timestamptz' },
-    // 0047 の enum（world_visibility）はまだ無いので、読めるだけの text で足す
+    // 0048 の enum（world_visibility）はまだ無いので、読めるだけの text で足す
     { table: 'worlds', column: 'visibility', type: "text NOT NULL DEFAULT 'public'" },
 ] as const;
 const json = (v: unknown) => (v === null || v === undefined ? null : JSON.stringify(v));

@@ -3,32 +3,28 @@
   "mods": {
     "danmaku": {
       "id": "danmaku",
-      "version": "1.0.6",
-      "manifestIntegrity": "sha256-4fRJHFEjbSZCdH/g6ZnGpdQb934E8P3XR4AeUGwy5KA=",
+      "version": "2.0.0",
+      "manifestIntegrity": "sha256-woQfkwpu4Y6zTCfxdKu75/cvtaY2UljTYngwAi26/tM=",
       "components": {
         "danmaku:canvas": {
-          "workerUrl": "./canvas/index.bfb7ff53.js",
-          "integrity": "sha256-v7f/U6TwTpp0xlGmczvEK6BC1yKGuROXIyjp9JWucjw=",
+          "workerUrl": "./canvas/index.dac5d253.js",
+          "integrity": "sha256-2sXSUywhYydZWXUpgv7Pin+1RAZfP3wM05STxADsxVs=",
           "capabilities": [
             "canvas:draw",
-            "event:emit",
-            "scene:read"
-          ]
-        },
-        "danmaku:player": {
-          "workerUrl": "./player/index.0df53c25.js",
-          "integrity": "sha256-DfU8Jdi+/dpDEx8s5u1IL8IdAHxRZ+kpHHNZ5TQlAm8=",
-          "capabilities": [
             "event:emit",
             "scene:read",
             "scene:update",
             "ui:render"
           ]
         },
-        "danmaku:wall": {
-          "workerUrl": "./wall/index.53800c55.js",
-          "integrity": "sha256-U4AMVaHj3AWJaVh1L/qeUuaBih8lrobzVOcUCpiy+6Y=",
+        "danmaku:player": {
+          "workerUrl": "./player/index.94ed953e.js",
+          "integrity": "sha256-lO2VPgFcQL3tDuRiytr52ofnSwZXGBJoM6bMY8mSVZE=",
           "capabilities": [
+            "event:broadcast",
+            "event:emit",
+            "scene:read",
+            "scene:update",
             "ui:render"
           ]
         }

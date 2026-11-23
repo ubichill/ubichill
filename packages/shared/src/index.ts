@@ -264,6 +264,7 @@ export * from './account/profileLinks';
 export * from './account/richText';
 export * from './account/roles';
 export * from './account/signInIdentifier';
+export * from './account/storage';
 export * from './account/twoFactor';
 export * from './federation';
 export type { components as InstanceAPI } from './generated/instance';

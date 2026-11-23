@@ -4,9 +4,11 @@ import type { WorldAssetService } from '../../services/worldAssets/worldAssets';
 
 export interface AssetsRouterDeps {
     requireAuth: RequestHandler;
-    /** 画像のアップロード・削除（作り直しが重いので絞る） */
+    /** 画像のアップロード（作り直しが重いので絞る） */
     uploadLimiter: RequestHandler;
-    assets: Pick<WorldAssetService, 'upload' | 'list' | 'remove' | 'image'>;
+    /** 消す（アップロードとは別に数える） */
+    deleteLimiter: RequestHandler;
+    assets: Pick<WorldAssetService, 'upload' | 'remove' | 'image'>;
 }
 
 /** 内容のハッシュ入りの URL なので、同じ URL の中身は変わらない */
@@ -33,8 +35,7 @@ const bodyErrors: ErrorRequestHandler = (err: unknown, _req, res, next) => {
 /**
  * ワールドの画像（`/api/v1/assets`）。
  * - `POST /`: 画像（本文は image/* のバイト列）を作り直して置く。応答は置いた画像（201）
- * - `GET /`: 自分が上げた画像と、使っている量
- * - `DELETE /:hash.webp`: 自分が上げた画像を消す
+ * - `DELETE /:hash.webp`: 自分が上げた画像を消す（一覧は `GET /api/v1/users/me/storage`）
  * - `GET /:hash.webp`: 配信（ハッシュ入りの URL なので長く cache させる。ログインしなくても読める）
  */
 export function createAssetsRouter(deps: AssetsRouterDeps): Router {
@@ -51,12 +52,7 @@ export function createAssetsRouter(deps: AssetsRouterDeps): Router {
         return res.status(201).json(outcome.value);
     });
 
-    router.get('/', deps.requireAuth, async (req, res) => {
-        if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-        res.set('Cache-Control', 'no-store').json(await deps.assets.list(req.user.id));
-    });
-
-    router.delete('/:file', deps.requireAuth, deps.uploadLimiter, async (req, res) => {
+    router.delete('/:file', deps.requireAuth, deps.deleteLimiter, async (req, res) => {
         if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
         const hash = worldAssetHashOf(String(req.params.file));
         if (!hash) return res.status(404).json({ error: '画像が見つかりません', code: 'not-found' });

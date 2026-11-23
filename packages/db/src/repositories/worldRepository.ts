@@ -3,6 +3,7 @@ import { and, count, desc, eq, gt, inArray, isNotNull, notExists, sql } from 'dr
 import { customAlphabet } from 'nanoid';
 import { type Database, db } from '../index';
 import { instances, worldDrafts, worldNameAliases, worlds, worldVersions } from '../schema';
+import { lockWorldAssetReferences } from './worldAssetReferenceLock';
 import { versionsToPrune, type WorldRecord, type WorldState, type WorldVersionRecord } from './worldRows';
 
 export type { WorldDraftRecord, WorldRecord, WorldState, WorldVersionRecord } from './worldRows';
@@ -187,6 +188,7 @@ export const worldRepository = {
     async publish(target: WorldTarget, input: PublishInput): Promise<PublishOutcome> {
         try {
             return await db.transaction(async (tx) => {
+                await lockWorldAssetReferences(tx, 'write');
                 const worldId = await ensureWorld(tx, target);
                 const [previous] = await tx
                     .select({ contentHash: worldVersions.contentHash })
@@ -244,6 +246,7 @@ export const worldRepository = {
         input: { definition: unknown; lock: ModLock | null; unpublish: boolean },
     ): Promise<{ status: 'draft'; worldId: string } | { status: 'limit' }> {
         const saved = db.transaction(async (tx) => {
+            await lockWorldAssetReferences(tx, 'write');
             const worldId = await ensureWorld(tx, target);
             const now = new Date();
             await tx

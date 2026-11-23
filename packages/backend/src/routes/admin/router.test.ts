@@ -7,6 +7,7 @@ import { createBotProtection } from '../../services/auth/botProtection/botProtec
 import { createFeaturedServers } from '../../services/auth/fediverse/featuredServers';
 import { createRoleService, type RoleStore, type StoredRole } from '../../services/roles/roles';
 import { createServerInfo } from '../../services/server/serverInfo';
+import { createStorageQuota } from '../../services/storage/storageQuota';
 import { createAdminRouter } from './router';
 
 /** 偽の roleRepository（このテストで使う分だけ）。 */
@@ -156,6 +157,8 @@ const botProtection = createBotProtection({
     warn: () => {},
 });
 
+const MB = 1024 * 1024;
+
 const serverRow: { value: (ServerInfo & { updatedAt: Date }) | null } = { value: null };
 const serverInfo = createServerInfo({
     repository: {
@@ -168,11 +171,30 @@ const serverInfo = createServerInfo({
     registrationOpen: true,
 });
 
+const storageRow: { value: { worldAssetQuotaBytes: number; updatedAt: Date } | null } = { value: null };
+const storage = createStorageQuota({
+    repository: {
+        get: async () => storageRow.value,
+        put: async (input) => {
+            storageRow.value = { ...input, updatedAt: new Date('2026-11-22T00:00:00Z') };
+        },
+    },
+    totalBytes: async () => 5 * MB,
+});
+
 const app = express();
 app.use(express.json());
 app.use(
     '/api/v1/admin',
-    createAdminRouter({ requireAuth, requireAdmin, roles: service, featuredServers, botProtection, serverInfo }),
+    createAdminRouter({
+        requireAuth,
+        requireAdmin,
+        roles: service,
+        featuredServers,
+        botProtection,
+        serverInfo,
+        storage,
+    }),
 );
 const server = createServer(app);
 const url = (path: string) => `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/admin${path}`;
@@ -210,6 +232,8 @@ const ENDPOINTS: ReadonlyArray<[string, string]> = [
     ['DELETE', '/fediverse-servers/misskey.example'],
     ['GET', '/server-info'],
     ['PUT', '/server-info'],
+    ['GET', '/storage'],
+    ['PUT', '/storage'],
 ];
 
 describe('コントロールパネルの API', () => {
@@ -229,6 +253,7 @@ describe('コントロールパネルの API', () => {
         }
         expect(await service.listRoles()).toEqual([]);
         expect(serverRow.value).toBeNull();
+        expect(storageRow.value).toBeNull();
     });
 
     it('作ると 201、変えると 200、消すと 204。どれも cache させない', async () => {
@@ -360,6 +385,25 @@ describe('コントロールパネルの API', () => {
             const saved = await call('PUT', '/server-info', { ...DEFAULT_SERVER_INFO, name: 'ようかん' });
             expect(saved.status).toBe(200);
             expect(await saved.json()).toMatchObject({ info: { name: 'ようかん' } });
+        });
+    });
+
+    it('1 人あたりの容量: 保存するまでは既定の値。範囲の外は 400 で何も変えない', async () => {
+        const initial = await call('GET', '/storage');
+        expect(initial.headers.get('cache-control')).toBe('no-store');
+        expect(await initial.json()).toEqual({ worldAssetQuotaBytes: 200 * MB, totalBytes: 5 * MB, updatedAt: null });
+
+        const refused = await call('PUT', '/storage', { worldAssetQuotaBytes: 11 * 1024 * MB });
+        expect(refused.status).toBe(400);
+        expect(await refused.json()).toEqual({ error: '1 人あたりの容量は 10 GB 以下にしてください' });
+        expect(storageRow.value).toBeNull();
+
+        const saved = await call('PUT', '/storage', { worldAssetQuotaBytes: 1024 * MB });
+        expect(saved.status).toBe(200);
+        expect(await saved.json()).toEqual({
+            worldAssetQuotaBytes: 1024 * MB,
+            totalBytes: 5 * MB,
+            updatedAt: '2026-11-22T00:00:00.000Z',
         });
     });
 });

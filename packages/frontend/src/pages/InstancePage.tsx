@@ -197,6 +197,7 @@ export function InstancePage() {
                 const room = await portalRoom(goal, id, viewerId, signal);
                 if (!room || signal.aborted) return;
                 await leaveWorld();
+                if (signal.aborted) return;
                 const state: InstanceEntryState | undefined = look ? { worldData: look } : undefined;
                 navigate(portalRoomPath(room), { state });
             } finally {
