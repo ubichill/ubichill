@@ -93,8 +93,9 @@ function authRequired(options: { fresh: boolean }) {
 export const requireAuth = authRequired({ fresh: false });
 
 /**
- * ログイン方法を変える操作（外部アカウントの追加・解除）の認証。DB のセッションで、直近にログインかパスワードの
- * 再認証をしたものだけ通す。奪われたセッションでログイン手段を足され、パスワードを変えても残るのを防ぐ。
+ * 乗っ取りが終わった後も残るものを作る操作（二段階認証の設定・CLI と CI の承認・アカウントの削除）の認証。
+ * DB のセッションで、直近にログインかパスワードの再認証をしたものだけ通す。奪われた古いセッションで認証アプリや
+ * API トークンを足され、パスワードを変えても残るのを防ぐ。
  */
 export async function requireRecentAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
     await requireFreshAuth(req, res, async () => {
@@ -110,7 +111,7 @@ export async function requireRecentAuth(req: Request, res: Response, next: NextF
 }
 
 /**
- * アカウントの安全に関わる操作（公開環境・CLI の承認・ほかの端末のログアウト）の認証。DB のセッションで、
+ * アカウントの安全に関わる操作（このブラウザの公開環境の登録と取り消し・ほかの端末のログアウト）の認証。DB のセッションで、
  * パスワードを持つ人はパスワードを確かめたセッションに限る（SSO だけで入ったセッションでは断る）。
  */
 export async function requireStrongSession(req: Request, res: Response, next: NextFunction): Promise<void> {

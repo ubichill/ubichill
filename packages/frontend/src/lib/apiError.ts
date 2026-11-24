@@ -6,3 +6,9 @@ export async function errorMessage(res: Response): Promise<string> {
     const data = (await res.json().catch(() => ({}))) as { error?: string };
     return data.error ?? `HTTP ${res.status}`;
 }
+
+/** API の失敗レスポンスの理由のコード（本文の `code`。無ければ null）。 */
+export async function errorCode(res: Response): Promise<string | null> {
+    const data = (await res.json().catch(() => ({}))) as { code?: unknown };
+    return typeof data.code === 'string' ? data.code : null;
+}

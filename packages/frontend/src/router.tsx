@@ -10,6 +10,7 @@ import { CliAuthorizePage } from './pages/CliAuthorizePage';
 import { InstancePage } from './pages/InstancePage';
 import { ModPage } from './pages/ModPage';
 import { RootPage } from './pages/RootPage';
+import { SettingsLinkPage } from './pages/SettingsLinkPage';
 import { UserPage } from './pages/UserPage';
 import { WorldPage } from './pages/WorldPage';
 import { WorldEditorPage } from './pages/world-editor';
@@ -67,6 +68,15 @@ export function AppRouter() {
                                 element={
                                     <ProtectedRoute>
                                         <CliAuthorizePage />
+                                    </ProtectedRoute>
+                                }
+                            />
+                            {/* 設定の欄を開く（通知のメールのリンクなど）。ホームの部屋に入ってランチパッドで開く */}
+                            <Route
+                                path="/settings/:section"
+                                element={
+                                    <ProtectedRoute>
+                                        <SettingsLinkPage />
                                     </ProtectedRoute>
                                 }
                             />
