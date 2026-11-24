@@ -30,7 +30,7 @@
 | `notifications/` | `notificationsApi`、`notifications`（文面・タブ・期限）、`notificationActions`（種類 → カードの操作）、`notificationFeed`（一覧の合成） | `notifications/` |
 | `home/` | `homeApi`・`homeStore`、`home`（ホームへの入り方） | `home/` |
 | `worlds/` | `instancesApi`・`favoritesApi`・`instanceConnection`・`useRemoteVisit`、`joinVia`・`worldName`・`worldRef`・`worldProblems` | `worlds/` |
-| `publishing/` | `externalWorksApi`・`cliAuthApi`、`publishingEnvironments`・`resign`・`keyFingerprint`（署名の部品は `signing/`） | `publishing/` |
+| `publishing/` | `externalWorksApi`・`cliAuthApi`、`publishingEnvironments`・`resign`（鍵の指紋は shared の `signingKeyFingerprint`、署名の部品は `signing/`） | `publishing/` |
 | `admin/` | `adminApi`・`federationApi`、`roleForm`・`peerOrigin` | `admin/` |
 | `account/` | 自分のアカウント（`me`・`useIsAdmin`・`adminStatus`・プライバシーの `favoritesVisibility`・`presenceVisibility`） | `hud/tabs/settings/`・`profile/` |
 | `mods/`・`settings/`・`emoji/`・`signing/` | mod の取得元 `modCdn`・`serviceTokens`、端末の設定（`mediaOutputSetting` を含む）、絵文字、署名 | — |

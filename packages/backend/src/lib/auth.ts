@@ -3,6 +3,7 @@ import {
     accountDeletionRepository,
     accounts,
     db,
+    fediverseAccountRepository,
     pendingRegistrationRepository,
     sessions,
     userRepository,
@@ -367,6 +368,7 @@ export const auth = betterAuth({
         fediverseSignInPlugin({
             getSignIn: () => getFediverseSignIn(),
             secondFactor: secondFactorGate,
+            hasPassword: (userId) => fediverseAccountRepository.hasPassword(userId),
             options: async () => ({
                 enabled: appConfig.fediverseSignIn.enabled,
                 registrationOpen: appConfig.registrationOpen,

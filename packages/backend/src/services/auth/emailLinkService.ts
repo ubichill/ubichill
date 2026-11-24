@@ -25,8 +25,8 @@ const emailLinks = (): Promise<EmailLinks> => {
             hashOtp: createOtpHasher(ctx.secret),
             newAccountId: () => newBetterAuthId(ctx, 'account'),
             sendCode: sendEmailLinkCode,
-            afterLinked: async (userId, sessionId) => {
-                await userRepository.markSessionPasswordVerified(userId, sessionId, new Date());
+            afterLinked: async (userId, sessionId, authenticatedAt) => {
+                await userRepository.markSessionPasswordVerified(userId, sessionId, authenticatedAt);
             },
             skipVerification: appConfig.email.skipVerification,
             now: () => new Date(),

@@ -33,6 +33,7 @@ import {
     visibleView,
 } from './hudView';
 import { LaunchpadHome } from './LaunchpadHome';
+import type { SettingsLink, SettingsSection } from './settingsLink';
 import { AudioTab } from './tabs/AudioTab';
 import { ConsoleTab } from './tabs/ConsoleTab';
 import { type ControlPanelSection, ControlPanelTab } from './tabs/ControlPanelTab';
@@ -40,7 +41,7 @@ import { InstanceTab } from './tabs/InstanceTab';
 import { InviteTab } from './tabs/InviteTab';
 import { NotificationsTab } from './tabs/NotificationsTab';
 import { ProfileTab } from './tabs/ProfileTab';
-import { type SettingsSection, SettingsTab } from './tabs/SettingsTab';
+import { SettingsTab } from './tabs/SettingsTab';
 import { type SocialSection, SocialTab } from './tabs/SocialTab';
 import { type WorldsSection, WorldsTab } from './tabs/WorldsTab';
 import { useHudActions } from './useHudActions';
@@ -52,6 +53,8 @@ interface HudOverlayProps {
     initialTab?: HudTab;
     /** 部屋へのポータルを置く（置く場所を選ぶ画面はランチパッドを閉じても残るので、外の InstanceHUD が持つ） */
     portal: PortalOpener;
+    /** ページの外から開いた設定の欄（通知のメールのリンクなど） */
+    settingsLink?: SettingsLink | null;
 }
 
 interface TabItem {
@@ -85,7 +88,7 @@ const PERSON_ITEMS: readonly TabItem[] = [
  * その上に画面を重ねて進む。
  * 背景（パネルの外）を押すか Esc（InstanceHUD）で閉じる。
  */
-export function HudOverlay({ onClose, currentInstanceId, initialTab, portal }: HudOverlayProps) {
+export function HudOverlay({ onClose, currentInstanceId, initialTab, portal, settingsLink }: HudOverlayProps) {
     const navigate = useNavigate();
     const confirm = useConfirm();
     const notifications = useNotifications();
@@ -97,7 +100,7 @@ export function HudOverlay({ onClose, currentInstanceId, initialTab, portal }: H
     // 中の切り替えはタブを離れても覚えておく（人を開いて戻ったときに同じ欄に帰る）
     const [worldsSection, setWorldsSection] = useState<WorldsSection>('local');
     const [socialSection, setSocialSection] = useState<SocialSection>('locations');
-    const [settingsSection, setSettingsSection] = useState<SettingsSection>('home');
+    const [settingsSection, setSettingsSection] = useState<SettingsSection>(settingsLink?.section ?? 'home');
     const [controlSection, setControlSection] = useState<ControlPanelSection>('general');
     const [visible, setVisible] = useState(false);
     const instance = useCurrentInstance(currentInstanceId);
@@ -208,7 +211,13 @@ export function HudOverlay({ onClose, currentInstanceId, initialTab, portal }: H
                     />
                 );
             case 'settings':
-                return <SettingsTab section={settingsSection} onSectionChange={setSettingsSection} />;
+                return (
+                    <SettingsTab
+                        section={settingsSection}
+                        onSectionChange={setSettingsSection}
+                        linkedEnvironment={settingsLink?.environment ?? null}
+                    />
+                );
             case 'control':
                 return <ControlPanelTab section={controlSection} onSectionChange={setControlSection} />;
             case 'console':

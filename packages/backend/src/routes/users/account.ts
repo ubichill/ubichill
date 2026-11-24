@@ -163,8 +163,9 @@ router.get('/me/login-methods', requireFreshAuth, async (req, res) => {
     return res.json(await loginMethodService.of(req.user.id, req.session, new Date()));
 });
 
-// フェディバースのアカウントを外す（パスワードの入れ直しは求めず、連絡先に知らせる）。流れは services/auth/loginMethods.ts
-router.delete('/me/login-methods/:id', requireFreshAuth, async (req, res) => {
+// フェディバースのアカウントを外す（直近の本人確認。奪った古いセッションで本人のログイン手段を外させない）。
+// 流れは services/auth/loginMethods.ts
+router.delete('/me/login-methods/:id', requireRecentAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const outcome = await loginMethodService.unlink(req.user.id, String(req.params.id), req.session?.id ?? null);
     switch (outcome.status) {
@@ -193,11 +194,13 @@ const emailLinkVerifyLimiter = sharedLimiter(
 );
 
 // メールアドレスを足す（メールなしで登録した人）。アドレスとパスワードを受け取り、確認コードを送る。流れは services/auth/emailLinks.ts
-router.post('/me/email', requireFreshAuth, emailLinkLimiter, async (req, res) => {
+// パスワードというログイン手段を足すので直近の本人確認を求める（奪った古いセッションで攻撃者のパスワードを足し、
+// それで本人確認を済ませたことにして CLI の承認などへ進ませない）
+router.post('/me/email', requireRecentAuth, emailLinkLimiter, async (req, res) => {
     if (!req.user || !req.session) return res.status(401).json({ error: 'Unauthorized' });
     const outcome = await emailLinkService.start({
         userId: req.user.id,
-        sessionId: req.session.id,
+        session: req.session,
         email: req.body?.email,
         password: req.body?.password,
     });
@@ -206,11 +209,11 @@ router.post('/me/email', requireFreshAuth, emailLinkLimiter, async (req, res) =>
 });
 
 // 届いた確認コードで、メールアドレスとパスワードをログイン方法に足す
-router.post('/me/email/verify', requireFreshAuth, emailLinkVerifyLimiter, async (req, res) => {
+router.post('/me/email/verify', requireRecentAuth, emailLinkVerifyLimiter, async (req, res) => {
     if (!req.user || !req.session) return res.status(401).json({ error: 'Unauthorized' });
     const outcome = await emailLinkService.verify({
         userId: req.user.id,
-        sessionId: req.session.id,
+        session: req.session,
         code: req.body?.code,
     });
     if (!outcome.ok) return res.status(outcome.status).json({ error: outcome.error });

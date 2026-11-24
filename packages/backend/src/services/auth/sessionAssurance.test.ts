@@ -5,6 +5,7 @@ import {
     isRecentlyAuthenticated,
     isStrongSession,
     RECENT_AUTHENTICATION_MS,
+    sessionAuthenticatedAt,
     toDateOrNull,
 } from './sessionAssurance';
 
@@ -19,6 +20,17 @@ describe('sessionAssurance', () => {
         // 古くてもパスワードで入ったセッションなら使える（直近かどうかは問わない）
         expect(canActAsAdmin(true, { createdAt: ago(86_400_000), passwordVerifiedAt: ago(86_400_000) })).toBe(true);
         expect(canActAsAdmin(false, { createdAt: ago(0), passwordVerifiedAt: ago(0) })).toBe(false);
+    });
+
+    it('最後に本人を確かめた時刻: パスワードを持つ人の SSO のログインは数えず、持たない人はログインとパスワードの遅い方', () => {
+        const sso = { createdAt: ago(1000), passwordVerifiedAt: null };
+        expect(sessionAuthenticatedAt(sso, true)).toBeNull();
+        expect(sessionAuthenticatedAt(sso, false)).toEqual(ago(1000));
+        const both = { createdAt: ago(5000), passwordVerifiedAt: ago(2000) };
+        expect(sessionAuthenticatedAt(both, true)).toEqual(ago(2000));
+        expect(sessionAuthenticatedAt({ createdAt: ago(1000), passwordVerifiedAt: ago(9000) }, false)).toEqual(
+            ago(1000),
+        );
     });
 
     it('パスワードの無い人の直近は、ログインから 10 分（ちょうどは含む）', () => {

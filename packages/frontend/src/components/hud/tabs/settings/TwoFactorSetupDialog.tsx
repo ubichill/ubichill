@@ -4,8 +4,9 @@ import { Dialog } from '@/components/ui/Dialog';
 import { QrCode } from '@/components/ui/QrCode';
 import { beginTwoFactorSetup, enableTwoFactor } from '@/lib/account/twoFactor';
 import { css } from '@/styled-system/css';
+import { settingsPath } from '../../settingsLink';
 import { BackupCodesView } from './BackupCodesView';
-import { ReauthForm } from './ReauthForm';
+import { ReauthPrompt } from './ReauthPrompt';
 import { settingsInput, settingsLabel, settingsNote, settingsTextButton, settingsWideButton } from './settingsStyles';
 
 type Step =
@@ -70,22 +71,17 @@ export function TwoFactorSetupDialog({
         <Dialog open title={state.step === 'codes' ? 'バックアップコード' : '二段階認証を設定'} onClose={onClose}>
             {state.step === 'loading' && !error && <p className={settingsNote}>準備しています...</p>}
 
-            {state.step === 'reauth' &&
-                (methods?.password ? (
-                    <div className={stack}>
-                        <p className={settingsNote}>設定の前に、パスワードで本人確認をしてください。</p>
-                        <ReauthForm
-                            onDone={() => {
-                                onReauthenticated();
-                                void start();
-                            }}
-                        />
-                    </div>
-                ) : (
-                    <p className={settingsNote}>
-                        設定するには、いったんログアウトしてログインし直し、10 分以内に行ってください。
-                    </p>
-                ))}
+            {state.step === 'reauth' && (
+                <ReauthPrompt
+                    methods={methods}
+                    action="設定"
+                    returnTo={settingsPath('account')}
+                    onDone={() => {
+                        onReauthenticated();
+                        void start();
+                    }}
+                />
+            )}
 
             {state.step === 'scan' && (
                 <form onSubmit={enable} className={stack}>
