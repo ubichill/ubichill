@@ -40,11 +40,11 @@ export const REGISTRATION_FAILED_EXIT_CODE = 2;
  * （サーバーから公開先がまだ見えない・作者の確認待ち・5xx・通信の失敗）で、終了コードは 1（反映待ちと同じ）にする。
  */
 export class RegistrationError extends Error {
-    constructor(
-        message: string,
-        readonly retryable: boolean,
-    ) {
+    readonly retryable: boolean;
+    // node の型を消すだけの実行（build:workers がソースの CLI を起動する）は引数のプロパティを読めない
+    constructor(message: string, retryable: boolean) {
         super(message);
+        this.retryable = retryable;
     }
 }
 
