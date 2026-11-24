@@ -159,6 +159,7 @@ CI の新しいチェックアウトで `build` すると、dist には今の版
 以前の `v<version>/` が消え、その版に固定したワールドが読めなくなる。配布先には足すだけにする。
 GitHub Pages なら、`gh-pages` ブランチへ既存のファイルを残して足す方法（下の例）が簡単。
 `actions/deploy-pages` はサイト全体を置き換えるので、使うなら以前に置いたファイルを先に dist へ戻す。
+`ubichill init` の雛形には、この流れの `.github/workflows/pages.yml`（Action は commit の SHA で固定）と、有効にする手順の README が入っている。
 
 ```yaml
 # mod のリポジトリの公開ワークフロー（抜粋）。雛形の npm run build（--layout=registry）の出力を
@@ -170,14 +171,14 @@ GitHub Pages なら、`gh-pages` ブランチへ既存のファイルを残し�
       PUBLIC_URL: https://<user>.github.io/<repo>
       UBICHILL_CREDENTIALS: ${{ secrets.UBICHILL_CREDENTIALS }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: npm ci
       - run: npm run build
       # 署名する。配布先に同じ版の別の内容があればここで失敗する
       - run: npx ubichill publish dist --public-url=$PUBLIC_URL
       - run: npx ubichill verify --dist-dir=dist --require-signatures
       # 既存のファイルを消さずに足す（以前の版を残す）
-      - uses: peaceiris/actions-gh-pages@v4
+      - uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist

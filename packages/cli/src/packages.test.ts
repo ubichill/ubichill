@@ -26,12 +26,20 @@ describe('projectFiles（ubichill init の雛形）', () => {
 
     it('world の雛形には Worker の型の宣言も tsconfig も置かない', () => {
         const files = projectFiles('world', 'my-world');
-        expect(Object.keys(files).sort()).toEqual(['.gitignore', 'package.json', 'world.yaml']);
+        expect(Object.keys(files).sort()).toEqual([
+            '.github/workflows/pages.yml',
+            '.gitignore',
+            'README.md',
+            'package.json',
+            'world.yaml',
+        ]);
     });
 
     it('mod の雛形のファイルの一覧', () => {
         expect(Object.keys(projectFiles('mod', 'hello')).sort()).toEqual([
+            '.github/workflows/pages.yml',
             '.gitignore',
+            'README.md',
             'package.json',
             'prefabs/welcome.json',
             'src/env.d.ts',
