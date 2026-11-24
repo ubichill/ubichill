@@ -12,6 +12,7 @@ export { checkModInstallation, type ModInstallationCheck } from './modInstallati
 export { describeModRejection } from './modRejection';
 export { isUnsignedModAllowed, type ModAuthorCheck, modAuthorFetcher } from './modSignature';
 export type { ModSource } from './modSource';
+export { PortalPlacementLayer, type PortalPlacementLook } from './PortalPlacementLayer';
 export {
     type PortalDestination,
     type PortalGoal,
@@ -19,6 +20,7 @@ export {
     PortalLookupProvider,
     type PortalNavigate,
 } from './portalNavigation';
+export type { Point } from './portalPlacement';
 export { createGuestResolver, fetchGuestInstance, isJoinRejection } from './runtimeApi';
 export { useRoomPortalActions } from './useRoomPortalActions';
 export { WorldView, type WorldViewProps } from './WorldView';

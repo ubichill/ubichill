@@ -23,16 +23,16 @@ export interface NewInstance {
 
 /**
  * 新しいインスタンスを作る。部屋の中（ランチパッド）では、作った部屋に入るか、今の部屋にそこへのポータルを置くかを
- * 作る前に選ぶ（作ってから選ぶと、やめたときに空の部屋が残る）。ポータルの先は誰かが通るまで空なので、
- * ポータルがある間は消さないよう頼んで作る。
+ * 作る前に選ぶ（作ってから選ぶと、やめたときに空の部屋が残る）。ポータルは置く場所を選んでから作る（選ぶのをやめたら作らない）。
+ * ポータルの先は誰かが通るまで空なので、ポータルがある間は消さないよう頼んで作る。
  */
 export function useNewInstance({
     world,
     create,
     enter,
 }: {
-    /** 公開範囲を見るワールド（読み込む前は null。作れるかは作るときに backend も確かめる） */
-    world: { visibility?: WorldVisibility; authorId?: string } | null;
+    /** 公開範囲を見るワールド（読み込む前は null。作れるかは作るときに backend も確かめる）。名前とサムネイルはポータルの見た目 */
+    world: { visibility?: WorldVisibility; authorId?: string; displayName?: string; thumbnail?: string } | null;
     create: NewInstanceCreate;
     enter: (instance: Instance) => void;
 }): NewInstance {
@@ -42,21 +42,24 @@ export function useNewInstance({
     const [choosing, setChoosing] = useState(false);
     const [busy, setBusy] = useState(false);
 
-    const run = async (goal: 'enter' | 'portal') => {
+    const enterNew = async () => {
         setChoosing(false);
         setBusy(true);
         try {
-            if (goal === 'portal' && portal) {
-                const instance = await create({ holdEmptyMs: ROOM_PORTAL.LIFETIME_MS });
-                await portal.open(instance.id);
-            } else {
-                enter(await create({}));
-            }
+            enter(await create({}));
         } catch (e) {
             pushToast(e instanceof Error ? e.message : 'インスタンスの作成に失敗しました', 'error');
         } finally {
             setBusy(false);
         }
+    };
+
+    const placePortal = () => {
+        setChoosing(false);
+        portal?.place({
+            look: { name: world?.displayName || 'ポータル', thumbnail: world?.thumbnail },
+            room: () => create({ holdEmptyMs: ROOM_PORTAL.LIFETIME_MS }).then((instance) => instance.id),
+        });
     };
 
     return {
@@ -65,7 +68,7 @@ export function useNewInstance({
         start: () => {
             if (busy || blocked) return;
             if (portal) setChoosing(true);
-            else void run('enter');
+            else void enterNew();
         },
         dialog: portal && (
             <Dialog open={choosing} title="新しいインスタンス" onClose={() => setChoosing(false)} closeButton>
@@ -74,16 +77,17 @@ export function useNewInstance({
                         icon="enter"
                         label="入る"
                         note="今の部屋を出て移ります"
-                        onClick={() => void run('enter')}
+                        onClick={() => void enterNew()}
                     />
                     <ChoiceButton
                         icon="portal"
                         label="ポータルを置く"
                         note={
-                            portal.unavailable ?? `今の部屋に置きます。${ROOM_PORTAL.LIFETIME_MS / 1000} 秒で消えます`
+                            portal.unavailable ??
+                            `今の部屋の好きな所に置きます。${ROOM_PORTAL.LIFETIME_MS / 1000} 秒で消えます`
                         }
                         disabled={portal.unavailable !== null}
-                        onClick={() => void run('portal')}
+                        onClick={placePortal}
                     />
                 </div>
             </Dialog>

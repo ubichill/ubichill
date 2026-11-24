@@ -10,6 +10,7 @@ import { HudIcon } from './HudIcon';
 import { HudOverlay } from './HudOverlay';
 import type { HudTab } from './hudView';
 import { useLaunchpadHotkey } from './useLaunchpadHotkey';
+import { usePortalPlacement } from './usePortalPlacement';
 
 /**
  * インスタンス内の常時表示 HUD。ボタンか Esc でランチパッドを開く。
@@ -27,6 +28,7 @@ export function InstanceHUD() {
     const counts = useMemo(() => consoleCounts(entries), [entries]);
     const problem = latestProblem(entries);
     useLaunchpadHotkey(open, setOpen);
+    const placement = usePortalPlacement(instanceId ?? '', close);
     // Esc やボタンで開いたときはランチパッドから
     useEffect(() => {
         if (!open) setInitialTab(undefined);
@@ -61,8 +63,14 @@ export function InstanceHUD() {
             )}
 
             {open && instanceId && (
-                <HudOverlay currentInstanceId={instanceId} initialTab={initialTab} onClose={close} />
+                <HudOverlay
+                    currentInstanceId={instanceId}
+                    initialTab={initialTab}
+                    onClose={close}
+                    portal={placement.opener}
+                />
             )}
+            {placement.layer}
         </>
     );
 }

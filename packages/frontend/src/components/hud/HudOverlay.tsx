@@ -17,7 +17,7 @@ import { useMediaOutput } from '@/lib/settings/mediaOutputSetting';
 import { fetchInstance } from '@/lib/worlds/instancesApi';
 import { css, cva } from '@/styled-system/css';
 import { HudIcon, type HudIconName } from './HudIcon';
-import { type HudNavigation, HudNavigationContext } from './HudNavigationContext';
+import { type HudNavigation, HudNavigationContext, type PortalOpener } from './HudNavigationContext';
 import {
     currentPage,
     goBack,
@@ -44,13 +44,14 @@ import { type SettingsSection, SettingsTab } from './tabs/SettingsTab';
 import { type SocialSection, SocialTab } from './tabs/SocialTab';
 import { type WorldsSection, WorldsTab } from './tabs/WorldsTab';
 import { useHudActions } from './useHudActions';
-import { usePortalOpener } from './usePortalOpener';
 
 interface HudOverlayProps {
     onClose: () => void;
     currentInstanceId: string;
     /** 開いたときのタブ（コンソールの件数から開いたときはコンソール） */
     initialTab?: HudTab;
+    /** 部屋へのポータルを置く（置く場所を選ぶ画面はランチパッドを閉じても残るので、外の InstanceHUD が持つ） */
+    portal: PortalOpener;
 }
 
 interface TabItem {
@@ -84,7 +85,7 @@ const PERSON_ITEMS: readonly TabItem[] = [
  * その上に画面を重ねて進む。
  * 背景（パネルの外）を押すか Esc（InstanceHUD）で閉じる。
  */
-export function HudOverlay({ onClose, currentInstanceId, initialTab }: HudOverlayProps) {
+export function HudOverlay({ onClose, currentInstanceId, initialTab, portal }: HudOverlayProps) {
     const navigate = useNavigate();
     const confirm = useConfirm();
     const notifications = useNotifications();
@@ -112,7 +113,6 @@ export function HudOverlay({ onClose, currentInstanceId, initialTab }: HudOverla
         return () => cancelAnimationFrame(frame);
     }, []);
 
-    const portal = usePortalOpener(currentInstanceId, onClose);
     const navigation = useMemo<HudNavigation>(
         () => ({
             currentInstanceId,

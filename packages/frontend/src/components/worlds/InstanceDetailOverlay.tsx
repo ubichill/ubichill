@@ -70,13 +70,11 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
 
     // 部屋の中のランチパッドでは、この部屋へのポータルを今の部屋に置ける（入れるかは見る人ごとにポータルが出し分ける）
     const portal = useHudNavigation()?.portal ?? null;
-    const [opening, setOpening] = useState(false);
-    const openPortal = async () => {
-        if (!portal || opening) return;
-        setOpening(true);
-        if (await portal.open(selected.id)) onClose();
-        setOpening(false);
-    };
+    const openPortal = () =>
+        portal?.place({
+            look: { name: selected.world.displayName, thumbnail: selected.world.thumbnail },
+            room: async () => selected.id,
+        });
 
     // ワールド詳細ページの共有 URL（別タブで開く）。ローカルはフロント origin、リモートは origin サーバー。
     const shareUrl = `${window.location.origin}${pagePath}`;
@@ -295,13 +293,16 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
                             {portal && !isCurrent && canOpenRoomPortalTo(selected, viewerId) && (
                                 <button
                                     type="button"
-                                    onClick={() => void openPortal()}
-                                    disabled={opening || portal.unavailable !== null}
-                                    title={portal.unavailable ?? '今の部屋に、このインスタンスへのポータルを開きます'}
+                                    onClick={openPortal}
+                                    disabled={portal.unavailable !== null}
+                                    title={
+                                        portal.unavailable ??
+                                        '今の部屋の好きな所に、このインスタンスへのポータルを開きます'
+                                    }
                                     className={portalButton}
                                 >
                                     <HudIcon name="enter" size={16} />
-                                    {opening ? '開いています...' : 'ここへのポータルを開く'}
+                                    ここへのポータルを開く
                                 </button>
                             )}
 

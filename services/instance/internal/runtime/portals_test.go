@@ -402,6 +402,87 @@ func TestPortalLeavesOtherEntitiesAlone(t *testing.T) {
 	}
 }
 
+func zOf(e Object) float64 { return num(e["transform"].(map[string]any)["z"]) }
+
+func entityAtZ(id string, z float64, overlay any) Object {
+	t := fullTransform()
+	t["z"] = z
+	e := Object{"id": id, "type": "w:thing", "entityId": id, "ownerId": nil, "lockedBy": nil, "transform": t, "data": Object{}}
+	if overlay != nil {
+		e["overlay"] = overlay
+	}
+	return e
+}
+
+// 弾幕のワールドのように、ワールド全体を覆う範囲（z: 5000）の上にも出す。画面に固定する Entity は比べない
+func TestPortalOpensInFront(t *testing.T) {
+	s, h := start(t, false)
+	d := definition("w")
+	d.Snapshot.Entities = []Object{
+		entityAtZ("ship", 10, nil),
+		entityAtZ("field", 5000, nil),
+		entityAtZ("pad", 9000, "fill"),
+		entityAtZ("badge", 8000, true),
+		entityAtZ("plain", 4000, false),
+	}
+	if _, err := s.Provision(d); err != nil {
+		t.Fatal(err)
+	}
+	advance := pinClock(s.room("w"), time.UnixMilli(1_000_000))
+	alice := connect(t, s, h, "w", "alice")
+	bob := connect(t, s, h, "w", "bob")
+
+	if got := zOf(openPortal(t, alice, "alice", portalBy("alice", "abc", 400, 300))); got != 5001 {
+		t.Fatalf("alice の z: %v", got)
+	}
+	receive(t, bob, "entity:created")
+	// あとから置いたものは前のポータルより前
+	if got := zOf(openPortal(t, bob, "bob", portalBy("bob", "abc", 400, 300))); got != 5002 {
+		t.Fatalf("bob の z: %v", got)
+	}
+	receive(t, alice, "entity:created")
+	// 置き直すと消える自分の前のものは比べない（置き直すたびに上がり続けない）
+	advance(roomPortalCooldown)
+	if got := zOf(openPortal(t, alice, "again", portalBy("alice", "abc", 400, 300))); got != 5003 {
+		t.Fatalf("置き直した z: %v", got)
+	}
+	advance(roomPortalCooldown)
+	if got := zOf(openPortal(t, alice, "again-2", portalBy("alice", "abc", 400, 300))); got != 5003 {
+		t.Fatalf("もう一度置き直した z: %v", got)
+	}
+}
+
+func TestFrontZ(t *testing.T) {
+	cases := []struct {
+		name     string
+		entities []Object
+		except   []string
+		want     float64
+	}{
+		{"空の部屋", nil, nil, 0},
+		{"いちばん大きいものの 1 つ上", []Object{entityAtZ("a", 3, nil), entityAtZ("b", 5000, nil), entityAtZ("c", -2, nil)}, nil, 5001},
+		{"負だけ", []Object{entityAtZ("a", -10, nil), entityAtZ("b", -3, nil)}, nil, -2},
+		{"小数は整数にして上へ", []Object{entityAtZ("a", 5000.5, nil)}, nil, 5001},
+		{"上限を超えるなら上限", []Object{entityAtZ("a", maxCoordinate, nil)}, nil, maxCoordinate},
+		{"上限の手前の小数", []Object{entityAtZ("a", maxCoordinate-0.5, nil)}, nil, maxCoordinate},
+		{"画面に固定するものだけ", []Object{entityAtZ("a", 9000, "top-left"), entityAtZ("b", 100, true)}, nil, 0},
+		{"空の overlay はワールド", []Object{entityAtZ("a", 40, ""), entityAtZ("b", 9000, "fill")}, nil, 41},
+		{"消すものは比べない", []Object{entityAtZ("a", 10, nil), entityAtZ("old", 20, nil)}, []string{"old"}, 11},
+	}
+	for _, c := range cases {
+		r := &Room{entities: map[string]Object{}}
+		for _, e := range c.entities {
+			r.entities[str(e["id"])] = e
+		}
+		if got := r.frontZ(c.except); got != c.want {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
+		if _, ok := transform(Object{"x": 0.0, "y": 0.0, "z": c.want, "w": 1.0, "h": 1.0, "scale": 1.0, "rotation": 0.0}, false); !ok {
+			t.Errorf("%s: transform が断る z: %v", c.name, c.want)
+		}
+	}
+}
+
 func TestPortalCannotBeMovedOrDeletedByAnyone(t *testing.T) {
 	s, h := start(t, false)
 	alice := connect(t, s, h, "a", "alice")
