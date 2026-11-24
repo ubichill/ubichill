@@ -12,6 +12,9 @@ import (
 
 var componentType = regexp.MustCompile(`^[a-z0-9-]+:[a-zA-Z0-9_-]+$`)
 
+// maxCoordinate は transform の x・y・z と、カーソルなどの座標の大きさの上限。
+const maxCoordinate = 1e7
+
 func transform(value any, partial bool) (Object, bool) {
 	v, ok := value.(map[string]any)
 	if !ok {
@@ -26,7 +29,7 @@ func transform(value any, partial bool) (Object, bool) {
 		if !keys[k] || !ok || math.IsNaN(n) || math.IsInf(n, 0) {
 			return nil, false
 		}
-		if (k == "w" || k == "h") && (n < 0 || n > 1e6) || k == "scale" && (n <= 0 || n > 1000) || (k == "x" || k == "y" || k == "z") && math.Abs(n) > 1e7 {
+		if (k == "w" || k == "h") && (n < 0 || n > 1e6) || k == "scale" && (n <= 0 || n > 1000) || (k == "x" || k == "y" || k == "z") && math.Abs(n) > maxCoordinate {
 			return nil, false
 		}
 	}
@@ -42,7 +45,7 @@ func position(value any) (Object, bool) {
 	out := make(Object, 2)
 	for _, k := range []string{"x", "y"} {
 		n, ok := v[k].(float64)
-		if !ok || math.Abs(n) > 1e7 {
+		if !ok || math.Abs(n) > maxCoordinate {
 			return nil, false
 		}
 		out[k] = n

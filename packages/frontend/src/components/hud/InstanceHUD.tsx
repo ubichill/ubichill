@@ -11,6 +11,7 @@ import { HudOverlay } from './HudOverlay';
 import type { HudTab } from './hudView';
 import { clearSettingsLink, readSettingsLink } from './settingsLink';
 import { useLaunchpadHotkey } from './useLaunchpadHotkey';
+import { usePortalPlacement } from './usePortalPlacement';
 
 /**
  * インスタンス内の常時表示 HUD。ボタンか Esc でランチパッドを開く。
@@ -30,6 +31,12 @@ export function InstanceHUD() {
     const counts = useMemo(() => consoleCounts(entries), [entries]);
     const problem = latestProblem(entries);
     useLaunchpadHotkey(open, setOpen);
+    const placement = usePortalPlacement(instanceId ?? '', close);
+    // 置く場所を選ぶ画面の上にランチパッドを重ねない（Esc などで開いたら選ぶのをやめる）
+    const cancelPlacement = placement.cancel;
+    useEffect(() => {
+        if (open) cancelPlacement();
+    }, [open, cancelPlacement]);
     useEffect(() => clearSettingsLink(sessionStorage), []);
     // Esc やボタンで開いたときはランチパッドから
     useEffect(() => {
@@ -72,8 +79,10 @@ export function InstanceHUD() {
                     initialTab={initialTab}
                     settingsLink={settingsLink}
                     onClose={close}
+                    portal={placement.opener}
                 />
             )}
+            {placement.layer}
         </>
     );
 }

@@ -1135,7 +1135,7 @@
           },
           "additionalProperties": false
         },
-        "description": "部屋へのポータルを置く（どのワールドの部屋でも）。サーバーが core:portal の Entity（data は room・expiresAt・ownerName。ownerName は参加者の名前をサーバーが入れる）を作り、entity:created で置いた本人を含む全員に送る。1人1つで、置き直すと前のものを entity:deleted で消す。置き直せる間隔は3秒、1部屋64まで。60秒で消して entity:deleted を全員に送る（引っ越しでも引き継ぐ）。置いた人が部屋を出ても消さない。 管理トークンのある運用では grant（backend の出した許可）が無い・合わなければ「ポータルを置く許可を確かめられません」で断る。"
+        "description": "部屋へのポータルを置く（どのワールドの部屋でも）。サーバーが core:portal の Entity（data は room・expiresAt・ownerName。ownerName は参加者の名前をサーバーが入れる）を作り、entity:created で置いた本人を含む全員に送る。Entity は (x, y) を真ん中にし、z は部屋のいちばん前（画面に固定する overlay の Entity と、置き直しで消す自分の前のポータルを除いた z のいちばん大きいものの 1 つ上を整数にしたもの。0 より下にはしない（負の z はワールドの背景より奥に描かれる）、transform の上限 1e7 を超えるなら 1e7）。1人1つで、置き直すと前のものを entity:deleted で消す。置き直せる間隔は3秒、1部屋64まで。60秒で消して entity:deleted を全員に送る（引っ越しでも引き継ぐ）。置いた人が部屋を出ても消さない。 管理トークンのある運用では grant（backend の出した許可）が無い・合わなければ「ポータルを置く許可を確かめられません」で断る。"
       },
       "portal:close": {
         "name": "portal:close",

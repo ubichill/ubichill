@@ -84,8 +84,8 @@ export function WorldDetailModal({
 
     const newInstance = useNewInstance({
         world,
-        create: (options) =>
-            createInstance({ worldId: world?.url ?? worldId, access: { type: accessType }, ...options }),
+        create: (options, signal) =>
+            createInstance({ worldId: world?.url ?? worldId, access: { type: accessType }, ...options }, { signal }),
         enter: (instance) => {
             onJoinInstance(instance.id, instance.world.id, {
                 thumbnail: instance.world.thumbnail,

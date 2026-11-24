@@ -67,7 +67,7 @@ export function roomPortalAddressFor(room: string, currentRoom: string): string 
 }
 
 /**
- * 置く場所（ポータルの真ん中）。見ている所の真ん中に置き、ワールドからはみ出さないよう寄せる。
+ * 置く場所（ポータルの真ん中）。選んだ所を、ワールドからはみ出さないよう寄せる。
  * ワールドがポータルより小さいときは、ワールドの真ん中に置く。
  */
 export function roomPortalCenter(

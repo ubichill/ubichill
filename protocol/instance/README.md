@@ -44,7 +44,7 @@ Pod間の `relay:migrate` と `POST /realtime/v1/instances/{id}/handoff` は内�
 - 同一インスタンスの状態変更と送信キューへの追加を直列化する。ネットワーク書き込みは接続ごとに独立。
 - エンティティ作成の応答は作成者へ、created/patch/deleteの通知は他の参加者へ送る（作成者は楽観的更新）。
 - `switch:press`（`core:switch` を押す）は、押されたのが `core:switch` の Component で、対象が部屋にあるときだけ切り替える。結果は `entity:visibility`（見えない Entity の一覧そのもの）で押した本人を含む全員へ送る。1人が押せる間隔は300ms。見えない Entity の一覧はスナップショットの `hiddenEntities` にも入り、引っ越しでも引き継ぐ。
-- `portal:open`（部屋へのポータルを置く）は、行き先の部屋の住所と座標を確かめ、サーバーが `core:portal` の Entity（data は `room`・`expiresAt`・`ownerName`）を作って `entity:created` で置いた本人を含む全員へ送る。1人1つ（置き直すと前のものを `entity:deleted` で消す）、置き直せる間隔は3秒、1部屋64まで。60秒で消して `entity:deleted` を送り、引っ越しでも引き継ぐ。置いた人が部屋を出ても消さない。`portal:close` は自分の置いたものを閉じる。数字は shared の `ROOM_PORTAL` と同じ。
+- `portal:open`（部屋へのポータルを置く）は、行き先の部屋の住所と座標を確かめ、サーバーが `core:portal` の Entity（data は `room`・`expiresAt`・`ownerName`）を作って `entity:created` で置いた本人を含む全員へ送る。Entity は (x, y) を真ん中にし、z は部屋のいちばん前（画面に固定する `overlay` の Entity と、置き直しで消す自分の前のポータルを除いた z のいちばん大きいものの 1 つ上を整数にしたもの。0 より下にはしない（負の z はワールドの背景より奥に描かれる）、transform の上限 1e7 を超えるなら 1e7）。1人1つ（置き直すと前のものを `entity:deleted` で消す）、置き直せる間隔は3秒、1部屋64まで。60秒で消して `entity:deleted` を送り、引っ越しでも引き継ぐ。置いた人が部屋を出ても消さない。`portal:close` は自分の置いたものを閉じる。数字は shared の `ROOM_PORTAL` と同じ。
   管理トークンのある運用では `data.grant`（SNS の `POST /api/v1/room-portals/grants` が出す置く許可）が要る。
   形は `base64url(JSON {room, userId, exp})` + `.` + `base64url(HMAC-SHA256(鍵, 前半))`、鍵は管理トークンから HMAC-SHA256 で派生する（用途の名前 `ubichill room portal grant v1`。チケットの鍵とは別）。
   `room` が `data.room` と同じ文字列・`userId` が送り手の参加者 ID・`exp`（epoch 秒）の前でなければ断る（「ポータルを置く許可を確かめられません」）。有効は 60 秒（shared の `ROOM_PORTAL_GRANT`）。

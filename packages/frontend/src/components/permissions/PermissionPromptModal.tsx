@@ -101,7 +101,7 @@ export function PermissionPromptModal() {
     if (prompt.kind === 'external') {
         return (
             <div className={overlay} style={overlayStyle}>
-                <div className={panel}>
+                <div className={panel} role="alertdialog" aria-modal="true" aria-label="外部通信の確認">
                     <div className={css({ display: 'flex', alignItems: 'center', gap: '12px' })}>
                         <ShieldIcon risk="dangerous" />
                         <div className={css({ display: 'flex', flexDirection: 'column', gap: '2px' })}>
@@ -147,7 +147,7 @@ export function PermissionPromptModal() {
 
     return (
         <div className={overlay} style={overlayStyle}>
-            <div className={panel}>
+            <div className={panel} role="alertdialog" aria-modal="true" aria-label="権限の確認">
                 <div className={css({ display: 'flex', alignItems: 'center', gap: '12px' })}>
                     <ShieldIcon risk={topRisk} />
                     <div className={css({ display: 'flex', flexDirection: 'column', gap: '2px' })}>

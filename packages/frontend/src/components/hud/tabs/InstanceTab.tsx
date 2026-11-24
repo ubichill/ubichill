@@ -93,9 +93,9 @@ export function InstanceTab({ currentInstanceId, onNavigate }: InstanceTabProps)
     const newInstance = useNewInstance({
         world,
         // 外部ワールドは id では自サーバーで解決できないので URL で作る
-        create: async (options) => {
+        create: async (options, signal) => {
             if (!world) throw new Error('ワールドを読み込んでいます');
-            return createInstance({ worldId: instanceWorldRef(world), ...options });
+            return createInstance({ worldId: instanceWorldRef(world), ...options }, { signal });
         },
         enter: (created) => {
             onNavigate?.();
