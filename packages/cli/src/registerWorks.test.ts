@@ -101,7 +101,14 @@ describe('registerExternalWorks（--require-registration）', () => {
     const registration = { kind: 'world' as const, url: 'https://a.example/w.yaml', yaml: '', signature: {} };
     const answering =
         (...statuses: number[]): RegisterRequest =>
-        async () => ({ status: statuses.shift() ?? 200, body: { error: '登録は 200 件までです' } });
+        async () => ({ status: statuses.shift() ?? 200, body: { error: '登録は 200 件までです', code: 'limit' } });
+    const failureOf = (res: { status: number; body: Record<string, unknown> } | Error) =>
+        registerExternalWorks(
+            async () => (res instanceof Error ? Promise.reject(res) : res),
+            [registration],
+            recordingLogger().logger,
+            { required: true },
+        ).catch((e: unknown) => e);
 
     it('1 件でも登録できなければ、全部を試して理由を出してから失敗にする（終了コード 2）', async () => {
         const { logger, entries } = recordingLogger();
@@ -126,6 +133,39 @@ describe('registerExternalWorks（--require-registration）', () => {
         expect(
             await registerExternalWorks(answering(200, 200), [registration, registration], logger, { required: true }),
         ).toBe(2);
+    });
+
+    it('やり直せば通るかもしれない失敗（公開先がまだ見えない・作者の確認待ち・5xx・通信）は終了コード 1', async () => {
+        for (const res of [
+            { status: 409, body: { code: 'mod-not-published' } },
+            { status: 503, body: { code: 'author-pending' } },
+            { status: 502, body: {} },
+            new Error('offline'),
+        ]) {
+            const failure = await failureOf(res);
+            expect(failure).toBeInstanceOf(RegistrationError);
+            expect(exitCodeOf(failure)).toBe(1);
+        }
+    });
+
+    it('やり直しても通らない失敗（上限・権限・形）は終了コード 2。やり直せる失敗と混ざっても 2', async () => {
+        for (const res of [
+            { status: 409, body: { code: 'limit' } },
+            { status: 403, body: {} },
+            { status: 400, body: {} },
+        ])
+            expect(exitCodeOf(await failureOf(res))).toBe(REGISTRATION_FAILED_EXIT_CODE);
+        const answers = [
+            { status: 503, body: {} },
+            { status: 403, body: {} },
+        ];
+        const mixed = await registerExternalWorks(
+            async () => answers.shift() ?? { status: 200, body: {} },
+            [registration, registration],
+            recordingLogger().logger,
+            { required: true },
+        ).catch((e: unknown) => e);
+        expect(exitCodeOf(mixed)).toBe(REGISTRATION_FAILED_EXIT_CODE);
     });
 
     it('ほかの失敗の終了コードは 1 のまま（CI が公開先の反映待ちとして、やり直せる）', () => {
@@ -203,6 +243,25 @@ describe('registerDeployedMods', () => {
         expect(verifyPublic.mock.calls).toEqual([[signed[0]]]);
         expect(register).toHaveBeenCalledWith([signed[0]]);
         expect(unregister).toHaveBeenCalledWith(['video-player']);
+    });
+});
+
+describe('registerDeployedMods（登録の失敗）', () => {
+    it('登録に失敗しても、一覧から外した mod の登録は消してから失敗を返す', async () => {
+        const unregister = vi.fn(async () => 1);
+        const failure = new RegistrationError('x', false);
+        await expect(
+            registerDeployedMods({
+                checked: true,
+                signed: [entry('pen', '1.0.0'), entry('old', '1.0.0')],
+                listed: new Set(['pen']),
+                verifyPublic: async () => undefined,
+                register: async () => Promise.reject(failure),
+                unregister,
+                log: recordingLogger().logger,
+            }),
+        ).rejects.toBe(failure);
+        expect(unregister).toHaveBeenCalledWith(['old']);
     });
 });
 

@@ -69,36 +69,39 @@ const deploy = `      # 前に置いたファイルを消さずに足す（以�
           keep_files: true
 `;
 
+/** 登録をやり直すループ。終了コード 1 は反映待ち・一時的な失敗（待ってやり直す）、2 はやり直しても通らない失敗（すぐ止める）。 */
+const registerLoop = (command: string, what: string) => `      - name: 登録する
+${credentials}        run: |
+          for attempt in $(seq 1 10); do
+            status=0
+            ${command} || status=$?
+            if [ "$status" -eq 0 ]; then exit 0; fi
+            if [ "$status" -ne 1 ]; then
+              echo "::error::登録できませんでした。上のログの理由を見てください"
+              exit 1
+            fi
+            echo "少し待ってやり直します（$attempt/10）"
+            sleep 30
+          done
+          echo "::error::$PUBLIC_URL で${what}を確かめられませんでした。Settings → Pages で gh-pages ブランチを選んでいるか確かめてください"
+          exit 1
+`;
+
 const modSteps = `      # 公開済みの版の履歴（index.json）を引き継ぐ
       - run: npm run build -- --registry-url="$PUBLIC_URL"
       # 署名する。公開先に同じ版の別の中身があればここで止まる（package.json の version を上げる）
       - name: 署名する
 ${credentials}        run: npx ubichill publish dist --public-url="$PUBLIC_URL"
       - run: npx ubichill verify --dist-dir=dist --require-signatures
-${deploy}      # Pages に出た中身と署名を確かめてから、作者のサーバーのカタログに登録する。
-      # 終了コード 1 は公開先をまだ確かめられない（反映を待ってやり直す）、2 は登録できなかった（やり直さずに止める）
-      - name: カタログに登録する
-${credentials}        run: |
-          for attempt in $(seq 1 10); do
-            status=0
-            npx ubichill publish dist --public-url="$PUBLIC_URL" --check-public --require-registration || status=$?
-            if [ "$status" -eq 0 ]; then exit 0; fi
-            if [ "$status" -ne 1 ]; then
-              echo "::error::カタログに登録できませんでした。上のログの理由を見てください"
-              exit 1
-            fi
-            echo "Pages への反映を待っています（$attempt/10）"
-            sleep 30
-          done
-          echo "::error::$PUBLIC_URL で mod を確かめられませんでした。Settings → Pages で gh-pages ブランチを選んでいるか確かめてください"
-          exit 1
-`;
+${deploy}      # Pages に出た中身と署名を確かめてから、作者のサーバーのカタログに登録する
+${registerLoop('npx ubichill publish dist --public-url="$PUBLIC_URL" --check-public --require-registration', ' mod ')}`;
 
-const worldSteps = `      # mod を固定し、署名した world.yaml・.lock.json・.sig.json を dist に書き出して、作者のユーザーページに登録する（登録できなければ止める）
-      - name: 署名して登録する
-${credentials}        run: npx ubichill publish world.yaml --out=dist --public-url="$PUBLIC_URL" --require-registration
+const worldSteps = `      # mod を固定し、署名した world.yaml・.lock.json・.sig.json を dist に書き出す
+      - name: 署名する
+${credentials}        run: npx ubichill publish world.yaml --out=dist
       - run: npx ubichill verify dist/world.yaml
-${deploy}`;
+${deploy}      # 置いてから作者のユーザーページに登録する（作者のサーバーが止まっていても Pages への公開は止めない）
+${registerLoop('npx ubichill publish world.yaml --out=.ubichill/register --public-url="$PUBLIC_URL" --no-install --require-registration', 'ワールド')}`;
 
 export function pagesWorkflow(kind: 'mod' | 'world'): string {
     return header + (kind === 'mod' ? modSteps : worldSteps);

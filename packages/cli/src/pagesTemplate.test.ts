@@ -36,8 +36,9 @@ function runStep(
     name: string,
     env: Record<string, string>,
     npxExits: number[] = [],
+    kind: 'mod' | 'world' = 'mod',
 ): { status: number; output: string; githubEnv: string; npxCalls: number } {
-    const script = steps('mod').find((s) => s.name === name)?.run ?? '';
+    const script = steps(kind).find((s) => s.name === name)?.run ?? '';
     const bin = mkdtempSync(join(scratch, 'bin-'));
     const calls = join(bin, 'calls');
     writeFileSync(calls, '');
@@ -136,17 +137,21 @@ describe('ubichill init の GitHub Pages の公開', () => {
         expect(indexOfRun(list, /ubichill whoami/)).toBeLessThan(build);
     });
 
-    it('world: ワールドに署名して dist に書き出し（登録できなければ止める）、確かめてから配置する（ビルドも --check-public も無い）', () => {
+    it('world: 署名して dist に書き出し → 確かめる → 配置 → 登録（作者のサーバーが止まっていても配置は止めない）', () => {
         const list = steps('world');
-        const publish = indexOfRun(
-            list,
-            /^npx ubichill publish world\.yaml --out=dist --public-url="\$PUBLIC_URL" --require-registration$/,
-        );
+        const publish = indexOfRun(list, /^npx ubichill publish world\.yaml --out=dist$/);
         const verify = indexOfRun(list, /^npx ubichill verify dist\/world\.yaml$/);
         const deploy = list.findIndex((s) => s.uses?.startsWith('peaceiris/actions-gh-pages@'));
+        const register = indexOfRun(
+            list,
+            /npx ubichill publish world\.yaml --out=\.ubichill\/register --public-url="\$PUBLIC_URL" --no-install --require-registration/,
+        );
         expect(publish).toBeGreaterThan(0);
         expect(verify).toBeGreaterThan(publish);
         expect(deploy).toBeGreaterThan(verify);
+        expect(register).toBeGreaterThan(deploy);
+        // 配置より前に登録しない
+        expect(list.slice(0, deploy).some((s) => /--public-url/.test(s.run ?? ''))).toBe(false);
         expect(indexOfRun(list, /npm run build|--check-public/)).toBe(-1);
     });
 
@@ -184,24 +189,30 @@ describe('ubichill init の GitHub Pages の公開', () => {
     });
 
     it('登録: 公開先をまだ確かめられない（終了コード 1）あいだは待ってやり直し、確かめられたら成功', () => {
-        const result = runStep('カタログに登録する', { PUBLIC_URL: 'https://a.github.io/m' }, [1, 1, 0]);
+        const result = runStep('登録する', { PUBLIC_URL: 'https://a.github.io/m' }, [1, 1, 0]);
         expect(result.status).toBe(0);
         expect(result.npxCalls).toBe(3);
-        expect(result.output).toContain('Pages への反映を待っています（2/10）');
+        expect(result.output).toContain('少し待ってやり直します（2/10）');
     });
 
     it('登録: 登録できなかった（終了コード 2）ら、やり直さずにすぐ失敗にする', () => {
-        const result = runStep('カタログに登録する', { PUBLIC_URL: 'https://a.github.io/m' }, [2]);
+        const result = runStep('登録する', { PUBLIC_URL: 'https://a.github.io/m' }, [2]);
         expect(result.status).toBe(1);
         expect(result.npxCalls).toBe(1);
-        expect(result.output).toContain('::error::カタログに登録できませんでした');
+        expect(result.output).toContain('::error::登録できませんでした');
     });
 
     it('登録: 10 回確かめられなければ、Pages の設定を案内して失敗にする', () => {
-        const result = runStep('カタログに登録する', { PUBLIC_URL: 'https://a.github.io/m' }, Array(10).fill(1));
+        const result = runStep('登録する', { PUBLIC_URL: 'https://a.github.io/m' }, Array(10).fill(1));
         expect(result.status).toBe(1);
         expect(result.npxCalls).toBe(10);
         expect(result.output).toContain('gh-pages ブランチを選んでいるか');
+    });
+
+    it('world: 登録も一時的な失敗（1）はやり直し、やり直しても通らない失敗（2）ですぐ止める', () => {
+        const env = { PUBLIC_URL: 'https://a.github.io/w' };
+        expect(runStep('登録する', env, [1, 0], 'world')).toMatchObject({ status: 0, npxCalls: 2 });
+        expect(runStep('登録する', env, [2], 'world')).toMatchObject({ status: 1, npxCalls: 1 });
     });
 
     it('README に Pages の有効化と署名の鍵の Secret の手順がある（ワールドはサムネイルも）', () => {

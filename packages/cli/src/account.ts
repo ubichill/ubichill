@@ -241,6 +241,11 @@ export async function runPublish(argv: string[], term: Terminal): Promise<void> 
             'usage: ubichill publish <world.yaml>... [--server=<url>] [--out=<dir>] [--no-install]\n       ubichill publish <mods のビルド出力（例 dist/mods）>... [--server=<url>]',
         );
     }
+    const publicUrl = argValue(argv, 'public-url') ?? homepageOf(process.cwd());
+    // CI 向け: ユーザーページ・カタログに登録できなければ失敗にする（既定は警告だけで成功）
+    const requireRegistration = argv.includes('--require-registration');
+    if (requireRegistration && (!publicUrl || (worldPaths.length > 0 && !argValue(argv, 'public-url'))))
+        throw new Error('--require-registration には --public-url が要ります');
     const credential = requireCredential(argv);
     const key = await importSigningKey(credential.key);
     const deps = {
@@ -263,11 +268,6 @@ export async function runPublish(argv: string[], term: Terminal): Promise<void> 
             `${credential.server} に確認できませんでした（署名は続けます。公開環境が取り消されていないか後で確かめてください）`,
         );
     }
-    const publicUrl = argValue(argv, 'public-url') ?? homepageOf(process.cwd());
-    // CI 向け: ユーザーページ・カタログに登録できなければ失敗にする（既定は警告だけで成功）
-    const requireRegistration = argv.includes('--require-registration');
-    if (requireRegistration && (!publicUrl || (worldPaths.length > 0 && !argValue(argv, 'public-url'))))
-        throw new Error('--require-registration には --public-url が要ります');
     if (publicUrl) (modsDirs.length ? PublicPackageUrlSchema : ExternalWorkUrlSchema).parse(publicUrl);
     if (publicUrl && modsDirs.length) {
         for (const modsDir of modsDirs)
