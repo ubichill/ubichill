@@ -16,8 +16,8 @@
  *   ubichill logout  [--server=<url>]
  *   ubichill whoami  [--server=<url>]
  *   ubichill ci create --name=<表示名> [--server=<url>] [--device]
- *   ubichill publish <world.yaml>... [--server=<url>] [--out=<dir>] [--public-url=<url>] [--no-install] [--accept-capabilities]
- *   ubichill publish <mods のビルド出力>... [--server=<url>] [--public-url=<url>] [--check-public]   mod の配布物に署名する
+ *   ubichill publish <world.yaml>... [--server=<url>] [--out=<dir>] [--public-url=<url>] [--require-registration] [--no-install] [--accept-capabilities]
+ *   ubichill publish <mods のビルド出力>... [--server=<url>] [--public-url=<url>] [--check-public] [--require-registration]   mod の配布物に署名する
  *   ubichill world build <world.yaml> [--id=<instanceId>] [--max-users=<n>] [--out=<path>]   Go に渡す定義 JSON を作る
  *   ubichill dev     [world.yaml] [--port=<n>] [--host[=<addr>]] [--mods-dir=<dir>] [--max-users=<n>]   手元の mod を本番と同じ Go で動かす開発サーバー
  *
@@ -43,6 +43,7 @@ import { runLock } from './lock.ts';
 import { cliVersion, createCliTerminal, DEBUG_TIP, isLikelyBug, splitGlobalFlags, stderrPaint } from './output.ts';
 import { initProject, installPackage, searchPackages } from './packages.ts';
 import { runPrefab } from './prefab.ts';
+import { exitCodeOf } from './registerWorks.ts';
 import { runUpdate } from './update.ts';
 import { runVerify } from './verify.ts';
 import { runVerifyWorld } from './verifyWorld.ts';
@@ -129,5 +130,5 @@ async function main(): Promise<void> {
 
 main().catch((err: unknown) => {
     term.failure(err, isLikelyBug(err) ? { debugTip: DEBUG_TIP } : {});
-    process.exit(1);
+    process.exit(exitCodeOf(err));
 });

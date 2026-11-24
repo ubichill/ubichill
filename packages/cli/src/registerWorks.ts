@@ -1,7 +1,7 @@
 /**
  * 署名した外部の作品（GitHub Pages などに置くワールド・mod）を、作者アカウントのサーバーに登録する。
  * 登録するとユーザーページに出る（サーバーは公開先の URL を取りに行き、本人の署名付きで配られていると確かめてから出す）。
- * 登録に失敗しても署名は済んでいるので、公開は止めない（警告だけ出す）。
+ * 登録に失敗しても署名は済んでいるので、既定では公開は止めない（警告だけ出す）。`--require-registration` では失敗にする。
  */
 import type { ExternalWorkRegistration, ModLockEntry } from '@ubichill/shared';
 import type { Logger } from '@ubichill/terminal';
@@ -32,10 +32,21 @@ export function latestPerMod<T extends { entry: ModLockEntry }>(signed: readonly
     return [...latest.values()];
 }
 
+/** 登録できなかったときの終了コード（CI が「公開先への反映待ち（1）」と分けてやり直しを止められるように）。 */
+export const REGISTRATION_FAILED_EXIT_CODE = 2;
+
+/** `--require-registration` で、登録できなかった作品があった。 */
+export class RegistrationError extends Error {}
+
+/** コマンドの失敗の終了コード。 */
+export const exitCodeOf = (error: unknown): number =>
+    error instanceof RegistrationError ? REGISTRATION_FAILED_EXIT_CODE : 1;
+
 export async function registerExternalWorks(
     request: RegisterRequest,
     registrations: readonly ExternalWorkRegistration[],
     log: Logger,
+    options: { required?: boolean } = {},
 ): Promise<number> {
     const results = await Promise.all(
         registrations.map(async (registration) => {
@@ -43,13 +54,19 @@ export async function registerExternalWorks(
             if (res?.status === 200) return true;
             const reason =
                 typeof res?.body.error === 'string' ? res.body.error : res ? `HTTP ${res.status}` : '通信できません';
-            log.warn(`${registration.url} をユーザーページに登録できませんでした（${reason}）。署名と公開は続けます`);
+            log.warn(
+                `${registration.url} をユーザーページに登録できませんでした（${reason}）${options.required ? '' : '。署名と公開は続けます'}`,
+            );
             return false;
         }),
     );
     const registered = results.filter(Boolean).length;
     if (registered > 0)
         log.success(`${registered} 件の作品をユーザーページに登録しました`, '公開先で確かめられたものから表示されます');
+    if (options.required && registered < registrations.length)
+        throw new RegistrationError(
+            `${registrations.length - registered} 件の作品をユーザーページ・カタログに登録できませんでした（--require-registration）`,
+        );
     return registered;
 }
 

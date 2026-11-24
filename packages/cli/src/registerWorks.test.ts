@@ -3,10 +3,13 @@ import { recordingLogger } from '@ubichill/terminal';
 import { describe, expect, it, vi } from 'vitest';
 import {
     compareVersions,
+    exitCodeOf,
     latestPerMod,
     listedModIds,
     normalizePublicUrl,
+    REGISTRATION_FAILED_EXIT_CODE,
     type RegisterRequest,
+    RegistrationError,
     registerDeployedMods,
     registerExternalWorks,
     unregisterExternalMods,
@@ -91,6 +94,43 @@ describe('registerExternalWorks', () => {
             expect.stringContaining('署名の作者がログイン中のアカウントではありません'),
             expect.stringContaining('通信できません'),
         ]);
+    });
+});
+
+describe('registerExternalWorks（--require-registration）', () => {
+    const registration = { kind: 'mod' as const, url: 'https://a.example/mods', entry: {}, signature: {} };
+    const answering =
+        (...statuses: number[]): RegisterRequest =>
+        async () => ({ status: statuses.shift() ?? 200, body: { error: '登録は 200 件までです' } });
+
+    it('1 件でも登録できなければ、全部を試して理由を出してから失敗にする（終了コード 2）', async () => {
+        const { logger, entries } = recordingLogger();
+        const request = vi.fn(answering(200, 409));
+        const failure = await registerExternalWorks(request, [registration, registration], logger, {
+            required: true,
+        }).catch((e: unknown) => e);
+        expect(failure).toBeInstanceOf(RegistrationError);
+        expect(exitCodeOf(failure)).toBe(REGISTRATION_FAILED_EXIT_CODE);
+        expect(request).toHaveBeenCalledTimes(2);
+        const warning = entries.find((e) => e.level === 'warn')?.message ?? '';
+        expect(warning).toContain('登録は 200 件までです');
+        expect(warning).not.toContain('続けます');
+    });
+
+    it('通信できないのも失敗。全部登録できれば件数を返す', async () => {
+        const { logger } = recordingLogger();
+        const offline: RegisterRequest = async () => Promise.reject(new Error('offline'));
+        await expect(registerExternalWorks(offline, [registration], logger, { required: true })).rejects.toThrow(
+            RegistrationError,
+        );
+        expect(
+            await registerExternalWorks(answering(200, 200), [registration, registration], logger, { required: true }),
+        ).toBe(2);
+    });
+
+    it('ほかの失敗の終了コードは 1 のまま（CI が公開先の反映待ちとして、やり直せる）', () => {
+        expect(exitCodeOf(new Error('配布先の lock が一致しません'))).toBe(1);
+        expect(exitCodeOf('x')).toBe(1);
     });
 });
 

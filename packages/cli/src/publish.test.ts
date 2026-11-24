@@ -3,6 +3,7 @@ import { silentLogger } from '@ubichill/terminal';
 import { describe, expect, it } from 'vitest';
 import yaml from 'yaml';
 import { confirmEnvironment, type PublishDeps, publish } from './publish.ts';
+import { RegistrationError } from './registerWorks.ts';
 
 const key: WorldSigningKey = { publicKey: 'K'.repeat(43), sign: async () => 'S'.repeat(86) };
 const crypto = { sha256Base64: async () => `${'h'.repeat(43)}=`, verifyEd25519: async () => true };
@@ -177,6 +178,19 @@ describe('publish（外部ホスト向け --out）', () => {
         const { deps, files } = fakeDeps({ 'worlds/w.yaml': worldYaml }, () => ({ status: 503, body: {} }));
         await publish(deps, { worldPath: 'worlds/w.yaml', credential, outDir: 'dist', publicUrl: 'https://x.example' });
         expect(files['dist/w.sig.json']).toBeDefined();
+    });
+
+    it('--require-registration なら、登録に失敗したら失敗にする（CI で配置まで進ませない）', async () => {
+        const { deps } = fakeDeps({ 'worlds/w.yaml': worldYaml }, () => ({ status: 503, body: {} }));
+        await expect(
+            publish(deps, {
+                worldPath: 'worlds/w.yaml',
+                credential,
+                outDir: 'dist',
+                publicUrl: 'https://x.example',
+                requireRegistration: true,
+            }),
+        ).rejects.toThrow(RegistrationError);
     });
 });
 

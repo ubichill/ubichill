@@ -103,8 +103,8 @@ ubichill login   [--server=<url>] [--device] [--name=<表示名>] [--no-browser]
 ubichill logout  [--server=<url>]
 ubichill whoami  [--server=<url>]
 ubichill ci create --name=<表示名> [--server=<url>] [--device]
-ubichill publish <world.yaml>... [--server=<url>] [--out=<dir>] [--public-url=<url>] [--no-install] [--accept-capabilities]
-ubichill publish <mods のビルド出力>... [--server=<url>] [--public-url=<url>] [--check-public]
+ubichill publish <world.yaml>... [--server=<url>] [--out=<dir>] [--public-url=<url>] [--require-registration] [--no-install] [--accept-capabilities]
+ubichill publish <mods のビルド出力>... [--server=<url>] [--public-url=<url>] [--check-public] [--require-registration]
 ubichill world build <world.yaml> [--id=<instanceId>] [--max-users=<n>] [--out=<path>]
 ```
 
@@ -144,6 +144,8 @@ ubichill world build <world.yaml> [--id=<instanceId>] [--max-users=<n>] [--out=<
   - `publish <ビルド出力>` は mod の配布物に `v<version>/lock.sig.json` を書き出す（mod はサーバーへ送らない）。
     Host は作者署名を確認できた mod だけを実行する。
   - `--public-url=<url> --check-public` を渡すと、配置先で内容と署名を確認してから作者のサーバーへ登録される。配置前の署名だけでは既存登録を切り替えない。
+  - 登録に失敗しても、既定では警告だけで成功（終了コード 0）で終わる。`--require-registration` を付けると、登録できない作品があれば
+    終了コード 2 で終わる（公開先の確認の失敗などほかの失敗は 1。CI は 1 のときだけ反映を待ってやり直せる）。
 - **`dev`**: 上の「`ubichill dev`」。
 - **`world build`**: 手元の `world.yaml` と兄弟の `.lock.json` から、Go のインスタンスサーバー（`ubichill-instance`）に
   渡す定義 JSON を作る。本体がインスタンスを作るときと同じ変換なので、`ubichill-instance --guests --world=<出力>` で
@@ -183,12 +185,12 @@ GitHub Pages なら、`gh-pages` ブランチへ既存のファイルを残し�
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
           keep_files: true
-      # 配置した内容と署名を確かめてから、作者のサーバーのカタログに登録する
-      - run: npx ubichill publish dist --public-url=$PUBLIC_URL --check-public
+      # 配置した内容と署名を確かめてから、作者のサーバーのカタログに登録する（登録できなければ失敗にする）
+      - run: npx ubichill publish dist --public-url=$PUBLIC_URL --check-public --require-registration
 ```
 
 Pages への反映より先に `--check-public` が走ると、取得に失敗して終了コード 1 で終わる（登録はしない）。反映を待って再実行する。
-カタログへの登録が失敗しても `publish` は警告だけで成功（終了コード 0）で終わる。
+カタログへの登録が失敗すると、`--require-registration` があれば終了コード 2、無ければ警告だけで成功（終了コード 0）で終わる。
 
 ## 型チェックを `build` の前段に入れる
 

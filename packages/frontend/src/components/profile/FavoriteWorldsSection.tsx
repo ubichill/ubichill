@@ -101,9 +101,11 @@ export function FavoriteWorldsSection({ userId, isOwnPage, onJoinInstance }: Fav
                         このユーザーのお気に入りは公開されていません。
                     </p>
                 ) : worlds.length === 0 ? (
-                    <p className={css({ fontSize: '13px', color: 'textMuted' })}>
-                        {isOwnPage ? 'お気に入りはまだありません。' : 'お気に入りはありません。'}
-                    </p>
+                    mods.length === 0 && (
+                        <p className={css({ fontSize: '13px', color: 'textMuted' })}>
+                            {isOwnPage ? 'お気に入りはまだありません。' : 'お気に入りはありません。'}
+                        </p>
+                    )
                 ) : (
                     <div
                         className={css({

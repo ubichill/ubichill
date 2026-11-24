@@ -11,6 +11,11 @@ export const PAGES_ACTIONS = {
     ghPages: 'peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0',
 } as const;
 
+const credentials = `        env:
+          UBICHILL_CREDENTIALS: \${{ secrets.UBICHILL_CREDENTIALS }}
+`;
+
+// 署名の鍵（Secret）は使うステップにだけ渡す。npm の依存の install スクリプトは動かさず、checkout は git に認証を残さない
 const header = `name: GitHub Pages に公開する
 
 on:
@@ -23,25 +28,28 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    env:
-      # 作者の署名の鍵（README の「GitHub Pages に公開する」）
-      UBICHILL_CREDENTIALS: \${{ secrets.UBICHILL_CREDENTIALS }}
-      # 独自ドメインなどで公開先が https://<owner>.github.io/<repo> でないときだけ、リポジトリの変数に入れる
-      UBICHILL_PUBLIC_URL: \${{ vars.UBICHILL_PUBLIC_URL }}
+    # gh-pages に書く
+    permissions:
+      contents: write
     steps:
       - uses: ${PAGES_ACTIONS.checkout}
+        with:
+          persist-credentials: false
       - uses: ${PAGES_ACTIONS.setupNode}
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - name: 署名の鍵と公開先を確かめる
+        env:
+          UBICHILL_CREDENTIALS: \${{ secrets.UBICHILL_CREDENTIALS }}
+          # 独自ドメインなどで公開先が https://<owner>.github.io/<repo> でないときだけ、リポジトリの変数に入れる
+          UBICHILL_PUBLIC_URL: \${{ vars.UBICHILL_PUBLIC_URL }}
         run: |
           if [ -z "$UBICHILL_CREDENTIALS" ]; then
             echo "::error::Secret UBICHILL_CREDENTIALS がありません。README の「GitHub Pages に公開する」を見て設定してください"
@@ -64,13 +72,21 @@ const deploy = `      # 前に置いたファイルを消さずに足す（以�
 const modSteps = `      # 公開済みの版の履歴（index.json）を引き継ぐ
       - run: npm run build -- --registry-url="$PUBLIC_URL"
       # 署名する。公開先に同じ版の別の中身があればここで止まる（package.json の version を上げる）
-      - run: npx ubichill publish dist --public-url="$PUBLIC_URL"
+      - name: 署名する
+${credentials}        run: npx ubichill publish dist --public-url="$PUBLIC_URL"
       - run: npx ubichill verify --dist-dir=dist --require-signatures
-${deploy}      # Pages に出た中身と署名を確かめてから、作者のサーバーのカタログに登録する（反映を待つ）
+${deploy}      # Pages に出た中身と署名を確かめてから、作者のサーバーのカタログに登録する。
+      # 終了コード 1 は公開先をまだ確かめられない（反映を待ってやり直す）、2 は登録できなかった（やり直さずに止める）
       - name: カタログに登録する
-        run: |
+${credentials}        run: |
           for attempt in $(seq 1 10); do
-            if npx ubichill publish dist --public-url="$PUBLIC_URL" --check-public; then exit 0; fi
+            status=0
+            npx ubichill publish dist --public-url="$PUBLIC_URL" --check-public --require-registration || status=$?
+            if [ "$status" -eq 0 ]; then exit 0; fi
+            if [ "$status" -ne 1 ]; then
+              echo "::error::カタログに登録できませんでした。上のログの理由を見てください"
+              exit 1
+            fi
             echo "Pages への反映を待っています（$attempt/10）"
             sleep 30
           done
@@ -78,8 +94,9 @@ ${deploy}      # Pages に出た中身と署名を確かめてから、作者の
           exit 1
 `;
 
-const worldSteps = `      # mod を固定し、署名した world.yaml・.lock.json・.sig.json を dist に書き出して、作者のユーザーページに登録する
-      - run: npx ubichill publish world.yaml --out=dist --public-url="$PUBLIC_URL"
+const worldSteps = `      # mod を固定し、署名した world.yaml・.lock.json・.sig.json を dist に書き出して、作者のユーザーページに登録する（登録できなければ止める）
+      - name: 署名して登録する
+${credentials}        run: npx ubichill publish world.yaml --out=dist --public-url="$PUBLIC_URL" --require-registration
       - run: npx ubichill verify dist/world.yaml
 ${deploy}`;
 
@@ -118,5 +135,7 @@ npm run dev
     }
 
 公開先は \`https://<owner>.github.io/<repo>\` です。独自ドメインなどで違うときは、リポジトリの変数 \`UBICHILL_PUBLIC_URL\` に入れます。
+
+ユーザーページ・カタログに登録できなかったとき（登録の上限など）は、\`--require-registration\` で実行を失敗にしています。理由は実行のログに出ます。
 `;
 }

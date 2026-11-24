@@ -264,6 +264,10 @@ export async function runPublish(argv: string[], term: Terminal): Promise<void> 
         );
     }
     const publicUrl = argValue(argv, 'public-url') ?? homepageOf(process.cwd());
+    // CI 向け: ユーザーページ・カタログに登録できなければ失敗にする（既定は警告だけで成功）
+    const requireRegistration = argv.includes('--require-registration');
+    if (requireRegistration && (!publicUrl || (worldPaths.length > 0 && !argValue(argv, 'public-url'))))
+        throw new Error('--require-registration には --public-url が要ります');
     if (publicUrl) (modsDirs.length ? PublicPackageUrlSchema : ExternalWorkUrlSchema).parse(publicUrl);
     if (publicUrl && modsDirs.length) {
         for (const modsDir of modsDirs)
@@ -333,6 +337,7 @@ export async function runPublish(argv: string[], term: Terminal): Promise<void> 
                             signature,
                         })),
                         deps.log,
+                        { required: requireRegistration },
                     ),
                 unregister: (ids) => unregisterExternalMods(deps.request, normalizePublicUrl(publicUrl), ids, deps.log),
             });
@@ -356,6 +361,7 @@ export async function runPublish(argv: string[], term: Terminal): Promise<void> 
             credential,
             outDir: argValue(argv, 'out'),
             publicUrl: argValue(argv, 'public-url'),
+            requireRegistration,
         });
     }
 }
