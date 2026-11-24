@@ -69,16 +69,13 @@ export function themeColorProblem(value: string): string | null {
     if (!color) return '色は #1b2a44 のような 16 進数で入れてください';
     const ratio = contrastWithButtonText(color);
     if (ratio < MIN_THEME_CONTRAST) {
-        return `この色は明るすぎて、ボタンの文字が読みにくくなります（コントラスト比 ${floorTo(ratio, 2)}。${MIN_THEME_CONTRAST} 以上が要ります）。もっと暗い色にしてください`;
+        return `この色は明るすぎて、ボタンの文字が読みにくくなります（コントラスト比 ${formatContrastRatio(ratio)}。${MIN_THEME_CONTRAST} 以上が要ります）。もっと暗い色にしてください`;
     }
     return null;
 }
 
-/** 切り捨てて表す（4.49 を 4.5 と出して「足りているのに断られた」と見せない） */
-const floorTo = (value: number, digits: number): string => {
-    const scale = 10 ** digits;
-    return (Math.floor(value * scale) / scale).toFixed(digits);
-};
+/** コントラスト比を小数 2 桁で見せる。切り捨てる（4.499 を 4.50 と出して「足りているのに断られた」と見せない） */
+export const formatContrastRatio = (ratio: number): string => (Math.floor(ratio * 100) / 100).toFixed(2);
 
 function rgbToHsl({ r, g, b }: Rgb): Hsl {
     const [rn, gn, bn] = [r / 255, g / 255, b / 255];

@@ -3,6 +3,7 @@ import {
     contrastRatio,
     contrastWithButtonText,
     DEFAULT_THEME_PRIMARY,
+    formatContrastRatio,
     MIN_THEME_CONTRAST,
     normalizeHexColor,
     parseHexColor,
@@ -65,6 +66,12 @@ describe('themeColorProblem', () => {
         const problem = themeColorProblem('#844bee');
         expect(problem).toContain('4.49');
         expect(problem).not.toContain('4.50');
+    });
+
+    it('比は切り捨てて 2 桁で見せる', () => {
+        expect(formatContrastRatio(4.4999)).toBe('4.49');
+        expect(formatContrastRatio(21)).toBe('21.00');
+        expect(formatContrastRatio(1.4399)).toBe('1.43');
     });
 
     it('境目のすぐ上は使える', () => {

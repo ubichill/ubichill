@@ -1,6 +1,7 @@
 import {
     DEFAULT_SERVER_BRANDING,
     DEFAULT_THEME_PRIMARY,
+    formatContrastRatio,
     MIN_THEME_CONTRAST,
     SERVER_BRANDING_LIMITS,
     type ServerBranding,
@@ -260,8 +261,9 @@ function ThemeSection({ branding, serverName }: { branding: ServerBranding; serv
                         <span className={sampleButton} aria-hidden>
                             新規登録
                         </span>
-                        {check.state !== 'default' && check.state !== 'invalid' && (
-                            <span className={hintText}>コントラスト比 {check.ratio.toFixed(2)}</span>
+                        {/* 足りないときの比は、下の理由が伝える */}
+                        {check.state === 'ok' && (
+                            <span className={hintText}>コントラスト比 {formatContrastRatio(check.ratio)}</span>
                         )}
                     </div>
                     {colorProblem && (
@@ -319,7 +321,7 @@ const section = css({
 });
 const heading = css({ fontSize: 'lg', fontWeight: '700', color: 'text' });
 const hintText = css({ fontSize: '12px', fontWeight: '400', color: 'textMuted', lineHeight: '1.6' });
-const imageGrid = css({ display: 'grid', gridTemplateColumns: { base: '1fr', md: '160px 1fr' }, gap: '5' });
+const imageGrid = css({ display: 'grid', gridTemplateColumns: { base: '1fr', md: '232px 1fr' }, gap: '5' });
 const imageField = css({ display: 'flex', flexDirection: 'column', gap: '2', minW: 0 });
 const preview = cva({
     base: {
