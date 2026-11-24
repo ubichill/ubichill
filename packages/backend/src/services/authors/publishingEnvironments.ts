@@ -92,8 +92,11 @@ export function browserEnvironmentName(userAgent: string | undefined): string {
     return os ? `${browser} on ${os}` : browser;
 }
 
-/** メールの 1 行に入れる名前（CLI・CI の名前は承認した人以外が決める。改行・書字方向の制御で文面を偽らせない）。 */
-const oneLine = (text: string): string => text.replace(/[\p{Cc}\p{Cf}]+/gu, ' ').trim();
+/**
+ * メールの 1 行に入れる名前（CLI・CI の名前は承認した人以外が決める）。改行（行・段落の区切り U+2028・U+2029 も）・
+ * 書字方向の制御で文面を偽らせない。
+ */
+const oneLine = (text: string): string => text.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+/gu, ' ').trim();
 
 /**
  * 新しい公開環境が追加されたことの通知（心当たりがなければ取り消してパスワードを変える）。
@@ -114,7 +117,7 @@ export function newEnvironmentNotice(args: {
 あなたのアカウントに、ワールドを公開できる環境が追加されました。
 
 種類: ${publishingEnvironmentKindLabel(environment.kind)}
-名前: ${oneLine(environment.name)}
+名前: 『${oneLine(environment.name)}』（追加した側が付けた名前）
 鍵の指紋: ${signingKeyFingerprint(environment.publicKey)}
 追加日時: ${environment.createdAt.toISOString()}
 

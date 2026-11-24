@@ -7,6 +7,7 @@ import type { EmailLinkRecord, LinkEmailOutcome, LockedEmailLink } from '@ubichi
 import { isPlaceholderEmail, isReservedEmail } from '@ubichill/shared';
 import { z } from 'zod';
 import { judgeVerification, normalizeEmail } from './pendingRegistrations';
+import { type SessionFacts, sessionAuthenticatedAt } from './sessionAssurance';
 
 export interface EmailLinkLimits {
     ttlMs: number;
@@ -33,13 +34,19 @@ export interface EmailLinkDeps {
     hashOtp(key: string, otp: string): string;
     newAccountId(): string;
     sendCode(to: string, otp: string): Promise<void>;
-    /** 足した後（このセッションはパスワードを決めた本人なので、パスワードで確かめたセッションとして扱う） */
-    afterLinked(userId: string, sessionId: string): Promise<void>;
+    /**
+     * 足した後。このセッションはパスワードを決めた本人なので、パスワードで確かめたセッションとして扱う。
+     * 時刻はこのセッションで最後に本人を確かめた時刻（パスワードを決めたことを本人確認のし直しに数えない）。
+     */
+    afterLinked(userId: string, sessionId: string, authenticatedAt: Date): Promise<void>;
     /** メール確認を省く環境（SKIP_EMAIL_VERIFICATION）。コードを送らずにすぐ足す */
     skipVerification: boolean;
     now(): Date;
     limits?: EmailLinkLimits;
 }
+
+/** 申し込んだセッション（route の requireRecentAuth で直近の本人確認を済ませたもの）。 */
+export type LinkingSession = SessionFacts & { id: string };
 
 export type EmailLinkOutcome<T extends string> =
     | { ok: true; status: T }
@@ -57,7 +64,7 @@ export function createEmailLinks(deps: EmailLinkDeps) {
 
     const linkNow = async (
         locked: LockedEmailLink,
-        input: { userId: string; sessionId: string; email: string; passwordHash: string },
+        input: { userId: string; session: LinkingSession; email: string; passwordHash: string },
     ): Promise<EmailLinkOutcome<'linked'>> => {
         const linked = await locked.link({
             email: input.email,
@@ -67,7 +74,9 @@ export function createEmailLinks(deps: EmailLinkDeps) {
         });
         await locked.remove();
         if (linked !== 'linked') return { ok: false, ...LINK_ERRORS[linked] };
-        await deps.afterLinked(input.userId, input.sessionId);
+        // 足すのはパスワードの無い人だけなので、本人確認の時刻はログイン（SSO）の時刻まで数える
+        const authenticatedAt = sessionAuthenticatedAt(input.session, false);
+        if (authenticatedAt) await deps.afterLinked(input.userId, input.session.id, authenticatedAt);
         return { ok: true, status: 'linked' };
     };
 
@@ -75,7 +84,7 @@ export function createEmailLinks(deps: EmailLinkDeps) {
         /** アドレスとパスワードを受け取り、コードを送る（メール確認を省く環境ではすぐ足す）。 */
         async start(input: {
             userId: string;
-            sessionId: string;
+            session: LinkingSession;
             email: unknown;
             password: unknown;
         }): Promise<EmailLinkOutcome<'sent' | 'linked'>> {
@@ -101,7 +110,7 @@ export function createEmailLinks(deps: EmailLinkDeps) {
 
             if (deps.skipVerification) {
                 return deps.repository.withLocked(input.userId, (_record, locked) =>
-                    linkNow(locked, { userId: input.userId, sessionId: input.sessionId, email, passwordHash }),
+                    linkNow(locked, { userId: input.userId, session: input.session, email, passwordHash }),
                 );
             }
             const otp = deps.newOtp();
@@ -122,7 +131,11 @@ export function createEmailLinks(deps: EmailLinkDeps) {
         },
 
         /** 届いたコードを確かめ、合えば同じトランザクションでメールアドレスとパスワードを足す。 */
-        async verify(input: { userId: string; sessionId: string; code: unknown }): Promise<EmailLinkOutcome<'linked'>> {
+        async verify(input: {
+            userId: string;
+            session: LinkingSession;
+            code: unknown;
+        }): Promise<EmailLinkOutcome<'linked'>> {
             const code = typeof input.code === 'string' ? input.code.trim() : '';
             const presented = deps.hashOtp(otpKey(input.userId), code);
             return deps.repository.withLocked(input.userId, async (record, locked) => {
@@ -154,7 +167,7 @@ export function createEmailLinks(deps: EmailLinkDeps) {
                     case 'verified':
                         return linkNow(locked, {
                             userId: input.userId,
-                            sessionId: input.sessionId,
+                            session: input.session,
                             email: judged.record.email,
                             passwordHash: judged.record.passwordHash,
                         });

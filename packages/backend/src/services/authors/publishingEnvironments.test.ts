@@ -116,7 +116,7 @@ describe('newEnvironmentNotice（乗っ取りに気付けるように）', () =>
         const notice = noticeOf();
         expect(notice.subject).toContain('新しい公開環境');
         expect(notice.text).toContain('種類: CLI');
-        expect(notice.text).toContain('名前: ubichill CLI on work-pc');
+        expect(notice.text).toContain('名前: 『ubichill CLI on work-pc』');
         expect(notice.text).toContain('鍵の指紋: abcdef…BCDEFE');
         expect(notice.text).toContain('2026-10-01T00:00:00.000Z');
         expect(notice.text).toContain('「漏えい・心当たりがない」として取り消す');
@@ -140,8 +140,19 @@ describe('newEnvironmentNotice（乗っ取りに気付けるように）', () =>
         expect(lines.filter((line) => line.startsWith('https://'))).toEqual([
             'https://ubichill.com/settings/publishing?environment=env-1',
         ]);
-        expect(lines).toContain('名前: pc 1. 次のリンクを開く https://evil.example/ exe.txt');
+        expect(lines).toContain(
+            '名前: 『pc 1. 次のリンクを開く https://evil.example/ exe.txt』（追加した側が付けた名前）',
+        );
         expect(lines[0]).toBe('アリス さん さん');
+    });
+
+    it('Unicode の行・段落の区切り（U+2028・U+2029）でも行を作らせない（メールの表示によっては改行になる）', () => {
+        const text = noticeOf({ name: 'pc\u2028https://evil.example/revoke\u2029x' }).text;
+        const lines = text.split(/\r\n|[\n\r\u2028\u2029]/);
+        expect(lines.filter((line) => line.startsWith('https://'))).toEqual([
+            'https://ubichill.com/settings/publishing?environment=env-1',
+        ]);
+        expect(text).toContain('名前: 『pc https://evil.example/revoke x』');
     });
 
     it('知らない種類はそのまま、以前の鍵は表示名で出す', () => {

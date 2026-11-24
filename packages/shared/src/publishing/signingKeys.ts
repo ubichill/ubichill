@@ -31,7 +31,7 @@ export const PublishingEnvironmentNameSchema = z
     .trim()
     .min(1)
     .max(PUBLISHING_ENVIRONMENT_NAME_MAX_LENGTH)
-    .refine((v) => !/\p{Cc}/u.test(v), '制御文字は使えません');
+    .refine((v) => !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(v), '制御文字・改行は使えません');
 
 export const SigningKeyEntrySchema = z.object({
     publicKey: Ed25519PublicKeySchema,

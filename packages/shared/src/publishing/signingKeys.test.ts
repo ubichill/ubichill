@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     activeSigningKeys,
     normalizeEd25519PublicKey,
+    PublishingEnvironmentNameSchema,
     parseSigningKeyList,
     publishingEnvironmentSettingsPath,
     signingKeyFingerprint,
@@ -124,5 +125,14 @@ describe('publishingEnvironmentSettingsPath', () => {
         expect(publishingEnvironmentSettingsPath('a&b=c/../x')).toBe(
             '/settings/publishing?environment=a%26b%3Dc%2F..%2Fx',
         );
+    });
+});
+
+describe('PublishingEnvironmentNameSchema', () => {
+    it('改行・制御文字・Unicode の行と段落の区切りを含む名前は受け付けない（通知のメールに行を作らせない）', () => {
+        expect(PublishingEnvironmentNameSchema.safeParse('ubichill CLI on work-pc').success).toBe(true);
+        for (const name of ['a\nb', 'a\rb', 'a\u0000b', 'a\u2028https://evil.example/', 'a\u2029b']) {
+            expect(PublishingEnvironmentNameSchema.safeParse(name).success).toBe(false);
+        }
     });
 });

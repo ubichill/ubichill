@@ -154,7 +154,7 @@ export function LoginMethodsSection({
                     <p className={settingsNote}>
                         メールアドレスを追加しておくと、使っているサーバーが止まってもログインでき、お知らせもメールで届きます。
                     </p>
-                    <EmailLinkForm onLinked={emailLinked} />
+                    <EmailLinkForm methods={methods} onLinked={emailLinked} onReauthenticated={onChanged} />
                 </>
             )}
         </section>
