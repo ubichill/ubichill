@@ -63,3 +63,7 @@ worlds/*.sig.json
 
 # スモーク（packages/e2e）の結果・スクリーンショット
 packages/e2e/smoke-results/
+
+# host-ui の skill の一時ページ（DB なしで画面を撮る）
+packages/frontend/zz-preview-*
+packages/frontend/src/zz-preview-*
