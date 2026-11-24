@@ -344,6 +344,13 @@
       "when": 1795396549873,
       "tag": "0048_world_visibility",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1795492506481,
+      "tag": "0049_mod_favorites",
+      "breakpoints": true
     }
   ]
 }

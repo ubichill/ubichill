@@ -8,11 +8,13 @@ import {
     type FavoritesVisibility,
     LIMITS,
     needsFriendCheck,
+    type PackageDescriptor,
     type WorldListItem,
 } from '@ubichill/shared';
 import { createTtlCache } from '../../utils/ttlCache';
 import { backendEvents } from '../cluster/backendEvents';
 import { federation } from '../federation';
+import { modFavoriteService } from '../mods/modFavoriteService';
 import { notificationService, notifyInBackground } from '../notifications/notificationService';
 import { favoriteRefOf, resolveFavoriteWorlds } from './favorites';
 import { worldRegistry } from './worldRegistry';
@@ -37,7 +39,7 @@ const changed = (userId: string): void => {
 export type AddFavoriteOutcome = { ok: true; worldRef: string } | { ok: false; status: 400 | 409; error: string };
 
 export type PublicFavoritesOutcome =
-    | { ok: true; worlds: WorldListItem[]; visibility: FavoritesVisibility }
+    | { ok: true; worlds: WorldListItem[]; mods: PackageDescriptor[]; visibility: FavoritesVisibility }
     | { ok: false; reason: 'not-found' | 'hidden' };
 
 export const favoriteService = {
@@ -81,7 +83,7 @@ export const favoriteService = {
         federation?.featuredChanged(userId);
     },
 
-    /** ほかの人に見せる一覧。公開範囲を絞っているなら、見てよい人以外には中身も件数も返さない。 */
+    /** ほかの人に見せる一覧（ワールドと mod）。公開範囲を絞っているなら、見てよい人以外には中身も件数も返さない。 */
     async visibleTo(viewerId: string | undefined, userId: string): Promise<PublicFavoritesOutcome> {
         const user = await userRepository.findById(userId);
         if (!user) return { ok: false, reason: 'not-found' };
@@ -92,9 +94,12 @@ export const favoriteService = {
                 ? await userFriendRepository.areFriends(viewerId, user.id)
                 : false;
         if (!canViewFavorites(visibility, { isOwner, isFriend })) return { ok: false, reason: 'hidden' };
-        const { worlds } = await publicFavoritesCache.getOrCreate(user.id, async () =>
-            resolveWorlds(await favoriteRepository.list(user.id)),
-        );
-        return { ok: true, worlds, visibility };
+        const [{ worlds }, mods] = await Promise.all([
+            publicFavoritesCache.getOrCreate(user.id, async () =>
+                resolveWorlds(await favoriteRepository.list(user.id)),
+            ),
+            modFavoriteService.visible(user.id),
+        ]);
+        return { ok: true, worlds, mods, visibility };
     },
 };

@@ -28,7 +28,7 @@ router.get('/:userId/favorites', optionalAuth, async (req, res) => {
             : res.status(403).json({ error: 'このユーザーのお気に入りは公開されていません', code: 'favorites-hidden' });
     }
     res.set('Cache-Control', 'private, no-store');
-    return res.json({ worlds: outcome.worlds, visibility: outcome.visibility });
+    return res.json({ worlds: outcome.worlds, mods: outcome.mods, visibility: outcome.visibility });
 });
 
 // 作ったワールド（公開メタデータのみ。署名して公開したもの・リポジトリ・外部）

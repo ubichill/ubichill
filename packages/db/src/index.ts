@@ -56,6 +56,7 @@ export {
 } from './repositories/fediverseAccountRepository';
 export { instanceRepository } from './repositories/instanceRepository';
 export { type InviteRecord, inviteRepository } from './repositories/inviteRepository';
+export { type AddModFavoriteOutcome, modFavoriteRepository } from './repositories/modFavoriteRepository';
 export {
     type CreateNotificationInput,
     type NotificationRecord,

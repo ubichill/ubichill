@@ -188,6 +188,20 @@ export const userFavorites = pgTable(
     (table) => [primaryKey({ columns: [table.userId, table.worldRef] })],
 );
 
+/** お気に入りの mod。カタログと同じく作者（handle@domain）と mod の ID で指す（版・取得先は持たない）。 */
+export const userModFavorites = pgTable(
+    'user_mod_favorites',
+    {
+        userId: text('user_id')
+            .notNull()
+            .references(() => users.id, { onDelete: 'cascade' }),
+        author: text('author').notNull(),
+        modId: text('mod_id').notNull(),
+        createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    },
+    (table) => [primaryKey({ columns: [table.userId, table.author, table.modId] })],
+);
+
 export const usersRelations = relations(users, ({ one, many }) => ({
     settings: one(userSettings),
     profile: one(userProfiles),
