@@ -2,7 +2,6 @@ import {
     DEFAULT_SERVER_DESCRIPTION,
     DEFAULT_SERVER_INFO,
     type ServerInfo,
-    type ServerOverview,
     safeReturnTo,
     UBICHILL_REPOSITORY_URL,
     type WorldListItem,
@@ -22,8 +21,8 @@ import {
     type FediverseSignInOptions,
     fetchFediverseSignInOptions,
 } from '@/lib/account/fediverseSignIn';
-import { fetchLocalWorlds, fetchServerOverview } from '@/lib/server/serverInfo';
-import { css, cx } from '@/styled-system/css';
+import { fetchLocalWorlds, loadServerOverview, useServerOverview } from '@/lib/server/serverInfo';
+import { css, cva, cx } from '@/styled-system/css';
 
 /** 並べるワールドの数（多いサーバーでも紹介のページを長くしない） */
 const SHOWCASE_WORLDS = 12;
@@ -47,16 +46,14 @@ export function VisitorPage({ entry }: { entry: AuthEntry }) {
     const location = useLocation();
     // null は読み込み中（届くまで見えなくしておき、既定の名前から切り替わって見えないようにする）。
     // 読めなければ 'failed'（分からない人数・登録の受け付けは出さない）
-    const [overview, setOverview] = useState<ServerOverview | 'failed' | null>(null);
+    const overview = useServerOverview();
     const [worlds, setWorlds] = useState<WorldListItem[] | null>(null);
     const [fediverse, setFediverse] = useState<FediverseSignInOptions | null>(null);
     // 二段階目の期限が切れてログインからやり直すときの理由
     const [restartMessage, setRestartMessage] = useState('');
 
     useEffect(() => {
-        fetchServerOverview()
-            .then(setOverview)
-            .catch(() => setOverview('failed'));
+        void loadServerOverview();
         fetchLocalWorlds()
             .then(setWorlds)
             .catch(() => setWorlds([]));
@@ -67,6 +64,7 @@ export function VisitorPage({ entry }: { entry: AuthEntry }) {
 
     const loaded = overview !== null && overview !== 'failed' ? overview : null;
     const info = loaded?.info ?? DEFAULT_SERVER_INFO;
+    const banner = loaded?.branding?.banner ?? null;
     // 新規登録を受け付けているか（読めなければ受け付けている扱い。止めていれば登録の応答が理由を返す）
     const registrationOpen = overview === 'failed' || loaded?.registrationOpen !== false;
     const pending = overview === null || fediverse === null;
@@ -108,52 +106,70 @@ export function VisitorPage({ entry }: { entry: AuthEntry }) {
             <main className={page} inert={entry.dialog !== null}>
                 <div className={cx(layout, pending && hidden)} aria-busy={pending}>
                     <section className={hero} aria-labelledby="server-name">
-                        <img src="/icon.png" alt="" width={72} height={72} className={icon} />
-                        <h1 id="server-name" className={name}>
-                            {info.name}
-                        </h1>
-                        <p className={description}>{info.description ?? DEFAULT_SERVER_DESCRIPTION}</p>
-                        {entry.adding && <p className={note}>追加するアカウントでログインしてください</p>}
-                        <div className={actions}>
-                            {loaded?.registrationOpen && (
-                                <button type="button" className={primaryAction} onClick={() => showDialog('register')}>
-                                    新規登録
+                        {banner && <img src={banner} alt="" width={1200} height={630} className={bannerImage} />}
+                        <div className={heroBody}>
+                            <img
+                                src={loaded?.branding?.icon?.icon192 ?? '/icon.png'}
+                                alt=""
+                                width={72}
+                                height={72}
+                                className={icon({ overBanner: !!banner })}
+                            />
+                            <h1 id="server-name" className={name}>
+                                {info.name}
+                            </h1>
+                            <p className={description}>{info.description ?? DEFAULT_SERVER_DESCRIPTION}</p>
+                            {entry.adding && <p className={note}>追加するアカウントでログインしてください</p>}
+                            <div className={actions}>
+                                {loaded?.registrationOpen && (
+                                    <button
+                                        type="button"
+                                        className={primaryAction}
+                                        onClick={() => showDialog('register')}
+                                    >
+                                        新規登録
+                                    </button>
+                                )}
+                                <button type="button" className={secondaryAction} onClick={() => showDialog('login')}>
+                                    ログイン
+                                </button>
+                            </div>
+                            {loaded?.registrationOpen === false && (
+                                <p className={note}>いまは新規登録を受け付けていません。</p>
+                            )}
+                            {fediverse?.enabled && (
+                                <>
+                                    <div className={dividerStyle} role="separator">
+                                        または
+                                    </div>
+                                    <FediverseSignInPanel
+                                        returnTo={returnTo}
+                                        featuredServers={fediverse.featuredServers}
+                                    />
+                                </>
+                            )}
+                            {entry.adding && (
+                                <button type="button" className={linkButtonStyle} onClick={() => navigate('/')}>
+                                    今のアカウントに戻る
                                 </button>
                             )}
-                            <button type="button" className={secondaryAction} onClick={() => showDialog('login')}>
-                                ログイン
-                            </button>
+                            {loaded && (
+                                <dl className={stats}>
+                                    <div className={stat}>
+                                        <dt className={statLabel}>ユーザー</dt>
+                                        <dd className={statValue}>{loaded.stats.users.toLocaleString('ja-JP')}</dd>
+                                    </div>
+                                    <div className={stat}>
+                                        <dt className={statLabel}>ワールド</dt>
+                                        {/* 一覧が届くまでは 0 と出さない */}
+                                        <dd className={statValue}>
+                                            {worlds ? worlds.length.toLocaleString('ja-JP') : ''}
+                                        </dd>
+                                    </div>
+                                </dl>
+                            )}
+                            <ServerFacts info={info} />
                         </div>
-                        {loaded?.registrationOpen === false && (
-                            <p className={note}>いまは新規登録を受け付けていません。</p>
-                        )}
-                        {fediverse?.enabled && (
-                            <>
-                                <div className={dividerStyle} role="separator">
-                                    または
-                                </div>
-                                <FediverseSignInPanel returnTo={returnTo} featuredServers={fediverse.featuredServers} />
-                            </>
-                        )}
-                        {entry.adding && (
-                            <button type="button" className={linkButtonStyle} onClick={() => navigate('/')}>
-                                今のアカウントに戻る
-                            </button>
-                        )}
-                        {loaded && (
-                            <dl className={stats}>
-                                <div className={stat}>
-                                    <dt className={statLabel}>ユーザー</dt>
-                                    <dd className={statValue}>{loaded.stats.users.toLocaleString('ja-JP')}</dd>
-                                </div>
-                                <div className={stat}>
-                                    <dt className={statLabel}>ワールド</dt>
-                                    {/* 一覧が届くまでは 0 と出さない */}
-                                    <dd className={statValue}>{worlds ? worlds.length.toLocaleString('ja-JP') : ''}</dd>
-                                </div>
-                            </dl>
-                        )}
-                        <ServerFacts info={info} />
                     </section>
 
                     {worlds && worlds.length > 0 && (
@@ -274,16 +290,28 @@ const layout = css({
 const hero = css({
     display: 'flex',
     flexDirection: 'column',
-    alignItems: 'center',
-    gap: '4',
-    p: { base: '6', sm: '8' },
     bg: 'white',
     border: '1px solid',
     borderColor: 'border',
     rounded: 'lg',
+    overflow: 'hidden',
+});
+const bannerImage = css({ display: 'block', w: 'full', h: 'auto', aspectRatio: '1200 / 630', objectFit: 'cover' });
+const heroBody = css({
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '4',
+    p: { base: '6', sm: '8' },
     textAlign: 'center',
 });
-const icon = css({ borderRadius: '16px' });
+const icon = cva({
+    base: { borderRadius: '16px', bg: 'white' },
+    variants: {
+        // バナーの下の端に重ねる（プロフィールのアイコンと同じ置き方）
+        overBanner: { true: { mt: { base: '-60px', sm: '-68px' }, border: '4px solid', borderColor: 'white' } },
+    },
+});
 const name = css({
     fontSize: { base: '2xl', sm: '3xl' },
     fontWeight: 'bold',

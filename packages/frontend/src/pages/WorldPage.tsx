@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { PRIVATE_WORLD_START_MESSAGE } from '@/components/worlds/useNewInstance';
 import { signInPath } from '@/lib/account/authEntry';
+import { shortNameOf, useServerOverview } from '@/lib/server/serverInfo';
 import { useSession } from '@/lib/session';
 import { createInstance, fetchInstances, fetchWorld } from '@/lib/worlds/instancesApi';
 import { localWorldPagePath } from '@/lib/worlds/worldRef';
@@ -70,10 +71,12 @@ export function WorldPage() {
 
     // クライアント側メタ（タブ名 + JS 実行するクローラ向け）。
     // リンクプレビュー bot 向けの OGP は BFF が担う。
+    const site = useServerOverview();
+    const siteName = site && site !== 'failed' ? shortNameOf(site) : 'ubichill';
     useEffect(() => {
         if (!world) return;
         const prevTitle = document.title;
-        document.title = `${world.displayName} — ubichill`;
+        document.title = `${world.displayName} — ${siteName}`;
         const setMeta = (attr: 'name' | 'property', key: string, content: string) => {
             const sel = `meta[${attr}="${key}"]`;
             let el = document.head.querySelector<HTMLMetaElement>(sel);
@@ -92,7 +95,7 @@ export function WorldPage() {
         return () => {
             document.title = prevTitle;
         };
-    }, [world]);
+    }, [world, siteName]);
 
     const requireAuthThenGo = (next: () => void) => {
         if (isPending) return;
@@ -215,6 +218,8 @@ export function WorldPage() {
 }
 
 function Header() {
+    const site = useServerOverview();
+    const loaded = site && site !== 'failed' ? site : null;
     return (
         <header
             className={css({
@@ -239,8 +244,14 @@ function Header() {
                     color: 'text',
                 })}
             >
-                <img src="/icon.png" alt="" className={css({ width: '32px', height: '32px', borderRadius: '8px' })} />
-                <span className={css({ fontSize: 'xl', fontWeight: '700' })}>ubichill</span>
+                <img
+                    src={loaded?.branding?.icon?.icon192 ?? '/icon.png'}
+                    alt=""
+                    className={css({ width: '32px', height: '32px', borderRadius: '8px' })}
+                />
+                <span className={css({ fontSize: 'xl', fontWeight: '700' })}>
+                    {loaded ? shortNameOf(loaded) : 'ubichill'}
+                </span>
             </a>
         </header>
     );

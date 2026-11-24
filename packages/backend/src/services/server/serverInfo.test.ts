@@ -1,4 +1,4 @@
-import { DEFAULT_SERVER_INFO, type ServerInfo } from '@ubichill/shared';
+import { DEFAULT_SERVER_BRANDING, DEFAULT_SERVER_INFO, type ServerInfo } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
 import { createServerInfo } from './serverInfo';
 
@@ -12,6 +12,7 @@ function setup(initial: (ServerInfo & { updatedAt: Date }) | null = null) {
             },
         },
         countPeople: async () => 12,
+        branding: async () => DEFAULT_SERVER_BRANDING,
         registrationOpen: true,
     });
     return { service, store };
@@ -23,6 +24,7 @@ describe('createServerInfo', () => {
         expect(await service.settings()).toEqual({ info: DEFAULT_SERVER_INFO, updatedAt: null });
         expect(await service.overview()).toEqual({
             info: DEFAULT_SERVER_INFO,
+            branding: DEFAULT_SERVER_BRANDING,
             registrationOpen: true,
             stats: { users: 12 },
         });

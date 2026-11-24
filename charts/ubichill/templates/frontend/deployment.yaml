@@ -68,6 +68,12 @@ spec:
         - name: PUBLIC_BASE_URL
           value: {{ printf "https://%s" .Values.global.domain | quote }}
         {{- end }}
+        # 検索に載せてよいか（本番だけ）を BFF が決める環境。backend の NODE_ENV（/api/version の environment）と同じ値を渡す。
+        # frontend のイメージは Express のために NODE_ENV=production 固定なので、それでは dev・プレビューを見分けられない
+        {{- if not (hasKey (.Values.frontend.env | default dict) "DEPLOYMENT_ENVIRONMENT") }}
+        - name: DEPLOYMENT_ENVIRONMENT
+          value: {{ .Values.backend.env.NODE_ENV | default "production" | quote }}
+        {{- end }}
         {{- range $key, $value := .Values.frontend.env }}
         - name: {{ $key }}
           value: {{ $value | quote }}

@@ -66,6 +66,7 @@ frontend:
     enabled: false  # Disable HPA in dev
   
   # BACKEND_HOST / BACKEND_PORT は deployment.yaml テンプレートで自動注入
+  # DEPLOYMENT_ENVIRONMENT（検索に載せるか）は backend.env.NODE_ENV（development）から自動で渡る（dev・プレビューは noindex）
   env: {}
 
 redis:

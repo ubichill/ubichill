@@ -167,6 +167,7 @@ describe('プロフィールの API', () => {
                 languages: ['ja', 'en'],
                 // 編集のあとも公開のロールを返す（画面のバッジが消えない）
                 roles: [{ id: 'r1', name: 'スタッフ', color: '#ff8800' }],
+                discoverable: true,
             });
             expect(users.rows.get('u2')?.status).toBeNull();
         });
