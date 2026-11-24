@@ -18,7 +18,7 @@ import {
     sql,
 } from 'drizzle-orm';
 import { type Database, db } from '../index';
-import { accounts, externalAccountProfiles, sessions, userProfiles, users } from '../schema';
+import { accounts, externalAccountProfiles, sessions, userProfiles, userSettings, users } from '../schema';
 import { type InsertCredentialUserOutcome, insertCredentialUser, type NewCredentialUser } from './credentialUser';
 import { removeUserRows } from './userRemoval';
 
@@ -372,6 +372,25 @@ export const userRepository = {
             .where(and(...(options.excludeIds ?? []).map((id) => ne(users.id, id))))
             .orderBy(desc(users.createdAt), asc(users.id))
             .limit(options.limit);
+    },
+
+    /**
+     * 検索に出してよい人のページ（sitemap）。「おすすめや検索に出す」をオフにした人とシステムのアカウントは除く
+     * （設定の行が無い人は既定のオン）。プロフィールを最近変えた順に limit 人まで。
+     */
+    async listDiscoverable(limit: number): Promise<Array<{ handle: string; updatedAt: Date }>> {
+        return db
+            .select({ handle: users.handle, updatedAt: users.updatedAt })
+            .from(users)
+            .leftJoin(userSettings, eq(userSettings.userId, users.id))
+            .where(
+                and(
+                    ne(users.handle, SYSTEM_USER_HANDLE),
+                    or(isNull(userSettings.fediverseDiscoverable), eq(userSettings.fediverseDiscoverable, true)),
+                ),
+            )
+            .orderBy(desc(users.updatedAt), asc(users.handle))
+            .limit(limit);
     },
 
     /** 登録している人の数（システムのアカウントを除く） */

@@ -5,6 +5,9 @@
 import { accountDeletionRepository, fediverseAccountRepository, userRepository } from '@ubichill/db';
 import { OFFICIAL_HANDLE } from '@ubichill/shared';
 
+/** sitemap に載せる人の数の上限（sitemap 1 つは 5 万件まで。ワールドと合わせても収まる数にする） */
+const DIRECTORY_LIMIT = 10_000;
+
 export const userService = {
     byId: (id: string) => userRepository.findById(id),
     byHandle: (handle: string) => userRepository.findByHandle(handle),
@@ -15,6 +18,8 @@ export const userService = {
     async isHandleTaken(handle: string): Promise<boolean> {
         return !!(await userRepository.findByHandle(handle)) || accountDeletionRepository.isHandleRetired(handle);
     },
+    /** 検索に出してよい人（「おすすめや検索に出す」をオフにした人を除く。最近変えた順） */
+    discoverable: () => userRepository.listDiscoverable(DIRECTORY_LIMIT),
     /** プロフィールの項目つき（公開プロフィール・自分の情報の元） */
     profileById: (id: string) => userRepository.findProfileById(id),
 

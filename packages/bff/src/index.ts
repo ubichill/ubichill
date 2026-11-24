@@ -5,22 +5,27 @@ import {
     HANDLE_PATTERN,
     type Instance,
     SERVER_CONFIG,
+    type ServerOverview,
     type WorldListItem,
-    worldShareUrl,
 } from '@ubichill/shared';
 import express from 'express';
-import { esc } from './html';
+import { buildRobotsTxt, buildSitemap, isWorldIndexable, sharePageUrl, sitemapEntries } from './crawl';
+import { MANIFEST_PATH, plainPageTags, siteHeadTags } from './head';
+import { buildLandingTags } from './landing';
+import { buildManifest } from './manifest';
 import { buildMetaTags, buildUserMetaTags, type UserPreview } from './ogp';
+import { createRefreshing } from './refreshing';
+import { renderShell } from './shell';
+import { type Site, siteOf } from './site';
 import { staticAssetHeaders } from './staticHeaders';
 import { renderWorldShell } from './worldShell';
 
 /**
  * BFF（Backend For Frontend）— フロント配信層。
  *
- * - SPA（Vite ビルド）を配信する。
- * - `/world/:id` は core API からワールド情報＋インスタンス一覧を取り、index.html の <head> に
- *   OGP / Twitter / JSON-LD を、<body> に SSR シェルを注入する（bot も人間も同一 HTML＝
- *   UA 判定・クローキング不要）。
+ * - SPA（Vite ビルド）を配信する。どのページの <head> にも、サーバーのアイコン・manifest・テーマの色を入れる。
+ * - `/` は紹介のページの OGP / JSON-LD、`/world/:id`・`/@handle/name` は core API からワールド情報＋インスタンス一覧を取り、
+ *   OGP / Twitter / JSON-LD を、<body> に SSR シェルを注入する（bot も人間も同一 HTML＝UA 判定・クローキング不要）。
  * - core backend は `/api`、インスタンス通信は Go の `/realtime/v1/ws`（いずれも Ingress が直接ルーティング）。
  */
 
@@ -39,12 +44,10 @@ const ENABLE_CRAWL = process.env.NODE_ENV === 'production';
 const app = express();
 
 /** index.html はデプロイ毎に不変なので一度だけ読んでキャッシュする（ホットパス）。 */
-let _indexHtml: string | undefined;
+const indexHtmlCache: { html?: string } = {};
 function readIndexHtml(): string {
-    if (_indexHtml === undefined) {
-        _indexHtml = fs.readFileSync(path.join(DIST, 'index.html'), 'utf-8');
-    }
-    return _indexHtml;
+    indexHtmlCache.html ??= fs.readFileSync(path.join(DIST, 'index.html'), 'utf-8');
+    return indexHtmlCache.html;
 }
 
 /**
@@ -64,6 +67,37 @@ async function fetchJson<T>(url: string, timeoutMs = 3000): Promise<T | undefine
         clearTimeout(timer);
     }
 }
+
+// サーバーの名前・ブランディング。管理者が変えてから、ほかの BFF にも 30 秒で届く
+const siteSource = createRefreshing({
+    load: () => fetchJson<ServerOverview>(`${CORE_API_URL}/api/v1/server`, 1500),
+    ttlMs: 30_000,
+    retryMs: 5_000,
+});
+const currentSite = async (): Promise<Site> => siteOf(await siteSource.get(), PUBLIC_BASE_URL);
+
+// sitemap はワールドを全部解決して作るので重い。1 時間覚えておく
+const sitemapXml = createRefreshing({
+    load: async () => {
+        const [worlds, directory] = await Promise.all([
+            fetchJson<{ worlds?: WorldListItem[] }>(`${CORE_API_URL}/api/v1/worlds?scope=local`, 10_000),
+            fetchJson<{ users?: Array<{ handle: string; updatedAt?: string }> }>(
+                `${CORE_API_URL}/api/v1/server/directory`,
+                10_000,
+            ),
+        ]);
+        if (!worlds || !directory) return undefined;
+        return buildSitemap(
+            sitemapEntries({
+                publicBaseUrl: PUBLIC_BASE_URL,
+                worlds: worlds.worlds ?? [],
+                users: directory.users ?? [],
+            }),
+        );
+    },
+    ttlMs: 60 * 60 * 1000,
+    retryMs: 60 * 1000,
+});
 
 interface WorldPageData {
     world: WorldListItem | undefined;
@@ -85,31 +119,62 @@ async function fetchWorldPageData(worldRef: string): Promise<WorldPageData> {
     return { world, instances: instancesRes?.instances ?? [] };
 }
 
-/**
- * index.html の <head> に meta を注入し、<body> 内の root 要素に SSR シェルを注入する。
- * 置換値は関数リプレーサで渡す。文字列リプレーサだと metaTags/bodyShell 内の `$&` `$'`
- * などが String.replace に特殊解釈され、HTML が壊れる/意図しない断片が混入するため。
- */
-function renderShell(metaTags: string, bodyShell: string): string {
-    return readIndexHtml()
-        .replace(/<title>.*?<\/title>/i, '')
-        .replace('</head>', () => `${metaTags}\n</head>`)
-        .replace(/<div id="root"><\/div>/, () => `<div id="root">${bodyShell}</div>`);
+/** SPA の HTML に、どのページにも入れるもの（アイコン・manifest・色）とページの <head>・SSR シェルを入れて返す。 */
+function sendPage(res: express.Response, site: Site, pageTags: string, bodyShell = '', status = 200): void {
+    res.status(status)
+        // 管理者が名前・アイコン・色を変えたら、次に開いたときに出るよう毎回確かめさせる
+        .set('Cache-Control', 'no-cache')
+        .type('html')
+        .send(renderShell(readIndexHtml(), `${siteHeadTags(site)}\n${pageTags}`, bodyShell));
 }
+
+/** 素の SPA（サーバー名だけのタイトル）。ページの情報を作れなかったときにも使う。 */
+async function sendPlainPage(res: express.Response, status = 200): Promise<void> {
+    const site = await currentSite();
+    sendPage(res, site, plainPageTags(site, ENABLE_CRAWL), '', status);
+}
+
+// 本番以外は、HTML 以外（画像・manifest など）も検索に載せない
+if (!ENABLE_CRAWL) {
+    app.use((_req, res, next) => {
+        res.set('X-Robots-Tag', 'noindex, nofollow');
+        next();
+    });
+}
+
+// 紹介のページ（ログインしていない人の /）。ログインしている人には SPA がホームを出す（HTML は同じ）
+app.get('/', async (_req, res) => {
+    const site = await currentSite();
+    sendPage(res, site, buildLandingTags(site, ENABLE_CRAWL));
+});
+
+app.get(MANIFEST_PATH, async (_req, res) => {
+    res.set('Cache-Control', 'no-cache')
+        .type('application/manifest+json')
+        .send(JSON.stringify(buildManifest(await currentSite())));
+});
+
+// <link rel="icon"> を読まないクライアント（フィードリーダーなど）が見に来る場所
+app.get('/favicon.ico', async (_req, res) => {
+    const site = await currentSite();
+    res.set('Cache-Control', 'no-cache').redirect(302, site.icon?.favicon ?? site.defaultIcon);
+});
 
 /** 外部 YAML の共有ページ。ワールド/サーバーの事前登録は不要。 */
 app.get('/world', async (req, res) => {
     const worldRef = typeof req.query.url === 'string' ? req.query.url.trim() : '';
     if (!/^https?:\/\//i.test(worldRef)) {
-        res.status(400).type('html').send(readIndexHtml());
+        await sendPlainPage(res, 400);
         return;
     }
     try {
-        const { world, instances } = await fetchWorldPageData(worldRef);
+        const [site, { world, instances }] = await Promise.all([currentSite(), fetchWorldPageData(worldRef)]);
         // 作者が確かめられ登録されたワールドは、短い共有ページ（/@handle/name）を正規の URL にする
-        const pageUrl = sharePageUrl(world) ?? `${PUBLIC_BASE_URL}/world?url=${encodeURIComponent(worldRef)}`;
+        const pageUrl =
+            sharePageUrl(world, PUBLIC_BASE_URL) ?? `${PUBLIC_BASE_URL}/world?url=${encodeURIComponent(worldRef)}`;
         const worldId = world?.id ?? 'external-world';
         const tags = buildMetaTags({
+            site,
             world,
             worldId,
             publicBaseUrl: PUBLIC_BASE_URL,
@@ -118,23 +183,41 @@ app.get('/world', async (req, res) => {
             enableCrawl: false,
         });
         const bodyShell = renderWorldShell({
+            site,
             world,
             instances,
             publicBaseUrl: PUBLIC_BASE_URL,
             coreApiUrl: CORE_API_URL,
         });
-        res.type('html').send(renderShell(tags, bodyShell));
+        sendPage(res, site, tags, bodyShell);
     } catch (err) {
         console.error('外部ワールド OGP/SSR 生成失敗:', err);
-        res.type('html').send(readIndexHtml());
+        await sendPlainPage(res);
     }
 });
 
-/** ワールドの共有 URL（`/@handle/name`）。外部のワールドは作者が登録したもの（sharePath）だけ。無ければ undefined。 */
-function sharePageUrl(world: WorldListItem | undefined): string | undefined {
-    if (world?.sharePath) return `${PUBLIC_BASE_URL}${world.sharePath}`;
-    const url = world ? worldShareUrl(world.url) : undefined;
-    return url?.startsWith(`${PUBLIC_BASE_URL}/@`) ? url : undefined;
+/** ワールドのページ（共有 URL・以前の ID の URL）。このサーバーのパブリックなワールドだけを検索に載せる。 */
+async function sendWorldPage(
+    res: express.Response,
+    page: { worldRef: string; worldId: (world: WorldListItem | undefined) => string; fallbackUrl?: string },
+) {
+    const [site, { world, instances }] = await Promise.all([currentSite(), fetchWorldPageData(page.worldRef)]);
+    const tags = buildMetaTags({
+        site,
+        world,
+        worldId: page.worldId(world),
+        publicBaseUrl: PUBLIC_BASE_URL,
+        pageUrl: sharePageUrl(world, PUBLIC_BASE_URL) ?? page.fallbackUrl,
+        enableCrawl: ENABLE_CRAWL && isWorldIndexable(world),
+    });
+    const bodyShell = renderWorldShell({
+        site,
+        world,
+        instances,
+        publicBaseUrl: PUBLIC_BASE_URL,
+        coreApiUrl: CORE_API_URL,
+    });
+    sendPage(res, site, tags, bodyShell);
 }
 
 // 公開ワールドページ（共有 URL /@handle/name）: OGP/JSON-LD/SSR シェルを注入した SPA シェルを全員に返す。
@@ -145,43 +228,35 @@ app.get('/@:handle/:name', async (req, res, next) => {
         return;
     }
     try {
-        const { world, instances } = await fetchWorldPageData(`@${handle}/${name}`);
-        const tags = buildMetaTags({
-            world,
-            worldId: world?.id ?? name,
-            publicBaseUrl: PUBLIC_BASE_URL,
-            pageUrl: sharePageUrl(world) ?? `${PUBLIC_BASE_URL}/@${handle}/${name}`,
-            // 外部のファイル（作者が登録したワールド）は、/world?url= と同じく公式の内容として検索に載せない
-            enableCrawl: ENABLE_CRAWL && world?.source.kind === 'local',
+        await sendWorldPage(res, {
+            worldRef: `@${handle}/${name}`,
+            worldId: (world) => world?.id ?? name,
+            fallbackUrl: `${PUBLIC_BASE_URL}/@${handle}/${name}`,
         });
-        const bodyShell = renderWorldShell({
-            world,
-            instances,
-            publicBaseUrl: PUBLIC_BASE_URL,
-            coreApiUrl: CORE_API_URL,
-        });
-        res.type('html').send(renderShell(tags, bodyShell));
     } catch (err) {
         console.error('OGP/SSR 生成失敗:', err);
-        res.type('html').send(readIndexHtml());
+        await sendPlainPage(res);
     }
 });
 
 /** ユーザーページの <head>（名前・アイコン・説明）を付けた SPA シェルを返す。 */
 async function sendUserPage(res: express.Response, user: UserPreview | undefined, handle: string): Promise<void> {
-    const worlds = user
-        ? await fetchJson<{ worlds?: unknown[] }>(`${CORE_API_URL}/api/v1/users/${encodeURIComponent(user.id)}/worlds`)
-        : undefined;
-    const pageUrl = `${PUBLIC_BASE_URL}/@${user?.handle ?? handle}`;
+    const [site, worlds] = await Promise.all([
+        currentSite(),
+        user
+            ? fetchJson<{ worlds?: unknown[] }>(`${CORE_API_URL}/api/v1/users/${encodeURIComponent(user.id)}/worlds`)
+            : undefined,
+    ]);
     const tags = buildUserMetaTags({
+        site,
         user,
         handle,
         worldCount: worlds?.worlds?.length,
         publicBaseUrl: PUBLIC_BASE_URL,
-        pageUrl,
+        pageUrl: `${PUBLIC_BASE_URL}/@${user?.handle ?? handle}`,
         enableCrawl: ENABLE_CRAWL,
     });
-    res.type('html').send(renderShell(tags, ''));
+    sendPage(res, site, tags);
 }
 
 // ユーザーページ（/@ID）。共有できるよう、ログインなしでも名前・アイコン・説明のプレビューを出す。
@@ -196,7 +271,7 @@ app.get('/@:handle', async (req, res, next) => {
         await sendUserPage(res, user, handle);
     } catch (err) {
         console.error('ユーザーページの OGP 生成失敗:', err);
-        res.type('html').send(readIndexHtml());
+        await sendPlainPage(res);
     }
 });
 
@@ -209,86 +284,39 @@ app.get('/user/:userId', async (req, res) => {
         await sendUserPage(res, user, user?.handle ?? req.params.userId);
     } catch (err) {
         console.error('ユーザーページの OGP 生成失敗:', err);
-        res.type('html').send(readIndexHtml());
+        await sendPlainPage(res);
     }
 });
 
 // 以前の共有 URL（/world/:id）。正規のページ URL は共有 URL（SPA が /@handle/name へ移す）
 app.get('/world/:worldId', async (req, res) => {
-    const worldId = req.params.worldId;
     try {
-        const { world, instances } = await fetchWorldPageData(worldId);
-        const tags = buildMetaTags({
-            world,
-            worldId,
-            publicBaseUrl: PUBLIC_BASE_URL,
-            pageUrl: sharePageUrl(world),
-            enableCrawl: ENABLE_CRAWL,
-        });
-        const bodyShell = renderWorldShell({
-            world,
-            instances,
-            publicBaseUrl: PUBLIC_BASE_URL,
-            coreApiUrl: CORE_API_URL,
-        });
-        res.type('html').send(renderShell(tags, bodyShell));
+        const worldId = req.params.worldId;
+        await sendWorldPage(res, { worldRef: worldId, worldId: () => worldId });
     } catch (err) {
         console.error('OGP/SSR 生成失敗:', err);
-        res.type('html').send(readIndexHtml());
+        await sendPlainPage(res);
     }
 });
 
-// robots.txt — 本番のみクロールを許可する。
 app.get('/robots.txt', (_req, res) => {
-    res.type('text/plain');
-    if (!ENABLE_CRAWL) {
-        res.send('User-agent: *\nDisallow: /');
-        return;
-    }
-    res.send(
-        'User-agent: *\n' +
-            'Allow: /world/\n' +
-            'Allow: /@\n' +
-            'Disallow: /api/\n' +
-            'Disallow: /realtime/\n' +
-            'Disallow: /instance/\n' +
-            'Disallow: /auth/\n' +
-            'Disallow: /worlds/new\n' +
-            'Disallow: /world/*/edit\n' +
-            `Sitemap: ${PUBLIC_BASE_URL}/sitemap.xml\n`,
-    );
+    res.set('Cache-Control', 'public, max-age=3600')
+        .type('text/plain')
+        .send(buildRobotsTxt({ enableCrawl: ENABLE_CRAWL, publicBaseUrl: PUBLIC_BASE_URL }));
 });
 
-// sitemap.xml — 本番のみ。core API の全ワールドを列挙する。
+// sitemap.xml — 本番のみ。紹介のページ・パブリックなワールド・検索に出してよい人のページ
 app.get('/sitemap.xml', async (_req, res) => {
     if (!ENABLE_CRAWL) {
         res.status(404).send();
         return;
     }
-    try {
-        const data = await fetchJson<{ worlds?: WorldListItem[] }>(`${CORE_API_URL}/api/v1/worlds`, 5000);
-        if (!data) {
-            res.status(500).send();
-            return;
-        }
-        const urls = (data.worlds ?? [])
-            .flatMap((w) => {
-                const loc = sharePageUrl(w);
-                return loc ? [{ loc, updatedAt: w.updatedAt }] : [];
-            })
-            .map((w) => {
-                const loc = w.loc;
-                const lastmod = w.updatedAt ? `    <lastmod>${esc(w.updatedAt)}</lastmod>\n` : '';
-                return `  <url>\n    <loc>${esc(loc)}</loc>\n${lastmod}  </url>`;
-            })
-            .join('\n');
-        res.type('application/xml').send(
-            `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>`,
-        );
-    } catch (err) {
-        console.error('sitemap 生成失敗:', err);
-        res.status(500).send();
+    const xml = await sitemapXml.get();
+    if (!xml) {
+        res.status(503).set('Retry-After', '60').send();
+        return;
     }
+    res.set('Cache-Control', 'public, max-age=3600').type('application/xml').send(xml);
 });
 
 // 静的アセット（Sandbox Worker の CSP、/mods は no-cache、ハッシュ付きは immutable）
@@ -304,8 +332,8 @@ app.use(
 );
 
 // SPA フォールバック（Express 5 は `'*'` パス不可のため最終 middleware で index.html を返す）
-app.use((_req, res) => {
-    res.type('html').send(readIndexHtml());
+app.use(async (_req, res) => {
+    await sendPlainPage(res);
 });
 
 app.listen(PORT, () => {

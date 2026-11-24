@@ -295,7 +295,9 @@ export { createModLock, lockedMods } from './schemas/modLock.schema';
 export * from './schemas/url.schema';
 export { withoutWorldLock } from './schemas/world.schema';
 export * from './schemas/worldVisibility.schema';
+export * from './server/branding';
 export * from './server/serverInfo';
+export * from './server/themeColor';
 export {
     confirmEnvelopeAuthor,
     type EnvelopeInvalidReason,

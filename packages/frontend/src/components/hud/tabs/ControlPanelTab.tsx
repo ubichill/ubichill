@@ -2,6 +2,7 @@ import {
     AdminUsersSection,
     AnnouncementSection,
     BotProtectionSection,
+    BrandingSection,
     FediverseServersSection,
     RolesSection,
     ServerInfoSection,
@@ -12,10 +13,11 @@ import {
 import { css } from '@/styled-system/css';
 import { SplitTab, type SplitTabItem } from './SplitTab';
 
-export type ControlPanelSection = 'general' | 'users' | 'roles' | 'auth' | 'federation' | 'announcements';
+export type ControlPanelSection = 'general' | 'branding' | 'users' | 'roles' | 'auth' | 'federation' | 'announcements';
 
 const SECTIONS: ReadonlyArray<SplitTabItem<ControlPanelSection>> = [
     { id: 'general', label: '全般', icon: 'gear' },
+    { id: 'branding', label: 'ブランディング', icon: 'palette' },
     { id: 'users', label: 'ユーザー', icon: 'users' },
     { id: 'roles', label: 'ロール', icon: 'tag' },
     { id: 'auth', label: '認証', icon: 'key' },
@@ -23,7 +25,10 @@ const SECTIONS: ReadonlyArray<SplitTabItem<ControlPanelSection>> = [
     { id: 'announcements', label: 'お知らせ', icon: 'megaphone' },
 ];
 
-/** コントロールパネル（管理者だけ）。全般（サーバーの情報・1 人あたりの容量）・ユーザーとロール・認証・連合・お知らせを左で切り替える。 */
+/**
+ * コントロールパネル（管理者だけ）。全般（サーバーの情報・1 人あたりの容量）・ブランディング・ユーザーとロール・認証・連合・
+ * お知らせを左で切り替える。
+ */
 export function ControlPanelTab({
     section,
     onSectionChange,
@@ -40,6 +45,7 @@ export function ControlPanelTab({
                         <StorageQuotaSection />
                     </>
                 )}
+                {section === 'branding' && <BrandingSection />}
                 {section === 'users' && <AdminUsersSection />}
                 {section === 'roles' && <RolesSection />}
                 {section === 'auth' && (

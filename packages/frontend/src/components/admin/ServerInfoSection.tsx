@@ -7,6 +7,7 @@ import {
 import { useEffect, useId, useState } from 'react';
 import { fetchServerInfoSettings, updateServerInfo } from '@/lib/admin/serverInfoApi';
 import { type ServerInfoDraft, serverInfoChanged, serverInfoDraft } from '@/lib/admin/serverInfoForm';
+import { setServerInfo } from '@/lib/server/serverInfo';
 import { css } from '@/styled-system/css';
 import { adminButton, adminError, adminField, adminLabel } from './adminStyles';
 
@@ -84,6 +85,7 @@ export function ServerInfoSection() {
         try {
             const next = await updateServerInfo(draft);
             setSettings(next);
+            setServerInfo(next.info);
             setDraft(serverInfoDraft(next.info));
             setSaved(true);
         } catch (e) {

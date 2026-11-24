@@ -276,6 +276,14 @@ const PATHS = {
             <path d="M4 22v-7" />
         </>
     ),
+    palette: (
+        <>
+            <path d="M12 22a10 10 0 1 1 10-10c0 2.8-2.2 4-4 4h-2a2 2 0 0 0-1.5 3.3A1.6 1.6 0 0 1 12 22Z" />
+            <circle cx="7.5" cy="10.5" r="1" />
+            <circle cx="10.5" cy="6.5" r="1" />
+            <circle cx="15.5" cy="7.5" r="1" />
+        </>
+    ),
     hardDrive: (
         <>
             <path d="M22 12H2" />

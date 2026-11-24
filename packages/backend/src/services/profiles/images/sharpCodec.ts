@@ -38,17 +38,21 @@ export function createSharpCodec({ maxPixels, timeoutSeconds }: SharpCodecOption
                 return null;
             }
         },
-        async render(input, size) {
+        async render(input, target) {
             const { format, hasAlpha } = await sharp(input, { limitInputPixels: false }).metadata();
-            const resized = sharp(input, { limitInputPixels: maxPixels, failOn: 'warning', autoOrient: true, pages: 1 })
+            const opened = sharp(input, { limitInputPixels: maxPixels, failOn: 'warning', autoOrient: true, pages: 1 })
                 .resize(
-                    size.width,
-                    size.height,
-                    size.fit === 'inside'
+                    target.width,
+                    target.height,
+                    target.fit === 'inside'
                         ? { fit: 'inside', withoutEnlargement: true }
                         : { fit: 'cover', position: 'centre' },
                 )
                 .timeout({ seconds: timeoutSeconds });
+            const resized = target.background ? opened.flatten({ background: target.background }) : opened;
+            if (target.format === 'png') {
+                return rendered(await resized.png({ compressionLevel: 9 }).toBuffer({ resolveWithObject: true }));
+            }
             if (!mayTryLossless(format))
                 return rendered(await resized.webp(LOSSY_WEBP).toBuffer({ resolveWithObject: true }));
 

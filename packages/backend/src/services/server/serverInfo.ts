@@ -3,6 +3,7 @@
  */
 import {
     DEFAULT_SERVER_INFO,
+    type ServerBranding,
     type ServerInfo,
     ServerInfoSchema,
     type ServerInfoSettings,
@@ -15,6 +16,8 @@ export interface ServerInfoDeps {
         put(info: ServerInfo): Promise<void>;
     };
     countPeople(): Promise<number>;
+    /** ブランディング（紹介のページ・BFF の <head> に一緒に渡す） */
+    branding(): Promise<ServerBranding>;
     registrationOpen: boolean;
 }
 
@@ -40,8 +43,8 @@ export function createServerInfo(deps: ServerInfoDeps) {
         },
 
         async overview(): Promise<ServerOverview> {
-            const [{ info }, users] = await Promise.all([settings(), deps.countPeople()]);
-            return { info, registrationOpen: deps.registrationOpen, stats: { users } };
+            const [{ info }, branding, users] = await Promise.all([settings(), deps.branding(), deps.countPeople()]);
+            return { info, branding, registrationOpen: deps.registrationOpen, stats: { users } };
         },
 
         async update(input: unknown): Promise<ServerInfoUpdateOutcome> {
