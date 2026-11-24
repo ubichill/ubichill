@@ -348,8 +348,15 @@
     {
       "idx": 49,
       "version": "7",
-      "when": 1795492506481,
-      "tag": "0049_mod_favorites",
+      "when": 1795491689210,
+      "tag": "0049_server_branding",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1795508157766,
+      "tag": "0050_mod_favorites",
       "breakpoints": true
     }
   ]

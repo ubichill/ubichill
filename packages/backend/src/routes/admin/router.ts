@@ -1,9 +1,12 @@
+import { isServerImageKind, PROFILE_IMAGE_MAX_BYTES } from '@ubichill/shared';
 import { type RequestHandler, type Response, Router } from 'express';
 import type { BotProtection } from '../../services/auth/botProtection/botProtection';
 import type { FeaturedServers } from '../../services/auth/fediverse/featuredServers';
 import type { RoleService } from '../../services/roles/roles';
+import type { BrandingService } from '../../services/server/branding';
 import type { ServerInfoService } from '../../services/server/serverInfo';
 import type { StorageQuota } from '../../services/storage/storageQuota';
+import { imageBodyErrors, readImageBody } from '../imageHttp';
 
 export interface AdminRouterDeps {
     requireAuth: RequestHandler;
@@ -12,16 +15,17 @@ export interface AdminRouterDeps {
     featuredServers: FeaturedServers;
     botProtection: Pick<BotProtection, 'settings' | 'update'>;
     serverInfo: Pick<ServerInfoService, 'settings' | 'update'>;
+    branding: Pick<BrandingService, 'update' | 'replaceImage' | 'removeImage'>;
     storage: Pick<StorageQuota, 'settings' | 'update'>;
 }
 
-type Outcome<T> = { ok: true; value: T } | { ok: false; status: number; error: string };
+type Outcome<T> = { ok: true; value: T } | { ok: false; status: number; error: string; code?: string };
 
 /** 失敗はその状態で返す。本文が null なら 204。 */
 const send = <T>(res: Response, outcome: Outcome<T>, view: (value: T) => object | null, status = 200): void => {
     res.set('Cache-Control', 'no-store');
     if (!outcome.ok) {
-        res.status(outcome.status).json({ error: outcome.error });
+        res.status(outcome.status).json({ error: outcome.error, ...(outcome.code ? { code: outcome.code } : {}) });
         return;
     }
     const body = view(outcome.value);
@@ -41,6 +45,8 @@ const same = <T extends object | null>(value: T): T => value;
  *   （本文 `{ servers }`）・`DELETE /fediverse-servers/:host`: ログイン画面に並べるサーバー（応答は変えた後の一覧）
  * - `GET /bot-protection`・`PUT /bot-protection`（本文は shared の BotProtectionUpdate）: ボット対策（応答は変えた後の設定）
  * - `GET /server-info`・`PUT /server-info`（本文は shared の ServerInfoInput）: サーバーの情報（応答は変えた後の設定）
+ * - `PUT /branding`（本文は shared の ServerBrandingUpdateInput）・`PUT /branding/images/:kind`（本文は image/* のバイト列）・
+ *   `DELETE /branding/images/:kind`: ブランディング（応答は変えた後のブランディング。読むのは `GET /api/v1/server`）
  * - `GET /storage`・`PUT /storage`（本文は shared の StorageQuotaInput）: 1 人あたりの容量（応答は変えた後の設定）
  * 連合の設定は `/api/v1/federation`、お知らせは `/api/v1/notifications/announcements`。
  */
@@ -113,6 +119,45 @@ export function createAdminRouter(deps: AdminRouterDeps): Router {
         send(res, await deps.serverInfo.update(req.body), same);
     });
 
+    router.put('/branding', async (req, res) => {
+        send(res, await deps.branding.update(req.body), same);
+    });
+
+    router.put(
+        '/branding/images/:kind',
+        (req, res, next) => {
+            if (!isServerImageKind(req.params.kind)) {
+                res.status(404).json({ error: '画像の種類は icon か banner です', code: 'not-found' });
+                return;
+            }
+            if (!req.is('image/*')) {
+                res.status(415).json({ error: '画像（image/*）を送ってください', code: 'unsupported' });
+                return;
+            }
+            next();
+        },
+        readImageBody(PROFILE_IMAGE_MAX_BYTES),
+        async (req, res) => {
+            const kind = req.params.kind;
+            if (!isServerImageKind(kind)) {
+                res.status(404).json({ error: '画像の種類は icon か banner です', code: 'not-found' });
+                return;
+            }
+            const body: unknown = req.body;
+            const input = Buffer.isBuffer(body) ? body : Buffer.alloc(0);
+            send(res, await deps.branding.replaceImage(kind, input), same);
+        },
+    );
+
+    router.delete('/branding/images/:kind', async (req, res) => {
+        const kind = req.params.kind;
+        if (!isServerImageKind(kind)) {
+            res.status(404).json({ error: '画像の種類は icon か banner です', code: 'not-found' });
+            return;
+        }
+        send(res, await deps.branding.removeImage(kind), same);
+    });
+
     router.get('/storage', async (_req, res) => {
         res.set('Cache-Control', 'no-store').json(await deps.storage.settings());
     });
@@ -121,5 +166,6 @@ export function createAdminRouter(deps: AdminRouterDeps): Router {
         send(res, await deps.storage.update(req.body), same);
     });
 
+    router.use(imageBodyErrors(PROFILE_IMAGE_MAX_BYTES));
     return router;
 }

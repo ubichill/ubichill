@@ -99,6 +99,8 @@ export interface UserProfile extends UserSummary {
     roles: PublicRole[];
     /** ほかのサーバーの人の自己紹介のリンク・メンションの並び（無ければ bio の文字から URL だけリンクにする） */
     bioSegments?: RichSegment[];
+    /** このサーバーの人が「おすすめや検索に出す」をオンにしているか（オフならユーザーページを検索に載せない）。ほかのサーバーの人には無い */
+    discoverable?: boolean;
 }
 
 /** 項目の表の 1 行（Mastodon・Misskey のプロフィールの「補足情報」）。 */
@@ -127,6 +129,8 @@ export interface StoredProfileFields {
     bannerImage: string | null;
     links: unknown;
     languages: unknown;
+    /** 「おすすめや検索に出す」（設定の行が無ければ既定のオン） */
+    discoverable?: boolean;
 }
 
 export function userProfileOf(user: StoredProfileFields, author: string, roles: readonly PublicRole[]): UserProfile {
@@ -142,5 +146,6 @@ export function userProfileOf(user: StoredProfileFields, author: string, roles: 
         links: profileLinksView(user.links),
         languages: profileLanguagesView(user.languages),
         roles: [...roles],
+        discoverable: user.discoverable ?? true,
     };
 }

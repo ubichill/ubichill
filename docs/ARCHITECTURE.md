@@ -7,7 +7,7 @@ TypeScript backendはSNSのDB、認証、フレンド、ワールド解決と参
 ブラウザはSNSから接続先と短期チケットを取得し、Goへ直接WebSocket接続する。
 ゲストモードではGoと定義ファイルだけで起動し、SNSのセッションを必要としない。
 
-Mastodon・Misskey ログインと管理者向け認証設定の設計は [フェディバースログインと認証設定](design/fediverse-sign-in.md) を参照。二段階認証（認証アプリ・バックアップコード）は [二段階認証](design/two-factor.md) を参照。新規登録のボット対策（Turnstile・hCaptcha）は [ボット対策](design/bot-protection.md) を参照。ログインしていない人に出すサーバーの紹介と、コントロールパネルの「全般」（サーバーの情報）は [サーバーの紹介とサーバーの情報](design/server-info.md) を参照。mod なしで置けるワールドの部品（画像・文字・入口）と画像のアップロードは [ワールドの部品と画像](design/world-parts.md) を参照。その先の、動きの部品・ブラウザで作るプレハブ・mod との線引きは [mod を書かずにワールドを組み立てる](design/world-building.md) を参照。
+Mastodon・Misskey ログインと管理者向け認証設定の設計は [フェディバースログインと認証設定](design/fediverse-sign-in.md) を参照。二段階認証（認証アプリ・バックアップコード）は [二段階認証](design/two-factor.md) を参照。新規登録のボット対策（Turnstile・hCaptcha）は [ボット対策](design/bot-protection.md) を参照。ログインしていない人に出すサーバーの紹介と、コントロールパネルの「全般」（サーバーの情報）は [サーバーの紹介とサーバーの情報](design/server-info.md) を参照。アイコン・バナー・テーマの色・略称（「ブランディング」）と、紹介のページの OGP・sitemap は [ブランディングと、紹介のページの OGP・SEO](design/branding.md) を参照。mod なしで置けるワールドの部品（画像・文字・入口）と画像のアップロードは [ワールドの部品と画像](design/world-parts.md) を参照。その先の、動きの部品・ブラウザで作るプレハブ・mod との線引きは [mod を書かずにワールドを組み立てる](design/world-building.md) を参照。
 
 HTTPは `protocol/instance/openapi.json` からGo/TypeScriptの型を生成する。
 リアルタイム通信は `protocol/instance/asyncapi.json` と `protocol/instance/README.md` を参照。
