@@ -16,6 +16,7 @@
 
 import { type Instance, type WorldListItem, worldSourceLabel } from '@ubichill/shared';
 import { esc } from './html';
+import type { Site } from './site';
 
 /** SSR シェル専用パレット（frontend の PandaCSS トークンの近似複製）。 */
 const C = {
@@ -30,6 +31,8 @@ const C = {
 } as const;
 
 interface ShellData {
+    /** 見出しに出すサーバーのアイコンと略称 */
+    site: Pick<Site, 'shortName' | 'icon' | 'defaultIcon'>;
     world: WorldListItem | undefined;
     instances: Instance[];
     publicBaseUrl: string;
@@ -117,12 +120,12 @@ function instancesFragment(instances: Instance[]): string {
     return `<div style="display:flex;flex-direction:column;gap:12px;">${items}</div>`;
 }
 
-function headerFragment(publicBaseUrl: string): string {
+function headerFragment(publicBaseUrl: string, site: ShellData['site']): string {
     return `
             <header style="width:100%;padding:16px 32px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid ${C.border};background:${C.surface};">
                 <a href="${esc(publicBaseUrl)}/" style="display:flex;align-items:center;gap:12px;text-decoration:none;color:${C.text};">
-                    <img src="${esc(publicBaseUrl)}/icon.png" alt="" style="width:32px;height:32px;border-radius:8px;" />
-                    <span style="font-size:20px;font-weight:700;">ubichill</span>
+                    <img src="${esc(site.icon?.icon192 ?? site.defaultIcon)}" alt="" style="width:32px;height:32px;border-radius:8px;" />
+                    <span style="font-size:20px;font-weight:700;">${esc(site.shortName)}</span>
                 </a>
             </header>`;
 }
@@ -145,7 +148,7 @@ function heroFragment(
                         <div style="display:flex;gap:12px;flex-wrap:wrap;">${metaBadgesFragment(world, totalCurrentUsers)}</div>
                     </div>
                     <div style="display:flex;gap:16px;flex-wrap:wrap;">
-                        <button type="button" disabled style="padding:16px 32px;background:${C.text};color:${C.onPrimary};border-radius:16px;font-weight:700;font-size:18px;border:none;opacity:0.6;cursor:not-allowed;">インスタンスを作成</button>
+                        <button type="button" disabled style="padding:16px 32px;background:var(--colors-primary, ${C.text});color:${C.onPrimary};border-radius:16px;font-weight:700;font-size:18px;border:none;opacity:0.6;cursor:not-allowed;">インスタンスを作成</button>
                         <a href="${esc(publicBaseUrl)}/" style="padding:16px 32px;background:${C.surface};color:${C.text};border-radius:16px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;border:1px solid ${C.border};">ロビーへ戻る</a>
                     </div>
                 </section>`;
@@ -177,14 +180,14 @@ function footerFragment(): string {
  * ワールドページの SSR シェル HTML を生成する。
  * @returns ルート要素の HTML（<div id="root"> 内に配置する）
  */
-export function renderWorldShell({ world, instances, publicBaseUrl }: ShellData): string {
+export function renderWorldShell({ site, world, instances, publicBaseUrl }: ShellData): string {
     const title = world?.displayName ?? world?.id ?? '';
     const thumbnailUrl = world?.thumbnail;
     const totalCurrentUsers = instances.reduce((sum, i) => sum + i.stats.currentUsers, 0);
 
     return `
         <div data-world-shell style="min-height:100vh;display:flex;flex-direction:column;background:${C.pageBg};font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-            ${headerFragment(publicBaseUrl)}
+            ${headerFragment(publicBaseUrl, site)}
             <main style="flex:1;width:100%;max-width:1024px;margin:0 auto;display:flex;flex-direction:column;gap:32px;padding:32px 16px;">
                 ${heroFragment(world, title, thumbnailUrl, totalCurrentUsers, publicBaseUrl)}
                 ${detailsFragment(world)}

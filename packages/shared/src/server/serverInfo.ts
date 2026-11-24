@@ -2,6 +2,7 @@
  * サーバーの情報（コントロールパネルの「全般」）。紹介のページ・NodeInfo に出す（どれも公開）。
  */
 import { z } from 'zod';
+import type { ServerBranding } from './branding';
 
 export const DEFAULT_SERVER_NAME = 'Ubichill';
 /** 紹介を書いていないときに出す */
@@ -80,6 +81,7 @@ export const DEFAULT_SERVER_INFO: ServerInfo = {
 /** 紹介のページに出すもの（`GET /api/v1/server`） */
 export interface ServerOverview {
     info: ServerInfo;
+    branding: ServerBranding;
     registrationOpen: boolean;
     stats: { users: number };
 }

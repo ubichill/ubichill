@@ -221,6 +221,7 @@ frontend:
   # Environment variables
   # nginx コンテナが使う環境変数のみ記述する。
   # BACKEND_HOST / BACKEND_PORT は deployment.yaml テンプレートで自動注入されるため不要。
+  # DEPLOYMENT_ENVIRONMENT（BFF が検索に載せるか決める）は backend.env.NODE_ENV と同じ値が自動で入る。production のときだけ載せる
   env: {}
 
   # Pod-level security context

@@ -7,8 +7,11 @@
 
 import type { UserProfile, UserSummary, WorldListItem } from '@ubichill/shared';
 import { esc, escJsonForScript } from './html';
+import type { Site } from './site';
 
 interface MetaInput {
+    /** タイトルの後ろ（略称）と og:site_name（サーバー名）に使う */
+    site: Pick<Site, 'name' | 'shortName'>;
     world: WorldListItem | undefined;
     worldId: string;
     publicBaseUrl: string;
@@ -42,18 +45,18 @@ export function buildJsonLd(world: WorldListItem | undefined, name: string, desc
  * <head> に注入する meta/link/script タグ群を組み立てる。
  * @returns 改行区切りの HTML 文字列
  */
-export function buildMetaTags({ world, worldId, publicBaseUrl, pageUrl, enableCrawl }: MetaInput): string {
+export function buildMetaTags({ site, world, worldId, publicBaseUrl, pageUrl, enableCrawl }: MetaInput): string {
     const name = world?.displayName ?? worldId;
     const desc = world?.description ?? `${name} — ubichill のワールド`;
     const url = pageUrl ?? `${publicBaseUrl}/world/${encodeURIComponent(worldId)}`;
     const image = world?.thumbnail ?? '';
 
     return [
-        `<title>${esc(name)} — ubichill</title>`,
+        `<title>${esc(name)} — ${esc(site.shortName)}</title>`,
         `<meta name="description" content="${esc(desc)}">`,
         `<link rel="canonical" href="${esc(url)}">`,
         '<meta property="og:type" content="website">',
-        '<meta property="og:site_name" content="ubichill">',
+        `<meta property="og:site_name" content="${esc(site.name)}">`,
         `<meta property="og:title" content="${esc(name)}">`,
         `<meta property="og:description" content="${esc(desc)}">`,
         `<meta property="og:url" content="${esc(url)}">`,
@@ -72,10 +75,12 @@ export function buildMetaTags({ world, worldId, publicBaseUrl, pageUrl, enableCr
         .join('\n');
 }
 
-/** プロフィールの項目（ひとこと・バナー）は、backend の版によっては無い（BFF と backend は別々に更新される）。 */
-export type UserPreview = UserSummary & Partial<Pick<UserProfile, 'status' | 'bannerImage'>>;
+/** プロフィールの項目（ひとこと・バナー・検索に出すか）は、backend の版によっては無い（BFF と backend は別々に更新される）。 */
+export type UserPreview = UserSummary & Partial<Pick<UserProfile, 'status' | 'bannerImage' | 'discoverable'>>;
 
 interface UserMetaInput {
+    /** タイトルの後ろ（略称）と og:site_name（サーバー名）、画像が無いときのアイコン */
+    site: Pick<Site, 'name' | 'shortName' | 'icon' | 'defaultIcon'>;
     user: UserPreview | undefined;
     /** 見つからなかったときにも出す ID（`/@ID` の ID） */
     handle: string;
@@ -89,9 +94,10 @@ interface UserMetaInput {
 /**
  * ユーザーページ（`/@ID`）の <head>。名前・アイコン・説明を出す。説明は本人が書いた自己紹介（無ければひとこと）で、
  * どちらも無ければ作者アカウントと公開しているワールドの数から作る。
- * 画像はアイコン（SNS のプロフィールと同じく小さいカード）。アイコンが無くバナーがあればバナーを大きく、どちらも無ければサイトのアイコン。
+ * 画像はアイコン（SNS のプロフィールと同じく小さいカード）。アイコンが無くバナーがあればバナーを大きく、どちらも無ければサーバーのアイコン。
  */
 export function buildUserMetaTags({
+    site,
     user,
     handle,
     worldCount,
@@ -112,7 +118,7 @@ export function buildUserMetaTags({
             }`
           : `${account} — ubichill のユーザー`;
     const bannerOnly = !user?.image && !!user?.bannerImage;
-    const image = user?.image || user?.bannerImage || `${publicBaseUrl}/icon.png`;
+    const image = user?.image || user?.bannerImage || site.icon?.icon512 || site.defaultIcon;
     const jsonLd = escJsonForScript(
         JSON.stringify({
             '@context': 'https://schema.org',
@@ -123,11 +129,11 @@ export function buildUserMetaTags({
         }),
     );
     return [
-        `<title>${esc(title)} — ubichill</title>`,
+        `<title>${esc(title)} — ${esc(site.shortName)}</title>`,
         `<meta name="description" content="${esc(desc)}">`,
         `<link rel="canonical" href="${esc(pageUrl)}">`,
         '<meta property="og:type" content="profile">',
-        '<meta property="og:site_name" content="ubichill">',
+        `<meta property="og:site_name" content="${esc(site.name)}">`,
         `<meta property="og:title" content="${esc(title)}">`,
         `<meta property="og:description" content="${esc(desc)}">`,
         `<meta property="og:url" content="${esc(pageUrl)}">`,

@@ -1,6 +1,7 @@
 export { AdminUsersSection } from './AdminUsersSection';
 export { AnnouncementSection } from './AnnouncementSection';
 export { BotProtectionSection } from './BotProtectionSection';
+export { BrandingSection } from './BrandingSection';
 export { FediverseServersSection } from './FediverseServersSection';
 export { RolesSection } from './RolesSection';
 export { ServerInfoSection } from './ServerInfoSection';

@@ -1,6 +1,15 @@
-import type { WorldListItem } from '@ubichill/shared';
+import { DEFAULT_SERVER_BRANDING, DEFAULT_SERVER_INFO, type WorldListItem } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
 import { buildJsonLd, buildMetaTags, buildUserMetaTags } from './ogp';
+import { siteOf } from './site';
+
+const SITE = siteOf(undefined, 'https://ubichill.com');
+const ICON = {
+    favicon: 'https://ubichill.com/api/v1/server/images/favicon/f.png',
+    appleTouchIcon: 'https://ubichill.com/api/v1/server/images/apple-touch-icon/a.png',
+    icon192: 'https://ubichill.com/api/v1/server/images/icon-192/s.png',
+    icon512: 'https://ubichill.com/api/v1/server/images/icon-512/l.png',
+};
 
 const baseWorld: WorldListItem = {
     id: 'w1',
@@ -27,6 +36,7 @@ describe('buildMetaTags', () => {
     it('ユーザー文字列を属性コンテキストでエスケープする', () => {
         const world = { ...baseWorld, displayName: '"><img src=x onerror=alert(1)>' };
         const tags = buildMetaTags({
+            site: SITE,
             world,
             worldId: 'w1',
             publicBaseUrl: 'https://example.com',
@@ -39,6 +49,7 @@ describe('buildMetaTags', () => {
 
     it('本番以外は noindex を付与する', () => {
         const tags = buildMetaTags({
+            site: SITE,
             world: baseWorld,
             worldId: 'w1',
             publicBaseUrl: 'https://e.co',
@@ -49,6 +60,7 @@ describe('buildMetaTags', () => {
 
     it('本番はクロールを許可（noindex を付けない）', () => {
         const tags = buildMetaTags({
+            site: SITE,
             world: baseWorld,
             worldId: 'w1',
             publicBaseUrl: 'https://e.co',
@@ -59,6 +71,7 @@ describe('buildMetaTags', () => {
 
     it('thumbnail 無しでは og:image を出さない', () => {
         const tags = buildMetaTags({
+            site: SITE,
             world: baseWorld,
             worldId: 'w1',
             publicBaseUrl: 'https://e.co',
@@ -72,6 +85,7 @@ describe('buildMetaTags', () => {
         const pageUrl =
             'https://ubichill.example/world?url=https%3A%2F%2Fraw.githubusercontent.com%2Fo%2Fr%2Fmain%2Fw.yaml';
         const tags = buildMetaTags({
+            site: SITE,
             world: baseWorld,
             worldId: 'w1',
             publicBaseUrl: 'https://ubichill.example',
@@ -85,6 +99,7 @@ describe('buildMetaTags', () => {
 
 describe('buildUserMetaTags', () => {
     const base = {
+        site: SITE,
         handle: 'youkan',
         publicBaseUrl: 'https://ubichill.com',
         pageUrl: 'https://ubichill.com/@youkan',
@@ -170,5 +185,40 @@ describe('buildUserMetaTags', () => {
         const tags = buildUserMetaTags({ ...base, user: evil, worldCount: 1 });
         expect(tags).not.toContain('"><script>');
         expect(tags.split('<script type="application/ld+json">')[1]).not.toMatch(/<\/script>.*<\/script>/s);
+    });
+
+    it('サーバーのアイコンを決めていれば、画像の無い人にはそれを出す', () => {
+        const site = siteOf(
+            {
+                info: { ...DEFAULT_SERVER_INFO, name: 'ようかんの Ubichill' },
+                branding: { ...DEFAULT_SERVER_BRANDING, shortName: 'ようかん', icon: ICON },
+            },
+            'https://ubichill.com',
+        );
+        const tags = buildUserMetaTags({ ...base, site, user, worldCount: 0 });
+        expect(tags).toContain(`<meta property="og:image" content="${ICON.icon512}">`);
+        expect(tags).toContain('<title>ようかん（@youkan@ubichill.com） — ようかん</title>');
+        expect(tags).toContain('<meta property="og:site_name" content="ようかんの Ubichill">');
+    });
+});
+
+describe('サーバーの名前（ワールドのページ）', () => {
+    it('タイトルの後ろは略称、og:site_name はサーバー名。どちらもエスケープする', () => {
+        const site = siteOf(
+            {
+                info: { ...DEFAULT_SERVER_INFO, name: '<b>"Ubi"</b>' },
+                branding: { ...DEFAULT_SERVER_BRANDING, shortName: '</title><script>' },
+            },
+            'https://e.co',
+        );
+        const tags = buildMetaTags({
+            site,
+            world: baseWorld,
+            worldId: 'w1',
+            publicBaseUrl: 'https://e.co',
+            enableCrawl: true,
+        });
+        expect(tags).toContain('<title>サンプル — &lt;/title&gt;&lt;script&gt;</title>');
+        expect(tags).toContain('<meta property="og:site_name" content="&lt;b&gt;&quot;Ubi&quot;&lt;/b&gt;">');
     });
 });

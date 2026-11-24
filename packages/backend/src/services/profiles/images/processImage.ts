@@ -6,7 +6,7 @@ import {
     PROFILE_IMAGE_SIZES,
     type ProfileImageKind,
 } from '@ubichill/shared';
-import type { ImageCodec } from './imageCodec';
+import type { ImageCodec, RenderTarget } from './imageCodec';
 
 /** 受け付ける形式。SVG（外部参照・スクリプト）・TIFF・PDF など、アイコンに要らない読み込み口は開けない。 */
 const ACCEPTED_FORMATS: ReadonlySet<string> = new Set(['jpeg', 'png', 'webp', 'gif', 'heif']);
@@ -14,7 +14,7 @@ const ACCEPTED_FORMATS: ReadonlySet<string> = new Set(['jpeg', 'png', 'webp', 'g
 export interface ProcessedImage {
     /** 中身の SHA-256（base64url）。配信する URL に入れる */
     hash: string;
-    contentType: typeof PROFILE_IMAGE_CONTENT_TYPE;
+    contentType: typeof PROFILE_IMAGE_CONTENT_TYPE | 'image/png';
     bytes: Uint8Array;
     width: number;
     height: number;
@@ -48,12 +48,12 @@ export function processProfileImage(
 }
 
 /**
- * 送られた画像を、配信してよい形（向きを直し・メタデータを消した WebP）に作り直す。
+ * 送られた画像を、配信してよい形（向きを直し・メタデータを消した WebP か PNG）に作り直す。
  * 送られたバイト列はそのまま配らない（位置情報などの EXIF・細工したファイルを他人に渡さない）。
  */
 export async function processImage(
     input: Uint8Array,
-    target: { width: number; height: number; fit?: 'cover' | 'inside' },
+    target: RenderTarget,
     codec: ImageCodec,
     limits: ProcessImageLimits,
 ): Promise<ProcessImageResult> {
@@ -75,7 +75,7 @@ export async function processImage(
         ok: true,
         image: {
             hash: imageHashOf(rendered.bytes),
-            contentType: PROFILE_IMAGE_CONTENT_TYPE,
+            contentType: target.format === 'png' ? 'image/png' : PROFILE_IMAGE_CONTENT_TYPE,
             bytes: rendered.bytes,
             width: rendered.width,
             height: rendered.height,

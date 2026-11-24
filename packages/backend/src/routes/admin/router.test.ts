@@ -1,11 +1,20 @@
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { DEFAULT_SERVER_INFO, type RoleFields, type ServerInfo } from '@ubichill/shared';
+import {
+    DEFAULT_SERVER_BRANDING,
+    DEFAULT_SERVER_INFO,
+    type RoleFields,
+    SERVER_IMAGE_VARIANTS,
+    type ServerBrandingUpdate,
+    type ServerInfo,
+} from '@ubichill/shared';
 import express, { type RequestHandler } from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createBotProtection } from '../../services/auth/botProtection/botProtection';
 import { createFeaturedServers } from '../../services/auth/fediverse/featuredServers';
 import { createRoleService, type RoleStore, type StoredRole } from '../../services/roles/roles';
+import { createBranding } from '../../services/server/branding';
+import type { ServerImage } from '../../services/server/brandingImages';
 import { createServerInfo } from '../../services/server/serverInfo';
 import { createStorageQuota } from '../../services/storage/storageQuota';
 import { createAdminRouter } from './router';
@@ -168,7 +177,51 @@ const serverInfo = createServerInfo({
         },
     },
     countPeople: async () => 0,
+    branding: async () => DEFAULT_SERVER_BRANDING,
     registrationOpen: true,
+});
+
+const kindOf = (image: ServerImage) => SERVER_IMAGE_VARIANTS[image.variant].kind;
+const brandingRows: { record: ServerBrandingUpdate | null; images: ServerImage[]; received: number[] } = {
+    record: null,
+    images: [],
+    received: [],
+};
+const branding = createBranding({
+    repository: {
+        get: async () => brandingRows.record,
+        put: async (record) => {
+            brandingRows.record = record;
+        },
+        images: async () => brandingRows.images,
+        image: async () => undefined,
+        replaceImages: async (kind, images) => {
+            brandingRows.images = [...brandingRows.images.filter((i) => kindOf(i) !== kind), ...images];
+        },
+        removeImages: async (kind) => {
+            const before = brandingRows.images.length;
+            brandingRows.images = brandingRows.images.filter((i) => kindOf(i) !== kind);
+            return brandingRows.images.length < before;
+        },
+    },
+    // 届いた本文の大きさを控え、バナーとして置いたことにする
+    processImage: async (_kind, input) => {
+        brandingRows.received.push(input.byteLength);
+        return {
+            ok: true,
+            images: [
+                {
+                    variant: 'banner',
+                    hash: 'b'.repeat(43),
+                    contentType: 'image/webp',
+                    bytes: input,
+                    width: 1200,
+                    height: 630,
+                },
+            ],
+        };
+    },
+    publicBaseUrl: 'https://ubichill.example',
 });
 
 const storageRow: { value: { worldAssetQuotaBytes: number; updatedAt: Date } | null } = { value: null };
@@ -193,6 +246,7 @@ app.use(
         featuredServers,
         botProtection,
         serverInfo,
+        branding,
         storage,
     }),
 );
@@ -234,6 +288,9 @@ const ENDPOINTS: ReadonlyArray<[string, string]> = [
     ['PUT', '/server-info'],
     ['GET', '/storage'],
     ['PUT', '/storage'],
+    ['PUT', '/branding'],
+    ['PUT', '/branding/images/banner'],
+    ['DELETE', '/branding/images/banner'],
 ];
 
 describe('コントロールパネルの API', () => {
@@ -254,6 +311,8 @@ describe('コントロールパネルの API', () => {
         expect(await service.listRoles()).toEqual([]);
         expect(serverRow.value).toBeNull();
         expect(storageRow.value).toBeNull();
+        expect(brandingRows.record).toBeNull();
+        expect(brandingRows.received).toEqual([]);
     });
 
     it('作ると 201、変えると 200、消すと 204。どれも cache させない', async () => {
@@ -404,6 +463,53 @@ describe('コントロールパネルの API', () => {
             worldAssetQuotaBytes: 1024 * MB,
             totalBytes: 5 * MB,
             updatedAt: '2026-11-22T00:00:00.000Z',
+        });
+    });
+
+    describe('ブランディング', () => {
+        const upload = (kind: string, body: Uint8Array, type = 'image/png', headers: Record<string, string> = admin) =>
+            fetch(url(`/branding/images/${kind}`), {
+                method: 'PUT',
+                headers: { 'content-type': type, ...headers },
+                body: Buffer.from(body),
+            });
+
+        beforeEach(() => {
+            brandingRows.record = null;
+            brandingRows.images = [];
+            brandingRows.received = [];
+        });
+
+        it('略称と色を確かめてから保存し、変えた後のブランディングを返す。キャッシュさせない', async () => {
+            const refused = await call('PUT', '/branding', { shortName: null, themeColor: '#fafafa' });
+            expect(refused.status).toBe(400);
+            expect(((await refused.json()) as { error: string; code: string }).code).toBe('invalid');
+            expect(brandingRows.record).toBeNull();
+
+            const saved = await call('PUT', '/branding', { shortName: 'ゆ', themeColor: '#2F6F4F' });
+            expect(saved.headers.get('cache-control')).toBe('no-store');
+            expect(await saved.json()).toEqual({ ...DEFAULT_SERVER_BRANDING, shortName: 'ゆ', themeColor: '#2f6f4f' });
+        });
+
+        it('画像はバイト列で受け取って作り直し、置いた後の URL を返す', async () => {
+            const res = await upload('banner', Uint8Array.from([1, 2, 3]));
+            expect(res.status).toBe(200);
+            expect(brandingRows.received).toEqual([3]);
+            expect(((await res.json()) as { banner: string }).banner).toBe(
+                `https://ubichill.example/api/v1/server/images/banner/${'b'.repeat(43)}.webp`,
+            );
+            expect(await (await call('DELETE', '/branding/images/banner')).json()).toEqual(DEFAULT_SERVER_BRANDING);
+        });
+
+        it('知らない種類は 404、画像でない本文は 415、大きすぎれば 413（どれも処理に回さない）', async () => {
+            expect((await upload('avatar', Uint8Array.from([1]))).status).toBe(404);
+            expect((await upload('__proto__', Uint8Array.from([1]))).status).toBe(404);
+            expect((await call('DELETE', '/branding/images/avatar')).status).toBe(404);
+            expect((await upload('icon', Uint8Array.from([1]), 'text/html')).status).toBe(415);
+            const tooLarge = await upload('icon', new Uint8Array(5 * MB + 1));
+            expect(tooLarge.status).toBe(413);
+            expect(await tooLarge.json()).toEqual({ error: '画像は 5 MB までです', code: 'too-large' });
+            expect(brandingRows.received).toEqual([]);
         });
     });
 });

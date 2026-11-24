@@ -4,8 +4,9 @@ import {
     PROFILE_IMAGE_MAX_BYTES,
     profileImageHashOf,
 } from '@ubichill/shared';
-import express, { type ErrorRequestHandler, type RequestHandler, type Response, Router } from 'express';
+import { type RequestHandler, type Response, Router } from 'express';
 import type { ProfileOutcome, ProfileService } from '../../services/profiles/profiles';
+import { imageBodyErrors, readImageBody, sendImage, sendImageNotFound } from '../imageHttp';
 
 export interface ProfilesRouterDeps {
     requireAuth: RequestHandler;
@@ -18,11 +19,6 @@ export interface ProfilesRouterDeps {
     onChanged?: (userId: string) => void;
 }
 
-/** 内容のハッシュ入りの URL なので、同じ URL の中身は変わらない */
-const IMMUTABLE = 'public, max-age=31536000, immutable';
-/** 画像の URL を直接開かれても、文書として何も実行させない */
-const IMAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
-
 const send = (res: Response, outcome: ProfileOutcome, onChanged?: () => void): void => {
     if (outcome.ok) {
         res.set('Cache-Control', 'no-store').json(outcome.profile);
@@ -30,24 +26,6 @@ const send = (res: Response, outcome: ProfileOutcome, onChanged?: () => void): v
         return;
     }
     res.status(outcome.status).json({ error: outcome.error, code: outcome.code });
-};
-
-const readImageBody = express.raw({ type: 'image/*', limit: PROFILE_IMAGE_MAX_BYTES });
-
-const bodyErrors: ErrorRequestHandler = (err: unknown, _req, res, next) => {
-    const type = typeof err === 'object' && err !== null && 'type' in err ? err.type : undefined;
-    if (type === 'entity.too.large') {
-        res.status(413).json({
-            error: `画像は ${PROFILE_IMAGE_MAX_BYTES / 1024 / 1024} MB までです`,
-            code: 'too-large',
-        });
-        return;
-    }
-    if (typeof type === 'string') {
-        res.status(400).json({ error: '画像を受け取れませんでした', code: 'invalid' });
-        return;
-    }
-    next(err);
 };
 
 /**
@@ -79,7 +57,7 @@ export function createProfilesRouter(deps: ProfilesRouterDeps): Router {
             }
             next();
         },
-        readImageBody,
+        readImageBody(PROFILE_IMAGE_MAX_BYTES),
         async (req, res) => {
             const kind = req.params.kind;
             if (!req.user || !isProfileImageKind(kind)) return res.status(401).json({ error: 'Unauthorized' });
@@ -104,22 +82,10 @@ export function createProfilesRouter(deps: ProfilesRouterDeps): Router {
         const { userId, kind, file } = req.params;
         const hash = profileImageHashOf(file);
         const image = isProfileImageKind(kind) && hash ? await deps.profiles.image(userId, kind, hash) : undefined;
-        if (!image) {
-            // 同じ内容をまたアップロードすれば同じ URL が有効に戻るので、見つからないことは cache させない
-            return res.status(404).set('Cache-Control', 'no-store').json({ error: 'Not found' });
-        }
-        res.set({
-            'Content-Type': PROFILE_IMAGE_CONTENT_TYPE,
-            'Cache-Control': IMMUTABLE,
-            ETag: `"${image.hash}"`,
-            'X-Content-Type-Options': 'nosniff',
-            'Content-Security-Policy': IMAGE_CSP,
-            // ほかのオリジン（開発時のフロント・連合先のサーバー）の <img> からも読めるようにする
-            'Cross-Origin-Resource-Policy': 'cross-origin',
-        });
-        res.send(Buffer.from(image.bytes.buffer, image.bytes.byteOffset, image.bytes.byteLength));
+        if (!image) return sendImageNotFound(res);
+        sendImage(res, image, PROFILE_IMAGE_CONTENT_TYPE);
     });
 
-    router.use(bodyErrors);
+    router.use(imageBodyErrors(PROFILE_IMAGE_MAX_BYTES));
     return router;
 }
