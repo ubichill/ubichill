@@ -9,6 +9,7 @@ import { css } from '@/styled-system/css';
 import { HudIcon } from './HudIcon';
 import { HudOverlay } from './HudOverlay';
 import type { HudTab } from './hudView';
+import { clearSettingsLink, readSettingsLink } from './settingsLink';
 import { useLaunchpadHotkey } from './useLaunchpadHotkey';
 
 /**
@@ -19,17 +20,22 @@ import { useLaunchpadHotkey } from './useLaunchpadHotkey';
 export function InstanceHUD() {
     const { id: instanceId } = useParams<{ id: string }>();
     const { isConnected } = useSocket();
-    const [open, setOpen] = useState(false);
-    const [initialTab, setInitialTab] = useState<HudTab | undefined>(undefined);
+    // 通知のメールなどから設定の欄を開いて来たら、入ったときにランチパッドをその欄で開く（1 回だけ）
+    const [settingsLink, setSettingsLink] = useState(() => readSettingsLink(sessionStorage));
+    const [open, setOpen] = useState(settingsLink !== null);
+    const [initialTab, setInitialTab] = useState<HudTab | undefined>(settingsLink ? 'settings' : undefined);
     const close = useCallback(() => setOpen(false), []);
     const unread = useNotifications().feed.unreadCount > 0;
     const entries = useConsoleEntries();
     const counts = useMemo(() => consoleCounts(entries), [entries]);
     const problem = latestProblem(entries);
     useLaunchpadHotkey(open, setOpen);
+    useEffect(() => clearSettingsLink(sessionStorage), []);
     // Esc やボタンで開いたときはランチパッドから
     useEffect(() => {
-        if (!open) setInitialTab(undefined);
+        if (open) return;
+        setInitialTab(undefined);
+        setSettingsLink(null);
     }, [open]);
 
     return (
@@ -61,7 +67,12 @@ export function InstanceHUD() {
             )}
 
             {open && instanceId && (
-                <HudOverlay currentInstanceId={instanceId} initialTab={initialTab} onClose={close} />
+                <HudOverlay
+                    currentInstanceId={instanceId}
+                    initialTab={initialTab}
+                    settingsLink={settingsLink}
+                    onClose={close}
+                />
             )}
         </>
     );

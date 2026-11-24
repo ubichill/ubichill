@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { cliAuthProofMessage, type WorldSigningKey } from '@ubichill/shared';
-import { silentLogger } from '@ubichill/terminal';
+import { cliAuthProofMessage, signingKeyFingerprint, type WorldSigningKey } from '@ubichill/shared';
+import { recordingLogger, silentLogger } from '@ubichill/terminal';
 import { describe, expect, it } from 'vitest';
 import { type AuthorizeDeps, approveUrlOf, authorize, type HttpResponse } from './authorize.ts';
 
@@ -75,6 +75,19 @@ describe('authorize（ループバック）', () => {
             codeVerifier: 'verifier-1',
             signature: `signed(${cliAuthProofMessage('req-1')})`,
         });
+    });
+
+    it('承認画面・通知メールと見比べる鍵の指紋を出す', async () => {
+        const { deps } = fakeDeps((url) =>
+            url.endsWith('/requests')
+                ? { status: 201, body: { requestId: 'r', approveUrl: 'https://ubichill.com/cli/authorize?request=r' } }
+                : tokenResponse,
+        );
+        const { logger, entries } = recordingLogger();
+        await authorize({ ...deps, log: logger }, options);
+        expect(entries.map((e) => e.message)).toContainEqual(
+            expect.stringContaining(signingKeyFingerprint(key.publicKey)),
+        );
     });
 
     it('リダイレクトの state が違えば引き換えない（別の要求の承認を受け取らない）', async () => {
@@ -176,6 +189,15 @@ describe('authorize（デバイス認可）', () => {
         expect(posts[0]?.body).not.toHaveProperty('redirectUri');
         expect(posts.slice(1).every((p) => p.body.deviceCode === 'device-code')).toBe(true);
         expect(posts).toHaveLength(4);
+    });
+
+    it('コードと一緒に鍵の指紋も出す（承認画面で両方を見比べられる）', async () => {
+        const { deps } = fakeDeps((url) => (url.endsWith('/requests') ? created : tokenResponse));
+        const { logger, entries } = recordingLogger();
+        await authorize({ ...deps, log: logger }, { ...options, flow: 'device' });
+        const messages = entries.map((e) => e.message);
+        expect(messages).toContainEqual(expect.stringContaining('BCDF-GHJK'));
+        expect(messages).toContainEqual(expect.stringContaining(signingKeyFingerprint(key.publicKey)));
     });
 
     it('期限までに承認されなければ失敗する', async () => {

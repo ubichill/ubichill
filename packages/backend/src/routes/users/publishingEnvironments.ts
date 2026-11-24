@@ -12,7 +12,8 @@ router.get('/me/publishing-environments', requireAuth, async (req, res) => {
     return res.json({ environments: await publishingEnvironmentService.list(req.user.id) });
 });
 
-// このブラウザを公開環境として登録する
+// このブラウザを公開環境として登録する（ブラウザで公開するときに自動で。ログインできる = 公開できるので直近の本人確認は
+// 求めず、通知のメールで気付けるようにする。ほかの環境（CLI・CI）を足す承認は直近の本人確認。author-publishing.md §8）
 router.post('/me/publishing-environments', requireStrongSession, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const { publicKey, at, signature } = (req.body ?? {}) as { publicKey?: unknown; at?: unknown; signature?: unknown };

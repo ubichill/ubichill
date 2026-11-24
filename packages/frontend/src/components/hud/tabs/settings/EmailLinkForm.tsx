@@ -1,6 +1,11 @@
+import type { LoginMethods } from '@ubichill/shared';
 import { useId, useState } from 'react';
 import { startEmailLink, verifyEmailLink } from '@/lib/account/fediverseSignIn';
+import { needsReauthentication } from '@/lib/account/loginMethods';
+import { isReauthRequired } from '@/lib/apiError';
 import { css } from '@/styled-system/css';
+import { settingsPath } from '../../settingsLink';
+import { ReauthPrompt } from './ReauthPrompt';
 import { settingsInput, settingsLabel, settingsNote, settingsTextButton, settingsWideButton } from './settingsStyles';
 
 type Step = { step: 'closed' } | { step: 'form' } | { step: 'code'; email: string };
@@ -8,8 +13,18 @@ type Step = { step: 'closed' } | { step: 'form' } | { step: 'code'; email: strin
 /**
  * メールアドレスを足す（メールなしで登録した人）。アドレスとパスワードを入れ、届いたコードで確かめると、
  * メールアドレスとパスワードでもログインでき、お知らせもそのアドレスに届く。
+ * ログイン手段を足すので直近の本人確認が要る（無ければ先に、フェディバースのアカウントでログインし直してもらう）。
  */
-export function EmailLinkForm({ onLinked }: { onLinked: () => void }) {
+export function EmailLinkForm({
+    methods,
+    onLinked,
+    onReauthenticated,
+}: {
+    methods: LoginMethods;
+    onLinked: () => void;
+    /** 本人確認を済ませた・サーバーに断られた（ログイン方法を読み直す） */
+    onReauthenticated: () => void;
+}) {
     const id = useId();
     const [state, setState] = useState<Step>({ step: 'closed' });
     const [email, setEmail] = useState('');
@@ -17,6 +32,7 @@ export function EmailLinkForm({ onLinked }: { onLinked: () => void }) {
     const [code, setCode] = useState('');
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
+    const [reauthRefused, setReauthRefused] = useState(false);
 
     const finish = () => {
         setState({ step: 'closed' });
@@ -32,7 +48,10 @@ export function EmailLinkForm({ onLinked }: { onLinked: () => void }) {
         try {
             await action();
         } catch (e) {
-            setError(e instanceof Error ? e.message : 'うまくいきませんでした');
+            if (isReauthRequired(e)) {
+                setReauthRefused(true);
+                onReauthenticated();
+            } else setError(e instanceof Error ? e.message : 'うまくいきませんでした');
         } finally {
             setBusy(false);
         }
@@ -53,6 +72,25 @@ export function EmailLinkForm({ onLinked }: { onLinked: () => void }) {
             <button type="button" className={settingsWideButton} onClick={() => setState({ step: 'form' })}>
                 メールアドレスを追加
             </button>
+        );
+    }
+
+    if (needsReauthentication(methods, reauthRefused)) {
+        return (
+            <div className={stack}>
+                <ReauthPrompt
+                    methods={methods}
+                    action="メールアドレスの追加"
+                    returnTo={settingsPath('account')}
+                    onDone={() => {
+                        setReauthRefused(false);
+                        onReauthenticated();
+                    }}
+                />
+                <button type="button" className={settingsTextButton} onClick={() => setState({ step: 'closed' })}>
+                    やめる
+                </button>
+            </div>
         );
     }
 

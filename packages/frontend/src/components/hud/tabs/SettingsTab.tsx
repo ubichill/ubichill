@@ -4,6 +4,7 @@ import { useMyAccount } from '@/components/profile';
 import { PublishingSection } from '@/components/publishing/PublishingSection';
 import { useLoginMethods } from '@/lib/account/fediverseSignIn';
 import { css } from '@/styled-system/css';
+import type { SettingsSection } from '../settingsLink';
 import { SplitTab, type SplitTabItem } from './SplitTab';
 import { DeleteAccountSection } from './settings/DeleteAccountSection';
 import { FediverseSection } from './settings/FediverseSection';
@@ -14,8 +15,6 @@ import { PrivacySection } from './settings/PrivacySection';
 import { SessionsSection } from './settings/SessionsSection';
 import { StorageSection } from './settings/StorageSection';
 import { TwoFactorSection } from './settings/TwoFactorSection';
-
-export type SettingsSection = 'home' | 'privacy' | 'fediverse' | 'publishing' | 'storage' | 'account' | 'mods';
 
 const SECTIONS: ReadonlyArray<SplitTabItem<SettingsSection>> = [
     { id: 'home', label: 'ホーム', icon: 'home' },
@@ -38,9 +37,12 @@ const NEEDS_ACCOUNT: ReadonlySet<SettingsSection> = new Set(['publishing', 'acco
 export function SettingsTab({
     section,
     onSectionChange,
+    linkedEnvironment,
 }: {
     section: SettingsSection;
     onSectionChange: (next: SettingsSection) => void;
+    /** 「公開」で目立たせる公開環境（追加の通知メールのリンクから来た） */
+    linkedEnvironment: string | null;
 }) {
     const account = useMyAccount();
     const { profile } = account;
@@ -78,6 +80,7 @@ export function SettingsTab({
                         onResign={account.signWorlds}
                         onRevoked={account.reloadMyWorlds}
                         refreshKey={account.environmentsVersion}
+                        linkedEnvironmentId={linkedEnvironment}
                     />
                 )}
                 {current === 'storage' && <StorageSection />}

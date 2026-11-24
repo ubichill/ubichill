@@ -100,6 +100,7 @@ function setup(options: { enabled?: string[]; callback?: CallbackOutcome } = {})
                     fakeFediverse(options.callback ?? { kind: 'error', error: 'expired', redirectTo: `${BASE}/` }),
                 secondFactor: gate,
                 options: async () => ({ enabled: true, registrationOpen: true, featuredServers: [] }),
+                hasPassword: async () => false,
             }),
         ],
     });

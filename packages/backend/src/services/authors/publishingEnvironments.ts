@@ -2,7 +2,15 @@
  * 公開環境（作者アカウントの署名鍵）の規則と手順。DB・メール・キャッシュは注入する（実体は publishingEnvironmentService.ts）。
  * 鍵を足す・取り消すのはここだけ（作者の表示のキャッシュを捨てるのを忘れないように。CI の author-key-writes-in-one-place）。
  */
-import type { PublishingEnvironmentKind, RevokeReason, SigningKeyEntry, SigningKeyList } from '@ubichill/shared';
+import {
+    type PublishingEnvironmentKind,
+    publishingEnvironmentKindLabel,
+    publishingEnvironmentSettingsPath,
+    type RevokeReason,
+    type SigningKeyEntry,
+    type SigningKeyList,
+    signingKeyFingerprint,
+} from '@ubichill/shared';
 
 export interface PublishingEnvironmentRow {
     id: string;
@@ -84,24 +92,41 @@ export function browserEnvironmentName(userAgent: string | undefined): string {
     return os ? `${browser} on ${os}` : browser;
 }
 
-/** 新しい公開環境が追加されたことの通知（心当たりがなければ取り消してパスワードを変える）。 */
+/**
+ * メールの 1 行に入れる名前（CLI・CI の名前は承認した人以外が決める）。改行（行・段落の区切り U+2028・U+2029 も）・
+ * 書字方向の制御で文面を偽らせない。
+ */
+const oneLine = (text: string): string => text.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+/gu, ' ').trim();
+
+/**
+ * 新しい公開環境が追加されたことの通知（心当たりがなければ取り消してパスワードを変える）。
+ * 鍵の指紋は一覧・CLI の承認画面と同じもので、どの環境かを見比べられるようにする。取り消しはリンク先の画面で
+ * （ログインして）行う。メールのリンクだけで取り消せるようにはしない（メールの転送・漏えいで取り消させない）。
+ */
 export function newEnvironmentNotice(args: {
     displayName: string;
-    environmentName: string;
+    environment: Pick<PublishingEnvironmentRow, 'id' | 'kind' | 'name' | 'publicKey' | 'createdAt'>;
     siteUrl: string;
-    at: Date;
 }) {
+    const { environment } = args;
+    const link = new URL(publishingEnvironmentSettingsPath(environment.id), args.siteUrl).href;
     return {
         subject: '新しい公開環境が追加されました',
-        text: `${args.displayName} さん
+        text: `${oneLine(args.displayName)} さん
 
-あなたのアカウントに、ワールドを公開できる環境「${args.environmentName}」が追加されました（${args.at.toISOString()}）。
+あなたのアカウントに、ワールドを公開できる環境が追加されました。
+
+種類: ${publishingEnvironmentKindLabel(environment.kind)}
+名前: 『${oneLine(environment.name)}』（追加した側が付けた名前）
+鍵の指紋: ${signingKeyFingerprint(environment.publicKey)}
+追加日時: ${environment.createdAt.toISOString()}
 
 心当たりがない場合は、すぐに次を行ってください。
-1. ${args.siteUrl} を開き、設定の「公開」（公開できるブラウザ・CLI・CI）で、その環境を「漏えい・心当たりのない環境」として取り消す
+1. 次のリンクを開き、この環境を「漏えい・心当たりがない」として取り消す
+${link}
 2. パスワードを変更し、ほかの端末をすべてログアウトする
 
-心当たりがある場合は、このメールは無視してかまいません。`,
+リンク先の一覧にも同じ鍵の指紋が出ます。心当たりがある場合は、このメールは無視してかまいません。`,
     };
 }
 
@@ -200,12 +225,7 @@ export function createPublishingEnvironments(deps: PublishingEnvironmentsDeps) {
         const created = await deps.keys.createLocal({ ...input, userId: owner.id });
         if (!created) return undefined;
         deps.keysChanged();
-        const notice = newEnvironmentNotice({
-            displayName: owner.name,
-            environmentName: created.name,
-            siteUrl: deps.siteUrl(),
-            at: created.createdAt,
-        });
+        const notice = newEnvironmentNotice({ displayName: owner.name, environment: created, siteUrl: deps.siteUrl() });
         deps.notify(owner, notice.subject, notice.text);
         return created;
     }
