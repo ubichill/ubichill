@@ -2,11 +2,13 @@ import { loadPackageRelease } from '@ubichill/loader';
 import { PackageDescriptorSchema } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
+import { ModFavoriteButton } from '@/components/mods/ModFavoriteButton';
 import { PackageSummary, packageButton } from '@/components/mods/PackageSummary';
 import { API_BASE } from '@/lib/api';
 import { HOST_MOD_SOURCE } from '@/lib/mods/modCdn';
 import type { EditorPackage } from '@/lib/mods/packages';
-import { css } from '@/styled-system/css';
+import { useSession } from '@/lib/session';
+import { css, cx } from '@/styled-system/css';
 import { browserSignatureVerifier } from '@/world/modSignature';
 
 export function ModPage() {
@@ -17,6 +19,7 @@ export function ModPage() {
     const [worlds, setWorlds] = useState<Array<{ id: string; displayName: string }>>([]);
     const [target, setTarget] = useState('new');
     const navigate = useNavigate();
+    const signedIn = !!useSession().data;
     useEffect(() => {
         let cancelled = false;
         setPackage(null);
@@ -74,6 +77,21 @@ export function ModPage() {
             ) : (
                 <>
                     <PackageSummary pkg={pkg} />
+                    {signedIn && pkg.entry.author && (
+                        <ModFavoriteButton
+                            mod={{ author: pkg.entry.author, id: pkg.entry.id }}
+                            labeled
+                            className={cx(
+                                packageButton,
+                                css({
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '2',
+                                    alignSelf: 'flex-start',
+                                }),
+                            )}
+                        />
+                    )}
                     <code className={css({ overflowWrap: 'anywhere' })}>ubichill install {ref}</code>
                     <button
                         type="button"

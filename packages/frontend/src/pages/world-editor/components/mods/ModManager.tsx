@@ -1,5 +1,6 @@
 import {
     type Dependency,
+    formatPackageRef,
     type InitialEntity,
     lockedMods,
     type ModLock,
@@ -10,6 +11,7 @@ import {
 } from '@ubichill/shared';
 import { type KeyboardEvent, type ReactNode, useMemo, useRef, useState } from 'react';
 import { HudIcon, type HudIconName } from '@/components/hud/HudIcon';
+import { useFavoriteMods } from '@/lib/mods/modFavorites';
 import { useAvailableMods } from '@/lib/mods/useAvailableMods';
 import { SETTINGS_KEYS, useSetting } from '@/lib/settings';
 import { css, cx } from '@/styled-system/css';
@@ -23,6 +25,7 @@ import {
     installedMods,
     type ModCandidate,
     matchesCandidate,
+    matchesModRef,
     modUsage,
     removalWarning,
     selectableCandidates,
@@ -35,12 +38,13 @@ import { installFailureText } from '../../lib/modInstall';
 import { editorButton } from '../../recipes/button';
 import { RegistryUrlManager } from '../forms/RegistryUrlManager';
 import { PanelSection } from '../PanelSection';
-import { CandidateRow, InstalledRow, listBox, SelectBox, UbichillRow } from './ModRows';
+import { CandidateRow, InstalledRow, listBox, SelectBox, UbichillRow, UnavailableFavoriteRow } from './ModRows';
 
-export type ModTab = 'installed' | 'local' | 'global' | 'registry';
+export type ModTab = 'installed' | 'favorites' | 'local' | 'global' | 'registry';
 
 const TABS: ReadonlyArray<{ id: ModTab; label: string; icon: HudIconName }> = [
     { id: 'installed', label: '使用中', icon: 'puzzle' },
+    { id: 'favorites', label: 'お気に入り', icon: 'star' },
     { id: 'local', label: 'ローカル', icon: 'server' },
     { id: 'global', label: 'グローバル', icon: 'globe' },
     { id: 'registry', label: 'レジストリ', icon: 'link' },
@@ -48,6 +52,7 @@ const TABS: ReadonlyArray<{ id: ModTab; label: string; icon: HudIconName }> = [
 
 const PLACEHOLDER: Record<ModTab, string> = {
     installed: '使用中の mod を絞り込む',
+    favorites: 'お気に入りの mod を絞り込む',
     local: '名前・ID・作者、@作者@サーバー/mod、作品 URL',
     global: '名前・ID・作者、@作者@サーバー/mod、作品 URL',
     registry: '名前・ID で絞り込む',
@@ -94,6 +99,7 @@ export function ModManager({ dependencies, lock, requires, entities, initialQuer
     const catalogScope: CatalogScope = tab === 'global' ? 'global' : 'local';
     const catalog = useModCatalog(catalogScope, query, tab === 'local' || tab === 'global');
     const resolved = useResolvedPackage(tab === 'local' || tab === 'global' ? query : '');
+    const favorites = useFavoriteMods(tab === 'favorites');
 
     const switchTab = (next: ModTab) => {
         setTab(next);
@@ -158,22 +164,39 @@ export function ModManager({ dependencies, lock, requires, entities, initialQuer
                                 ? searchCandidates([...hostCandidates, ...catalog.items.map(candidateFromPackage)])
                                 : tab === 'global'
                                   ? searchCandidates(catalog.items.map(candidateFromPackage))
-                                  : registryCandidates.filter((c) => matchesCandidate(c, query))
+                                  : tab === 'favorites'
+                                    ? favorites.mods.map(candidateFromPackage).filter((c) => matchesCandidate(c, query))
+                                    : registryCandidates.filter((c) => matchesCandidate(c, query))
                         }
                         dependencies={dependencies}
                         lock={lock}
                         loading={
                             tab === 'registry'
                                 ? index.loading
-                                : resolved.resolving || catalog.loading || (tab === 'local' && index.loading)
+                                : tab === 'favorites'
+                                  ? favorites.loading
+                                  : resolved.resolving || catalog.loading || (tab === 'local' && index.loading)
                         }
-                        error={tab === 'registry' ? '' : resolved.error || catalog.error}
+                        error={
+                            tab === 'registry'
+                                ? ''
+                                : tab === 'favorites'
+                                  ? (favorites.error ?? '')
+                                  : resolved.error || catalog.error
+                        }
                         emptyText={emptyText(tab, query, registryUrls.length)}
                         checked={checkedCandidates}
                         busyKey={installer.busy}
                         onCheck={setCheckedCandidates}
                         onAdd={addCandidates}
-                        onLoadMore={tab === 'registry' ? undefined : catalog.loadMore}
+                        onLoadMore={tab === 'local' || tab === 'global' ? catalog.loadMore : undefined}
+                        extraRows={
+                            tab === 'favorites'
+                                ? favorites.unavailable
+                                      .filter((mod) => matchesModRef(mod, query))
+                                      .map((mod) => <UnavailableFavoriteRow key={formatPackageRef(mod)} mod={mod} />)
+                                : []
+                        }
                     />
                 )}
             </div>
@@ -188,6 +211,7 @@ export function ModManager({ dependencies, lock, requires, entities, initialQuer
 
 function emptyText(tab: ModTab, query: string, registryCount: number): string {
     if (query.trim()) return '一致する mod はありません';
+    if (tab === 'favorites') return '星を付けた mod がここに並びます';
     if (tab === 'local') return 'このサーバーに公開されている mod はありません';
     if (tab === 'global')
         return 'フォロー中のサーバーに公開されている mod はありません。@作者@サーバー/mod や作品 URL でも追加できます';
@@ -404,6 +428,7 @@ function CandidatePanel({
     onCheck,
     onAdd,
     onLoadMore,
+    extraRows,
 }: {
     candidates: ModCandidate[];
     dependencies: Dependency[];
@@ -416,6 +441,8 @@ function CandidatePanel({
     onCheck: (next: ModCandidate[]) => void;
     onAdd: (key: string, list: readonly ModCandidate[]) => void;
     onLoadMore?: () => void;
+    /** 一覧の後ろに足す行（お気に入りのうち、いま引けない mod） */
+    extraRows: ReactNode[];
 }) {
     const rows = candidates.map((candidate) => ({ candidate, status: candidateStatus(candidate, dependencies, lock) }));
     const isChecked = (candidate: ModCandidate) => checked.some((c) => c.key === candidate.key);
@@ -469,6 +496,7 @@ function CandidatePanel({
                     onAdd={() => onAdd(`add:${candidate.key}`, [candidate])}
                 />
             ))}
+            {extraRows}
             {error && (
                 <p role="alert" className={cx(statusText, css({ color: 'errorText' }))}>
                     {error}
@@ -479,7 +507,7 @@ function CandidatePanel({
                     読み込み中…
                 </p>
             ) : (
-                rows.length === 0 && !error && <p className={statusText}>{emptyText}</p>
+                rows.length + extraRows.length === 0 && !error && <p className={statusText}>{emptyText}</p>
             )}
             {onLoadMore && !loading && (
                 <div className={css({ display: 'flex', justifyContent: 'center', p: '8px' })}>

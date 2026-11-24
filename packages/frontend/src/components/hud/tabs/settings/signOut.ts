@@ -2,6 +2,7 @@ import { resetFavorites } from '@/components/worlds/useFavorites';
 import { resetWorldsCache } from '@/components/worlds/useInstances';
 import { signOut } from '@/lib/auth-client';
 import { resetHome } from '@/lib/home/homeStore';
+import { resetModFavorites } from '@/lib/mods/modFavorites';
 import { resetBlocks } from '@/lib/social/blocks';
 
 /**
@@ -15,5 +16,6 @@ export async function signOutAndReset(forgetSession: () => void): Promise<void> 
     resetHome();
     resetBlocks();
     resetFavorites();
+    resetModFavorites();
     resetWorldsCache();
 }

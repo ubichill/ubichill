@@ -288,14 +288,14 @@ const PATHS = {
 
 export type HudIconName = keyof typeof PATHS;
 
-/** HUD で使う線のアイコン（絵文字は使わない）。色は currentColor。 */
-export function HudIcon({ name, size = 22 }: { name: HudIconName; size?: number }) {
+/** HUD で使う線のアイコン（絵文字は使わない）。色は currentColor。filled は塗る（オンの星など）。 */
+export function HudIcon({ name, size = 22, filled = false }: { name: HudIconName; size?: number; filled?: boolean }) {
     return (
         <svg
             width={size}
             height={size}
             viewBox="0 0 24 24"
-            fill="none"
+            fill={filled ? 'currentColor' : 'none'}
             stroke="currentColor"
             strokeWidth="2"
             strokeLinecap="round"

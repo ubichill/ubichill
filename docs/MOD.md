@@ -66,6 +66,9 @@ ubichill publish dist --public-url=https://example.com/mods
 ubichill publish dist --public-url=https://example.com/mods --check-public
 ```
 
+雛形には、main への push で上の流れ（ビルド・署名・配置・`--check-public`）を GitHub Pages に対して行うワークフロー
+（`.github/workflows/pages.yml`）が入っている。有効にする手順（Secret `UBICHILL_CREDENTIALS` と Pages の設定）は雛形の README にある。
+
 `package.json` の `ubichill.id`（無ければ `name`。`@ubichill/`・`@ubichill/mod-` の接頭辞は外す）が mod ID、`version` が版。
 mod ID は英小文字・数字を `-` でつないだ 50 文字までの名前で、`core` は使えない。作者参照とカタログは `x.y.z` の版だけを扱う。
 `src/**/*.worker.ts(x)` の `export const config` が Component のメタデータ。

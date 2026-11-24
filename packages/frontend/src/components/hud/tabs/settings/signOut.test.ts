@@ -15,6 +15,7 @@ vi.mock('@/lib/home/homeStore', () => ({ resetHome: () => calls.push('resetHome'
 vi.mock('@/lib/social/blocks', () => ({ resetBlocks: () => calls.push('resetBlocks') }));
 vi.mock('@/components/worlds/useFavorites', () => ({ resetFavorites: () => calls.push('resetFavorites') }));
 vi.mock('@/components/worlds/useInstances', () => ({ resetWorldsCache: () => calls.push('resetWorldsCache') }));
+vi.mock('@/lib/mods/modFavorites', () => ({ resetModFavorites: () => calls.push('resetModFavorites') }));
 
 const { signOutAndReset } = await import('./signOut');
 
@@ -25,7 +26,7 @@ beforeEach(() => {
 });
 
 describe('signOutAndReset: ログアウトで持ち主ごとの状態を全部捨てる', () => {
-    it('サインアウトしてから、ホーム・ブロック・お気に入り・ワールド一覧を 1 回ずつ捨てる', async () => {
+    it('サインアウトしてから、ホーム・ブロック・お気に入り（ワールド・mod）・ワールド一覧を 1 回ずつ捨てる', async () => {
         await signOutAndReset(forgetSession);
         expect(calls[0]).toBe('signOut');
         expect([...calls.slice(1)].sort()).toEqual([
@@ -33,6 +34,7 @@ describe('signOutAndReset: ログアウトで持ち主ごとの状態を全部�
             'resetBlocks',
             'resetFavorites',
             'resetHome',
+            'resetModFavorites',
             'resetWorldsCache',
         ]);
     });

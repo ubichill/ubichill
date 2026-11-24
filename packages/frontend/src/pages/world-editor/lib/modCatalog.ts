@@ -5,8 +5,10 @@
  */
 import {
     type Dependency,
+    formatPackageRef,
     type InitialEntity,
     lockedMods,
+    type ModFavoriteRef,
     type ModLock,
     type PackageDescriptor,
 } from '@ubichill/shared';
@@ -104,10 +106,17 @@ export function candidateStatus(
     return { kind: 'installed', version, outdated: !!version && compareVersions(candidate.version, version) > 0 };
 }
 
-/** 名前・ID・作者の部分一致（大文字小文字を区別しない）。 */
+/** 名前・ID・作者・作者参照（`@作者@サーバー/ID`）の部分一致（大文字小文字を区別しない）。 */
 export function matchesCandidate(candidate: ModCandidate, query: string): boolean {
     const q = query.trim().toLowerCase();
-    return !q || [candidate.name, candidate.id, candidate.author].some((text) => text?.toLowerCase().includes(q));
+    const ref = candidate.author ? formatPackageRef({ author: candidate.author, id: candidate.id }) : undefined;
+    return !q || [candidate.name, candidate.id, candidate.author, ref].some((text) => text?.toLowerCase().includes(q));
+}
+
+/** 作者参照（`@作者@サーバー/ID`）の部分一致（大文字小文字を区別しない）。一覧に版の無い mod の絞り込み。 */
+export function matchesModRef(ref: ModFavoriteRef, query: string): boolean {
+    const q = query.trim().toLowerCase();
+    return !q || formatPackageRef(ref).toLowerCase().includes(q);
 }
 
 /** 同じ候補を 2 回並べない（複数の取得元の一覧をつなげたとき）。最初のものを残す。 */
