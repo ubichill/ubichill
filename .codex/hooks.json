@@ -1,0 +1,31 @@
+{
+    "description": "ubichill の hooks。中身は .claude/settings.json と同じ scripts/agent-hooks を呼ぶ（AGENTS.md の「AI エージェントの設定」）",
+    "hooks": {
+        "PreToolUse": [
+            {
+                "matcher": "^Bash$",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "node \"$(git rev-parse --show-toplevel)/scripts/agent-hooks/pre-bash.mjs\" --agent=codex",
+                        "timeout": 15,
+                        "statusMessage": "危ないコマンドか確かめる"
+                    }
+                ]
+            }
+        ],
+        "PostToolUse": [
+            {
+                "matcher": "^apply_patch$",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "node \"$(git rev-parse --show-toplevel)/scripts/agent-hooks/post-edit-format.mjs\"",
+                        "timeout": 40,
+                        "statusMessage": "biome で整える"
+                    }
+                ]
+            }
+        ]
+    }
+}

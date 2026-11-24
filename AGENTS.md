@@ -1,0 +1,67 @@
+# ubichill
+Viteベースの完全CSR。URLで起動しWebSocketで同期する、ゼロトラスト型のmod動的ロード2Dメタバース基盤。webの思想を持ち中央集権を避ける
+
+## コマンド
+- `pnpm dev`: 開発サーバー・Docker実行
+- `pnpm build:workers`: mods/*/worker を esbuild でバンドル
+- `pnpm lint` / `pnpm lint:fix`: Biomeによる確認と自動フォーマット (コミット前に確認必須)
+
+## AI エージェントの設定（Claude Code・Codex 共通）
+- 指示はこの `AGENTS.md` が正。`CLAUDE.md` は `@AGENTS.md` を読み込むだけにする（ツールごとに書き分けない）。
+- skill の実体は `.agents/skills/<名前>/`。Claude Code 用に `.claude/skills/<名前>` からシンボリックリンクを張る。
+- hooks は `.claude/settings.json`（Claude Code）と `.codex/hooks.json`（Codex）から、同じ `scripts/agent-hooks/` を呼ぶ。Codex では最初に `/hooks` で信頼する。
+  - 編集したファイルに biome をかけ、自動で直せない違反を返す。
+  - 強制 push・`git reset --hard`・`rm -rf`・`gh auth`・`gh api` の DELETE・`gh pr merge` などは、Claude Code では人に確かめ、Codex では止める（Codex は確かめる表示に対応していない）。判定は `scripts/agent-hooks/bash-guard.mjs`。
+  - `git config ubichill.ghUser <自分の GitHub アカウント>` を設定すると、GitHub に書き込む前に gh のログイン先が違えば止める。
+
+## 用語と決定の記録（`/grill-with-docs`・domain-modeling）
+- 用語はリポジトリ直下の `GLOSSARY.md` を正とする（日本語で書き、`_Avoid_` は「使わない:」と書く）。設計書では定義し直さずリンクする。
+- 決定（ADR）は `docs/adr/` を作らず、該当する `docs/design/<機能>.md` の「決めたこと」に理由と一緒に書く。該当する設計書がなければ `docs/design/` に新しく作る。
+
+## 開発ガイドライン
+- 機能をもとに理想のテストを書くこと
+- UIでの絵文字の使用を禁止します。svgを使うことでモダンなUIにして
+- 返答・解説・コミットメッセージは日本語で行うこと。褒めるなどは無駄なので批判的に考えること。
+- **named exportのみ**。default export、`any`型は禁止。例外: mod の Worker（`*.worker.tsx`）の UI は `export default` で渡す（sandbox が自動で `Ubi.ui.render` する SDK の規約）。
+- 責務分離を徹底し、神クラス/関数を防ぐ。mod開発者には内部構造を隠蔽する。分離するのではなく、層を分けつつまとめること。ハードコードは完全な悪ではない複雑な方が悪
+- テストを書くこと。UIコンポーネントのテストは不要でロジックのテストを書くことで少し意地悪なテストをして。それと副作用やdb依存などを分離することでテストしやすくして
+- **スタイリング境界**:
+  - Host本体 (`packages/frontend`) は **PandaCSS** のみ使用（`tokens.colors`使用必須、ハードコード禁止）。
+- Host内部の実装は後方互換性に囚われず常に最適・最新のロジックにリファクタリングすること。ただし、`@ubichill/sdk` の公開APIおよび `PROTOCOL_VERSION` はセマンティックバージョニングに従い破壊的変更を慎重に管理すること。
+- **styleではなくclassName**
+- コンポーネント実装では、レイアウトは css()、共通部品は cva() で切り分ける
+
+## SDK・modアーキテクチャ (ゼロトラスト & ECS)
+modは `@ubichill/sdk` のみに依存する。Host/本体との直接結合は禁止。
+
+### パッケージ責務
+- `@ubichill/ecs`: 純粋なECS計算エンジン (React/DOM/Network依存ゼロ)。
+- `@ubichill/shared`: 全レイヤー共有の純粋知識。プロトコル(CommandType)・エラーコード・スキーマに加え、**権限の知識**（`CAPABILITY_CATALOG`・危険度・`permissionPolicy` の純粋関数）もここ。Worker/DOM非依存なので backend/CLI からも参照可。
+- `@ubichill/sandbox`: Worker管理・隔離実行環境。権限の**実行時 enforcement**（`capabilityGate`）はここ（カタログ/ポリシーの知識は shared）。
+- `@ubichill/react`: Host向けReact Hooks群。
+- `@ubichill/ui-renderer`: VNode→DOM 描画・入力収集（host/guest 両側で共用）。
+- `@ubichill/frontend`: Host クライアントアプリ本体（UI + Socket/セッション/ルーティング/mod レジストリ）。
+- `@ubichill/core-components`: 本体の標準 Component（`core:*`）のデータ形式・検証（振る舞いは runtime）。
+- `@ubichill/runtime`: 標準 Component の振る舞い（Collider の判定など）の純粋計算。
+- `@ubichill/loader`: mod の取得・完全性検証・作者参照の解決・lock 構築（browser/Node 両対応、frontend と CLI が共有）。
+- `@ubichill/cli`: 作者向けコマンド `ubichill`（init・dev・build・install・update・publish など）。npm で公開。
+- `@ubichill/terminal`: 端末出力の書式（CLI・scripts・backend・db が共有）。
+- `@ubichill/backend` / `@ubichill/bff` / `@ubichill/db`: ドメイン API サーバー / SPA 配信と OGP 注入 / Postgres のスキーマとマイグレーション（drizzle）。
+- `@ubichill/instance`: Go のインスタンスサーバー（`services/instance`）を npm のプラットフォーム別パッケージにする。
+- `@ubichill/e2e`: プレビュー環境・ローカルに対するスモークテスト。
+- `@ubichill/sdk`: mod開発者向けAPI。`@ubichill/shared` や `@ubichill/ecs` の必要な定数・型・計算ロジックを内部にインラインバンドルし、外部依存ゼロ（zero-dependency）で提供する。
+
+### backend の層（詳細と理由は `packages/backend/src/README.md` の「層の規則」）
+- `routes/`・`middleware/` は `@ubichill/db` を値で import しない（型だけ可）。DB を 1 回引くだけでも services を呼ぶ。CI の `pnpm check:architecture` が落とす。
+- 手順は services の `createX(deps)` に書いてテストする（deps は使う側が要る分だけ宣言）。本物の repository をつなぐのは `<単数>Service.ts`。
+- 同じデータを書く手順は 1 か所。後始末（キャッシュの破棄・通知）が要る書き込みを書き写さない。トランザクションは repository に閉じ込め、service に `tx` を渡さない。
+
+## ubisdkについては`@ubichill/sdk`を確認すること
+ubi.uiなどでmodが操作できる
+
+## 関数型プログラミング
+- `let`は使わずにピュアファンクションを使って処理
+- modで状態管理をubi.stateで行う
+- 宣言型で記述できるようにすること
+
+マージコミットはなるべく減らしてmainブランチを綺麗に保ちたい、PRは人間がレビューすべきものは必ずレビューさせること。さらにラベルでpreviewをつけるといい

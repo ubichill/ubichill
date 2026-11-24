@@ -1,5 +1,5 @@
 /**
- * Claude Code の PreToolUse(Bash) で、取り返しのつかないコマンドを人に確かめさせる判定。
+ * AI エージェント（Claude Code・Codex）の PreToolUse(Bash) で、取り返しのつかないコマンドを人に確かめさせる判定。
  * 入出力は pre-bash.mjs が持つ。ここは文字列だけを見る純粋な関数。
  *
  * 守りの網であって境界ではない（eval・変数展開・スクリプト経由は見えない）。
@@ -169,10 +169,10 @@ const inspectSegment = (segment) => {
     if (program === undefined) return { asks: [], needsGhAccount: false };
     const name = basename(program);
     if (SHELLS.has(name)) {
-        const script = args[args.indexOf('-c') + 1];
-        return args.includes('-c') && script !== undefined
-            ? inspectBashCommand(script)
-            : { asks: [], needsGhAccount: false };
+        // -c は -lc・-ec のように短いオプションとまとめて書かれることがある
+        const at = args.findIndex((a) => /^-[A-Za-z]*c[A-Za-z]*$/.test(a));
+        const script = at === -1 ? undefined : args[at + 1];
+        return script === undefined ? { asks: [], needsGhAccount: false } : inspectBashCommand(script);
     }
     if (name === 'git') return inspectGit(args);
     if (name === 'gh') return inspectGh(args);
@@ -222,8 +222,10 @@ export const inspectBashCommand = (command) => {
  * @param {{ asks: string[], needsGhAccount: boolean }} inspection
  * @param {{ expected?: string, actual?: string | null }} account
  *   expected が空なら gh のログイン先は確かめない。actual は取れなかったら null。
+ * @param {'claude' | 'codex'} agent
+ *   Codex は ask に対応せず、返すと hook の失敗として扱ってコマンドを実行してしまう。Codex では止める。
  */
-export const decide = (inspection, account) => {
+export const decide = (inspection, account, agent = 'claude') => {
     const expected = account.expected?.trim();
     if (inspection.needsGhAccount && expected) {
         if (account.actual !== expected) {
@@ -234,8 +236,12 @@ export const decide = (inspection, account) => {
             };
         }
     }
-    if (inspection.asks.length > 0) {
-        return { permissionDecision: 'ask', permissionDecisionReason: inspection.asks.join(' / ') };
-    }
-    return null;
+    if (inspection.asks.length === 0) return null;
+    const reason = inspection.asks.join(' / ');
+    return agent === 'codex'
+        ? {
+              permissionDecision: 'deny',
+              permissionDecisionReason: `${reason}。実行せず、ユーザーに確かめて、ユーザー自身に実行してもらうこと。`,
+          }
+        : { permissionDecision: 'ask', permissionDecisionReason: reason };
 };

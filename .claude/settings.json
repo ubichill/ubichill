@@ -37,7 +37,7 @@
                 "hooks": [
                     {
                         "type": "command",
-                        "command": "node \"$CLAUDE_PROJECT_DIR/scripts/claude-hooks/pre-bash.mjs\"",
+                        "command": "node \"$CLAUDE_PROJECT_DIR/scripts/agent-hooks/pre-bash.mjs\"",
                         "timeout": 15
                     }
                 ]
@@ -49,7 +49,7 @@
                 "hooks": [
                     {
                         "type": "command",
-                        "command": "node \"$CLAUDE_PROJECT_DIR/scripts/claude-hooks/post-edit-format.mjs\"",
+                        "command": "node \"$CLAUDE_PROJECT_DIR/scripts/agent-hooks/post-edit-format.mjs\"",
                         "timeout": 40
                     }
                 ]

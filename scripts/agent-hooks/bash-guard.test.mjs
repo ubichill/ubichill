@@ -31,6 +31,8 @@ describe('inspectBashCommand: 確かめさせる', () => {
         ['echo "x $(echo $(git push -f))"'],
         ['echo "`git push -f`"'],
         ['bash -c "git push --force"'],
+        ['bash -lc "git push --force"'],
+        ['/bin/zsh -ec \'git push -f\''],
     ])('強制 push: %s', (command) => {
         expect(asks(command)).toEqual([expect.stringContaining('強制')]);
     });
@@ -142,5 +144,32 @@ describe('decide', () => {
         expect(
             decide({ asks: ['force'], needsGhAccount: true }, { expected: 'me', actual: 'other' }),
         ).toMatchObject({ permissionDecision: 'deny' });
+    });
+
+    describe('Codex（ask に対応しない）', () => {
+        it('確かめる理由があれば止め、ユーザーに実行してもらうよう伝える', () => {
+            const result = decide({ asks: ['force'], needsGhAccount: false }, { expected: '', actual: null }, 'codex');
+            expect(result).toMatchObject({ permissionDecision: 'deny' });
+            expect(result?.permissionDecisionReason).toContain('ユーザー');
+        });
+
+        it('何も無ければ何も返さない（Codex の確認の仕組みに任せる）', () => {
+            expect(decide({ asks: [], needsGhAccount: false }, { expected: '', actual: null }, 'codex')).toBeNull();
+        });
+
+        it('ask は 1 つも返さない', () => {
+            const inputs = [
+                { asks: ['a'], needsGhAccount: false },
+                { asks: ['a'], needsGhAccount: true },
+                { asks: [], needsGhAccount: true },
+            ];
+            const accounts = [
+                { expected: '', actual: null },
+                { expected: 'me', actual: 'me' },
+                { expected: 'me', actual: 'other' },
+            ];
+            const decisions = inputs.flatMap((i) => accounts.map((a) => decide(i, a, 'codex')?.permissionDecision));
+            expect(decisions).not.toContain('ask');
+        });
     });
 });

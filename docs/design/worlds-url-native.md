@@ -97,4 +97,4 @@ GitHub tree / index JSON / インスタンス連合 / Web検索  →  すべて�
 - **P2**: WorldStore 抽象。LocalDbWorldStore＋S3WorldStore。ユーザーワールド CRUD を store 経由に。`/:id/world.yaml` 配信。
 - **P3**: `instances.worldRef` 移行（schema＋backfill＋コード、FK 撤去）。favorites を ref 化。frontend で source/著者表示＋URL 入室。
 
-CLAUDE.md 方針により後方互換は担保しない（worlds.json・旧 schema をきれいに置換）。
+AGENTS.md の方針により後方互換は担保しない（worlds.json・旧 schema をきれいに置換）。
