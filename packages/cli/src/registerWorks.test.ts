@@ -98,7 +98,7 @@ describe('registerExternalWorks', () => {
 });
 
 describe('registerExternalWorks（--require-registration）', () => {
-    const registration = { kind: 'mod' as const, url: 'https://a.example/mods', entry: {}, signature: {} };
+    const registration = { kind: 'world' as const, url: 'https://a.example/w.yaml', yaml: '', signature: {} };
     const answering =
         (...statuses: number[]): RegisterRequest =>
         async () => ({ status: statuses.shift() ?? 200, body: { error: '登録は 200 件までです' } });
