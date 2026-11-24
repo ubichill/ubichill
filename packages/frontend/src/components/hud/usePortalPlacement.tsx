@@ -1,7 +1,7 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { pushToast } from '@/lib/toast';
 import { isRemoteRoomAddress, requestRoomPortalGrant } from '@/lib/worlds/instancesApi';
-import { placeRoomPortal } from '@/lib/worlds/roomPortalPlacement';
+import { PORTAL_COOLDOWN_MESSAGE, placeRoomPortal, portalCooldownRemaining } from '@/lib/worlds/roomPortalPlacement';
 import { PortalPlacementLayer, useRoomPortalActions } from '@/world';
 import type { PortalOpener, PortalTarget } from './HudNavigationContext';
 
@@ -10,6 +10,8 @@ export interface PortalPlacement {
     opener: PortalOpener;
     /** 置く場所を選ぶ画面（選んでいなければ null）。ランチパッドを閉じても残る所に置く */
     layer: ReactNode;
+    /** 選ぶのをやめる（置いている途中なら取りやめる）。ランチパッドを開いたときに呼ぶ */
+    cancel: () => void;
 }
 
 /**
@@ -21,9 +23,18 @@ export interface PortalPlacement {
 export function usePortalPlacement(currentInstanceId: string, closeLaunchpad: () => void): PortalPlacement {
     const actions = useRoomPortalActions();
     const [target, setTarget] = useState<PortalTarget | null>(null);
+    const inFlight = useRef<AbortController | null>(null);
+    const lastPlacedAt = useRef<number | null>(null);
     const unavailable = isRemoteRoomAddress(currentInstanceId)
         ? 'ほかのサーバーの部屋には、ポータルを置けません'
         : null;
+
+    const cancel = useCallback(() => {
+        inFlight.current?.abort();
+        inFlight.current = null;
+        setTarget(null);
+    }, []);
+    useEffect(() => () => inFlight.current?.abort(), []);
 
     const opener = useMemo<PortalOpener>(
         () => ({
@@ -37,20 +48,29 @@ export function usePortalPlacement(currentInstanceId: string, closeLaunchpad: ()
         [unavailable, closeLaunchpad],
     );
 
+    const place = async (chosen: PortalTarget, at: { x: number; y: number }) => {
+        // インスタンスに断られるのが分かっている間は、部屋を作らずに選び直してもらう
+        if (portalCooldownRemaining(lastPlacedAt.current, Date.now()) > 0) {
+            pushToast(PORTAL_COOLDOWN_MESSAGE, 'error');
+            return;
+        }
+        const controller = new AbortController();
+        inFlight.current = controller;
+        const error = await placeRoomPortal(
+            { requestGrant: requestRoomPortalGrant, open: actions.open },
+            chosen.room,
+            at,
+            controller.signal,
+        );
+        if (controller.signal.aborted) return;
+        inFlight.current = null;
+        if (error) pushToast(error, 'error');
+        else lastPlacedAt.current = Date.now();
+        setTarget(null);
+    };
+
     const layer = target && (
-        <PortalPlacementLayer
-            look={target.look}
-            onCancel={() => setTarget(null)}
-            onPlace={async (at) => {
-                const error = await placeRoomPortal(
-                    { requestGrant: requestRoomPortalGrant, open: actions.open },
-                    target.room,
-                    at,
-                );
-                if (error) pushToast(error, 'error');
-                setTarget(null);
-            }}
-        />
+        <PortalPlacementLayer look={target.look} onCancel={cancel} onPlace={(at) => place(target, at)} />
     );
-    return { opener, layer };
+    return { opener, layer, cancel };
 }

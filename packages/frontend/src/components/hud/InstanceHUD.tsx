@@ -29,6 +29,11 @@ export function InstanceHUD() {
     const problem = latestProblem(entries);
     useLaunchpadHotkey(open, setOpen);
     const placement = usePortalPlacement(instanceId ?? '', close);
+    // 置く場所を選ぶ画面の上にランチパッドを重ねない（Esc などで開いたら選ぶのをやめる）
+    const cancelPlacement = placement.cancel;
+    useEffect(() => {
+        if (open) cancelPlacement();
+    }, [open, cancelPlacement]);
     // Esc やボタンで開いたときはランチパッドから
     useEffect(() => {
         if (!open) setInitialTab(undefined);

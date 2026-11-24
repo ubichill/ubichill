@@ -93,3 +93,46 @@ export function revealScroll(center: Point, view: WorldViewport): { left: number
     const top = along(center.y, view.scrollTop, view.height, ROOM_PORTAL.HEIGHT);
     return left === view.scrollLeft && top === view.scrollTop ? null : { left, top };
 }
+
+/** 押されたキーの扱い。 */
+export type PlacementKeyAction =
+    /** そのまま通す（Ctrl・Alt・Meta との組み合わせ。ブラウザ・OS のショートカット） */
+    | 'pass'
+    /** やめる */
+    | 'cancel'
+    /** 今のゴーストの所に置く */
+    | 'place'
+    /** 矢印キーでゴーストを動かす */
+    | 'move'
+    /** 置く画面の中でフォーカスを回す（閉じ込める） */
+    | 'focus-next'
+    | 'focus-previous'
+    /** フォーカスのあるボタンを押す（ブラウザに任せ、mod には渡さない） */
+    | 'button'
+    /** 何もしない（mod には渡さない） */
+    | 'swallow';
+
+export interface KeyLike {
+    key: string;
+    shiftKey: boolean;
+    ctrlKey: boolean;
+    altKey: boolean;
+    metaKey: boolean;
+}
+
+/** 置く場所を選んでいる間のキーの扱い。onButton は置く画面のボタンにフォーカスがあるか。 */
+export function placementKeyAction(e: KeyLike, onButton: boolean): PlacementKeyAction {
+    if (e.ctrlKey || e.altKey || e.metaKey) return 'pass';
+    if (e.key === 'Escape') return 'cancel';
+    if (e.key === 'Tab') return e.shiftKey ? 'focus-previous' : 'focus-next';
+    if (e.key === 'Enter' || e.key === ' ') return onButton ? 'button' : e.key === 'Enter' ? 'place' : 'swallow';
+    if (e.key in ARROWS) return 'move';
+    return 'swallow';
+}
+
+/** フォーカスを回した先（current は今の位置、-1 は置く画面そのもの）。端で反対の端に回る。 */
+export function nextFocusIndex(current: number, count: number, backwards: boolean): number {
+    if (count <= 0) return -1;
+    if (current < 0 || current >= count) return backwards ? count - 1 : 0;
+    return (current + (backwards ? count - 1 : 1)) % count;
+}

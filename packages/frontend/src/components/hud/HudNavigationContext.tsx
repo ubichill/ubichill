@@ -26,8 +26,11 @@ export interface HudNavigation {
 export interface PortalTarget {
     /** 置く場所を選ぶ間に出す行き先の見た目（部屋のワールドの名前とサムネイル） */
     look: PortalPlacementLook;
-    /** 置く場所を決めてから呼ぶ。行き先（このサーバーから見た部屋の住所）を返す。新しいインスタンスはここで作る */
-    room: () => Promise<string>;
+    /**
+     * 置く場所を決めてから呼ぶ。行き先（このサーバーから見た部屋の住所）を返す。新しいインスタンスはここで作る。
+     * signal は取りやめの合図（置いている途中でやめた・時間切れ）
+     */
+    room: (signal: AbortSignal) => Promise<string>;
 }
 
 export interface PortalOpener {

@@ -1,6 +1,13 @@
 import { useWorld } from '@ubichill/react';
 import { ROOM_PORTAL } from '@ubichill/shared';
-import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from 'react';
+import {
+    type KeyboardEvent as ReactKeyboardEvent,
+    type PointerEvent as ReactPointerEvent,
+    type SyntheticEvent,
+    useEffect,
+    useRef,
+    useState,
+} from 'react';
 import { css, cva, cx } from '@/styled-system/css';
 import { useScrollWorldEl } from './cursor/useScrollWorldEl';
 import { PortalIcon } from './partIcons';
@@ -9,8 +16,10 @@ import {
     initialPlacement,
     isTap,
     movedByKey,
+    nextFocusIndex,
     type Point,
     placementAt,
+    placementKeyAction,
     pointerToWorld,
     revealScroll,
     type WorldViewport,
@@ -38,14 +47,15 @@ function readViewport(el: HTMLElement): WorldViewport {
 
 const clientOf = (e: { clientX: number; clientY: number }): Point => ({ x: e.clientX, y: e.clientY });
 
-/** 選んでいる間に横取りするキー（mod や Esc のランチパッドに渡さない）。 */
-const PLACEMENT_KEYS = new Set(['Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
+/** 置く画面の上の押す操作は、下のワールド・mod（window で聞いている）に渡さない。 */
+const stop = (e: SyntheticEvent) => e.stopPropagation();
 
 /**
  * 部屋へのポータルを置く場所を選ぶ。行き先の見た目のゴーストをワールドの上に出し、ポインターに付いて動かす。
  * クリック・タップでその場所に置く。ドラッグで動かして「ここに置く」でも置ける。矢印キーで動かし（Shift で大きく）、
- * Enter で置く。Esc か「やめる」でやめる。選んでいる間の押す・キーは mod に渡さない（ペンで描く・自機に乗るなどをしない）。
- * ホイールはワールドのスクロールに回す。
+ * Enter で置く。Esc か「やめる」でやめる（置いている途中でも）。ホイールはワールドのスクロールに回す。
+ * モーダルとしてフォーカスを中に閉じ込め、押す操作とキー（Ctrl・Alt・Meta との組み合わせを除く）を mod に渡さない
+ * （ペンで描く・自機に乗る・撃つなどをしない）。キーを離したこと（keyup）は渡す（押したまま始めたキーが押されっぱなしにならない）。
  */
 export function PortalPlacementLayer({
     look,
@@ -55,6 +65,7 @@ export function PortalPlacementLayer({
     look: PortalPlacementLook;
     /** 置く場所を決めた（ワールドの座標のポータルの真ん中）。終わるまで選び直せない */
     onPlace: (at: Point) => Promise<void>;
+    /** やめる。置いている途中なら取りやめる */
     onCancel: () => void;
 }) {
     const world = useWorld().environment.worldSize;
@@ -68,11 +79,12 @@ export function PortalPlacementLayer({
     // マウスの最後の位置。スクロールしても、ゴーストをマウスの下に保つ（キーで動かしたら離す）
     const hovering = useRef<Point | null>(null);
     const layerRef = useRef<HTMLDivElement>(null);
-    const confirmRef = useRef<HTMLButtonElement>(null);
 
     const commit = (point: Point) => {
         if (placingRef.current) return;
         placingRef.current = true;
+        // 押したボタンが押せなくなってもフォーカスを外に落とさない（Esc で取りやめられるように）
+        layerRef.current?.focus();
         setAt(point);
         setPlacing(true);
         void onPlace(point).finally(() => {
@@ -80,8 +92,6 @@ export function PortalPlacementLayer({
             setPlacing(false);
         });
     };
-    const latest = useRef({ at, view, world, scrollEl, commit, onCancel });
-    latest.current = { at, view, world, scrollEl, commit, onCancel };
 
     useEffect(() => {
         if (!scrollEl) return;
@@ -103,48 +113,38 @@ export function PortalPlacementLayer({
     }, [scrollEl, world]);
 
     useEffect(() => {
-        confirmRef.current?.focus();
+        layerRef.current?.focus();
     }, []);
 
-    useEffect(() => {
-        const swallow = (e: KeyboardEvent) => {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-        };
-        const onKeyDown = (e: KeyboardEvent) => {
-            if (!PLACEMENT_KEYS.has(e.key) || e.isComposing || e.keyCode === 229) return;
-            const { at: current, view: v, world: w, scrollEl: el } = latest.current;
-            // 「やめる」「ここに置く」にフォーカスがあれば、Enter はそのボタンを押す
-            const onButton = e.target instanceof Element && !!layerRef.current?.contains(e.target.closest('button'));
-            if (e.key === 'Enter' && onButton) return;
-            swallow(e);
-            if (placingRef.current) return;
-            if (e.key === 'Escape') return latest.current.onCancel();
-            if (!current) return;
-            if (e.key === 'Enter') return latest.current.commit(current);
-            const moved = movedByKey(current, e.key, e.shiftKey, w);
-            if (!moved) return;
-            hovering.current = null;
-            setAt(moved);
-            const scroll = v && revealScroll(moved, v);
-            if (scroll && el) el.scrollTo(scroll.left, scroll.top);
-        };
-        const onKeyUp = (e: KeyboardEvent) => {
-            if (PLACEMENT_KEYS.has(e.key)) e.stopImmediatePropagation();
-        };
-        window.addEventListener('keydown', onKeyDown, true);
-        window.addEventListener('keyup', onKeyUp, true);
-        return () => {
-            window.removeEventListener('keydown', onKeyDown, true);
-            window.removeEventListener('keyup', onKeyUp, true);
-        };
-    }, []);
+    const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+        if (e.nativeEvent.isComposing) return;
+        const action = placementKeyAction(e, e.target instanceof HTMLButtonElement);
+        if (action === 'pass') return;
+        e.stopPropagation();
+        if (action === 'button' || action === 'swallow') return;
+        e.preventDefault();
+        if (action === 'cancel') return onCancel();
+        if (action === 'focus-next' || action === 'focus-previous') {
+            const items = [...(layerRef.current?.querySelectorAll<HTMLButtonElement>('button:enabled') ?? [])];
+            const active = document.activeElement;
+            const current = active instanceof HTMLButtonElement ? items.indexOf(active) : -1;
+            const next = items[nextFocusIndex(current, items.length, action === 'focus-previous')];
+            return (next ?? layerRef.current)?.focus();
+        }
+        if (!at || placingRef.current) return;
+        if (action === 'place') return commit(at);
+        const moved = movedByKey(at, e.key, e.shiftKey, world);
+        if (!moved) return;
+        hovering.current = null;
+        setAt(moved);
+        const scroll = view && revealScroll(moved, view);
+        if (scroll && scrollEl) scrollEl.scrollTo(scroll.left, scroll.top);
+    };
 
     const follow = (client: Point) => {
         if (view && !placingRef.current) setAt(placementAt(pointerToWorld(client, view), world));
     };
     const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-        e.stopPropagation();
         if (e.button !== 0 || placingRef.current) return;
         e.currentTarget.setPointerCapture(e.pointerId);
         pressed.current = { pointerId: e.pointerId, client: clientOf(e) };
@@ -157,7 +157,6 @@ export function PortalPlacementLayer({
         follow(clientOf(e));
     };
     const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
-        e.stopPropagation();
         const down = pressed.current;
         pressed.current = null;
         if (!down || down.pointerId !== e.pointerId || !view) return;
@@ -175,7 +174,14 @@ export function PortalPlacementLayer({
             aria-modal="true"
             aria-label="ポータルを置く場所"
             aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Enter Escape"
+            tabIndex={-1}
             className={layer}
+            onKeyDown={onKeyDown}
+            onPointerDown={stop}
+            onPointerUp={stop}
+            onMouseDown={stop}
+            onMouseUp={stop}
+            onContextMenu={stop}
         >
             <div
                 data-portal-placement-surface
@@ -228,16 +234,10 @@ export function PortalPlacementLayer({
             )}
             <div className={bar}>
                 <p className={hint}>{placing ? '置いています...' : '押した所に置きます'}</p>
-                <button
-                    type="button"
-                    className={barButton({ intent: 'secondary' })}
-                    disabled={placing}
-                    onClick={onCancel}
-                >
+                <button type="button" className={barButton({ intent: 'secondary' })} onClick={onCancel}>
                     やめる
                 </button>
                 <button
-                    ref={confirmRef}
                     type="button"
                     className={barButton({ intent: 'primary' })}
                     disabled={placing || !at}
@@ -252,7 +252,7 @@ export function PortalPlacementLayer({
 }
 
 // ランチパッドを開くボタン（10000）より上、ランチパッド（10010）・確認（10020）・トースト（10040）より下
-const layer = css({ position: 'fixed', inset: 0, zIndex: 10005 });
+const layer = css({ position: 'fixed', inset: 0, zIndex: 10005, outline: 'none' });
 
 // 指のドラッグはスクロールでなくゴーストを動かす
 const surface = css({ position: 'absolute', inset: 0, touchAction: 'none' });

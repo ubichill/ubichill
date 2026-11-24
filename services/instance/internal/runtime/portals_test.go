@@ -461,7 +461,9 @@ func TestFrontZ(t *testing.T) {
 	}{
 		{"空の部屋", nil, nil, 0},
 		{"いちばん大きいものの 1 つ上", []Object{entityAtZ("a", 3, nil), entityAtZ("b", 5000, nil), entityAtZ("c", -2, nil)}, nil, 5001},
-		{"負だけ", []Object{entityAtZ("a", -10, nil), entityAtZ("b", -3, nil)}, nil, -2},
+		{"負だけなら 0（背景より奥に描かない）", []Object{entityAtZ("a", -10, nil), entityAtZ("b", -3, nil)}, nil, 0},
+		{"-0.5 も 0", []Object{entityAtZ("a", -0.5, nil)}, nil, 0},
+		{"0 の上は 1", []Object{entityAtZ("a", 0, nil)}, nil, 1},
 		{"小数は整数にして上へ", []Object{entityAtZ("a", 5000.5, nil)}, nil, 5001},
 		{"上限を超えるなら上限", []Object{entityAtZ("a", maxCoordinate, nil)}, nil, maxCoordinate},
 		{"上限の手前の小数", []Object{entityAtZ("a", maxCoordinate-0.5, nil)}, nil, maxCoordinate},

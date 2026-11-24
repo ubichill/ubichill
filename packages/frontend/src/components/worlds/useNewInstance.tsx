@@ -7,7 +7,8 @@ import { useSession } from '@/lib/session';
 import { pushToast } from '@/lib/toast';
 import { css } from '@/styled-system/css';
 
-export type NewInstanceCreate = (options: { holdEmptyMs?: number }) => Promise<Instance>;
+/** signal は作るのを取りやめる合図（ポータルを置いている途中でやめた・時間切れ） */
+export type NewInstanceCreate = (options: { holdEmptyMs?: number }, signal?: AbortSignal) => Promise<Instance>;
 
 export const PRIVATE_WORLD_START_MESSAGE = 'プライベートのワールドです。インスタンスを作れるのは作者だけです';
 
@@ -58,7 +59,7 @@ export function useNewInstance({
         setChoosing(false);
         portal?.place({
             look: { name: world?.displayName || 'ポータル', thumbnail: world?.thumbnail },
-            room: () => create({ holdEmptyMs: ROOM_PORTAL.LIFETIME_MS }).then((instance) => instance.id),
+            room: (signal) => create({ holdEmptyMs: ROOM_PORTAL.LIFETIME_MS }, signal).then((instance) => instance.id),
         });
     };
 

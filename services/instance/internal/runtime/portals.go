@@ -204,23 +204,18 @@ func (r *Room) openPortal(m *member, userID string, data Object) error {
 	return nil
 }
 
-// frontZ は部屋のいちばん前の z（ワールドの座標の Entity の z のいちばん大きいものの 1 つ上。transform の範囲を超えるなら上限）。
+// frontZ は部屋のいちばん前の z（ワールドの座標の Entity の z のいちばん大きいものの 1 つ上。0 より下にはしない、
+// transform の範囲を超えるなら上限）。負の z はワールドの背景（WorldStage の背景の画像）より奥に描かれるため 0 以上にする。
 // 画面に固定する Entity（overlay）はワールドの上の別の層に描くので比べない。except（置き直しで消す前のポータル）も比べない。
 // 整数にするのは、CSS の z-index が小数を受け付けないため。
 func (r *Room) frontZ(except []string) float64 {
-	top, found := 0.0, false
+	top := -1.0
 	for id, e := range r.entities {
 		t, _ := e["transform"].(map[string]any)
 		z, ok := t["z"].(float64)
-		if !ok || screenFixed(e) || slices.Contains(except, id) {
-			continue
+		if ok && !screenFixed(e) && !slices.Contains(except, id) {
+			top = max(top, z)
 		}
-		if !found || z > top {
-			top, found = z, true
-		}
-	}
-	if !found {
-		return 0
 	}
 	return min(math.Floor(top)+1, maxCoordinate)
 }

@@ -64,7 +64,7 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
 
     const newInstance = useNewInstance({
         world: instance.world,
-        create: (options) => createInstance({ worldId: worldRef, ...options }),
+        create: (options, signal) => createInstance({ worldId: worldRef, ...options }, { signal }),
         enter: (created) => onJoin(created.id),
     });
 
