@@ -106,6 +106,22 @@ for (const [key, fieldPath] of [['POD_NAME', 'metadata.name'], ['POD_IP', 'statu
     }
 }
 
+// BFF の検索に載せるかの環境は backend の NODE_ENV と同じ（dev・プレビューは values-dev.yaml の development で noindex、本番は production）
+const valuesFile = (name) => fileURLToPath(new URL(`../charts/ubichill/${name}`, import.meta.url));
+const deploymentEnvOf = (args) =>
+    containerEnv(render('ubichill', ['--set', 'redis.auth.password=x', ...args]), '-frontend', 'frontend').DEPLOYMENT_ENVIRONMENT;
+for (const [label, args, want] of [
+    ['既定（values.yaml）', [], 'production'],
+    // 本番の値はシークレットが仮の値なので、描画できる値を渡す（本番は existingSecret）
+    ['values-prod.yaml', ['-f', valuesFile('values-prod.yaml'), '--set', 'backend.secretEnv.RESEND_API_KEY=test-resend-key'], 'production'],
+    ['values-dev.yaml', ['-f', valuesFile('values-dev.yaml')], 'development'],
+    ['プレビュー（values-dev + values-preview）', ['-f', valuesFile('values-dev.yaml'), '-f', valuesFile('values-preview.yaml')], 'development'],
+    ['frontend.env で明示', ['--set', 'frontend.env.DEPLOYMENT_ENVIRONMENT=staging'], 'staging'],
+]) {
+    const got = deploymentEnvOf(args);
+    if (got !== want) failures.push(`frontend の DEPLOYMENT_ENVIRONMENT（${label}）= ${JSON.stringify(got)}（期待 ${want}）`);
+}
+
 // 部屋の割り当て（Directory）は既定でメモリ。redis は明示したときだけ
 const directoryOf = (args) => containerEnv(render('ubichill', ['--set', 'redis.auth.password=x', ...args]), '-instance', 'instance').INSTANCE_DIRECTORY;
 if (directoryOf([]) !== 'memory') failures.push(`INSTANCE_DIRECTORY の既定が memory でない: ${directoryOf([])}`);
@@ -559,5 +575,5 @@ if (failures.length > 0) {
     process.exit(1);
 }
 term.success(
-    `chart の Redis の env: ${cases.length} 通り + 同梱の Valkey（Service・Secret・永続化・exporter・版の固定・描画しない条件・拒否）+ instance の Downward API・Directory の選択（Go・backend）・replicas・更新方式と drain（引っ越し・猶予の自動計算）・指標の収集と KEDA（既定・有効・scale-in・draining の除外・拒否）・pod-deletion-cost の権限 + 不正な指定の拒否、backend の台数: ${replicaCases.length} 通り + Redis なしの複数台の拒否`,
+    `chart の Redis の env: ${cases.length} 通り + 同梱の Valkey（Service・Secret・永続化・exporter・版の固定・描画しない条件・拒否）+ instance の Downward API・Directory の選択（Go・backend）・replicas・更新方式と drain（引っ越し・猶予の自動計算）・指標の収集と KEDA（既定・有効・scale-in・draining の除外・拒否）・pod-deletion-cost の権限 + 不正な指定の拒否、backend の台数: ${replicaCases.length} 通り + Redis なしの複数台の拒否、BFF の検索の環境（DEPLOYMENT_ENVIRONMENT）: 5 通り`,
 );

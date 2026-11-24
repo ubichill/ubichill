@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { DEFAULT_FEDIVERSE_SETTINGS } from '@ubichill/shared';
 import {
     and,
     asc,
@@ -18,7 +19,7 @@ import {
     sql,
 } from 'drizzle-orm';
 import { type Database, db } from '../index';
-import { accounts, externalAccountProfiles, sessions, userProfiles, users } from '../schema';
+import { accounts, externalAccountProfiles, sessions, userProfiles, userSettings, users } from '../schema';
 import { type InsertCredentialUserOutcome, insertCredentialUser, type NewCredentialUser } from './credentialUser';
 import { removeUserRows } from './userRemoval';
 
@@ -43,6 +44,8 @@ export type UserProfileRecord = UserRecord & {
     bannerImage: string | null;
     links: string[];
     languages: string[];
+    /** 「おすすめや検索に出す」（設定の行が無ければ既定のオン） */
+    discoverable: boolean;
 };
 
 export interface ProfileFieldsInput {
@@ -62,12 +65,21 @@ async function selectProfile(executor: Executor, where: SQL): Promise<UserProfil
             bannerImage: userProfiles.bannerImage,
             links: userProfiles.links,
             languages: userProfiles.languages,
+            discoverable: userSettings.fediverseDiscoverable,
         })
         .from(users)
         .leftJoin(userProfiles, eq(userProfiles.userId, users.id))
+        .leftJoin(userSettings, eq(userSettings.userId, users.id))
         .where(where);
     const row = rows[0];
-    return row && { ...row, links: row.links ?? [], languages: row.languages ?? [] };
+    return (
+        row && {
+            ...row,
+            links: row.links ?? [],
+            languages: row.languages ?? [],
+            discoverable: row.discoverable ?? DEFAULT_FEDIVERSE_SETTINGS.discoverable,
+        }
+    );
 }
 
 export interface CreateUserInput {
@@ -372,6 +384,26 @@ export const userRepository = {
             .where(and(...(options.excludeIds ?? []).map((id) => ne(users.id, id))))
             .orderBy(desc(users.createdAt), asc(users.id))
             .limit(options.limit);
+    },
+
+    /**
+     * 検索に出してよい人の ID（sitemap）。「おすすめや検索に出す」をオフにした人とシステムのアカウントは除く
+     * （設定の行が無い人は既定のオン）。ID の順に limit 人まで（時刻の順にすると、アカウントを変えた順が外から分かる）。
+     */
+    async listDiscoverableHandles(limit: number): Promise<string[]> {
+        const rows = await db
+            .select({ handle: users.handle })
+            .from(users)
+            .leftJoin(userSettings, eq(userSettings.userId, users.id))
+            .where(
+                and(
+                    ne(users.handle, SYSTEM_USER_HANDLE),
+                    or(isNull(userSettings.fediverseDiscoverable), eq(userSettings.fediverseDiscoverable, true)),
+                ),
+            )
+            .orderBy(asc(users.handle))
+            .limit(limit);
+        return rows.map((row) => row.handle);
     },
 
     /** 登録している人の数（システムのアカウントを除く） */

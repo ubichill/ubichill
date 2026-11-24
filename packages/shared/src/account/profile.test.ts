@@ -163,6 +163,23 @@ describe('userProfileOf', () => {
             links: [{ url: 'https://github.com/a', kind: 'github' }],
             languages: [],
             roles: [{ id: 'r1', name: 'スタッフ', color: '#ff0000' }],
+            // 設定の行が無い（値が来ない）人は既定のオン
+            discoverable: true,
         });
+    });
+
+    it('「おすすめや検索に出す」をオフにした人はそのまま伝える', () => {
+        const stored = {
+            id: 'u1',
+            name: 'a',
+            handle: 'aaa',
+            image: null,
+            bio: null,
+            status: null,
+            bannerImage: null,
+            links: [],
+            languages: [],
+        };
+        expect(userProfileOf({ ...stored, discoverable: false }, 'aaa@x.example', []).discoverable).toBe(false);
     });
 });

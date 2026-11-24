@@ -1,4 +1,6 @@
 import { defineConfig } from '@pandacss/dev';
+// テーマの色の既定と、コントラストを確かめる文字の色は shared が持つ（管理者の色の検査と同じ値にする）
+import { DEFAULT_THEME_PRIMARY, THEME_TEXT_ON_PRIMARY } from '../shared/src/server/themeColor';
 
 export default defineConfig({
     // Whether to use css reset
@@ -45,7 +47,7 @@ export default defineConfig({
                 },
                 colors: {
                     // メインカラー（ダークネイビー - ボタンやアクセントに使用）
-                    primary: { value: '#1b2a44' },
+                    primary: { value: DEFAULT_THEME_PRIMARY },
                     primaryHighlight: { value: '#4780e0' },
                     
                     // セカンダリカラー（ベージュ系 - カード背景などに使用）
@@ -63,7 +65,7 @@ export default defineConfig({
                     text: { value: '#1b2a44' },
                     textMuted: { value: '#56627a' },
                     textSubtle: { value: '#70624f' },
-                    textOnPrimary: { value: '#f8f3ea' },
+                    textOnPrimary: { value: THEME_TEXT_ON_PRIMARY },
                     
                     // ボーダー
                     border: { value: '#cebca2' },

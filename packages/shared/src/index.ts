@@ -230,6 +230,12 @@ export const ENV_KEYS = {
     /** 本体の外部到達 base URL。ローカル/ユーザー作成ワールドの正規 URL 生成に使う */
     PUBLIC_BASE_URL: 'PUBLIC_BASE_URL',
 
+    /**
+     * 配備の環境（backend の NODE_ENV と同じ値。chart が BFF に渡す）。BFF は Express のために NODE_ENV を常に production にするので、
+     * 検索に載せてよいかはこちらで決める
+     */
+    DEPLOYMENT_ENVIRONMENT: 'DEPLOYMENT_ENVIRONMENT',
+
     /** バックエンドAPI URL（フロントエンド用、Next.js の NEXT_PUBLIC_ プレフィックス） */
     API_URL: 'NEXT_PUBLIC_API_URL',
 } as const;
@@ -296,7 +302,10 @@ export { createModLock, lockedMods } from './schemas/modLock.schema';
 export * from './schemas/url.schema';
 export { withoutWorldLock } from './schemas/world.schema';
 export * from './schemas/worldVisibility.schema';
+export * from './server/branding';
+export * from './server/indexing';
 export * from './server/serverInfo';
+export * from './server/themeColor';
 export {
     confirmEnvelopeAuthor,
     type EnvelopeInvalidReason,
