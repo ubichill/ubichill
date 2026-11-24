@@ -6,6 +6,11 @@ Viteベースの完全CSR。URLで起動しWebSocketで同期する、ゼロト�
 - `pnpm build:workers`: mods/*/worker を esbuild でバンドル
 - `pnpm lint` / `pnpm lint:fix`: Biomeによる確認と自動フォーマット (コミット前に確認必須)
 
+## Claude Code の hooks（`.claude/settings.json`）
+- 編集したファイルに biome をかけ、自動で直せない違反を返す。
+- 強制 push・`git reset --hard`・`rm -rf`・`gh auth`・`gh api` の DELETE・`gh pr merge` などは人に確かめる。判定は `scripts/claude-hooks/bash-guard.mjs`。
+- `.claude/settings.local.json` の `env.UBICHILL_GH_USER` に自分の GitHub アカウントを書くと、GitHub に書き込む前に gh のログイン先が違えば止める。
+
 ## 開発ガイドライン
 - 機能をもとに理想のテストを書くこと
 - UIでの絵文字の使用を禁止します。svgを使うことでモダンなUIにして
