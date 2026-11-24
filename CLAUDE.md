@@ -11,6 +11,10 @@ Viteベースの完全CSR。URLで起動しWebSocketで同期する、ゼロト�
 - 強制 push・`git reset --hard`・`rm -rf`・`gh auth`・`gh api` の DELETE・`gh pr merge` などは人に確かめる。判定は `scripts/claude-hooks/bash-guard.mjs`。
 - `.claude/settings.local.json` の `env.UBICHILL_GH_USER` に自分の GitHub アカウントを書くと、GitHub に書き込む前に gh のログイン先が違えば止める。
 
+## 用語と決定の記録（`/grill-with-docs`・domain-modeling）
+- 用語はリポジトリ直下の `GLOSSARY.md` を正とする（日本語で書き、`_Avoid_` は「使わない:」と書く）。設計書では定義し直さずリンクする。
+- 決定（ADR）は `docs/adr/` を作らず、該当する `docs/design/<機能>.md` の「決めたこと」に理由と一緒に書く。該当する設計書がなければ `docs/design/` に新しく作る。
+
 ## 開発ガイドライン
 - 機能をもとに理想のテストを書くこと
 - UIでの絵文字の使用を禁止します。svgを使うことでモダンなUIにして
