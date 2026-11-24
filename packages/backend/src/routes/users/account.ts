@@ -163,8 +163,9 @@ router.get('/me/login-methods', requireFreshAuth, async (req, res) => {
     return res.json(await loginMethodService.of(req.user.id, req.session, new Date()));
 });
 
-// フェディバースのアカウントを外す（パスワードの入れ直しは求めず、連絡先に知らせる）。流れは services/auth/loginMethods.ts
-router.delete('/me/login-methods/:id', requireFreshAuth, async (req, res) => {
+// フェディバースのアカウントを外す（直近の本人確認。奪った古いセッションで本人のログイン手段を外させない）。
+// 流れは services/auth/loginMethods.ts
+router.delete('/me/login-methods/:id', requireRecentAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const outcome = await loginMethodService.unlink(req.user.id, String(req.params.id), req.session?.id ?? null);
     switch (outcome.status) {

@@ -4,7 +4,7 @@
  * - パスワードを持つユーザーは、アカウントの安全に関わる操作（このブラウザの公開環境・ほかの端末のログアウト）も
  *   パスワードを確かめたセッションに限る。SSO の乗っ取りを、乗っ取りが終わった後も残る権限に変えさせないため。
  *   パスワードの無いユーザーは SSO が唯一の手段なので限らない。
- * - 乗っ取りが終わった後も残るものを作る操作（二段階認証の設定・CLI と CI の承認・メールアドレスとパスワードの追加）と
+ * - 乗っ取りが終わった後も残るものを作る操作（ログイン方法の追加・解除・二段階認証の設定・CLI と CI の承認）と
  *   アカウントの削除は、奪われた古いセッションでできないよう、直近の本人確認を求める。
  */
 
@@ -49,6 +49,14 @@ export function isRecentlyAuthenticated(session: SessionFacts, now: Date, hasPas
 /** 管理者の権限をこのセッションで使えるか。 */
 export function canActAsAdmin(isAdminUser: boolean, session: SessionFacts): boolean {
     return isAdminUser && isPasswordVerified(session);
+}
+
+/** better-auth のセッションから、本人の確かめ方を取り出す（クッキーキャッシュでは日時が文字列で来る）。 */
+export function sessionFactsFrom(session: { createdAt?: unknown; passwordVerifiedAt?: unknown }): SessionFacts {
+    return {
+        createdAt: toDateOrNull(session.createdAt) ?? new Date(0),
+        passwordVerifiedAt: toDateOrNull(session.passwordVerifiedAt),
+    };
 }
 
 /** 文字列・Date・null のどれで来ても Date | null にする（better-auth のクッキーキャッシュは文字列で返す）。 */

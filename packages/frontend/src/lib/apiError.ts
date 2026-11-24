@@ -27,9 +27,9 @@ export async function apiErrorOf(res: Response): Promise<ApiError> {
     );
 }
 
-/** 直近の本人確認が要ると断られたか（requireRecentAuth の 403）。 */
+/** 直近の本人確認が要ると断られたか（requireRecentAuth の 403。理由のコードを持つ失敗ならどれでも）。 */
 export const isReauthRequired = (error: unknown): boolean =>
-    error instanceof ApiError && error.code === 'reauth-required';
+    error instanceof Error && 'code' in error && error.code === 'reauth-required';
 
 /** API の失敗レスポンスの理由のコード（本文の `code`。無ければ null）。 */
 export async function errorCode(res: Response): Promise<string | null> {

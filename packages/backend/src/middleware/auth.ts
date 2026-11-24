@@ -6,7 +6,7 @@ import {
     isRecentlyAuthenticated,
     isStrongSession,
     type SessionFacts,
-    toDateOrNull,
+    sessionFactsFrom,
 } from '../services/auth/sessionAssurance';
 import { publishingEnvironmentService } from '../services/authors/publishingEnvironmentService';
 import { roleService } from '../services/roles/roleService';
@@ -43,10 +43,7 @@ type SessionResult = Awaited<ReturnType<typeof auth.api.getSession>>;
 
 /** better-auth のセッションから、本人の確かめ方を取り出す（クッキーキャッシュでは日時が文字列で来る）。 */
 export function sessionFactsOf(session: NonNullable<SessionResult>['session']): SessionFacts {
-    return {
-        createdAt: toDateOrNull(session.createdAt) ?? new Date(0),
-        passwordVerifiedAt: toDateOrNull(session.passwordVerifiedAt),
-    };
+    return sessionFactsFrom(session);
 }
 
 function attachSession(req: Request, session: NonNullable<SessionResult>): void {
@@ -93,7 +90,8 @@ function authRequired(options: { fresh: boolean }) {
 export const requireAuth = authRequired({ fresh: false });
 
 /**
- * 乗っ取りが終わった後も残るものを作る操作（二段階認証の設定・CLI と CI の承認・アカウントの削除）の認証。
+ * 乗っ取りが終わった後も残るものを作る操作（ログイン方法の追加・解除・二段階認証の設定・CLI と CI の承認・
+ * アカウントの削除）の認証。
  * DB のセッションで、直近にログインかパスワードの再認証をしたものだけ通す。奪われた古いセッションで認証アプリや
  * API トークンを足され、パスワードを変えても残るのを防ぐ。
  */

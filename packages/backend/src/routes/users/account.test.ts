@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
     hasPassword: vi.fn(async () => false),
     start: vi.fn(async () => ({ ok: true as const, status: 'sent' as const })),
     verify: vi.fn(async () => ({ ok: true as const, status: 'linked' as const })),
+    unlink: vi.fn(async () => ({ status: 'unlinked' as const })),
     pass: ((_req, _res, next) => next()) satisfies RequestHandler,
 }));
 
@@ -22,7 +23,7 @@ vi.mock('../../services/auth/emailLinkService', () => ({
 vi.mock('../../services/roles/roleService', () => ({ roleService: {} }));
 vi.mock('../../services/authors/publishingEnvironmentService', () => ({ publishingEnvironmentService: {} }));
 vi.mock('../../services/auth/accountSessions', () => ({ accountSessionService: {} }));
-vi.mock('../../services/auth/loginMethods', () => ({ loginMethodService: {} }));
+vi.mock('../../services/auth/loginMethods', () => ({ loginMethodService: { unlink: mocks.unlink } }));
 vi.mock('../../services/users/accountDeletionService', () => ({ accountDeletionService: {} }));
 vi.mock('../../services/users/displayName', () => ({ changeDisplayName: vi.fn(), displayNameAvailableAtOf: vi.fn() }));
 vi.mock('../../services/users/publicProfile', () => ({ publicProfileOf: vi.fn() }));
@@ -52,6 +53,18 @@ function ssoSession(signedInAgo: number) {
     };
 }
 
+/** パスワードを持つ人のセッション（パスワードを確かめた時刻）。 */
+function passwordSession(verifiedAgo: number) {
+    const base = ssoSession(verifiedAgo);
+    return { ...base, session: { ...base.session, passwordVerifiedAt: ago(verifiedAgo) } };
+}
+
+const removeLoginMethod = (id: string) =>
+    fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/users/me/login-methods/${id}`, {
+        method: 'DELETE',
+        headers: { cookie: 'session=x' },
+    });
+
 const post = (path: string, body: unknown) =>
     fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/users${path}`, {
         method: 'POST',
@@ -59,16 +72,17 @@ const post = (path: string, body: unknown) =>
         body: JSON.stringify(body),
     });
 
+beforeAll(async () => {
+    await new Promise<void>((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(0, '127.0.0.1', resolve);
+    });
+});
+afterAll(async () => {
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+});
+
 describe('メールアドレスとパスワードの追加（/me/email・/me/email/verify）は直近の本人確認', () => {
-    beforeAll(async () => {
-        await new Promise<void>((resolve, reject) => {
-            server.once('error', reject);
-            server.listen(0, '127.0.0.1', resolve);
-        });
-    });
-    afterAll(async () => {
-        await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-    });
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.hasPassword.mockResolvedValue(false);
@@ -100,5 +114,32 @@ describe('メールアドレスとパスワードの追加（/me/email・/me/ema
         expect(mocks.verify).toHaveBeenCalledWith(
             expect.objectContaining({ session: expect.objectContaining({ id: 'session-1' }), code: '123456' }),
         );
+    });
+});
+
+describe('ログイン方法を外す（DELETE /me/login-methods/:id）は直近の本人確認', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it('奪った古いセッションでは、本人のフェディバースのログインを外せない（403 reauth-required）', async () => {
+        mocks.hasPassword.mockResolvedValue(false);
+        mocks.getSession.mockResolvedValue(ssoSession(60 * MINUTE));
+        const refused = await removeLoginMethod('acc-victim');
+        expect(refused.status).toBe(403);
+        expect(await refused.json()).toMatchObject({ code: 'reauth-required' });
+        mocks.hasPassword.mockResolvedValue(true);
+        mocks.getSession.mockResolvedValue(passwordSession(30 * MINUTE));
+        expect((await removeLoginMethod('acc-victim')).status).toBe(403);
+        expect(mocks.unlink).not.toHaveBeenCalled();
+    });
+
+    it('ログインし直した・パスワードを入れ直した直後なら外せる', async () => {
+        mocks.hasPassword.mockResolvedValue(false);
+        mocks.getSession.mockResolvedValue(ssoSession(MINUTE));
+        expect((await removeLoginMethod('acc-1')).status).toBe(204);
+        mocks.hasPassword.mockResolvedValue(true);
+        mocks.getSession.mockResolvedValue(passwordSession(MINUTE));
+        expect((await removeLoginMethod('acc-2')).status).toBe(204);
+        expect(mocks.unlink).toHaveBeenCalledWith('user-1', 'acc-1', 'session-1');
+        expect(mocks.unlink).toHaveBeenCalledTimes(2);
     });
 });

@@ -27,6 +27,8 @@ describe('apiErrorOf', () => {
     it('ほかの理由・ただの Error は本人確認の要求とみなさない', () => {
         expect(isReauthRequired(new ApiError('x', 403, 'password-required'))).toBe(false);
         expect(isReauthRequired(new Error('reauth-required'))).toBe(false);
+        // 認証の API の失敗（フェディバースの連携の開始）も理由のコードで見分ける
+        expect(isReauthRequired(Object.assign(new Error('x'), { code: 'reauth-required' }))).toBe(true);
         expect(isReauthRequired(null)).toBe(false);
     });
 });

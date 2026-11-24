@@ -5,11 +5,14 @@ import { SoftwareLogo } from '@/components/auth/FediverseBrandIcons';
 import { FediverseServerPicker } from '@/components/auth/FediverseServerPicker';
 import { requestAdminRecheck } from '@/lib/account/adminStatus';
 import { fetchFediverseSignInOptions, removeLoginMethod, startFediverseSignIn } from '@/lib/account/fediverseSignIn';
-import { removableLoginMethods } from '@/lib/account/loginMethods';
+import { needsReauthentication, removableLoginMethods } from '@/lib/account/loginMethods';
+import { isReauthRequired } from '@/lib/apiError';
 import { pushToast } from '@/lib/toast';
 import { css } from '@/styled-system/css';
+import { settingsPath } from '../../settingsLink';
 import { EmailLinkForm } from './EmailLinkForm';
 import { ReauthForm } from './ReauthForm';
+import { ReauthPrompt } from './ReauthPrompt';
 import {
     settingsCard,
     settingsCardTitle,
@@ -20,7 +23,8 @@ import {
 
 /**
  * ログイン方法（設定の「アカウント」）。ログイン方法は連携を足すと増える: フェディバースのアカウントは認証して、
- * メールアドレスは届いたコードで確かめて足す。パスワードの入れ直しは求めない（足した・外したことは連絡先に知らせる）。
+ * メールアドレスは届いたコードで確かめて足す。足す・外すには直近の本人確認が要る（奪った古いセッションで攻撃者の
+ * ログイン手段を足させない・本人の手段を外させない）。足した・外したことは連絡先にも知らせる。
  * 今の設定で使える手段が残らなくなる解除はできない（サーバーも同じ規則で断る）。
  */
 export function LoginMethodsSection({
@@ -35,6 +39,9 @@ export function LoginMethodsSection({
     const location = useLocation();
     const [busy, setBusy] = useState<string | null>(null);
     const [adding, setAdding] = useState(false);
+    /** 足す・外すを押したが、先に直近の本人確認が要る */
+    const [reauthing, setReauthing] = useState(false);
+    const [reauthRefused, setReauthRefused] = useState(false);
     const [featuredServers, setFeaturedServers] = useState<readonly string[]>([]);
     useEffect(() => {
         fetchFediverseSignInOptions()
@@ -44,13 +51,29 @@ export function LoginMethodsSection({
     if (!methods) return null;
     const returnTo = `${location.pathname}${location.search}`;
     const removable = removableLoginMethods(methods);
+    const reauthNeeded = needsReauthentication(methods, reauthRefused);
+
+    /** サーバーに直近の本人確認を求められた（画面を開いたまま 10 分を過ぎた）なら本人確認へ。ほかの失敗は知らせる */
+    const failed = (error: unknown, fallback: string) => {
+        if (!isReauthRequired(error)) {
+            pushToast(error instanceof Error ? error.message : fallback, 'error');
+            return;
+        }
+        setReauthRefused(true);
+        setAdding(false);
+        setReauthing(true);
+    };
 
     const remove = async (id: string) => {
+        if (reauthNeeded) {
+            setReauthing(true);
+            return;
+        }
         setBusy(id);
         try {
             await removeLoginMethod(id);
         } catch (error) {
-            pushToast(error instanceof Error ? error.message : '外せませんでした', 'error');
+            failed(error, '外せませんでした');
         } finally {
             setBusy(null);
             onChanged();
@@ -62,7 +85,7 @@ export function LoginMethodsSection({
         try {
             await startFediverseSignIn({ server, intent: 'link', returnTo });
         } catch (error) {
-            pushToast(error instanceof Error ? error.message : '始められませんでした', 'error');
+            failed(error, '始められませんでした');
             setBusy(null);
         }
     };
@@ -126,7 +149,23 @@ export function LoginMethodsSection({
                 ))}
             </ul>
 
-            {adding ? (
+            {reauthing && reauthNeeded ? (
+                <div className={css({ display: 'flex', flexDirection: 'column', gap: '2' })}>
+                    <ReauthPrompt
+                        methods={methods}
+                        action="ログイン方法の変更"
+                        returnTo={settingsPath('account')}
+                        onDone={() => {
+                            setReauthRefused(false);
+                            setReauthing(false);
+                            onChanged();
+                        }}
+                    />
+                    <button type="button" className={settingsTextButton} onClick={() => setReauthing(false)}>
+                        やめる
+                    </button>
+                </div>
+            ) : adding ? (
                 <div className={css({ display: 'flex', flexDirection: 'column', gap: '2' })}>
                     <FediverseServerPicker
                         featuredServers={featuredServers}
@@ -144,7 +183,11 @@ export function LoginMethodsSection({
                     </button>
                 </div>
             ) : (
-                <button type="button" className={settingsWideButton} onClick={() => setAdding(true)}>
+                <button
+                    type="button"
+                    className={settingsWideButton}
+                    onClick={() => (reauthNeeded ? setReauthing(true) : setAdding(true))}
+                >
                     フェディバースのアカウントを追加
                 </button>
             )}
