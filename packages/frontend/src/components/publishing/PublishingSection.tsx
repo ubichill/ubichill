@@ -1,5 +1,10 @@
-import { displayAuthorAccount, type RevokeReason } from '@ubichill/shared';
-import { useCallback, useEffect, useState } from 'react';
+import {
+    displayAuthorAccount,
+    publishingEnvironmentKindLabel,
+    type RevokeReason,
+    signingKeyFingerprint,
+} from '@ubichill/shared';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import {
     fetchPublishingEnvironments,
@@ -67,12 +72,27 @@ const tag = cva({
 
 const row = css({ display: 'flex', alignItems: 'center', gap: '2', flexWrap: 'wrap' });
 
-const KIND_LABEL: Record<PublishingEnvironment['kind'], string> = {
-    browser: 'ブラウザ',
-    cli: 'CLI',
-    ci: 'CI',
-    legacy: '以前の鍵',
-};
+const environmentItem = cva({
+    base: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '3',
+        px: '3',
+        py: '2',
+        border: '1px solid',
+        borderColor: 'border',
+        borderRadius: '8px',
+        bg: 'background',
+    },
+    variants: {
+        stale: { true: { borderColor: 'error' } },
+        revoked: { true: { opacity: 0.6 } },
+        /** 追加の通知メールのリンクから来た環境 */
+        linked: { true: { outline: '2px solid', outlineColor: 'primary', outlineOffset: '2px' } },
+    },
+});
+
+const fingerprint = css({ fontFamily: 'mono', fontSize: '11px', color: 'text' });
 
 function KindIcon({ kind }: { kind: PublishingEnvironment['kind'] }) {
     const common = {
@@ -132,6 +152,8 @@ interface PublishingSectionProps {
     onResign: (worldIds: readonly string[]) => Promise<ResignResult<unknown>>;
     /** 公開環境を取り消した（ワールドの作者表示が変わるので、ワールドの一覧を読み込み直す）。 */
     onRevoked: () => Promise<void>;
+    /** 目立たせる公開環境（追加の通知メールのリンクから来た） */
+    linkedEnvironmentId: string | null;
 }
 
 /**
@@ -146,6 +168,7 @@ export function PublishingSection({
     worlds,
     onResign,
     onRevoked,
+    linkedEnvironmentId,
 }: PublishingSectionProps) {
     const localKey = useSigningPublicKey(account.id);
     const confirm = useConfirm();
@@ -156,6 +179,14 @@ export function PublishingSection({
     const [revoking, setRevoking] = useState<string | null>(null);
     /** 漏えいとして取り消した直後（ログアウトとパスワード変更へ案内する） */
     const [compromised, setCompromised] = useState(false);
+
+    const linkedItem = useRef<HTMLLIElement | null>(null);
+    const linkedLoaded = environments !== null;
+
+    // 通知のメールから来たら、その環境を見える所へ（読み込んだ最初の 1 回だけ）
+    useEffect(() => {
+        if (linkedLoaded) linkedItem.current?.scrollIntoView({ block: 'center' });
+    }, [linkedLoaded]);
 
     const reload = useCallback(async () => {
         const list = await fetchPublishingEnvironments();
@@ -270,6 +301,11 @@ export function PublishingSection({
             <h3 className={css({ fontSize: '14px', fontWeight: '700', color: 'text', mt: '4', mb: '2' })}>
                 公開できるブラウザ・CLI・CI
             </h3>
+            {linkedEnvironmentId && environments && !environments.some((e) => e.id === linkedEnvironmentId) && (
+                <p className={notice({ tone: 'warn' })}>
+                    メールの公開環境はこのアカウントにありません。別のアカウントでログインしていないか確かめてください。
+                </p>
+            )}
             {environments === null ? (
                 <p className={css({ fontSize: '13px', color: 'textMuted' })}>読み込み中...</p>
             ) : sorted.length === 0 ? (
@@ -285,22 +321,16 @@ export function PublishingSection({
                         return (
                             <li
                                 key={env.id}
-                                className={css({
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '3',
-                                    px: '3',
-                                    py: '2',
-                                    border: '1px solid',
-                                    borderColor: stale ? 'error' : 'border',
-                                    borderRadius: '8px',
-                                    bg: 'background',
-                                    opacity: env.revokedAt ? 0.6 : 1,
+                                ref={env.id === linkedEnvironmentId ? linkedItem : undefined}
+                                className={environmentItem({
+                                    stale,
+                                    revoked: !!env.revokedAt,
+                                    linked: env.id === linkedEnvironmentId,
                                 })}
                             >
                                 <span
                                     className={css({ color: 'textMuted', display: 'flex' })}
-                                    title={KIND_LABEL[env.kind]}
+                                    title={publishingEnvironmentKindLabel(env.kind)}
                                 >
                                     <KindIcon kind={env.kind} />
                                 </span>
@@ -326,13 +356,18 @@ export function PublishingSection({
                                         )}
                                     </div>
                                     <p className={css({ fontSize: '12px', color: 'textMuted', mt: '0.5' })}>
-                                        {KIND_LABEL[env.kind]} ・ 追加 {formatDate(env.createdAt)} ・{' '}
+                                        {publishingEnvironmentKindLabel(env.kind)} ・ 追加 {formatDate(env.createdAt)}{' '}
+                                        ・{' '}
                                         <span title="サーバーで公開・確認した日時（外部ホスト向けの ubichill publish --out も、署名の前にサーバーで確認します）">
                                             {env.lastUsedAt ? `最終利用 ${formatDate(env.lastUsedAt)}` : '未使用'}
                                         </span>
                                         {env.revokedAt && ` ・ 取り消し ${formatDate(env.revokedAt)}`}
                                         {env.revokeReason &&
                                             `（${env.revokeReason === 'lost' ? '紛失' : '漏えい・心当たりなし'}）`}
+                                    </p>
+                                    <p className={css({ fontSize: '12px', color: 'textMuted', mt: '0.5' })}>
+                                        鍵の指紋{' '}
+                                        <code className={fingerprint}>{signingKeyFingerprint(env.publicKey)}</code>
                                     </p>
                                 </div>
                                 {!env.revokedAt && revoking !== env.id && (

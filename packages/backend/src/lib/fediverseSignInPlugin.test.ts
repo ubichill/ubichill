@@ -88,6 +88,8 @@ function setup(callbackOutcome: CallbackOutcome) {
                     complete: async () => ({ ok: false, error: 'challenge-expired', message: '' }),
                 },
                 options: async () => ({ enabled: true, registrationOpen: true, featuredServers: ['mi.example'] }),
+                hasPassword: async (userId) =>
+                    db.account.some((a) => a.userId === userId && a.providerId === 'credential'),
             }),
         ],
     });
@@ -224,23 +226,48 @@ describe('fediverseSignInPlugin', () => {
         expect(t.db.session[0]?.authAccountId ?? null).toBeNull();
     });
 
-    it('連携の開始はパスワードを入れ直さずにできる。ただし DB で取り消したセッションでは始められない', async () => {
+    const linkWith = (t: ReturnType<typeof setup>, cookie: string) =>
+        t.request('/fediverse/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Origin: BASE, Cookie: cookie },
+            body: JSON.stringify({ server: 'mi.example', intent: 'link' }),
+        });
+    const MINUTE = 60 * 1000;
+    const ago = (ms: number) => new Date(Date.now() - ms);
+
+    it('連携の開始は直近の本人確認を求める: パスワードを 10 分以内に確かめたセッションなら始められ、古ければ 403 reauth-required', async () => {
         const t = setup({ kind: 'error', error: 'expired', redirectTo: BASE });
         const cookie = await passwordUser(t);
-        const link = () =>
-            t.request('/fediverse/start', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Origin: BASE, Cookie: cookie },
-                body: JSON.stringify({ server: 'mi.example', intent: 'link' }),
-            });
-        // 何日も前のログイン・パスワードを確かめていないセッションでも始められる
-        const old = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
-        Object.assign(t.db.session[0] ?? {}, { createdAt: old, passwordVerifiedAt: null });
-        expect((await link()).status).toBe(200);
+        expect((await linkWith(t, cookie)).status).toBe(200);
         expect(t.seen.startSession).toMatchObject({ sessionId: t.db.session[0]?.id });
-        // 取り消したセッション（クッキーキャッシュは残っている）は、ログインしていない扱いで流れに渡す
+        // ログインは最近でも、パスワードを確かめたのが 11 分前なら断る（パスワードを持つ人の SSO のログインも数えない）
+        Object.assign(t.db.session[0] ?? {}, { createdAt: ago(MINUTE), passwordVerifiedAt: ago(11 * MINUTE) });
+        const refused = await linkWith(t, cookie);
+        expect(refused.status).toBe(403);
+        expect(await refused.json()).toMatchObject({ code: 'reauth-required' });
+        expect(t.seen.started).toBe(1);
+    });
+
+    it('奪った古いセッション（パスワードなしの人）で攻撃者のアカウントを足す流れは、開始の時点で断る。ログインし直した直後なら足せる', async () => {
+        const t = setup({ kind: 'signed-in', userId: 'u1', accountRowId: 'acc-1', redirectTo: `${BASE}/` });
+        const callback = await t.request('/fediverse/callback/mi.example?code=c&state=s');
+        const cookie = cookiesOf(callback).join('; ');
+        expect(t.db.session).toHaveLength(1);
+        Object.assign(t.db.session[0] ?? {}, { createdAt: ago(3 * 24 * 60 * MINUTE) });
+        const refused = await linkWith(t, cookie);
+        expect(refused.status).toBe(403);
+        expect(await refused.json()).toMatchObject({ code: 'reauth-required' });
+        expect(t.seen.started).toBe(0);
+        Object.assign(t.db.session[0] ?? {}, { createdAt: ago(2 * MINUTE) });
+        expect((await linkWith(t, cookie)).status).toBe(200);
+        expect(t.seen.startSession).toMatchObject({ userId: 'u1' });
+    });
+
+    it('DB で取り消したセッション（クッキーキャッシュは残っている）では、ログインしていない扱いで流れに渡す', async () => {
+        const t = setup({ kind: 'error', error: 'expired', redirectTo: BASE });
+        const cookie = await passwordUser(t);
         t.db.session.length = 0;
-        await link();
+        await linkWith(t, cookie);
         expect(t.seen.startSession).toBeNull();
     });
 

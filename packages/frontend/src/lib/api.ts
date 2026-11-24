@@ -1,4 +1,4 @@
-import { errorMessage } from './apiError';
+import { apiErrorOf } from './apiError';
 
 /**
  * バックエンドAPIのベースURLを返す。
@@ -19,7 +19,7 @@ export function getApiBase(): string {
 
 export const API_BASE = getApiBase();
 
-/** 自分の API（`/api/v1` から下の path）を cookie 付きで呼び、JSON を返す（204 は undefined）。失敗は本文の error で投げる。 */
+/** 自分の API（`/api/v1` から下の path）を cookie 付きで呼び、JSON を返す（204 は undefined）。失敗は ApiError で投げる。 */
 export async function requestApi<T>(path: string, init?: RequestInit): Promise<T> {
     const res = await fetch(`${API_BASE}/api/v1${path}`, {
         credentials: 'include',
@@ -27,6 +27,6 @@ export async function requestApi<T>(path: string, init?: RequestInit): Promise<T
         ...init,
         headers: { ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...init?.headers },
     });
-    if (!res.ok) throw new Error(await errorMessage(res));
+    if (!res.ok) throw await apiErrorOf(res);
     return (res.status === 204 ? undefined : await res.json()) as T;
 }

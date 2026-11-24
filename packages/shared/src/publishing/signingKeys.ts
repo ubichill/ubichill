@@ -31,7 +31,7 @@ export const PublishingEnvironmentNameSchema = z
     .trim()
     .min(1)
     .max(PUBLISHING_ENVIRONMENT_NAME_MAX_LENGTH)
-    .refine((v) => !/\p{Cc}/u.test(v), '制御文字は使えません');
+    .refine((v) => !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(v), '制御文字・改行は使えません');
 
 export const SigningKeyEntrySchema = z.object({
     publicKey: Ed25519PublicKeySchema,
@@ -67,6 +67,35 @@ export function normalizeEd25519PublicKey(value: string): string | undefined {
     if (!match) return undefined;
     const last = BASE64URL_ALPHABET.indexOf(toBase64UrlChars(match[2]));
     return `${toBase64UrlChars(match[1])}${BASE64URL_ALPHABET[last - (last % 4)]}`;
+}
+
+/**
+ * 鍵の指紋（人が見比べるための短い表示）。公開環境の一覧・追加の通知メール・CLI の承認画面・CLI の出力で同じものを出す。
+ * 書き方の違う同じ鍵が同じ指紋になるよう、正規化してから取る。
+ */
+export function signingKeyFingerprint(publicKey: string): string {
+    const key = normalizeEd25519PublicKey(publicKey) ?? publicKey;
+    return `${key.slice(0, 6)}…${key.slice(-6)}`;
+}
+
+const PUBLISHING_ENVIRONMENT_KIND_LABELS: Readonly<Record<PublishingEnvironmentKind, string>> = {
+    browser: 'ブラウザ',
+    cli: 'CLI',
+    ci: 'CI',
+    legacy: '以前の鍵',
+};
+
+const isPublishingEnvironmentKind = (kind: string): kind is PublishingEnvironmentKind =>
+    (PUBLISHING_ENVIRONMENT_KINDS as readonly string[]).includes(kind);
+
+/** 公開環境の種類の表示名（知らない種類はそのまま）。 */
+export function publishingEnvironmentKindLabel(kind: string): string {
+    return isPublishingEnvironmentKind(kind) ? PUBLISHING_ENVIRONMENT_KIND_LABELS[kind] : kind;
+}
+
+/** 設定の「公開」を開き、その公開環境を目立たせる画面の path（追加の通知メールから開く）。 */
+export function publishingEnvironmentSettingsPath(environmentId: string): string {
+    return `/settings/publishing?environment=${encodeURIComponent(environmentId)}`;
 }
 
 export type SigningKeyStatus = 'active' | 'revoked' | 'unknown';

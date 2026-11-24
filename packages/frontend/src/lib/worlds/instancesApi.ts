@@ -57,13 +57,17 @@ export async function fetchInstance(instanceId: string, signal?: AbortSignal): P
 }
 
 /** `worldId` 文字列のみ、または access/settings を含む完全な {@link CreateInstanceRequest} を受け取る。 */
-export async function createInstance(request: string | CreateInstanceRequest): Promise<Instance> {
+export async function createInstance(
+    request: string | CreateInstanceRequest,
+    options: { signal?: AbortSignal } = {},
+): Promise<Instance> {
     const body = typeof request === 'string' ? { worldId: request } : request;
     const res = await fetch(`${API_BASE}/api/v1/instances`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(body),
+        signal: options.signal,
     });
     if (!res.ok) throw new Error(await readErrorMessage(res, 'インスタンスの作成に失敗しました'));
     return res.json() as Promise<Instance>;
@@ -105,12 +109,13 @@ export async function saveWorldVisibility(worldId: string, visibility: WorldVisi
  * 部屋へのポータルを置く許可を backend にもらう（インスタンスが portal:open で確かめる）。room は portal:open に送るのと
  * 同じ住所。プライベートのワールドの部屋で、部屋を作った人でなければ断られる。
  */
-export async function requestRoomPortalGrant(room: string): Promise<string> {
+export async function requestRoomPortalGrant(room: string, signal?: AbortSignal): Promise<string> {
     const res = await fetch(`${API_BASE}/api/v1/room-portals/grants`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ room }),
+        signal,
     });
     if (!res.ok) throw new Error(await readErrorMessage(res, 'ポータルを置けませんでした'));
     const data = (await res.json()) as { grant?: unknown };

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"math"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -170,7 +171,7 @@ func (r *Room) openPortal(m *member, userID string, data Object) error {
 	}
 	x, okX := data["x"].(float64)
 	y, okY := data["y"].(float64)
-	if !okX || !okY || math.IsNaN(x) || math.IsNaN(y) || math.Abs(x) > 1e7 || math.Abs(y) > 1e7 {
+	if !okX || !okY || math.IsNaN(x) || math.IsNaN(y) || math.Abs(x) > maxCoordinate || math.Abs(y) > maxCoordinate {
 		return errPortalPosition
 	}
 	t := Object{"x": x - roomPortalWidth/2, "y": y - roomPortalHeight/2, "z": float64(0), "w": float64(roomPortalWidth), "h": float64(roomPortalHeight), "scale": float64(1), "rotation": float64(0)}
@@ -186,6 +187,7 @@ func (r *Room) openPortal(m *member, userID string, data Object) error {
 	if len(r.roomPortals(func(Object) bool { return true }))-len(own) >= maxRoomPortals {
 		return errPortalTooMany
 	}
+	t["z"] = r.frontZ(own)
 	e := Object{
 		"id": newID(), "type": "core:portal", "ownerId": userID, "lockedBy": nil, "transform": t,
 		// 持ち主は先に通って部屋を出ることが多く、そのあとは参加者の一覧から名前を引けないので、名前も入れる
@@ -200,6 +202,33 @@ func (r *Room) openPortal(m *member, userID string, data Object) error {
 	r.broadcast("entity:created", e, nil, false)
 	r.armPortalsLocked()
 	return nil
+}
+
+// frontZ は部屋のいちばん前の z（ワールドの座標の Entity の z のいちばん大きいものの 1 つ上。0 より下にはしない、
+// transform の範囲を超えるなら上限）。負の z はワールドの背景（WorldStage の背景の画像）より奥に描かれるため 0 以上にする。
+// 画面に固定する Entity（overlay）はワールドの上の別の層に描くので比べない。except（置き直しで消す前のポータル）も比べない。
+// 整数にするのは、CSS の z-index が小数を受け付けないため。
+func (r *Room) frontZ(except []string) float64 {
+	top := -1.0
+	for id, e := range r.entities {
+		t, _ := e["transform"].(map[string]any)
+		z, ok := t["z"].(float64)
+		if ok && !screenFixed(e) && !slices.Contains(except, id) {
+			top = max(top, z)
+		}
+	}
+	return min(math.Floor(top)+1, maxCoordinate)
+}
+
+// screenFixed は画面に固定して描く Entity か（shared の resolveOverlayMode が null でない）。
+func screenFixed(e Object) bool {
+	switch v := e["overlay"].(type) {
+	case bool:
+		return v
+	case string:
+		return v != ""
+	}
+	return false
 }
 
 // closePortal は userID の置いたポータルを消す。無くても成功にする。

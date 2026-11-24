@@ -98,19 +98,66 @@ describe('browserEnvironmentName', () => {
 });
 
 describe('newEnvironmentNotice（乗っ取りに気付けるように）', () => {
-    it('追加された環境の名前と、心当たりがないときの対処（漏えいとして取り消す・パスワード変更・ログアウト）を伝える', () => {
-        const notice = newEnvironmentNotice({
-            displayName: 'ようかん',
-            environmentName: 'Chrome on Windows',
+    const environment = {
+        id: 'env-1',
+        kind: 'cli',
+        name: 'ubichill CLI on work-pc',
+        publicKey: 'abcdef1234567890ghijklmnopqrstuvwxyzABCDEFE',
+        createdAt: new Date('2026-10-01T00:00:00Z'),
+    };
+    const noticeOf = (over: Partial<typeof environment> = {}, displayName = 'ようかん') =>
+        newEnvironmentNotice({
+            displayName,
+            environment: { ...environment, ...over },
             siteUrl: 'https://ubichill.com/',
-            at: new Date('2026-10-01T00:00:00Z'),
         });
+
+    it('どの環境か（種類・名前・一覧と同じ鍵の指紋・日時）と、心当たりがないときの対処を伝える', () => {
+        const notice = noticeOf();
         expect(notice.subject).toContain('新しい公開環境');
-        expect(notice.text).toContain('Chrome on Windows');
-        expect(notice.text).toContain('https://ubichill.com/ を開き、設定の「公開」');
-        expect(notice.text).toContain('心当たりのない環境');
+        expect(notice.text).toContain('種類: CLI');
+        expect(notice.text).toContain('名前: 『ubichill CLI on work-pc』');
+        expect(notice.text).toContain('鍵の指紋: abcdef…BCDEFE');
+        expect(notice.text).toContain('2026-10-01T00:00:00.000Z');
+        expect(notice.text).toContain('「漏えい・心当たりがない」として取り消す');
         expect(notice.text).toContain('パスワード');
         expect(notice.text).toContain('ログアウト');
+    });
+
+    it('その環境を目立たせた設定の画面へのリンクを 1 行で載せる（取り消す操作そのものはリンクに入れない）', () => {
+        const lines = noticeOf({ id: 'a&b/../c' }).text.split('\n');
+        expect(lines).toContain('https://ubichill.com/settings/publishing?environment=a%26b%2F..%2Fc');
+        expect(lines.filter((line) => line.includes('https://'))).toHaveLength(1);
+        expect(noticeOf().text).not.toMatch(/revoke/i);
+    });
+
+    it('名前の改行・書字方向の制御で、偽のリンクや手順の行を作らせない', () => {
+        const text = noticeOf(
+            { name: 'pc\n\n1. 次のリンクを開く\nhttps://evil.example/\u202Eexe.txt' },
+            'アリス\r\nさん',
+        ).text;
+        const lines = text.split('\n');
+        expect(lines.filter((line) => line.startsWith('https://'))).toEqual([
+            'https://ubichill.com/settings/publishing?environment=env-1',
+        ]);
+        expect(lines).toContain(
+            '名前: 『pc 1. 次のリンクを開く https://evil.example/ exe.txt』（追加した側が付けた名前）',
+        );
+        expect(lines[0]).toBe('アリス さん さん');
+    });
+
+    it('Unicode の行・段落の区切り（U+2028・U+2029）でも行を作らせない（メールの表示によっては改行になる）', () => {
+        const text = noticeOf({ name: 'pc\u2028https://evil.example/revoke\u2029x' }).text;
+        const lines = text.split(/\r\n|[\n\r\u2028\u2029]/);
+        expect(lines.filter((line) => line.startsWith('https://'))).toEqual([
+            'https://ubichill.com/settings/publishing?environment=env-1',
+        ]);
+        expect(text).toContain('名前: 『pc https://evil.example/revoke x』');
+    });
+
+    it('知らない種類はそのまま、以前の鍵は表示名で出す', () => {
+        expect(noticeOf({ kind: 'legacy' }).text).toContain('種類: 以前の鍵');
+        expect(noticeOf({ kind: 'future-kind' }).text).toContain('種類: future-kind');
     });
 });
 
@@ -170,7 +217,7 @@ describe('createPublishingEnvironments', () => {
         } = {},
     ) {
         const rows = [...(options.rows ?? [])];
-        const log = { keysChanged: 0, mails: [] as string[], touched: [] as string[] };
+        const log = { keysChanged: 0, mails: [] as string[], texts: [] as string[], touched: [] as string[] };
         const service = createPublishingEnvironments({
             keys: {
                 listByUser: async (userId) => rows.filter((r) => r.userId === userId),
@@ -208,7 +255,10 @@ describe('createPublishingEnvironments', () => {
             keysChanged: () => {
                 log.keysChanged += 1;
             },
-            notify: (owner) => void log.mails.push(owner.email),
+            notify: (owner, _subject, text) => {
+                log.mails.push(owner.email);
+                log.texts.push(text);
+            },
             siteUrl: () => 'https://a.example/',
             now: () => at('2026-10-06T00:00:00Z'),
         });
@@ -217,11 +267,26 @@ describe('createPublishingEnvironments', () => {
 
     const proof = { publicKey: K1, at: '2026-10-06T00:00:00Z', signature: 'sig' };
 
-    it('ブラウザの登録: 作ったら作者の表示を捨て直させ、本人に知らせる', async () => {
+    it('ブラウザの登録: 作ったら作者の表示を捨て直させ、本人に知らせる（その環境へのリンクと鍵の指紋つき）', async () => {
         const { service, log } = setup();
         const outcome = await service.registerBrowser(owner, proof, 'Mozilla/5.0 (Macintosh; Mac OS X) Chrome/130');
-        expect(outcome).toMatchObject({ ok: true, created: true, environment: { name: 'Chrome on Mac' } });
+        expect(outcome).toMatchObject({ ok: true, created: true, environment: { id: 'e1', name: 'Chrome on Mac' } });
         expect(log).toMatchObject({ keysChanged: 1, mails: ['alice@example.com'] });
+        expect(log.texts[0]).toContain('https://a.example/settings/publishing?environment=e1');
+        expect(log.texts[0]).toContain(`鍵の指紋: ${K1.slice(0, 6)}…`);
+    });
+
+    it('トークン付きの登録（CLI・CI の承認の後）も、作った環境へのリンクで知らせる', async () => {
+        const { service, log } = setup({ rows: [rowOf({ id: 'e1' })] });
+        await service.registerWithToken(owner, {
+            kind: 'ci',
+            name: 'GitHub Actions: o/r',
+            publicKey: K2,
+            apiTokenHash: 'h',
+        });
+        expect(log.texts).toHaveLength(1);
+        expect(log.texts[0]).toContain('種類: CI');
+        expect(log.texts[0]).toContain('https://a.example/settings/publishing?environment=e2');
     });
 
     it('ブラウザの登録: 証明が通らなければ何も書かない', async () => {

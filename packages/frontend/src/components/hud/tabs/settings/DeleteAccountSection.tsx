@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { deleteMyAccount, signOutThisAccount } from '@/lib/account/accountSwitch';
 import { css } from '@/styled-system/css';
-import { ReauthForm } from './ReauthForm';
+import { settingsPath } from '../../settingsLink';
+import { ReauthPrompt } from './ReauthPrompt';
 import { settingsNote } from './settingsStyles';
 
 /**
@@ -63,14 +64,12 @@ export function DeleteAccountSection({
                 は二度と使えなくなります。
             </p>
             {!recent ? (
-                methods?.password ? (
-                    <>
-                        <p className={settingsNote}>削除するには、先にパスワードで本人確認をしてください。</p>
-                        <ReauthForm onDone={onReauthenticated} />
-                    </>
-                ) : (
-                    <p className={settingsNote}>削除するには、ログインし直してから 10 分以内に行ってください。</p>
-                )
+                <ReauthPrompt
+                    methods={methods}
+                    action="削除"
+                    returnTo={settingsPath('account')}
+                    onDone={onReauthenticated}
+                />
             ) : (
                 <div className={css({ display: 'flex', flexDirection: 'column', gap: '2' })}>
                     <label className={settingsNote} htmlFor="delete-account-handle">

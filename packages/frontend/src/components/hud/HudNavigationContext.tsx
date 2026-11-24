@@ -4,6 +4,7 @@
  */
 import type { Instance } from '@ubichill/shared';
 import { createContext, useContext } from 'react';
+import type { PortalPlacementLook } from '@/world';
 import type { JoinInstanceHandler } from './tabs/shared';
 import type { WorldsSection } from './tabs/WorldsTab';
 
@@ -22,11 +23,21 @@ export interface HudNavigation {
     portal: PortalOpener;
 }
 
+export interface PortalTarget {
+    /** 置く場所を選ぶ間に出す行き先の見た目（部屋のワールドの名前とサムネイル） */
+    look: PortalPlacementLook;
+    /**
+     * 置く場所を決めてから呼ぶ。行き先（このサーバーから見た部屋の住所）を返す。新しいインスタンスはここで作る。
+     * signal は取りやめの合図（置いている途中でやめた・時間切れ）
+     */
+    room: (signal: AbortSignal) => Promise<string>;
+}
+
 export interface PortalOpener {
     /** 置けないときの理由。置けるなら null */
     unavailable: string | null;
-    /** 行き先（このサーバーから見た部屋の住所）へのポータルを置く。置けたらランチパッドを閉じ、失敗はトーストで知らせる */
-    open: (room: string) => Promise<boolean>;
+    /** ランチパッドを閉じて、置く場所を選ばせる。選んだら行き先を決めて置き、失敗はトーストで知らせる */
+    place: (target: PortalTarget) => void;
 }
 
 export const HudNavigationContext = createContext<HudNavigation | null>(null);

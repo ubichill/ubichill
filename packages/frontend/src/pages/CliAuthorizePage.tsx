@@ -1,15 +1,13 @@
-import { displayAuthorAccount, normalizeUserCode } from '@ubichill/shared';
+import { displayAuthorAccount, normalizeUserCode, signingKeyFingerprint } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
+import { ReauthPrompt } from '@/components/hud/tabs/settings/ReauthPrompt';
 import { signOutAndReset } from '@/components/hud/tabs/settings/signOut';
 import { signInPath } from '@/lib/account/authEntry';
+import { useLoginMethods } from '@/lib/account/fediverseSignIn';
+import { needsReauthentication } from '@/lib/account/loginMethods';
 import { fetchMyAccount } from '@/lib/account/me';
-import {
-    approveCliAuthRequest,
-    type CliAuthRequestView,
-    fetchCliAuthRequest,
-    keyFingerprint,
-} from '@/lib/publishing/cliAuthApi';
+import { approveCliAuthRequest, type CliAuthRequestView, fetchCliAuthRequest } from '@/lib/publishing/cliAuthApi';
 import { useSession } from '@/lib/session';
 import { pushToast } from '@/lib/toast';
 import { css, cva } from '@/styled-system/css';
@@ -146,6 +144,14 @@ export function CliAuthorizePage() {
     const [view, setView] = useState<State>(requestId || codeParam ? { status: 'loading' } : { status: 'enter-code' });
     const [busy, setBusy] = useState(false);
     const [confirmedCode, setConfirmedCode] = useState(false);
+    // 承認には直近の本人確認が要る（CLI・CI のトークンはセッションを切っても残るので）。先に確かめて求める
+    const login = useLoginMethods(view.status === 'ready');
+    const [reauthRefused, setReauthRefused] = useState(false);
+    const reauthRequired = needsReauthentication(login.methods, reauthRefused);
+    const returnTo =
+        view.status === 'ready'
+            ? `/cli/authorize?request=${encodeURIComponent(view.request.id)}${state ? `&state=${encodeURIComponent(state)}` : ''}`
+            : `/cli/authorize${window.location.search}`;
 
     const load = useCallback(async (query: { requestId: string } | { userCode: string }) => {
         setView({ status: 'loading' });
@@ -168,9 +174,14 @@ export function CliAuthorizePage() {
     const approve = async (request: CliAuthRequestView) => {
         setBusy(true);
         try {
-            const { redirect } = await approveCliAuthRequest(request.id, state);
-            if (redirect) {
-                window.location.assign(redirect);
+            const approved = await approveCliAuthRequest(request.id, state);
+            if (approved === 'reauth-required') {
+                setReauthRefused(true);
+                login.reload();
+                return;
+            }
+            if (approved.redirect) {
+                window.location.assign(approved.redirect);
                 return;
             }
             setView({ status: 'done', request });
@@ -189,15 +200,7 @@ export function CliAuthorizePage() {
                 <h1 className={css({ fontSize: 'xl', fontWeight: '700', color: 'text', mb: '2' })}>
                     公開環境の追加を承認
                 </h1>
-                {view.status !== 'done' && (
-                    <ApprovingAccount
-                        returnTo={
-                            view.status === 'ready'
-                                ? `/cli/authorize?request=${encodeURIComponent(view.request.id)}${state ? `&state=${encodeURIComponent(state)}` : ''}`
-                                : `/cli/authorize${window.location.search}`
-                        }
-                    />
-                )}
+                {view.status !== 'done' && <ApprovingAccount returnTo={returnTo} />}
                 {view.status === 'enter-code' && (
                     <form
                         onSubmit={(e) => {
@@ -268,7 +271,7 @@ export function CliAuthorizePage() {
                             </div>
                             <div className={row}>
                                 <span className={css({ color: 'textMuted' })}>鍵の指紋</span>
-                                <code>{keyFingerprint(view.request.publicKey)}</code>
+                                <code>{signingKeyFingerprint(view.request.publicKey)}</code>
                             </div>
                             {view.request.redirectHost && (
                                 <div className={row}>
@@ -303,11 +306,24 @@ export function CliAuthorizePage() {
                                 </span>
                             </label>
                         )}
+                        {reauthRequired && (
+                            <div className={css({ mb: '4' })}>
+                                <ReauthPrompt
+                                    methods={login.methods}
+                                    action="承認"
+                                    returnTo={returnTo}
+                                    onDone={() => {
+                                        setReauthRefused(false);
+                                        login.reload();
+                                    }}
+                                />
+                            </div>
+                        )}
                         <div className={css({ display: 'flex', gap: '2' })}>
                             <button
                                 type="button"
                                 className={button({ tone: 'primary' })}
-                                disabled={busy || (view.request.flow === 'device' && !confirmedCode)}
+                                disabled={busy || reauthRequired || (view.request.flow === 'device' && !confirmedCode)}
                                 onClick={() => void approve(view.request)}
                             >
                                 承認する

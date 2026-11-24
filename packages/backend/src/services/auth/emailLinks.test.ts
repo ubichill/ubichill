@@ -2,6 +2,7 @@ import type { EmailLinkRecord, LinkEmailOutcome } from '@ubichill/db';
 import { describe, expect, it } from 'vitest';
 import { createEmailLinks, type EmailLinkDeps } from './emailLinks';
 import { createOtpHasher } from './pendingRegistrations';
+import { isRecentlyAuthenticated } from './sessionAssurance';
 
 /** Postgres の代わり。行ロックの中の変更は、投げたら戻す。 */
 function setup(overrides: Partial<EmailLinkDeps> = {}) {
@@ -14,7 +15,15 @@ function setup(overrides: Partial<EmailLinkDeps> = {}) {
     const linked: Array<{ userId: string; email: string; passwordHash: string }> = [];
     const sent: Array<{ to: string; otp: string }> = [];
     const after: string[] = [];
-    const state = { otp: 100000, linkResult: null as LinkEmailOutcome | null, failMail: false, now: 0 };
+    const markedAt: Date[] = [];
+    const state = {
+        otp: 100000,
+        linkResult: null as LinkEmailOutcome | null,
+        failMail: false,
+        now: 0,
+        /** 申し込んだセッションがログインした時刻（SSO） */
+        signedInAt: 0,
+    };
 
     const deps: EmailLinkDeps = {
         repository: {
@@ -55,19 +64,25 @@ function setup(overrides: Partial<EmailLinkDeps> = {}) {
             if (state.failMail) throw new Error('mail down');
             sent.push({ to, otp });
         },
-        afterLinked: async (userId, sessionId) => {
+        afterLinked: async (userId, sessionId, authenticatedAt) => {
             after.push(`${userId} ${sessionId}`);
+            markedAt.push(authenticatedAt);
         },
         skipVerification: false,
         now: () => new Date(state.now),
         ...overrides,
     };
     const links = createEmailLinks(deps);
+    const session = (userId: string) => ({
+        id: `s-${userId}`,
+        createdAt: new Date(state.signedInAt),
+        passwordVerifiedAt: null,
+    });
     const start = (userId: string, email: unknown = 'Me@Example.org', password: unknown = 'password-123') =>
-        links.start({ userId, sessionId: `s-${userId}`, email, password });
-    const verify = (userId: string, code: unknown) => links.verify({ userId, sessionId: `s-${userId}`, code });
+        links.start({ userId, session: session(userId), email, password });
+    const verify = (userId: string, code: unknown) => links.verify({ userId, session: session(userId), code });
     const lastCode = () => sent.at(-1)?.otp ?? '';
-    return { links, start, verify, lastCode, rows, linked, sent, after, state };
+    return { links, start, verify, lastCode, rows, linked, sent, after, markedAt, state };
 }
 
 describe('メールアドレスの追加', () => {
@@ -160,6 +175,21 @@ describe('メールアドレスの追加', () => {
         t.state.failMail = true;
         expect(await t.start('sso')).toMatchObject({ ok: false, status: 503 });
         expect(t.rows.size).toBe(0);
+    });
+
+    it('パスワードで確かめた扱いにする時刻はログインした時刻（パスワードを決めたことで直近の本人確認を延ばさない）', async () => {
+        const MINUTE = 60 * 1000;
+        const t = setup();
+        t.state.signedInAt = 0;
+        t.state.now = 8 * MINUTE;
+        await t.start('sso');
+        t.state.now = 9 * MINUTE;
+        expect(await t.verify('sso', t.lastCode())).toMatchObject({ ok: true });
+        expect(t.markedAt).toEqual([new Date(0)]);
+        // 足した後はパスワードを持つ人。ログインから 10 分を過ぎたら、パスワードを入れ直すまで直近とみなさない
+        const after = { createdAt: new Date(0), passwordVerifiedAt: t.markedAt[0] ?? null };
+        expect(isRecentlyAuthenticated(after, new Date(9 * MINUTE), true)).toBe(true);
+        expect(isRecentlyAuthenticated(after, new Date(11 * MINUTE), true)).toBe(false);
     });
 
     it('メール確認を省く環境では、コードを送らずにすぐ足す', async () => {

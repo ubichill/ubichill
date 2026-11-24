@@ -8,7 +8,7 @@
  * どちらも、引き換え時に要求の鍵で署名して鍵の所有を証明する。秘密鍵はサーバーに送らない。
  */
 import { createHash, randomBytes } from 'node:crypto';
-import { type CliAuthKind, cliAuthProofMessage, type WorldSigningKey } from '@ubichill/shared';
+import { type CliAuthKind, cliAuthProofMessage, signingKeyFingerprint, type WorldSigningKey } from '@ubichill/shared';
 import type { Logger } from '@ubichill/terminal';
 import type { Credential } from './credentials.ts';
 
@@ -99,6 +99,9 @@ export async function authorize(deps: AuthorizeDeps, options: AuthorizeOptions):
     const requestIdOf = { value: '' };
     const proof = () => key.sign(cliAuthProofMessage(requestIdOf.value));
     const api = (path: string) => `${options.server}${path}`;
+    // 承認画面・追加の通知メールにも同じ指紋が出る（他人の要求を承認させられていないか見比べる）
+    const showFingerprint = () =>
+        deps.log.info(`承認画面の「鍵の指紋」が ${signingKeyFingerprint(key.publicKey)} であることを確かめてください`);
 
     if (options.flow === 'loopback') {
         const loopback = await deps.startLoopback();
@@ -118,6 +121,7 @@ export async function authorize(deps: AuthorizeDeps, options: AuthorizeOptions):
             approveUrl.searchParams.set('state', state);
             const url = approveUrl.href;
             deps.log.info(`ブラウザで承認してください: ${url}`);
+            showFingerprint();
             if (!(await deps.openBrowser(url))) deps.log.warn('ブラウザを開けませんでした。上の URL を開いてください');
             const callback = await loopback.waitForCallback();
             // 別の要求のリダイレクトを受け取らない（CSRF 対策の state、RFC 8252 §8.9）
@@ -150,6 +154,7 @@ export async function authorize(deps: AuthorizeDeps, options: AuthorizeOptions):
     deps.log.info(
         `別の端末のブラウザで ${approveUrl} を開き、コード ${String(created.body.userCode)} を確かめて承認してください`,
     );
+    showFingerprint();
     await deps.openBrowser(approveUrl);
 
     const poll = async (): Promise<Credential> => {

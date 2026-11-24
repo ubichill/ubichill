@@ -11,6 +11,7 @@ import { APIError, createAuthEndpoint, getSessionFromCtx } from 'better-auth/api
 import { z } from 'zod';
 import type { FediverseSignIn } from '../services/auth/fediverse/signIn';
 import { SIGN_UP_TTL_MS, STATE_TTL_MS } from '../services/auth/fediverse/signIn';
+import { isRecentlyAuthenticated, sessionFactsFrom } from '../services/auth/sessionAssurance';
 import { type SecondFactorGate, signInOrChallenge } from './twoFactorPlugin';
 
 const STATUS = { 400: 'BAD_REQUEST', 404: 'NOT_FOUND', 409: 'CONFLICT' } as const;
@@ -69,9 +70,11 @@ export interface FediverseSignInPluginOptions {
     secondFactor: SecondFactorGate;
     /** ログイン画面に出す設定（使えるか・新規登録を受け付けるか・並べるサーバー） */
     options: () => Promise<{ enabled: boolean; registrationOpen: boolean; featuredServers: readonly string[] }>;
+    /** パスワードでログインできるか（連携の前の直近の本人確認の判定） */
+    hasPassword: (userId: string) => Promise<boolean>;
 }
 
-export function fediverseSignInPlugin({ getSignIn, secondFactor, options }: FediverseSignInPluginOptions) {
+export function fediverseSignInPlugin({ getSignIn, secondFactor, options, hasPassword }: FediverseSignInPluginOptions) {
     return {
         id: 'fediverse-sign-in',
         endpoints: {
@@ -91,12 +94,26 @@ export function fediverseSignInPlugin({ getSignIn, secondFactor, options }: Fedi
                     }),
                 },
                 async (ctx) => {
-                    // 連携は DB のセッションで確かめる（取り消したログインのクッキーキャッシュでは足させない）。
-                    // パスワードの入れ直しは求めない。足したことは連絡先に知らせ、設定の一覧で外せる
+                    // 連携は DB のセッションで、直近の本人確認を求める（requireRecentAuth と同じ規則）。奪った古いセッションで
+                    // 攻撃者のアカウントを足されると、それでログインし直して直近の本人確認を済ませたことにされ、
+                    // CLI の承認や元のログイン方法の解除まで通ってしまう
                     const current =
                         ctx.body.intent === 'link'
                             ? await getSessionFromCtx(ctx, { disableCookieCache: true, disableRefresh: true })
                             : null;
+                    if (
+                        current &&
+                        !isRecentlyAuthenticated(
+                            sessionFactsFrom(current.session),
+                            new Date(),
+                            await hasPassword(current.user.id),
+                        )
+                    ) {
+                        throw APIError.fromStatus('FORBIDDEN', {
+                            code: 'reauth-required',
+                            message: 'もう一度本人確認をしてください',
+                        });
+                    }
                     const started = await (await getSignIn()).start({
                         server: ctx.body.server,
                         intent: ctx.body.intent,

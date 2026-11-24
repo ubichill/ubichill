@@ -17,6 +17,8 @@ export const publishingEnvironmentService = createPublishingEnvironments({
     verifyRegistration: (claim, signature) => verifyKeyRegistration(claim, signature, Date.now(), nodeWorldCrypto),
     keysChanged: () => worldRegistry.invalidateResolvedWorlds(),
     notify: (owner, subject, text) => void sendAccountNotice(owner, subject, text),
-    siteUrl: () => new URL('/', process.env[ENV_KEYS.PUBLIC_BASE_URL] || SERVER_CONFIG.DEV_URL).href,
+    // 通知のリンクは画面へ向ける（本番はフロントと同じオリジン。開発でフロントが別のポートなら FRONTEND_URL）
+    siteUrl: () =>
+        new URL('/', process.env.FRONTEND_URL || process.env[ENV_KEYS.PUBLIC_BASE_URL] || SERVER_CONFIG.DEV_URL).href,
     now: () => new Date(),
 });

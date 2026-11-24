@@ -62,3 +62,9 @@ export const portalLockShade = css({
     bg: 'bannerShade',
     color: 'textOnPrimary',
 });
+
+/** 部屋で置くポータルの並び（名前・窓・置いた人）。置く場所を選ぶ間のゴーストも同じ形にする。 */
+export const roomPortalColumn = css({ display: 'flex', flexDirection: 'column', alignItems: 'center' });
+
+// 名前は幅いっぱいまで出し、窓は少し小さくする（行き先の名前が切れにくいように）
+export const roomPortalFrame = css({ position: 'relative', w: '140px', maxW: 'full', display: 'block' });

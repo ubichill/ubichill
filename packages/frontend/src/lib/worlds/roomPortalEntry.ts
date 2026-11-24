@@ -26,8 +26,15 @@ export function roomRefusal(room: RoomStatus, viewerId: string | null): 'closed'
  */
 export const ROOM_STATUS_TIMEOUT_MS = 30_000;
 
+/** withinTime が時間切れで失敗したときのエラー。 */
+export class TimedOutError extends Error {
+    constructor() {
+        super('timeout');
+    }
+}
+
 /**
- * ms のうちに決まらなければ失敗にし、start に渡した signal で問い合わせも取り消す。outer が取り消されたとき
+ * ms のうちに決まらなければ失敗にし（TimedOutError）、start に渡した signal で問い合わせも取り消す。outer が取り消されたとき
  * （部屋を移った・ページを閉じた）も同じく取り消して失敗にする。
  */
 export function withinTime<T>(start: (signal: AbortSignal) => Promise<T>, ms: number, outer?: AbortSignal): Promise<T> {
@@ -45,7 +52,7 @@ export function withinTime<T>(start: (signal: AbortSignal) => Promise<T>, ms: nu
         const timer = setTimeout(() => {
             stop();
             controller.abort();
-            reject(new Error('timeout'));
+            reject(new TimedOutError());
         }, ms);
         if (outer?.aborted) return cancel();
         outer?.addEventListener('abort', cancel);

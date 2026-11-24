@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { activeSigningKeys, normalizeEd25519PublicKey, parseSigningKeyList, signingKeyStatus } from './signingKeys';
+import {
+    activeSigningKeys,
+    normalizeEd25519PublicKey,
+    PublishingEnvironmentNameSchema,
+    parseSigningKeyList,
+    publishingEnvironmentSettingsPath,
+    signingKeyFingerprint,
+    signingKeyStatus,
+} from './signingKeys';
 
 const K1 = 'A'.repeat(43);
 const K2 = 'B'.repeat(43);
@@ -90,5 +98,41 @@ describe('normalizeEd25519PublicKey', () => {
         const once = normalizeEd25519PublicKey(`${STANDARD.slice(0, 42)}/`);
         expect(once).toBeDefined();
         expect(normalizeEd25519PublicKey(once ?? '')).toBe(once);
+    });
+});
+
+describe('signingKeyFingerprint', () => {
+    const key = 'abcdef1234567890ghijklmnopqrstuvwxyzABCDEFE';
+
+    it('先頭と末尾を出して見比べやすくする', () => {
+        expect(signingKeyFingerprint(key)).toBe('abcdef…BCDEFE');
+    });
+
+    it('書き方の違う同じ鍵（接頭辞・base64・使われない下位 bit）は同じ指紋になる（承認画面と一覧・メールで食い違わない）', () => {
+        const plus = `a+cdef${key.slice(6, -1)}F`;
+        expect(signingKeyFingerprint(`ed25519:${key}`)).toBe(signingKeyFingerprint(key));
+        expect(signingKeyFingerprint(plus)).toBe(signingKeyFingerprint(`a-cdef${key.slice(6, -1)}E`));
+    });
+
+    it('鍵の形でなくても落ちずに先頭と末尾を出す', () => {
+        expect(signingKeyFingerprint('short')).toBe('short…short');
+    });
+});
+
+describe('publishingEnvironmentSettingsPath', () => {
+    it('ID は path を壊さないよう符号化する', () => {
+        expect(publishingEnvironmentSettingsPath('e1')).toBe('/settings/publishing?environment=e1');
+        expect(publishingEnvironmentSettingsPath('a&b=c/../x')).toBe(
+            '/settings/publishing?environment=a%26b%3Dc%2F..%2Fx',
+        );
+    });
+});
+
+describe('PublishingEnvironmentNameSchema', () => {
+    it('改行・制御文字・Unicode の行と段落の区切りを含む名前は受け付けない（通知のメールに行を作らせない）', () => {
+        expect(PublishingEnvironmentNameSchema.safeParse('ubichill CLI on work-pc').success).toBe(true);
+        for (const name of ['a\nb', 'a\rb', 'a\u0000b', 'a\u2028https://evil.example/', 'a\u2029b']) {
+            expect(PublishingEnvironmentNameSchema.safeParse(name).success).toBe(false);
+        }
     });
 });

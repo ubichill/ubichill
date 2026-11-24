@@ -4,7 +4,15 @@ import type React from 'react';
 import { memo, useState } from 'react';
 import { css } from '@/styled-system/css';
 import { CloseIcon, LockIcon, PortalIcon } from './partIcons';
-import { portal, portalImage, portalLockShade, portalName, portalWindow } from './portalLook';
+import {
+    portal,
+    portalImage,
+    portalLockShade,
+    portalName,
+    portalWindow,
+    roomPortalColumn,
+    roomPortalFrame,
+} from './portalLook';
 import { usePortalNavigation } from './portalNavigation';
 import { surfacePlacement } from './surfacePlacement';
 import { usePortalDestination } from './usePortalDestination';
@@ -43,7 +51,11 @@ const RoomPortalView = memo(function RoomPortalView({
     const look = destination?.name ? { displayName: destination.name, thumbnail: destination.thumbnail } : undefined;
 
     return (
-        <div data-portal={entity.id} style={{ ...surfacePlacement(entity), pointerEvents: 'auto' }} className={column}>
+        <div
+            data-portal={entity.id}
+            style={{ ...surfacePlacement(entity), pointerEvents: 'auto' }}
+            className={roomPortalColumn}
+        >
             <button
                 type="button"
                 className={portal}
@@ -52,7 +64,7 @@ const RoomPortalView = memo(function RoomPortalView({
                 onClick={() => void go?.({ kind: 'room', room: data.room }, name, look)}
             >
                 <span className={portalName}>{name}</span>
-                <span className={frame}>
+                <span className={roomPortalFrame}>
                     <span className={portalWindow}>
                         {thumbnail ? (
                             <img
@@ -107,11 +119,6 @@ const RoomPortalView = memo(function RoomPortalView({
         </div>
     );
 });
-
-const column = css({ display: 'flex', flexDirection: 'column', alignItems: 'center' });
-
-// 名前は幅いっぱいまで出し、窓は少し小さくする（行き先の名前が切れにくいように）
-const frame = css({ position: 'relative', w: '140px', maxW: 'full', display: 'block' });
 
 const footer = css({ display: 'flex', alignItems: 'center', gap: '1', maxW: 'full', mt: '-1' });
 
