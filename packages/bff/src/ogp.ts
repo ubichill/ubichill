@@ -75,8 +75,8 @@ export function buildMetaTags({ site, world, worldId, publicBaseUrl, pageUrl, en
         .join('\n');
 }
 
-/** プロフィールの項目（ひとこと・バナー）は、backend の版によっては無い（BFF と backend は別々に更新される）。 */
-export type UserPreview = UserSummary & Partial<Pick<UserProfile, 'status' | 'bannerImage'>>;
+/** プロフィールの項目（ひとこと・バナー・検索に出すか）は、backend の版によっては無い（BFF と backend は別々に更新される）。 */
+export type UserPreview = UserSummary & Partial<Pick<UserProfile, 'status' | 'bannerImage' | 'discoverable'>>;
 
 interface UserMetaInput {
     /** タイトルの後ろ（略称）と og:site_name（サーバー名）、画像が無いときのアイコン */

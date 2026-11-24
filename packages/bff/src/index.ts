@@ -9,7 +9,15 @@ import {
     type WorldListItem,
 } from '@ubichill/shared';
 import express from 'express';
-import { buildRobotsTxt, buildSitemap, isWorldIndexable, sharePageUrl, sitemapEntries } from './crawl';
+import {
+    buildRobotsTxt,
+    buildSitemap,
+    crawlEnabledFor,
+    isUserPageIndexable,
+    isWorldIndexable,
+    sharePageUrl,
+    sitemapEntries,
+} from './crawl';
 import { MANIFEST_PATH, plainPageTags, siteHeadTags } from './head';
 import { buildLandingTags } from './landing';
 import { buildManifest } from './manifest';
@@ -38,8 +46,8 @@ const DIST = process.env.FRONTEND_DIST
 const CORE_API_URL = (process.env.CORE_API_URL || SERVER_CONFIG.DEV_URL).replace(/\/$/, '');
 /** 外部公開 base URL（og:url / canonical / sitemap 用）。 */
 const PUBLIC_BASE_URL = (process.env[ENV_KEYS.PUBLIC_BASE_URL] || `http://localhost:${PORT}`).replace(/\/$/, '');
-/** クローラー向けコンテンツを有効にするか（本番のみ）。 */
-const ENABLE_CRAWL = process.env.NODE_ENV === 'production';
+/** 検索に載せてよいか（本番のみ。配備の環境で決める。crawl.ts の crawlEnabledFor）。 */
+const ENABLE_CRAWL = crawlEnabledFor(process.env);
 
 const app = express();
 
@@ -81,10 +89,7 @@ const sitemapXml = createRefreshing({
     load: async () => {
         const [worlds, directory] = await Promise.all([
             fetchJson<{ worlds?: WorldListItem[] }>(`${CORE_API_URL}/api/v1/worlds?scope=local`, 10_000),
-            fetchJson<{ users?: Array<{ handle: string; updatedAt?: string }> }>(
-                `${CORE_API_URL}/api/v1/server/directory`,
-                10_000,
-            ),
+            fetchJson<{ users?: Array<{ handle: string }> }>(`${CORE_API_URL}/api/v1/server/directory`, 10_000),
         ]);
         if (!worlds || !directory) return undefined;
         return buildSitemap(
@@ -254,7 +259,7 @@ async function sendUserPage(res: express.Response, user: UserPreview | undefined
         worldCount: worlds?.worlds?.length,
         publicBaseUrl: PUBLIC_BASE_URL,
         pageUrl: `${PUBLIC_BASE_URL}/@${user?.handle ?? handle}`,
-        enableCrawl: ENABLE_CRAWL,
+        enableCrawl: ENABLE_CRAWL && isUserPageIndexable(user),
     });
     sendPage(res, site, tags);
 }

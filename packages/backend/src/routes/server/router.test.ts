@@ -8,6 +8,7 @@ import { createServerRouter } from './router';
 const HASH = 'h'.repeat(43);
 const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47]);
 const asked: Array<[string, string]> = [];
+const directoryOn = { value: true };
 
 const app = express();
 app.use(
@@ -23,7 +24,8 @@ app.use(
             asked.push([variant, hash]);
             return variant === 'favicon' && hash === HASH ? { hash, bytes: PNG } : undefined;
         },
-        directory: async () => [{ handle: 'aya', updatedAt: new Date('2026-11-20T00:00:00Z') }],
+        directory: async () => (directoryOn.value ? ['aya', 'bob'] : null),
+        directoryLimiter: (_req, _res, next) => next(),
     }),
 );
 const server = createServer(app);
@@ -72,9 +74,17 @@ describe('サーバーの情報の API（ログインしなくても読める）
         expect(asked).toEqual([['icon-512', HASH]]);
     });
 
-    it('検索に出してよい人は、ID と更新した時刻だけを返す', async () => {
+    it('検索に出してよい人は ID だけを返す（アカウントを変えた時刻は出さない）', async () => {
+        directoryOn.value = true;
         const res = await get('/directory');
         expect(res.headers.get('cache-control')).toBe('public, max-age=600');
-        expect(await res.json()).toEqual({ users: [{ handle: 'aya', updatedAt: '2026-11-20T00:00:00.000Z' }] });
+        expect(await res.json()).toEqual({ users: [{ handle: 'aya' }, { handle: 'bob' }] });
+    });
+
+    it('本番でなければ 404（cache させない）', async () => {
+        directoryOn.value = false;
+        const res = await get('/directory');
+        expect(res.status).toBe(404);
+        expect(res.headers.get('cache-control')).toBe('no-store');
     });
 });

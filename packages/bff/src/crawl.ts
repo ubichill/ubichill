@@ -1,9 +1,30 @@
 /**
- * 検索エンジン向け: robots.txt・sitemap.xml と、ワールドのページを検索に載せてよいかの判定。
- * 本番以外（NODE_ENV が production でない）はどれも載せない。
+ * 検索エンジン向け: robots.txt・sitemap.xml と、ページを検索に載せてよいかの判定。
+ * 本番以外（配備の環境が production でない）はどれも載せない。
  */
-import { HANDLE_PATTERN, type WorldListItem, worldShareUrl } from '@ubichill/shared';
+import {
+    ENV_KEYS,
+    HANDLE_PATTERN,
+    isIndexableEnvironment,
+    type UserProfile,
+    type WorldListItem,
+    worldShareUrl,
+} from '@ubichill/shared';
 import { esc } from './html';
+
+/**
+ * この BFF のページを検索に載せてよいか。配備の環境（chart が backend の NODE_ENV と同じ値を DEPLOYMENT_ENVIRONMENT で渡す）で決める。
+ * BFF の NODE_ENV はイメージが常に production にする（Express がエラーの中身を出さないように）ので、渡されていないとき
+ * （chart を使わない配備・手元）だけ NODE_ENV に従う。
+ */
+export function crawlEnabledFor(env: Readonly<Record<string, string | undefined>>): boolean {
+    const deployment = env[ENV_KEYS.DEPLOYMENT_ENVIRONMENT]?.trim();
+    return isIndexableEnvironment(deployment ? deployment : env.NODE_ENV);
+}
+
+/** ユーザーページを検索に載せてよいか。見つからない人と、「おすすめや検索に出す」をオフにした人は載せない。 */
+export const isUserPageIndexable = (user: Pick<UserProfile, 'discoverable'> | undefined): boolean =>
+    !!user && user.discoverable !== false;
 
 /** sitemap 1 つに入れられる URL の数（sitemaps.org の上限） */
 export const SITEMAP_MAX_URLS = 50_000;
@@ -59,7 +80,7 @@ const isoDate = (value: string | undefined): string | undefined => {
 
 /**
  * sitemap に載せるページ: 紹介のページ、検索に載せてよいワールド、検索に出してよい人のページ。
- * 同じ URL は 1 回だけ、上限の数まで。
+ * 人のページには lastmod を付けない（アカウントを変えた時刻を外に出さない）。同じ URL は 1 回だけ、上限の数まで。
  */
 export function sitemapEntries({
     publicBaseUrl,
@@ -68,7 +89,7 @@ export function sitemapEntries({
 }: {
     publicBaseUrl: string;
     worlds: readonly WorldListItem[];
-    users: ReadonlyArray<{ handle: string; updatedAt?: string }>;
+    users: ReadonlyArray<{ handle: string }>;
 }): SitemapEntry[] {
     const candidates: SitemapEntry[] = [
         { loc: `${publicBaseUrl}/` },
@@ -77,9 +98,7 @@ export function sitemapEntries({
             return loc ? [{ loc, lastmod: isoDate(world.updatedAt) }] : [];
         }),
         ...users.flatMap((user) =>
-            HANDLE_PATTERN.test(user.handle)
-                ? [{ loc: `${publicBaseUrl}/@${user.handle}`, lastmod: isoDate(user.updatedAt) }]
-                : [],
+            HANDLE_PATTERN.test(user.handle) ? [{ loc: `${publicBaseUrl}/@${user.handle}` }] : [],
         ),
     ];
     const seen = new Set<string>();

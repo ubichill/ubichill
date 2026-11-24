@@ -1,6 +1,14 @@
 import type { WorldListItem } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
-import { buildRobotsTxt, buildSitemap, isWorldIndexable, SITEMAP_MAX_URLS, sitemapEntries } from './crawl';
+import {
+    buildRobotsTxt,
+    buildSitemap,
+    crawlEnabledFor,
+    isUserPageIndexable,
+    isWorldIndexable,
+    SITEMAP_MAX_URLS,
+    sitemapEntries,
+} from './crawl';
 
 const BASE = 'https://ubi.example';
 
@@ -13,6 +21,33 @@ const world = (name: string, patch: Partial<WorldListItem> = {}): WorldListItem 
     capacity: { default: 4, max: 8 },
     mods: [],
     ...patch,
+});
+
+describe('crawlEnabledFor', () => {
+    it('配備の環境が production のときだけ載せる（BFF の NODE_ENV は見ない）', () => {
+        expect(crawlEnabledFor({ DEPLOYMENT_ENVIRONMENT: 'production', NODE_ENV: 'production' })).toBe(true);
+        // dev・プレビュー: backend は development、BFF のイメージは NODE_ENV=production
+        expect(crawlEnabledFor({ DEPLOYMENT_ENVIRONMENT: 'development', NODE_ENV: 'production' })).toBe(false);
+        expect(crawlEnabledFor({ DEPLOYMENT_ENVIRONMENT: 'test', NODE_ENV: 'production' })).toBe(false);
+        expect(crawlEnabledFor({ DEPLOYMENT_ENVIRONMENT: 'production', NODE_ENV: 'development' })).toBe(true);
+    });
+
+    it('渡されていない（空も）ときは BFF の NODE_ENV に従う', () => {
+        expect(crawlEnabledFor({ NODE_ENV: 'production' })).toBe(true);
+        expect(crawlEnabledFor({ DEPLOYMENT_ENVIRONMENT: ' ', NODE_ENV: 'production' })).toBe(true);
+        expect(crawlEnabledFor({ NODE_ENV: 'development' })).toBe(false);
+        expect(crawlEnabledFor({})).toBe(false);
+    });
+});
+
+describe('isUserPageIndexable', () => {
+    it('「おすすめや検索に出す」をオフにした人・見つからない人は載せない', () => {
+        expect(isUserPageIndexable({ discoverable: true })).toBe(true);
+        // 古い backend の応答（項目が無い）は前と同じく載せる
+        expect(isUserPageIndexable({})).toBe(true);
+        expect(isUserPageIndexable({ discoverable: false })).toBe(false);
+        expect(isUserPageIndexable(undefined)).toBe(false);
+    });
 });
 
 describe('isWorldIndexable', () => {
@@ -55,12 +90,13 @@ describe('sitemapEntries', () => {
                 // 共有ページの無い（以前の ID の URL の）ワールド
                 world('old', { url: `${BASE}/api/v1/worlds/old` }),
             ],
-            users: [{ handle: 'aya', updatedAt: '2026-11-21T00:00:00Z' }],
+            users: [{ handle: 'aya' }],
         });
         expect(entries).toEqual([
             { loc: `${BASE}/` },
             { loc: `${BASE}/@aya/cafe`, lastmod: '2026-11-20T10:00:00.000Z' },
-            { loc: `${BASE}/@aya`, lastmod: '2026-11-21T00:00:00.000Z' },
+            // 人のページはアカウントを変えた時刻を出さない
+            { loc: `${BASE}/@aya` },
         ]);
     });
 

@@ -13,7 +13,8 @@
 - 略称: ホーム画面のアイコンの名前（manifest の `short_name`・`apple-mobile-web-app-title`）、ワールドのページの見出しとタブのタイトルの後ろ。空ならサーバー名。
 - 紹介のページ（`/`）: `<title>`・`meta description`・OGP・Twitter Card・JSON-LD（`WebSite` と `Organization` を 1 つの `@graph`）。
 - どのページの `<head>` にも、アイコン・`manifest.webmanifest`・テーマの色の `<style>` を入れる。
-- `robots.txt`・`sitemap.xml`（本番だけ）。本番以外はどのページも `noindex`（`X-Robots-Tag` も付ける）。
+- `robots.txt`・`sitemap.xml`（本番だけ）。本番以外はどのページも `noindex`（`X-Robots-Tag` も付ける）。本番かどうかは backend の `NODE_ENV`（`/api/version` の environment）で決め、chart が同じ値を BFF に `DEPLOYMENT_ENVIRONMENT` で渡す（frontend のイメージは Express のために `NODE_ENV=production` 固定なので、それでは見分けられない）。
+- 「おすすめや検索に出す」をオフにした人のユーザーページは `noindex`（見つからない人のページも）。
 
 ## 決めたこと
 
@@ -31,7 +32,7 @@
 | BFF はサーバーの情報を 30 秒覚え、古くなったら覚えている値を返しつつ裏で読み直す。読めなければ 5 秒は読みに行かない | どのページの HTML にも入れるので、毎回 backend を待たせない。backend が落ちている間も HTML を遅らせない（既定の見た目で返す）。 |
 | `GET /api/v1/server` にブランディングを入れる（別の口を作らない） | 紹介のページ・画面の色・BFF が同じものを読む。 |
 | sitemap には、紹介のページ・このサーバーのパブリックなワールド・「おすすめや検索に出す」をオンにしている人のページだけを載せる | プライベートのワールド・外部のファイル・連合のワールドは載せない（ワールドのページの判定 `isWorldIndexable` と同じ。この PR でワールドのページもプライベートなら `noindex` にした）。検索に出すのをオフにした人は載せない。 |
-| sitemap は 1 つのファイルで、人は最近変えた順に 1 万人まで。BFF が 1 時間覚える | sitemaps.org の上限（5 万件）に収まる。ワールドの一覧は全部を解決して作るので重い。超えるようになったら sitemap index に分ける。 |
+| sitemap は 1 つのファイルで、人は ID の順に 1 万人まで。人のページには `lastmod` を付けない。BFF が 1 時間、backend が 10 分覚え、`/api/v1/server/directory` は本番だけ（ほかは 404）・IP ごとに 1 分 30 回まで | sitemaps.org の上限（5 万件）に収まる。`users.updated_at` はメールの連携・パスワードの変更でも変わるので、時刻やその順に並べるとアカウントを変えた時刻が外に出る。ワールドの一覧は全部を解決して作るので重い。超えるようになったら sitemap index に分ける。 |
 | `robots.txt` は `/api/` を断るが、OGP の画像（サーバー・プロフィール・ワールドの画像）は読ませる | X（Twitter）のカードを作るクローラーは robots.txt に従い、断った画像はカードに出さない。 |
 | `/favicon.ico` は今のアイコンの PNG へ移す（302） | `<link rel="icon">` を読まないクライアント（フィードリーダーなど）が見に来る。 |
 
@@ -42,7 +43,7 @@
 - backend: `services/server/branding.ts`（手順）・`brandingImages.ts`（画像を作る）・`brandingService.ts`（配線）。
   - `GET /api/v1/server`: 情報・ブランディング・新規登録・人数（`no-cache`）。
   - `GET /api/v1/server/images/:variant/:hash.(png|webp)`: 画像（`immutable`）。
-  - `GET /api/v1/server/directory`: 検索に出してよい人の ID と更新した時刻（sitemap 用）。
+  - `GET /api/v1/server/directory`: 検索に出してよい人の ID（sitemap 用。本番だけ）。
   - `PUT /api/v1/admin/branding`・`PUT`・`DELETE /api/v1/admin/branding/images/:kind`（管理者だけ）。
 - BFF: `site.ts`（応答をまとめる。古い backend でも既定で動く）・`head.ts`（どのページにも入れるもの）・`landing.ts`・`manifest.ts`・`crawl.ts`（robots・sitemap・ワールドを載せてよいか）・`shell.ts`（index.html の既定のタイトル・説明・アイコンを外して入れる）・`refreshing.ts`。
 - フロント: `lib/server/serverInfo.ts`（読んで覚え、色を掛ける）。

@@ -1,4 +1,4 @@
-import { eq, inArray, sql } from 'drizzle-orm';
+import { inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../index';
 import { serverBranding, serverImages, users } from '../schema';
@@ -87,9 +87,10 @@ describe.skipIf(!RUN)('serverBrandingRepository (DB統合)', () => {
     });
 });
 
-describe.skipIf(!RUN)('userRepository.listDiscoverable (DB統合)', () => {
+describe.skipIf(!RUN)('検索に出してよい人（DB統合）', () => {
     const stamp = Date.now().toString(36);
-    const handles = { open: `sm_open_${stamp}`, noRow: `sm_norow_${stamp}`, hidden: `sm_hidden_${stamp}` };
+    // ほかのテストが作ったユーザーより前に並ぶよう、0 で始める（ID の順に並ぶ）
+    const handles = { open: `0sm_a_${stamp}`, noRow: `0sm_b_${stamp}`, hidden: `0sm_c_${stamp}` };
     const idOf = (handle: string) => `id-${handle}`;
 
     beforeAll(async () => {
@@ -98,36 +99,28 @@ describe.skipIf(!RUN)('userRepository.listDiscoverable (DB統合)', () => {
         }
         await userSettingsRepository.updateFediverse(idOf(handles.open), { discoverable: true });
         await userSettingsRepository.updateFediverse(idOf(handles.hidden), { discoverable: false });
-        // ほかのテストが作ったユーザーより前に並ぶよう、未来の時刻にする（open が最新）
-        const at = (offset: number) => new Date(Date.UTC(2100, 0, 1) + offset);
-        await db
-            .update(users)
-            .set({ updatedAt: at(2) })
-            .where(eq(users.handle, handles.open));
-        await db
-            .update(users)
-            .set({ updatedAt: at(1) })
-            .where(eq(users.handle, handles.noRow));
-        await db
-            .update(users)
-            .set({ updatedAt: at(3) })
-            .where(eq(users.handle, handles.hidden));
     });
 
     afterAll(async () => {
         await db.delete(users).where(inArray(users.handle, Object.values(handles)));
     });
 
-    it('「検索に出す」をオフにした人は出さず、設定の行が無い人は出す。最近変えた順', async () => {
-        const listed = (await userRepository.listDiscoverable(1000)).map((row) => row.handle);
+    it('「検索に出す」をオフにした人は出さず、設定の行が無い人は出す。ID の順', async () => {
+        const listed = await userRepository.listDiscoverableHandles(10_000);
         expect(listed).toContain(handles.open);
         expect(listed).toContain(handles.noRow);
         expect(listed).not.toContain(handles.hidden);
+        expect(listed).not.toContain('system');
         expect(listed.indexOf(handles.open)).toBeLessThan(listed.indexOf(handles.noRow));
     });
 
     it('上限の数までしか返さない', async () => {
-        const listed = await userRepository.listDiscoverable(1);
-        expect(listed).toEqual([{ handle: handles.open, updatedAt: new Date(Date.UTC(2100, 0, 1) + 2) }]);
+        expect(await userRepository.listDiscoverableHandles(1)).toEqual([handles.open]);
+    });
+
+    it('プロフィールにも「検索に出す」が付く（設定の行が無ければオン）', async () => {
+        expect((await userRepository.findProfileByHandle(handles.open))?.discoverable).toBe(true);
+        expect((await userRepository.findProfileByHandle(handles.noRow))?.discoverable).toBe(true);
+        expect((await userRepository.findProfileById(idOf(handles.hidden)))?.discoverable).toBe(false);
     });
 });

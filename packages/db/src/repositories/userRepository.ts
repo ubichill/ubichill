@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { DEFAULT_FEDIVERSE_SETTINGS } from '@ubichill/shared';
 import {
     and,
     asc,
@@ -43,6 +44,8 @@ export type UserProfileRecord = UserRecord & {
     bannerImage: string | null;
     links: string[];
     languages: string[];
+    /** 「おすすめや検索に出す」（設定の行が無ければ既定のオン） */
+    discoverable: boolean;
 };
 
 export interface ProfileFieldsInput {
@@ -62,12 +65,21 @@ async function selectProfile(executor: Executor, where: SQL): Promise<UserProfil
             bannerImage: userProfiles.bannerImage,
             links: userProfiles.links,
             languages: userProfiles.languages,
+            discoverable: userSettings.fediverseDiscoverable,
         })
         .from(users)
         .leftJoin(userProfiles, eq(userProfiles.userId, users.id))
+        .leftJoin(userSettings, eq(userSettings.userId, users.id))
         .where(where);
     const row = rows[0];
-    return row && { ...row, links: row.links ?? [], languages: row.languages ?? [] };
+    return (
+        row && {
+            ...row,
+            links: row.links ?? [],
+            languages: row.languages ?? [],
+            discoverable: row.discoverable ?? DEFAULT_FEDIVERSE_SETTINGS.discoverable,
+        }
+    );
 }
 
 export interface CreateUserInput {
@@ -375,12 +387,12 @@ export const userRepository = {
     },
 
     /**
-     * 検索に出してよい人のページ（sitemap）。「おすすめや検索に出す」をオフにした人とシステムのアカウントは除く
-     * （設定の行が無い人は既定のオン）。プロフィールを最近変えた順に limit 人まで。
+     * 検索に出してよい人の ID（sitemap）。「おすすめや検索に出す」をオフにした人とシステムのアカウントは除く
+     * （設定の行が無い人は既定のオン）。ID の順に limit 人まで（時刻の順にすると、アカウントを変えた順が外から分かる）。
      */
-    async listDiscoverable(limit: number): Promise<Array<{ handle: string; updatedAt: Date }>> {
-        return db
-            .select({ handle: users.handle, updatedAt: users.updatedAt })
+    async listDiscoverableHandles(limit: number): Promise<string[]> {
+        const rows = await db
+            .select({ handle: users.handle })
             .from(users)
             .leftJoin(userSettings, eq(userSettings.userId, users.id))
             .where(
@@ -389,8 +401,9 @@ export const userRepository = {
                     or(isNull(userSettings.fediverseDiscoverable), eq(userSettings.fediverseDiscoverable, true)),
                 ),
             )
-            .orderBy(desc(users.updatedAt), asc(users.handle))
+            .orderBy(asc(users.handle))
             .limit(limit);
+        return rows.map((row) => row.handle);
     },
 
     /** 登録している人の数（システムのアカウントを除く） */
