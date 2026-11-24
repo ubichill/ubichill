@@ -23,10 +23,14 @@ export const PORTAL_COOLDOWN_MESSAGE = '少し待ってから置き直してく�
 const TIMEOUT_MESSAGE = '応答が無いため、ポータルを置けませんでした';
 const FALLBACK_MESSAGE = 'ポータルを置けませんでした';
 
+const failure = (e: unknown): string =>
+    e instanceof TimedOutError ? TIMEOUT_MESSAGE : e instanceof Error && e.message ? e.message : FALLBACK_MESSAGE;
+
 /**
  * 置く場所を選んだあとの手順。行き先を決め（新しいインスタンスはここで作る）、置く許可をもらって、選んだ所に置く。
  * 場所を選ぶ前には何もしない（やめたときに空の部屋が残らず、作成の回数制限も使わない）。
- * 置けなかった理由を返す。置けた・signal で取りやめたら null（取りやめたあとは置かない）。
+ * signal で取りやめられるのはインスタンスに送る前まで（送ったあとはインスタンスが置くので、返事を待つ）。
+ * 置けなかった理由を返す。置けた・送る前に取りやめたら null。
  */
 export async function placeRoomPortal(
     deps: RoomPortalPlacementDeps,
@@ -35,16 +39,17 @@ export async function placeRoomPortal(
     signal: AbortSignal,
     timeoutMs: number = PORTAL_REQUEST_TIMEOUT_MS,
 ): Promise<string | null> {
-    try {
-        const destination = await withinTime(room, timeoutMs, signal);
-        const grant = await withinTime((s) => deps.requestGrant(destination, s), timeoutMs, signal);
-        if (signal.aborted) return null;
-        return await deps.open(destination, at, grant);
-    } catch (e) {
-        if (signal.aborted) return null;
-        if (e instanceof TimedOutError) return TIMEOUT_MESSAGE;
-        return e instanceof Error && e.message ? e.message : FALLBACK_MESSAGE;
-    }
+    const prepared = await withinTime(room, timeoutMs, signal)
+        .then((destination) =>
+            withinTime((s) => deps.requestGrant(destination, s), timeoutMs, signal).then((grant) => ({
+                destination,
+                grant,
+            })),
+        )
+        .catch((error: unknown) => ({ error }));
+    if (signal.aborted) return null;
+    if ('error' in prepared) return failure(prepared.error);
+    return deps.open(prepared.destination, at, prepared.grant).catch(failure);
 }
 
 /** 前に置けた時刻から、置き直せるまでの残り（ms）。0 なら置ける。インスタンスに断られる部屋を先に作らないために見る。 */

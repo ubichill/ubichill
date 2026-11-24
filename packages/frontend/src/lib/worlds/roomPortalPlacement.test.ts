@@ -123,6 +123,33 @@ describe('placeRoomPortal', () => {
         expect(value.open).not.toHaveBeenCalled();
     });
 
+    it('インスタンスに送ったあとは、やめても返事（置けた・断られた）を返す', async () => {
+        const controller = new AbortController();
+        const { value } = deps({
+            open: vi.fn(async () => {
+                controller.abort();
+                return '少し待ってから置き直してください';
+            }),
+        });
+        await expect(placeRoomPortal(value, async () => 'r', AT, controller.signal)).resolves.toBe(
+            '少し待ってから置き直してください',
+        );
+        const placed = new AbortController();
+        const ok = deps({
+            open: vi.fn(async () => {
+                placed.abort();
+                return null;
+            }),
+        });
+        await expect(placeRoomPortal(ok.value, async () => 'r', AT, placed.signal)).resolves.toBeNull();
+        expect(ok.value.open).toHaveBeenCalledTimes(1);
+    });
+
+    it('送ったあとの失敗も理由にする', async () => {
+        const { value } = deps({ open: vi.fn(() => Promise.reject(new Error('接続が切れています'))) });
+        await expect(placeRoomPortal(value, async () => 'r', AT, live())).resolves.toBe('接続が切れています');
+    });
+
     it('始める前にやめていれば、部屋も作らない', async () => {
         const controller = new AbortController();
         controller.abort();

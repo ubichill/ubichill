@@ -96,7 +96,7 @@ export function revealScroll(center: Point, view: WorldViewport): { left: number
 
 /** 押されたキーの扱い。 */
 export type PlacementKeyAction =
-    /** そのまま通す（Ctrl・Alt・Meta との組み合わせ。ブラウザ・OS のショートカット） */
+    /** ブラウザ・OS のショートカットに任せる（Ctrl・Alt・Meta との組み合わせ。mod には渡さない） */
     | 'pass'
     /** やめる */
     | 'cancel'
@@ -107,7 +107,7 @@ export type PlacementKeyAction =
     /** 置く画面の中でフォーカスを回す（閉じ込める） */
     | 'focus-next'
     | 'focus-previous'
-    /** フォーカスのあるボタンを押す（ブラウザに任せ、mod には渡さない） */
+    /** フォーカスのあるボタンを押す（mod には渡さない） */
     | 'button'
     /** 何もしない（mod には渡さない） */
     | 'swallow';

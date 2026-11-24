@@ -165,7 +165,7 @@ describe('placementKeyAction', () => {
             expect(placementKeyAction(key(k, { shiftKey: k === 'Z' || k === 'Shift' }), false)).toBe('swallow');
     });
 
-    it('Ctrl・Alt・Meta との組み合わせはそのまま通す（Esc・Enter・矢印でも）', () => {
+    it('Ctrl・Alt・Meta との組み合わせはブラウザ・OS に任せる（Esc・Enter・矢印でも置く画面では扱わない）', () => {
         expect(placementKeyAction(key('r', { metaKey: true }), false)).toBe('pass');
         expect(placementKeyAction(key('Escape', { ctrlKey: true }), false)).toBe('pass');
         expect(placementKeyAction(key('ArrowLeft', { altKey: true }), false)).toBe('pass');

@@ -1,16 +1,10 @@
 import { useWorld } from '@ubichill/react';
 import { ROOM_PORTAL } from '@ubichill/shared';
-import {
-    type KeyboardEvent as ReactKeyboardEvent,
-    type PointerEvent as ReactPointerEvent,
-    type SyntheticEvent,
-    useEffect,
-    useRef,
-    useState,
-} from 'react';
+import { type PointerEvent as ReactPointerEvent, type SyntheticEvent, useEffect, useRef, useState } from 'react';
 import { css, cva, cx } from '@/styled-system/css';
 import { useScrollWorldEl } from './cursor/useScrollWorldEl';
 import { PortalIcon } from './partIcons';
+import { placementFocus } from './placementFocus';
 import { portal, portalImage, portalName, portalWindow, roomPortalColumn, roomPortalFrame } from './portalLook';
 import {
     initialPlacement,
@@ -54,19 +48,24 @@ const stop = (e: SyntheticEvent) => e.stopPropagation();
  * 部屋へのポータルを置く場所を選ぶ。行き先の見た目のゴーストをワールドの上に出し、ポインターに付いて動かす。
  * クリック・タップでその場所に置く。ドラッグで動かして「ここに置く」でも置ける。矢印キーで動かし（Shift で大きく）、
  * Enter で置く。Esc か「やめる」でやめる（置いている途中でも）。ホイールはワールドのスクロールに回す。
- * モーダルとしてフォーカスを中に閉じ込め、押す操作とキー（Ctrl・Alt・Meta との組み合わせを除く）を mod に渡さない
- * （ペンで描く・自機に乗る・撃つなどをしない）。キーを離したこと（keyup）は渡す（押したまま始めたキーが押されっぱなしにならない）。
+ * モーダルとしてフォーカスを中に閉じ込め（トーストなどへ出たら取り返す）、押す操作とキーを mod に渡さない（ペンで描く・
+ * 自機に乗る・撃つなどをしない）。Ctrl・Alt・Meta との組み合わせはブラウザ・OS のショートカットに任せる。確認・権限の
+ * ダイアログが上に出ている間は、フォーカスもキーもそちらに譲る。キーを離したこと（keyup）は渡す（押したまま始めたキーが
+ * mod で押されっぱなしにならない）。
  */
 export function PortalPlacementLayer({
     look,
     onPlace,
     onCancel,
+    cancellable = true,
 }: {
     look: PortalPlacementLook;
     /** 置く場所を決めた（ワールドの座標のポータルの真ん中）。終わるまで選び直せない */
     onPlace: (at: Point) => Promise<void>;
     /** やめる。置いている途中なら取りやめる */
     onCancel: () => void;
+    /** やめられるか（インスタンスに置くよう送ったあとは、返事が来るまでやめられない） */
+    cancellable?: boolean;
 }) {
     const world = useWorld().environment.worldSize;
     const scrollEl = useScrollWorldEl();
@@ -112,24 +111,25 @@ export function PortalPlacementLayer({
         };
     }, [scrollEl, world]);
 
-    useEffect(() => {
-        layerRef.current?.focus();
-    }, []);
-
-    const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-        if (e.nativeEvent.isComposing) return;
-        const action = placementKeyAction(e, e.target instanceof HTMLButtonElement);
-        if (action === 'pass') return;
-        e.stopPropagation();
-        if (action === 'button' || action === 'swallow') return;
+    const onKey = (e: KeyboardEvent) => {
+        const layerEl = layerRef.current;
+        if (!layerEl || e.isComposing) return;
+        const where = placementFocus(layerEl, document);
+        if (where === 'dialog') return;
+        e.stopImmediatePropagation();
+        if (where === 'reclaim') layerEl.focus();
+        const button = e.target instanceof HTMLButtonElement && layerEl.contains(e.target) ? e.target : null;
+        const action = placementKeyAction(e, button !== null);
+        if (action === 'pass' || action === 'swallow') return;
         e.preventDefault();
-        if (action === 'cancel') return onCancel();
+        if (action === 'button') return button?.click();
+        if (action === 'cancel') return cancellable ? onCancel() : undefined;
         if (action === 'focus-next' || action === 'focus-previous') {
-            const items = [...(layerRef.current?.querySelectorAll<HTMLButtonElement>('button:enabled') ?? [])];
+            const items = [...layerEl.querySelectorAll<HTMLButtonElement>('button:enabled')];
             const active = document.activeElement;
             const current = active instanceof HTMLButtonElement ? items.indexOf(active) : -1;
             const next = items[nextFocusIndex(current, items.length, action === 'focus-previous')];
-            return (next ?? layerRef.current)?.focus();
+            return (next ?? layerEl).focus();
         }
         if (!at || placingRef.current) return;
         if (action === 'place') return commit(at);
@@ -140,6 +140,28 @@ export function PortalPlacementLayer({
         const scroll = view && revealScroll(moved, view);
         if (scroll && scrollEl) scrollEl.scrollTo(scroll.left, scroll.top);
     };
+    const onKeyRef = useRef(onKey);
+    onKeyRef.current = onKey;
+
+    // キーは window の capture で先に受ける（フォーカスがトースト・body に出ても mod に渡さない）。フォーカスが外に出たら取り返す
+    useEffect(() => {
+        const layerEl = layerRef.current;
+        if (!layerEl) return;
+        layerEl.focus();
+        const onKeyDown = (e: KeyboardEvent) => onKeyRef.current(e);
+        const reclaim = () =>
+            setTimeout(() => {
+                if (layerEl.isConnected && placementFocus(layerEl, document) === 'reclaim') layerEl.focus();
+            }, 0);
+        window.addEventListener('keydown', onKeyDown, true);
+        document.addEventListener('focusin', reclaim);
+        document.addEventListener('focusout', reclaim);
+        return () => {
+            window.removeEventListener('keydown', onKeyDown, true);
+            document.removeEventListener('focusin', reclaim);
+            document.removeEventListener('focusout', reclaim);
+        };
+    }, []);
 
     const follow = (client: Point) => {
         if (view && !placingRef.current) setAt(placementAt(pointerToWorld(client, view), world));
@@ -176,7 +198,6 @@ export function PortalPlacementLayer({
             aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Enter Escape"
             tabIndex={-1}
             className={layer}
-            onKeyDown={onKeyDown}
             onPointerDown={stop}
             onPointerUp={stop}
             onMouseDown={stop}
@@ -234,7 +255,12 @@ export function PortalPlacementLayer({
             )}
             <div className={bar}>
                 <p className={hint}>{placing ? '置いています...' : '押した所に置きます'}</p>
-                <button type="button" className={barButton({ intent: 'secondary' })} onClick={onCancel}>
+                <button
+                    type="button"
+                    className={barButton({ intent: 'secondary' })}
+                    disabled={!cancellable}
+                    onClick={onCancel}
+                >
                     やめる
                 </button>
                 <button

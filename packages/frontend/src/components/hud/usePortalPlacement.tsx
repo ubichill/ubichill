@@ -25,11 +25,15 @@ export function usePortalPlacement(currentInstanceId: string, closeLaunchpad: ()
     const [target, setTarget] = useState<PortalTarget | null>(null);
     const inFlight = useRef<AbortController | null>(null);
     const lastPlacedAt = useRef<number | null>(null);
+    // インスタンスに送ったあと（返事を待つ間）は、やめても置かれるので、やめさせない
+    const [sending, setSending] = useState(false);
+    const sendingRef = useRef(false);
     const unavailable = isRemoteRoomAddress(currentInstanceId)
         ? 'ほかのサーバーの部屋には、ポータルを置けません'
         : null;
 
     const cancel = useCallback(() => {
+        if (sendingRef.current) return;
         inFlight.current?.abort();
         inFlight.current = null;
         setTarget(null);
@@ -57,12 +61,22 @@ export function usePortalPlacement(currentInstanceId: string, closeLaunchpad: ()
         const controller = new AbortController();
         inFlight.current = controller;
         const error = await placeRoomPortal(
-            { requestGrant: requestRoomPortalGrant, open: actions.open },
+            {
+                requestGrant: requestRoomPortalGrant,
+                open: (room, spot, grant) => {
+                    sendingRef.current = true;
+                    setSending(true);
+                    return actions.open(room, spot, grant);
+                },
+            },
             chosen.room,
             at,
             controller.signal,
         );
-        if (controller.signal.aborted) return;
+        const sent = sendingRef.current;
+        sendingRef.current = false;
+        setSending(false);
+        if (controller.signal.aborted && !sent) return;
         inFlight.current = null;
         if (error) pushToast(error, 'error');
         else lastPlacedAt.current = Date.now();
@@ -70,7 +84,12 @@ export function usePortalPlacement(currentInstanceId: string, closeLaunchpad: ()
     };
 
     const layer = target && (
-        <PortalPlacementLayer look={target.look} onCancel={cancel} onPlace={(at) => place(target, at)} />
+        <PortalPlacementLayer
+            look={target.look}
+            cancellable={!sending}
+            onCancel={cancel}
+            onPlace={(at) => place(target, at)}
+        />
     );
     return { opener, layer, cancel };
 }
