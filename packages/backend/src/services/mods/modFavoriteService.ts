@@ -32,16 +32,19 @@ class LookupMiss extends Error {
     }
 }
 
-// 引けた mod だけを覚える（カタログと同じ 5 分）。無い・届かない mod は次に引き直す
+// 引けた mod はカタログと同じ 5 分、無い・届かない mod は 1 分覚える（届かない作者へ一覧のたびに取りに行かない）
 const lookups = createTtlCache<ModLookup>({ ttlMs: 5 * 60 * 1000, max: 2000 });
-const lookup = (ref: ModFavoriteRef): Promise<ModLookup> =>
-    lookups
-        .getOrCreate(`@${ref.author}/${ref.id}`, async () => {
-            const found = await lookupMod(ref);
+const recent = createTtlCache<ModLookup>({ ttlMs: 60 * 1000, max: 2000 });
+const lookup = (ref: ModFavoriteRef): Promise<ModLookup> => {
+    const key = `@${ref.author}/${ref.id}`;
+    return lookups
+        .getOrCreate(key, async () => {
+            const found = await recent.getOrCreate(key, () => lookupMod(ref));
             if (found.status !== 'found') throw new LookupMiss(found);
             return found;
         })
         .catch((e: unknown): ModLookup => (e instanceof LookupMiss ? e.result : { status: 'unreachable' }));
+};
 
 // ほかの人に見せる一覧は、ワールドのお気に入りと同じくユーザーごとに数分覚える（変わったら捨てる）
 const visibleCache = createTtlCache<PackageDescriptor[]>({ ttlMs: 3 * 60 * 1000, max: 500 });
