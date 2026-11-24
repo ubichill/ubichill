@@ -45,7 +45,7 @@ shared（`@ubichill/shared` の純粋な規則。画面と同じ関数）。DB �
 | プロフィールの編集・画像 | `profiles/` | `profiles/`（実体は `profileService.ts`） | `account/profile.ts` |
 | 公開環境（署名鍵）・署名の作者の確認・API トークンの認証 | `users/publishingEnvironments.ts`・`authors.ts`・`middleware/auth.ts` | `authors/publishingEnvironments.ts`（実体は `publishingEnvironmentService.ts`） | `publishing/signingKeys.ts` |
 | 作ったワールド・外部の作品 | `users/works.ts`・`worlds.ts` | `worlds/myWorlds.ts`・`worlds/externalWorkRegistration.ts`・`worlds/worldRegistry.ts` | `world/`・`publishing/externalWorks.ts` |
-| お気に入り | `users/favorites.ts` | `worlds/favoriteService.ts` | `account/favoritesVisibility.ts` |
+| お気に入り（ワールド・mod） | `users/favorites.ts` | `worlds/favoriteService.ts`・`mods/modFavorites.ts`（実体は `modFavoriteService.ts`、引き方は `modLookup.ts`） | `account/favoritesVisibility.ts`・`mod/favorites.ts` |
 | プライバシー（オンライン状態） | `users/privacy.ts` | `users/privacyService.ts` | `social/presence.ts` |
 | ほかの人に見せる情報（プロフィール・作品・お気に入り） | `users/public.ts` | `users/userService.ts`・`users/publicProfile.ts`・`worlds/publishedWorks.ts` | `account/profile.ts` |
 | ホーム | `home/` | `instances/homeInstance.ts`（実体は `homeService.ts`） | `account/home.ts` |

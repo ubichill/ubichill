@@ -1,7 +1,7 @@
 /**
  * 署名した外部の作品（GitHub Pages などに置くワールド・mod）を、作者アカウントのサーバーに登録する。
  * 登録するとユーザーページに出る（サーバーは公開先の URL を取りに行き、本人の署名付きで配られていると確かめてから出す）。
- * 登録に失敗しても署名は済んでいるので、公開は止めない（警告だけ出す）。
+ * 登録に失敗しても署名は済んでいるので、既定では公開は止めない（警告だけ出す）。`--require-registration` では失敗にする。
  */
 import type { ExternalWorkRegistration, ModLockEntry } from '@ubichill/shared';
 import type { Logger } from '@ubichill/terminal';
@@ -32,24 +32,60 @@ export function latestPerMod<T extends { entry: ModLockEntry }>(signed: readonly
     return [...latest.values()];
 }
 
+/** 登録できなかったときの終了コード（CI が「公開先への反映待ち（1）」と分けてやり直しを止められるように）。 */
+export const REGISTRATION_FAILED_EXIT_CODE = 2;
+
+/**
+ * `--require-registration` で、登録できなかった作品があった。retryable はやり直せば通るかもしれない失敗だけのとき
+ * （サーバーから公開先がまだ見えない・作者の確認待ち・5xx・通信の失敗）で、終了コードは 1（反映待ちと同じ）にする。
+ */
+export class RegistrationError extends Error {
+    readonly retryable: boolean;
+    // node の型を消すだけの実行（build:workers がソースの CLI を起動する）は引数のプロパティを読めない
+    constructor(message: string, retryable: boolean) {
+        super(message);
+        this.retryable = retryable;
+    }
+}
+
+/** コマンドの失敗の終了コード。やり直しても通らない登録の失敗（上限・権限・形）だけ 2。 */
+export const exitCodeOf = (error: unknown): number =>
+    error instanceof RegistrationError && !error.retryable ? REGISTRATION_FAILED_EXIT_CODE : 1;
+
+const RETRYABLE_CODES = new Set(['mod-not-published', 'author-pending']);
+
+/** 登録の応答の失敗がやり直せるものか（応答が無い・5xx・公開先がまだ見えない 409・作者の確認待ち）。 */
+export function retryableRegistrationFailure(res: { status: number; body: Record<string, unknown> } | undefined) {
+    if (!res || res.status >= 500) return true;
+    return typeof res.body.code === 'string' && RETRYABLE_CODES.has(res.body.code);
+}
+
 export async function registerExternalWorks(
     request: RegisterRequest,
     registrations: readonly ExternalWorkRegistration[],
     log: Logger,
+    options: { required?: boolean } = {},
 ): Promise<number> {
     const results = await Promise.all(
         registrations.map(async (registration) => {
             const res = await request('PUT', EXTERNAL_WORKS_PATH, registration).catch(() => undefined);
-            if (res?.status === 200) return true;
+            if (res?.status === 200) return { ok: true, retryable: true };
             const reason =
                 typeof res?.body.error === 'string' ? res.body.error : res ? `HTTP ${res.status}` : '通信できません';
-            log.warn(`${registration.url} をユーザーページに登録できませんでした（${reason}）。署名と公開は続けます`);
-            return false;
+            log.warn(
+                `${registration.url} をユーザーページに登録できませんでした（${reason}）${options.required ? '' : '。署名と公開は続けます'}`,
+            );
+            return { ok: false, retryable: retryableRegistrationFailure(res) };
         }),
     );
-    const registered = results.filter(Boolean).length;
+    const registered = results.filter((r) => r.ok).length;
     if (registered > 0)
         log.success(`${registered} 件の作品をユーザーページに登録しました`, '公開先で確かめられたものから表示されます');
+    if (options.required && registered < registrations.length)
+        throw new RegistrationError(
+            `${registrations.length - registered} 件の作品をユーザーページ・カタログに登録できませんでした（--require-registration）`,
+            results.every((r) => r.retryable),
+        );
     return registered;
 }
 
@@ -115,7 +151,9 @@ export async function registerDeployedMods<T extends { entry: ModLockEntry }>(op
     const shown = listed ? options.signed.filter((mod) => listed.has(mod.entry.id)) : options.signed;
     const hidden = [...new Set(options.signed.map((mod) => mod.entry.id))].filter((id) => listed && !listed.has(id));
     for (const mod of shown) await options.verifyPublic(mod);
-    const registered = await options.register(latestPerMod(shown));
+    // 登録に失敗しても、一覧から外した mod の登録は消してから失敗を返す
+    const registered = await options.register(latestPerMod(shown)).catch((error: unknown) => error);
     if (hidden.length > 0) await options.unregister(hidden);
+    if (typeof registered !== 'number') throw registered;
     return registered;
 }

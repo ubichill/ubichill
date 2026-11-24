@@ -1,11 +1,14 @@
 import {
     displayAuthorAccount,
+    formatPackageRef,
+    type ModFavoriteRef,
     type ModLockEntry,
     PROTOCOL_VERSION,
     selectableProtocolVersions,
 } from '@ubichill/shared';
 import { type ReactNode, useEffect, useId, useRef } from 'react';
 import { HudIcon } from '@/components/hud/HudIcon';
+import { ModFavoriteButton } from '@/components/mods/ModFavoriteButton';
 import { ModThumbnail } from '@/components/mods/ModThumbnail';
 import { useModPreview } from '@/components/mods/useModPreview';
 import { MOD_CDN_URL } from '@/lib/mods/modCdn';
@@ -79,6 +82,7 @@ const installedBadge = css({
     whiteSpace: 'nowrap',
 });
 const noteText = css({ fontSize: '11px', color: 'textSubtle' });
+const favoriteButton = editorButton({ intent: 'icon', size: 'iconSm' });
 const versionSelect = css({
     minWidth: '88px',
     fontSize: '12px',
@@ -216,6 +220,13 @@ export function CandidateRow({
                 meta={meta}
             />
             <div className={actionsCell}>
+                {candidate.author && (
+                    <ModFavoriteButton
+                        mod={{ author: candidate.author, id: candidate.id }}
+                        name={name}
+                        className={favoriteButton}
+                    />
+                )}
                 {status.kind === 'available' && (
                     <button
                         type="button"
@@ -295,6 +306,9 @@ export function InstalledRow({
                 {version && <ModAuthor target={target} version={version} />}
             </ModInfo>
             <div className={actionsCell}>
+                {author && (
+                    <ModFavoriteButton mod={{ author, id: dependency.name }} name={name} className={favoriteButton} />
+                )}
                 {mod.versions.length > 1 && version ? (
                     <select
                         aria-label={`${name} の版`}
@@ -332,6 +346,26 @@ export function InstalledRow({
                 >
                     外す
                 </button>
+            </div>
+        </div>
+    );
+}
+
+/** お気に入りのうち、作者のカタログでいま引けない mod（公開をやめた・作者のサーバーに届かない）。星で外せる。 */
+export function UnavailableFavoriteRow({ mod }: { mod: ModFavoriteRef }) {
+    const ref = formatPackageRef(mod);
+    return (
+        <div className={row}>
+            <div className={checkCell} />
+            <div className={thumbCell}>
+                <ModThumbnail image={undefined} size={40} />
+            </div>
+            <div className={cx(infoCell, css({ cursor: 'default' }))}>
+                <span className={nameText}>{mod.id}</span>
+                <span className={cx(metaText, css({ display: 'block' }))}>{ref} · いま確認できません</span>
+            </div>
+            <div className={actionsCell}>
+                <ModFavoriteButton mod={mod} className={favoriteButton} />
             </div>
         </div>
     );

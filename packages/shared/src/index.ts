@@ -278,6 +278,7 @@ export type { components as InstanceAPI } from './generated/instance';
 export * from './mod/capability';
 export * from './mod/componentRefs';
 export * from './mod/errors';
+export * from './mod/favorites';
 export * from './mod/modLock';
 export * from './mod/modSignature';
 export * from './mod/packageRef';

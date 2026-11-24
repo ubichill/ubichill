@@ -8,6 +8,7 @@ import {
     checkable,
     installedMods,
     matchesCandidate,
+    matchesModRef,
     modUsage,
     removalWarning,
     selectableCandidates,
@@ -117,6 +118,22 @@ describe('matchesCandidate', () => {
         expect(matchesCandidate(authorPen, 'BOB@')).toBe(true);
         expect(matchesCandidate(hostPen, 'bob')).toBe(false);
         expect(matchesCandidate(hostPen, '')).toBe(true);
+    });
+
+    it('作者参照でも一致する（作品ページから来た検索語のままお気に入りのタブに移っても消えない）', () => {
+        expect(matchesCandidate(authorPen, `@${authorPen.author}/pen`)).toBe(true);
+        expect(matchesCandidate(hostPen, `@${authorPen.author}/pen`)).toBe(false);
+    });
+});
+
+describe('matchesModRef', () => {
+    const gone = { author: 'Bob@far.test', id: 'old-pen' };
+    it('作者参照の部分一致で、大文字小文字と前後の空白を無視する。空なら全部', () => {
+        expect(matchesModRef(gone, ' bob@FAR ')).toBe(true);
+        expect(matchesModRef(gone, '@bob@far.test/old')).toBe(true);
+        expect(matchesModRef(gone, 'pen')).toBe(true);
+        expect(matchesModRef(gone, 'alice')).toBe(false);
+        expect(matchesModRef(gone, '')).toBe(true);
     });
 });
 

@@ -103,8 +103,8 @@ ubichill login   [--server=<url>] [--device] [--name=<表示名>] [--no-browser]
 ubichill logout  [--server=<url>]
 ubichill whoami  [--server=<url>]
 ubichill ci create --name=<表示名> [--server=<url>] [--device]
-ubichill publish <world.yaml>... [--server=<url>] [--out=<dir>] [--public-url=<url>] [--no-install] [--accept-capabilities]
-ubichill publish <mods のビルド出力>... [--server=<url>] [--public-url=<url>] [--check-public]
+ubichill publish <world.yaml>... [--server=<url>] [--out=<dir>] [--public-url=<url>] [--require-registration] [--no-install] [--accept-capabilities]
+ubichill publish <mods のビルド出力>... [--server=<url>] [--public-url=<url>] [--check-public] [--require-registration]
 ubichill world build <world.yaml> [--id=<instanceId>] [--max-users=<n>] [--out=<path>]
 ```
 
@@ -144,6 +144,9 @@ ubichill world build <world.yaml> [--id=<instanceId>] [--max-users=<n>] [--out=<
   - `publish <ビルド出力>` は mod の配布物に `v<version>/lock.sig.json` を書き出す（mod はサーバーへ送らない）。
     Host は作者署名を確認できた mod だけを実行する。
   - `--public-url=<url> --check-public` を渡すと、配置先で内容と署名を確認してから作者のサーバーへ登録される。配置前の署名だけでは既存登録を切り替えない。
+  - 登録に失敗しても、既定では警告だけで成功（終了コード 0）で終わる。`--require-registration` を付けると、登録できない作品があれば
+    失敗で終わる。やり直しても通らない失敗（上限・権限・形）は終了コード 2、やり直せば通るかもしれない失敗（サーバーから公開先が
+    まだ見えない・作者の確認待ち・5xx・通信）と公開先の確認の失敗は 1。CI は 1 のときだけ待ってやり直せる。
 - **`dev`**: 上の「`ubichill dev`」。
 - **`world build`**: 手元の `world.yaml` と兄弟の `.lock.json` から、Go のインスタンスサーバー（`ubichill-instance`）に
   渡す定義 JSON を作る。本体がインスタンスを作るときと同じ変換なので、`ubichill-instance --guests --world=<出力>` で
@@ -159,6 +162,7 @@ CI の新しいチェックアウトで `build` すると、dist には今の版
 以前の `v<version>/` が消え、その版に固定したワールドが読めなくなる。配布先には足すだけにする。
 GitHub Pages なら、`gh-pages` ブランチへ既存のファイルを残して足す方法（下の例）が簡単。
 `actions/deploy-pages` はサイト全体を置き換えるので、使うなら以前に置いたファイルを先に dist へ戻す。
+`ubichill init` の雛形には、この流れの `.github/workflows/pages.yml`（Action は commit の SHA で固定）と、有効にする手順の README が入っている。
 
 ```yaml
 # mod のリポジトリの公開ワークフロー（抜粋）。雛形の npm run build（--layout=registry）の出力を
@@ -170,24 +174,24 @@ GitHub Pages なら、`gh-pages` ブランチへ既存のファイルを残し�
       PUBLIC_URL: https://<user>.github.io/<repo>
       UBICHILL_CREDENTIALS: ${{ secrets.UBICHILL_CREDENTIALS }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: npm ci
       - run: npm run build
       # 署名する。配布先に同じ版の別の内容があればここで失敗する
       - run: npx ubichill publish dist --public-url=$PUBLIC_URL
       - run: npx ubichill verify --dist-dir=dist --require-signatures
       # 既存のファイルを消さずに足す（以前の版を残す）
-      - uses: peaceiris/actions-gh-pages@v4
+      - uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
           keep_files: true
-      # 配置した内容と署名を確かめてから、作者のサーバーのカタログに登録する
-      - run: npx ubichill publish dist --public-url=$PUBLIC_URL --check-public
+      # 配置した内容と署名を確かめてから、作者のサーバーのカタログに登録する（登録できなければ失敗にする）
+      - run: npx ubichill publish dist --public-url=$PUBLIC_URL --check-public --require-registration
 ```
 
 Pages への反映より先に `--check-public` が走ると、取得に失敗して終了コード 1 で終わる（登録はしない）。反映を待って再実行する。
-カタログへの登録が失敗しても `publish` は警告だけで成功（終了コード 0）で終わる。
+カタログへの登録が失敗すると、`--require-registration` があれば終了コード 2（一時的な失敗は 1）、無ければ警告だけで成功（終了コード 0）で終わる。
 
 ## 型チェックを `build` の前段に入れる
 

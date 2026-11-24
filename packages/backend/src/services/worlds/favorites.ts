@@ -2,6 +2,7 @@
  * お気に入り（ワールドの正規 URL の集合）の純粋なロジック。DB と解決は呼び出し側で注入する。
  */
 import { LIMITS, type WorldListItem } from '@ubichill/shared';
+import { mapInChunks } from '../../utils/mapInChunks';
 import { normalizeWorldUrl } from './worldResolver';
 
 export type FavoriteRefResult = { ok: true; ref: string } | { ok: false; error: string };
@@ -30,17 +31,10 @@ export async function resolveFavoriteWorlds(
     resolve: (ref: string) => Promise<WorldListItem | undefined>,
     concurrency = 8,
 ): Promise<{ worlds: WorldListItem[]; unavailable: string[] }> {
-    const chunks = Array.from({ length: Math.ceil(refs.length / concurrency) }, (_, i) =>
-        refs.slice(i * concurrency, (i + 1) * concurrency),
-    );
-    const resolved = await chunks.reduce<Promise<Array<{ ref: string; world: WorldListItem | undefined }>>>(
-        async (prev, chunk) => [
-            ...(await prev),
-            ...(await Promise.all(
-                chunk.map(async (ref) => ({ ref, world: await resolve(ref).catch(() => undefined) })),
-            )),
-        ],
-        Promise.resolve([]),
+    const resolved = await mapInChunks(
+        refs,
+        async (ref) => ({ ref, world: await resolve(ref).catch(() => undefined) }),
+        concurrency,
     );
     const seen = new Set<string>();
     const worlds = resolved.flatMap(({ world }) => {

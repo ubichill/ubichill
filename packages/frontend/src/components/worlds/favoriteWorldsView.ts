@@ -12,12 +12,3 @@ export function visibleFavorites(loaded: LoadedFavorites, favorites: ReadonlySet
         unavailable: loaded.unavailable.filter((ref) => favorites.has(ref)),
     };
 }
-
-/**
- * 取得を始めた時点のお気に入りに無いもの（追加された分）があるときだけ取り直す。
- * 外しただけなら取り直さない（取り直しは最大 100 件の解決になるため）。
- * サーバーは URL を正規化して返すので、返ってきたワールドの URL とは比べず、取得を依頼した URL の集合と比べる。
- */
-export function needsReload(requested: ReadonlySet<string>, favorites: ReadonlySet<string>): boolean {
-    return [...favorites].some((ref) => !requested.has(ref));
-}

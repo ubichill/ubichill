@@ -53,6 +53,8 @@ export interface PublishOptions {
      * （`<publicUrl>/<world>.yaml`）。
      */
     publicUrl?: string;
+    /** 登録できなければ失敗にする（`--require-registration`）。 */
+    requireRegistration?: boolean;
 }
 
 const lockPathFor = (worldPath: string) => worldPath.replace(/\.ya?ml$/i, '.lock.json');
@@ -136,6 +138,7 @@ async function publishToDirectory(deps: PublishDeps, options: PublishOptions & {
             (method, path, body) => deps.request(method, path, body),
             [{ kind: 'world', url, yaml: bundle.yamlText, lock: bundle.lock, signature: bundle.signature }],
             deps.log,
+            { required: options.requireRegistration },
         );
     }
     return outWorld;

@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
     saveBundle: vi.fn(async () => ({ ok: true, world: { id: 'w', url: 'https://x.test/w.yaml' }, saved: 'unsigned' })),
     addFavorite: vi.fn(async () => ({ ok: true, worldRef: 'https://x.test/w.yaml' })),
+    addModFavorite: vi.fn(async () => ({ ok: true, mod: { author: 'a@x.test', id: 'pen' } })),
     registerExternalWork: vi.fn(async () => ({ ok: true, work: {} })),
     /** x-user ヘッダーの人としてログインしている。 */
     signedIn: (req: Request, res: Response, next: NextFunction) => {
@@ -34,6 +35,7 @@ vi.mock('../services/authors/authorKeys', () => ({ selfAccount: (handle: string)
 vi.mock('../services/federation', () => ({ federation: null }));
 vi.mock('../services/worlds/worldRegistry', () => ({ worldRegistry: { saveBundle: mocks.saveBundle } }));
 vi.mock('../services/worlds/favoriteService', () => ({ favoriteService: { add: mocks.addFavorite } }));
+vi.mock('../services/mods/modFavoriteService', () => ({ modFavoriteService: { add: mocks.addModFavorite } }));
 vi.mock('../services/worlds/externalWorkRegistration', () => ({
     registerExternalWork: mocks.registerExternalWork,
     removeExternalWork: vi.fn(),
@@ -91,6 +93,18 @@ describe('書き込みの口の、利用者ごとの回数の制限', () => {
         expect(statuses.slice(0, 30).every((s) => s === 201)).toBe(true);
         expect(statuses[30]).toBe(429);
         expect(mocks.addFavorite).toHaveBeenCalledTimes(30);
+    });
+
+    it('お気に入りの mod の追加（作者のカタログを引く）も 1 分に 30 回まで。ワールドのお気に入りとは別に数える', async () => {
+        const add = (user: string) =>
+            send('POST', '/api/v1/users/me/favorites/mods', user, { author: 'a@x.test', id: 'pen' });
+        const statuses = await repeat(31, () => add('erin'));
+        expect(statuses.slice(0, 30).every((s) => s === 201)).toBe(true);
+        expect(statuses[30]).toBe(429);
+        expect(mocks.addModFavorite).toHaveBeenCalledTimes(30);
+        expect(await send('POST', '/api/v1/users/me/favorites', 'erin', { worldRef: 'https://x.test/w.yaml' })).toBe(
+            201,
+        );
     });
 
     it('外部の作品の登録は、上限の数（全部を 1 回で登録し直す CI）までは通し、それを超えたら 429', async () => {

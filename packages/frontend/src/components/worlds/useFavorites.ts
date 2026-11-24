@@ -1,105 +1,34 @@
-import { useEffect, useSyncExternalStore } from 'react';
 import { API_BASE } from '../../lib/api';
+import { createFavoriteStore } from '../../lib/favorites/favoriteStore';
 
-/**
- * お気に入りワールド（worldRef＝正規 URL の集合）のモジュール共有ストア。
- *
- * 複数のカード/モーダルが同時にお気に入りを表示するため、コンポーネントごとに
- * fetch せずモジュール singleton で 1 回だけ取得し、全 consumer を同期する。
- * トグルは楽観的更新し、失敗時はサーバー状態へ戻す。
- */
-const store: { favorites: ReadonlySet<string>; loaded: boolean; inflight: Promise<void> | null; generation: number } = {
-    favorites: new Set(),
-    loaded: false,
-    inflight: null,
-    generation: 0,
-};
-const listeners = new Set<() => void>();
+const send = (method: 'POST' | 'DELETE', worldRef: string) =>
+    fetch(`${API_BASE}/api/v1/users/me/favorites`, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ worldRef }),
+    }).then((res) => {
+        if (!res.ok) throw new Error('failed');
+        return res;
+    });
 
-function emit(): void {
-    for (const l of listeners) l();
-}
-
-function subscribe(listener: () => void): () => void {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
-}
-
-function getSnapshot(): ReadonlySet<string> {
-    return store.favorites;
-}
-
-function load(force = false): Promise<void> {
-    if (store.inflight) return store.inflight;
-    if (store.loaded && !force) return Promise.resolve();
-    const promise: Promise<void> = fetch(`${API_BASE}/api/v1/users/me/favorites`, { credentials: 'include' })
-        .then((r) => (r.ok ? (r.json() as Promise<{ worldRefs: string[] }>) : null))
-        .then((data) => {
-            // 読んでいる間にログアウトしていたら（resetFavorites）、前の人の一覧を入れない
-            if (data && store.inflight === promise) {
-                store.loaded = true;
-                setFavorites(new Set(data.worldRefs));
-            }
-        })
-        .catch(() => undefined)
-        .finally(() => {
-            if (store.inflight === promise) store.inflight = null;
-        });
-    store.inflight = promise;
-    return promise;
-}
-
-function setFavorites(next: ReadonlySet<string>): void {
-    store.favorites = next;
-    emit();
-}
+/** お気に入りのワールド（worldRef＝正規 URL の集合）。 */
+const worlds = createFavoriteStore({
+    load: async () => {
+        const res = await fetch(`${API_BASE}/api/v1/users/me/favorites`, { credentials: 'include' });
+        return res.ok ? ((await res.json()) as { worldRefs: string[] }).worldRefs : undefined;
+    },
+    // サーバーは共有 URL を正規化して保存するので、保存された形を返す
+    add: async (worldRef) =>
+        ((await (await send('POST', worldRef)).json().catch(() => ({}))) as { worldRef?: string }).worldRef,
+    remove: async (worldRef) => {
+        await send('DELETE', worldRef);
+    },
+});
 
 /** ログアウトしたとき（次の人に前の人のお気に入りを使わない）。 */
-export function resetFavorites(): void {
-    store.generation += 1;
-    store.inflight = null;
-    store.loaded = false;
-    setFavorites(new Set());
-}
-
-async function toggle(worldRef: string): Promise<void> {
-    const generation = store.generation;
-    const willAdd = !store.favorites.has(worldRef);
-    const next = new Set(store.favorites);
-    if (willAdd) next.add(worldRef);
-    else next.delete(worldRef);
-    setFavorites(next); // 楽観的更新
-    try {
-        const res = await fetch(`${API_BASE}/api/v1/users/me/favorites`, {
-            method: willAdd ? 'POST' : 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ worldRef }),
-        });
-        if (!res.ok) throw new Error('failed');
-        // サーバーは共有 URL を正規化して保存するので、保存された形も持つ（どちらの形でもお気に入り済みと表示する）
-        const saved = willAdd ? ((await res.json().catch(() => ({}))) as { worldRef?: string }).worldRef : undefined;
-        if (generation === store.generation && saved && saved !== worldRef) {
-            setFavorites(new Set([...store.favorites, saved]));
-        }
-    } catch {
-        if (generation !== store.generation) return;
-        const revert = new Set(store.favorites);
-        if (willAdd) revert.delete(worldRef);
-        else revert.add(worldRef);
-        setFavorites(revert);
-    }
-}
+export const resetFavorites = worlds.reset;
 
 export function useFavorites() {
-    const set = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-    useEffect(() => {
-        void load();
-    }, []);
-    return {
-        favorites: set,
-        isFavorite: (worldRef: string) => set.has(worldRef),
-        toggle,
-        refresh: () => load(true),
-    };
+    return worlds.useStore();
 }

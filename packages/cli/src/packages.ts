@@ -20,6 +20,7 @@ import {
 } from '@ubichill/shared';
 import type { Logger } from '@ubichill/terminal';
 import yaml from 'yaml';
+import { pagesWorkflow, projectReadme } from './pagesTemplate.ts';
 
 export function targetWorld(args: string[]): string {
     const explicit =
@@ -110,7 +111,12 @@ export function projectFiles(kind: 'mod' | 'world', name: string): Record<string
         null,
         2,
     );
-    const common = { '.gitignore': 'node_modules/\ndist/\n.ubichill/\n', 'package.json': packageJson };
+    const common = {
+        '.gitignore': 'node_modules/\ndist/\n.ubichill/\n',
+        'package.json': packageJson,
+        'README.md': projectReadme(kind, name),
+        '.github/workflows/pages.yml': pagesWorkflow(kind),
+    };
     if (kind === 'world')
         return {
             ...common,
@@ -124,7 +130,7 @@ export function projectFiles(kind: 'mod' | 'world', name: string): Record<string
     return {
         ...common,
         'src/hello.worker.tsx':
-            "import type { ComponentConfig } from 'ubichill';\nexport const config: ComponentConfig = { defaultTransform: { x: 40, y: 160, w: 320, h: 100 } };\nexport default function Hello() { return <div>Hello!</div>; }\n",
+            "import type { ComponentConfig } from 'ubichill';\nexport const config: ComponentConfig = { defaultTransform: { x: 40, y: 160, w: 320, h: 100 }, capabilities: ['ui:render'] };\nexport default function Hello() { return <div>Hello!</div>; }\n",
         // Worker には Host が Ubi を注入する。import 文を書くとモジュールになりグローバルの宣言にならない
         'src/env.d.ts': "declare const Ubi: import('ubichill').Ubi;\n",
         'prefabs/welcome.json': JSON.stringify({ name: 'ようこそ', entities: [entity] }, null, 2),
