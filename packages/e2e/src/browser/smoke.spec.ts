@@ -44,7 +44,7 @@ test('紹介のページから登録してそのままログインし、ホー�
             await dialog.locator('form').getByRole('button', { name: '登録', exact: true }).click();
         });
 
-        await test.step('ロビーを通らず、ホームの部屋へ自動で入る', async () => {
+        await test.step('ロビーを通らず、ホームのインスタンスへ自動で入る', async () => {
             created.push(await enterInstance(page));
         });
 

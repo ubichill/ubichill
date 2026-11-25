@@ -91,7 +91,7 @@ export function DevBar({
             className={bar}
             data-build-id={buildId ?? ''}
             data-instance-id={instanceId ?? ''}
-            title={instanceId ? `部屋 ${instanceId}` : undefined}
+            title={instanceId ? `インスタンス ${instanceId}` : undefined}
         >
             <span className={`${dot} ${connected ? dotState.connected : dotState.disconnected}`} />
             <span>
@@ -111,8 +111,8 @@ export function DevBar({
                 type="button"
                 className={button}
                 onClick={onReconfigure}
-                aria-label="部屋を作り直す"
-                title="部屋を作り直す（状態を初期に戻す）"
+                aria-label="インスタンスを作り直す"
+                title="インスタンスを作り直す（状態を初期に戻す）"
             >
                 <RefreshIcon />
             </button>

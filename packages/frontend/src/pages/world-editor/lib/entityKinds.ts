@@ -323,7 +323,7 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
                 type: 'entityRefArray',
                 default: [],
                 label: `見え隠れさせる Entity（${SWITCH_MAX_TARGETS} 個まで）`,
-                help: '押すと、部屋の全員の画面で、選んだ Entity（とその子）の見える・見えないが切り替わります。最初に見せるかは、その Entity の「最初から見せる」で決めます。',
+                help: '押すと、インスタンスの全員の画面で、選んだ Entity（とその子）の見える・見えないが切り替わります。最初に見せるかは、その Entity の「最初から見せる」で決めます。',
             },
             label: {
                 type: 'string',

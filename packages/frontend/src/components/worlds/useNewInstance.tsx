@@ -77,7 +77,7 @@ export function useNewInstance({
                     <ChoiceButton
                         icon="enter"
                         label="入る"
-                        note="今の部屋を出て移ります"
+                        note="今のインスタンスを出て移ります"
                         onClick={() => void enterNew()}
                     />
                     <ChoiceButton
@@ -85,7 +85,7 @@ export function useNewInstance({
                         label="ポータルを置く"
                         note={
                             portal.unavailable ??
-                            `今の部屋の好きな所に置きます。${ROOM_PORTAL.LIFETIME_MS / 1000} 秒で消えます`
+                            `今のインスタンスの好きな所に置きます。${ROOM_PORTAL.LIFETIME_MS / 1000} 秒で消えます`
                         }
                         disabled={portal.unavailable !== null}
                         onClick={placePortal}

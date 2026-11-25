@@ -36,10 +36,10 @@ const (
 
 var (
 	errPortalGrant    = errors.New("ポータルを置く許可を確かめられません")
-	errPortalRoom     = errors.New("行き先の部屋が正しくありません")
+	errPortalRoom     = errors.New("行き先のインスタンスが正しくありません")
 	errPortalPosition = errors.New("不正な座標です")
 	errPortalTooFast  = errors.New("少し待ってから置き直してください")
-	errPortalTooMany  = errors.New("この部屋に置けるポータルの数を超えています")
+	errPortalTooMany  = errors.New("このインスタンスに置けるポータルの数を超えています")
 	errPortalFull     = errors.New("インスタンスの容量を超えています")
 )
 

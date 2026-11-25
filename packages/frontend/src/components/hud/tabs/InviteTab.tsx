@@ -16,7 +16,7 @@ import { tabPanel } from './shared';
 
 const REFUSAL_LABELS: Record<InviteRefusal, string> = {
     ...INVITE_REFUSAL_MESSAGES,
-    'already-inside': 'この部屋にいます',
+    'already-inside': 'このインスタンスにいます',
     'needs-leader': '作った人のフレンドではありません',
 };
 

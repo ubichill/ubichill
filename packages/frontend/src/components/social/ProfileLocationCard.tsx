@@ -139,7 +139,7 @@ const STATES: Record<Exclude<FriendLocation['kind'], 'room'>, LocationState> = {
     private: { title: 'プライベートインスタンス', icon: 'lock' },
     unreachable: { title: '確認できません', icon: 'globe' },
     offline: { title: 'オフライン', icon: 'user' },
-    away: { title: '部屋にいません', icon: 'user' },
+    away: { title: 'インスタンスにいません', icon: 'user' },
     unknown: { title: '非公開', icon: 'lock' },
 };
 

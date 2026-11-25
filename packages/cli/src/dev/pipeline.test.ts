@@ -88,7 +88,7 @@ function harness(overrides: Partial<PipelineDeps> = {}) {
 }
 
 describe('createPipeline', () => {
-    it('最初のビルド: 全 mod をビルドし、部屋を作ってから世代を公開する（PUT が generation より先）', async () => {
+    it('最初のビルド: 全 mod をビルドし、インスタンスを作ってから世代を公開する（PUT が generation より先）', async () => {
         const h = harness();
         h.pipeline.schedule({ mods: 'all', reconfigure: true });
         await h.pipeline.idle();
@@ -99,10 +99,10 @@ describe('createPipeline', () => {
         expect(h.go.puts.map((d) => d.id)).toEqual(['dev-r-1']);
         expect(h.go.puts[0]?.maxUsers).toBe(8); // ワールドの定員の上限を超えない
         expect(h.events).toEqual([{ type: 'generation', buildId: 'r-1', instanceId: 'dev-r-1' }]);
-        expect(h.timers).toEqual([]); // 前の部屋は無いので消さない
+        expect(h.timers).toEqual([]); // 前のインスタンスは無いので消さない
     });
 
-    it('mod のコードだけの変更は部屋を変えず（entity が残る）、版が変わると新しい部屋を作って前の部屋を 30 秒後に消す', async () => {
+    it('mod のコードだけの変更はインスタンスを変えず（entity が残る）、版が変わると新しいインスタンスを作って前のインスタンスを 30 秒後に消す', async () => {
         const h = harness();
         h.pipeline.schedule({ mods: 'all', reconfigure: true });
         await h.pipeline.idle();
@@ -125,7 +125,7 @@ describe('createPipeline', () => {
         expect(h.go.deletes).toEqual(['dev-r-1']);
     });
 
-    it('ビルドに失敗したら前の世代と部屋のまま、診断だけを送る', async () => {
+    it('ビルドに失敗したら前の世代とインスタンスのまま、診断だけを送る', async () => {
         const h = harness();
         h.pipeline.schedule({ mods: 'all', reconfigure: true });
         await h.pipeline.idle();
@@ -171,7 +171,7 @@ describe('createPipeline', () => {
         );
     });
 
-    it('Go が PUT を拒否したら前の世代と前の部屋のまま（DELETE も送らない）', async () => {
+    it('Go が PUT を拒否したら前の世代と前のインスタンスのまま（DELETE も送らない）', async () => {
         const h = harness();
         h.pipeline.schedule({ mods: 'all', reconfigure: true });
         await h.pipeline.idle();
@@ -207,7 +207,7 @@ describe('createPipeline', () => {
         expect(currentGeneration(h.pipeline.state)?.instanceId).toBe('dev-r-3'); // まとめた分の reconfigure が効く
     });
 
-    it('world.yaml が無ければ mod から合成したワールドで部屋を作る', async () => {
+    it('world.yaml が無ければ mod から合成したワールドでインスタンスを作る', async () => {
         const h = harness({ loadWorld: async () => undefined });
         h.pipeline.schedule({ mods: 'all', reconfigure: true });
         await h.pipeline.idle();
@@ -219,7 +219,7 @@ describe('createPipeline', () => {
         expect(put?.snapshot.activeMods).toEqual(['pen']);
     });
 
-    it('Go が起動し直したら今の部屋を作り直す', async () => {
+    it('Go が起動し直したら今のインスタンスを作り直す', async () => {
         const h = harness();
         h.pipeline.schedule({ mods: 'all', reconfigure: true });
         await h.pipeline.idle();
@@ -227,7 +227,7 @@ describe('createPipeline', () => {
         expect(h.go.puts.map((d) => d.id)).toEqual(['dev-r-1', 'dev-r-1']);
     });
 
-    it('部屋の作り直しに失敗しても、ビルドの診断を消さずに並べ、Go が投げても落ちない', async () => {
+    it('インスタンスの作り直しに失敗しても、ビルドの診断を消さずに並べ、Go が投げても落ちない', async () => {
         const state = { mode: 'ok' as 'ok' | 'reject' | 'throw' };
         const go = fakeGo();
         const admin: GoAdmin = {
@@ -257,7 +257,7 @@ describe('createPipeline', () => {
         expect(h.pipeline.diagnostics).toEqual([{ kind: 'build', mod: 'pen', message: 'broken' }]);
     });
 
-    it('部屋の作り直しに失敗したら、次の保存は中身が同じでも新しい部屋を作り、そこで診断が消える', async () => {
+    it('インスタンスの作り直しに失敗したら、次の保存は中身が同じでも新しいインスタンスを作り、そこで診断が消える', async () => {
         const state = { reject: false };
         const go = fakeGo(() => (state.reject ? 'draining' : null));
         const h = harness({ go: () => go.admin });
@@ -355,7 +355,7 @@ describe('失敗の後に何を残し、何をやり直すか', () => {
         ).toEqual(['danmaku', 'pen']);
     });
 
-    it('合成したワールドに同じ版のまま Worker を足すと、部屋を作り直して新しい Component が入る', async () => {
+    it('合成したワールドに同じ版のまま Worker を足すと、インスタンスを作り直して新しい Component が入る', async () => {
         const h = harness({ loadWorld: async () => undefined });
         h.pipeline.schedule({ mods: 'all', reconfigure: true });
         await h.pipeline.idle();
@@ -371,7 +371,7 @@ describe('失敗の後に何を残し、何をやり直すか', () => {
         ).toEqual(['pen:main', 'pen:tray']);
     });
 
-    it('部屋の作り直しを Go が断ったら、作り直しの要求は残り、次の変更のときにもう一度試す', async () => {
+    it('インスタンスの作り直しを Go が断ったら、作り直しの要求は残り、次の変更のときにもう一度試す', async () => {
         const reject = { on: false };
         const go = fakeGo(() => (reject.on ? 'busy' : null));
         const h = harness({ go: () => go.admin });
@@ -477,7 +477,7 @@ describe('中身の変わらない保存', () => {
         await h.pipeline.idle();
         expect(currentGeneration(h.pipeline.state)?.buildId).toBe('r-1');
         expect(h.events.filter((e) => e.type === 'generation')).toHaveLength(1);
-        // 部屋を作り直すボタンは中身が同じでも効く
+        // インスタンスを作り直すボタンは中身が同じでも効く
         h.pipeline.schedule({ mods: new Set(), reconfigure: true });
         await h.pipeline.idle();
         expect(currentGeneration(h.pipeline.state)?.instanceId).toBe('dev-r-2');
@@ -499,7 +499,7 @@ describe('端末に出す行', () => {
         await h.pipeline.idle();
         expect(h.shown(h.build)).toEqual([{ level: 'success', message: 'pen', detail: '10 ms' }]);
         expect(h.shown(h.dev)).toEqual([
-            { level: 'success', message: '世代 r-1 を作りました', detail: '30 ms  部屋 dev-r-1' },
+            { level: 'success', message: '世代 r-1 を作りました', detail: '30 ms  インスタンス dev-r-1' },
         ]);
     });
 
@@ -518,7 +518,7 @@ describe('端末に出す行', () => {
         expect(h.build.filter((e) => e.message === 'pen をビルドしました').map((e) => e.level)).toEqual(['debug']);
     });
 
-    it('部屋を作り直したときは、状態が初期に戻ることを添える', async () => {
+    it('インスタンスを作り直したときは、状態が初期に戻ることを添える', async () => {
         const h = logged();
         h.pipeline.schedule({ mods: 'all', reconfigure: true });
         await h.pipeline.idle();
@@ -527,7 +527,7 @@ describe('端末に出す行', () => {
         expect(h.dev.filter((e) => e.level === 'success').at(-1)).toEqual({
             level: 'success',
             message: 'ワールドを読み直しました',
-            detail: expect.stringContaining('部屋 dev-r-2（状態は初期に戻ります）'),
+            detail: expect.stringContaining('インスタンス dev-r-2（状態は初期に戻ります）'),
         });
     });
 
@@ -590,23 +590,23 @@ describe('端末に出す行', () => {
         });
     });
 
-    it('Go が部屋を断ったら、--debug で Go のログを見るよう案内する', async () => {
+    it('Go がインスタンスを断ったら、--debug で Go のログを見るよう案内する', async () => {
         const go = fakeGo(() => 'bad definition');
         const h = logged({ go: () => go.admin });
         h.pipeline.schedule({ mods: 'all', reconfigure: true });
         await h.pipeline.idle();
         expect(h.dev.find((e) => e.level === 'error')).toMatchObject({
-            message: 'ワールドを作れません: Go が部屋を作れません (400): bad definition',
+            message: 'ワールドを作れません: Go がインスタンスを作れません (400): bad definition',
             detail: '--debug を付けると Go のログも出ます',
         });
     });
 
-    it('部屋をどうするかの判断は debug で出す', async () => {
+    it('インスタンスをどうするかの判断は debug で出す', async () => {
         const h = logged();
         h.pipeline.schedule({ mods: 'all', reconfigure: true });
         await h.pipeline.idle();
         expect(h.dev.filter((e) => e.level === 'debug').map((e) => e.message)).toContain(
-            '世代 r-1: 部屋 dev-r-1 を作ります（最初の世代）',
+            '世代 r-1: インスタンス dev-r-1 を作ります（最初の世代）',
         );
     });
 });
@@ -632,7 +632,7 @@ const REQUIRED_SCREEN = {
 };
 
 describe('参照の宣言の変化（#297 のレビュー）', () => {
-    it('起動後に必須の参照を宣言して保存すると、合成ワールドの部屋を作り直して配線する（版と Component は同じ）', async () => {
+    it('起動後に必須の参照を宣言して保存すると、合成ワールドのインスタンスを作り直して配線する（版と Component は同じ）', async () => {
         const h = harness({ loadWorld: async () => undefined });
         h.mods.clear();
         h.mods.set('vp', withFields(fakeMod('vp', '1.0.0', VP_TYPES), {}, 'A'));
@@ -648,7 +648,7 @@ describe('参照の宣言の変化（#297 のレビュー）', () => {
         expect(h.pipeline.diagnostics.filter((d) => d.kind === 'reference')).toEqual([]);
     });
 
-    it('合成の結果が変わらない保存（コードだけの変更）では部屋を作り直さない', async () => {
+    it('合成の結果が変わらない保存（コードだけの変更）ではインスタンスを作り直さない', async () => {
         const h = harness({ loadWorld: async () => undefined });
         h.mods.clear();
         h.mods.set('vp', withFields(fakeMod('vp', '1.0.0', VP_TYPES), REQUIRED_SCREEN, 'A'));
@@ -660,7 +660,7 @@ describe('参照の宣言の変化（#297 のレビュー）', () => {
         expect(h.go.puts).toHaveLength(1);
     });
 
-    it('world.yaml のワールドでも、部屋を作り直さないビルドで参照を検査して知らせる（同じ問題はターミナルに出し直さない）', async () => {
+    it('world.yaml のワールドでも、インスタンスを作り直さないビルドで参照を検査して知らせる（同じ問題はターミナルに出し直さない）', async () => {
         const dev = recordingLogger();
         const world: WorldSource = {
             url: 'file:///p/world.yaml',

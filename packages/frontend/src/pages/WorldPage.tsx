@@ -672,7 +672,7 @@ function AboutFooter() {
             <p>
                 <span className={css({ fontWeight: '700', color: 'textMuted' })}>ubichill</span> は URL
                 からワールドを読み込み、ブラウザだけで即座に参加できる 2D メタバース基盤です。
-                「インスタンスを作成」を押すと自分の部屋（インスタンス）を作って参加できます（要ログイン）。
+                「インスタンスを作成」から参加できます（要ログイン）。
             </p>
         </section>
     );

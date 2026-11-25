@@ -107,6 +107,6 @@ go -C services/instance run ./cmd/instance --guests --world=/tmp/default.json --
 pnpm --filter @ubichill/frontend dev
 ```
 
-`http://localhost:3000/world.html?name=Alice`（入る部屋は `/<id>` で決まり、`/` は `default`）へアクセスする。
+`http://localhost:3000/world.html?name=Alice`（入るインスタンスは `/<id>` で決まり、`/` は `default`）へアクセスする。
 本番の画面と同じ `src/world` で動き、同期は Go だけで行う。
 [単体運用・SNS連携・Docker](services/instance/README.md) / [OpenAPI・AsyncAPI](protocol/instance/README.md)。

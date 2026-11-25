@@ -143,7 +143,7 @@ export async function runDev(argv: string[], term: Terminal): Promise<void> {
         goPort: () => go.current?.port,
         worldDist: worldDist.path,
         onReconfigure: () => {
-            log.dev.info('ブラウザから部屋を作り直します');
+            log.dev.info('ブラウザからインスタンスを作り直します');
             pipeline.schedule({ mods: new Set(), reconfigure: true });
         },
         log: log.http,

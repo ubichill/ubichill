@@ -118,10 +118,10 @@ export type InviteRefusal =
 
 export const INVITE_REFUSAL_MESSAGES: Record<InviteRefusal, string> = {
     self: '自分には送れません',
-    'not-inside': '部屋にいる人だけが招待を送れます',
+    'not-inside': 'インスタンスにいる人だけが招待を送れます',
     'not-friend': 'フレンドにだけ送れます',
-    'already-inside': 'もうこの部屋にいます',
-    'needs-leader': '部屋を作った人に招待してもらってください',
+    'already-inside': 'もうこのインスタンスにいます',
+    'needs-leader': 'インスタンスを作った人に招待してもらってください',
     unavailable: '相手のサーバーとやり取りできません',
     unsupported: '相手のサーバーは招待に対応していません',
     full: '満員です',
@@ -174,7 +174,7 @@ export type InviteRequestRefusal = 'self' | 'not-friend' | 'offline' | 'can-join
 export const INVITE_REQUEST_REFUSAL_MESSAGES: Record<InviteRequestRefusal, string> = {
     self: '自分には送れません',
     'not-friend': 'フレンドにだけ送れます',
-    offline: 'いま部屋にいません',
+    offline: 'いまインスタンスにいません',
     'can-join': 'そのまま入れます',
     full: '満員です',
     unsupported: '相手のサーバーはリクエストに対応していません',
@@ -255,5 +255,5 @@ export type InviteAnswerRefusal = 'no-request' | 'offline' | InviteRefusal;
 export const INVITE_ANSWER_REFUSAL_MESSAGES: Record<InviteAnswerRefusal, string> = {
     ...INVITE_REFUSAL_MESSAGES,
     'no-request': 'リクエストの期限が過ぎました',
-    offline: '部屋に入ってから招待してください',
+    offline: 'インスタンスに入ってから招待してください',
 };

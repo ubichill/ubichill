@@ -20,7 +20,7 @@ export function uiMarkupNotices(markup: string): string[] {
             : []),
         ...(droppedUrls
             ? [
-                  'https 以外の URL（http・相対パスなど）のリンクと画像は描きません。画像は参照元（部屋の URL）を送らずに読み込みます',
+                  'https 以外の URL（http・相対パスなど）のリンクと画像は描きません。画像は参照元（インスタンスの URL）を送らずに読み込みます',
               ]
             : []),
         ...(truncated

@@ -297,7 +297,7 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
                                     disabled={portal.unavailable !== null}
                                     title={
                                         portal.unavailable ??
-                                        '今の部屋の好きな所に、このインスタンスへのポータルを開きます'
+                                        'いまいるインスタンスの好きな所に、このインスタンスへのポータルを開きます'
                                     }
                                     className={portalButton}
                                 >

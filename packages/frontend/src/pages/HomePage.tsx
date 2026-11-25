@@ -108,7 +108,7 @@ export function HomePage() {
                 </button>
                 {retryPath && (
                     <button type="button" className={action()} onClick={() => navigate(retryPath, { replace: true })}>
-                        元の部屋をもう一度試す
+                        元のインスタンスをもう一度試す
                     </button>
                 )}
                 <button type="button" className={action({ tone: 'quiet' })} onClick={() => void handleLogout()}>

@@ -30,8 +30,8 @@ export function findCoreComponentProblems(entities: readonly CoreCheckEntity[]):
 
 export function describeCoreComponentProblem(problem: CoreComponentProblem): string {
     return problem.kind === 'unknown-type'
-        ? `${problem.componentType} はこの ubichill に無い部品です。部屋では使われません（新しい ubichill で作られたか、書き間違い）`
-        : `${problem.componentType} の ${problem.keys.join('・')} はこの ubichill に無い項目です。部屋では使われません`;
+        ? `${problem.componentType} はこの ubichill に無い部品です。インスタンスでは使われません（新しい ubichill で作られたか、書き間違い）`
+        : `${problem.componentType} の ${problem.keys.join('・')} はこの ubichill に無い項目です。インスタンスでは使われません`;
 }
 
 /** 部屋に知らせる、この版が知らない本体の部品の型（重ならない）。 */

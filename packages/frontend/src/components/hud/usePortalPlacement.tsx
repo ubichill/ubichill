@@ -29,7 +29,7 @@ export function usePortalPlacement(currentInstanceId: string, closeLaunchpad: ()
     const [sending, setSending] = useState(false);
     const sendingRef = useRef(false);
     const unavailable = isRemoteRoomAddress(currentInstanceId)
-        ? 'ほかのサーバーの部屋には、ポータルを置けません'
+        ? 'ほかのサーバーのインスタンスには、ポータルを置けません'
         : null;
 
     const cancel = useCallback(() => {

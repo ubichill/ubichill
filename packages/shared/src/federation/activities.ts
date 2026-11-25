@@ -269,7 +269,7 @@ export function readActivity(
                     target: idOf(target.data),
                     room: {
                         id: object.data.id,
-                        name: displayText(object.data.name, 200) ?? '部屋',
+                        name: displayText(object.data.name, 200) ?? 'インスタンス',
                         image: typeof image === 'string' ? image : (image?.url ?? null),
                         accessType,
                     },

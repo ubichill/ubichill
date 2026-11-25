@@ -215,7 +215,7 @@ export function createRooms(deps: RoomsDeps) {
         /** `POST /federation/v1/rooms/join`（来訪者の鍵・nonce 付き）。 */
         async join(visitor: Visitor, request: JoinRequest): Promise<Outcome<JoinResponse>> {
             const record = await findLocal(request.room);
-            if (!record) return fail(404, 'not-found', '部屋が見つかりません');
+            if (!record) return fail(404, 'not-found', 'インスタンスが見つかりません');
             // 来訪者のブラウザは、来訪者のホームの画面（ホスト名が同じ。開発ではポートだけ違う）
             const origin = isBrowserOrigin(request.clientOrigin, { allowHttp: deps.allowHttp })
                 ? parseFederationUrl(request.clientOrigin, { allowHttp: deps.allowHttp })
@@ -234,7 +234,7 @@ export function createRooms(deps: RoomsDeps) {
             if (!access.joinable) {
                 return access.visible
                     ? fail(403, 'invite-required', '入るには招待が要ります')
-                    : fail(404, 'not-found', '部屋が見つかりません');
+                    : fail(404, 'not-found', 'インスタンスが見つかりません');
             }
             if (blockedByCapacity(audience, visitor.id)) return fail(409, 'full', '満員です');
             const inside = audience.memberIds.includes(visitor.id);
@@ -267,11 +267,11 @@ export function createRooms(deps: RoomsDeps) {
         /** `POST /federation/v1/rooms/grants`（招く人の鍵・nonce 付き）。招く人が部屋にいること。 */
         async grant(inviter: Visitor, request: GrantRequest): Promise<Outcome<GrantResponse>> {
             const record = await findLocal(request.room);
-            if (!record) return fail(404, 'not-found', '部屋が見つかりません');
+            if (!record) return fail(404, 'not-found', 'インスタンスが見つかりません');
             const presence = await deps.presence();
             const audience = audienceOf(record, presence);
             if (!audience.memberIds.includes(inviter.id))
-                return fail(403, 'not-inside', '部屋にいる人だけが招待できます');
+                return fail(403, 'not-inside', 'インスタンスにいる人だけが招待できます');
             const endTime = Date.parse(request.endTime);
             const expiresAt = new Date(
                 Math.min(
@@ -323,10 +323,11 @@ export function createRooms(deps: RoomsDeps) {
             if (hostOf(request.member) !== signerHost)
                 return fail(403, 'forbidden', '中にいる人のホームだけが尋ねられます');
             const record = await findLocal(request.room);
-            if (!record) return fail(404, 'not-found', '部屋が見つかりません');
+            if (!record) return fail(404, 'not-found', 'インスタンスが見つかりません');
             const presence = await deps.presence();
             const audience = audienceOf(record, presence);
-            if (!audience.memberIds.includes(request.member)) return fail(409, 'not-inside', 'その人は部屋にいません');
+            if (!audience.memberIds.includes(request.member))
+                return fail(409, 'not-inside', 'その人はインスタンスにいません');
             const results: VisibilityResponse['results'] = [];
             for (const viewer of new Set(request.viewers)) {
                 // viewers は member のフレンドだという保証（member のホームが署名している）

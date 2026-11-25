@@ -54,9 +54,9 @@ export function lastKnownOf(friend: UnreachableFriend, now: number): string | un
     if (!last) return undefined;
     const where =
         last.status === 'in_room'
-            ? (last.place ?? '部屋')
+            ? (last.place ?? 'インスタンス')
             : last.status === 'private'
-              ? '非公開の部屋'
+              ? 'プライベートインスタンス'
               : last.status === 'online'
                 ? 'オンライン'
                 : 'オフライン';

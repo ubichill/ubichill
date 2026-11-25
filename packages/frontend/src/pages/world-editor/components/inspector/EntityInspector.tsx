@@ -133,7 +133,7 @@ export function EntityInspector({
                     最初から見せる
                 </label>
                 <span className={css({ fontSize: '11px', color: 'textSubtle' })}>
-                    外すと、部屋に入った時点では見えません（子も）。スイッチで出せます。
+                    外すと、インスタンスに入った時点では見えません（子も）。スイッチで出せます。
                 </span>
             </div>
 

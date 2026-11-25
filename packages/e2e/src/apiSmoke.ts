@@ -161,7 +161,7 @@ export function runApiSmoke({
             },
         },
         { name: '1 人目が入室（world:join → world:snapshot）', run: enter('alice') },
-        { name: '2 人目が同じ部屋に入室', run: enter('bob') },
+        { name: '2 人目が同じインスタンスに入室', run: enter('bob') },
         {
             name: 'カーソルが相手に届く（cursor:move → cursor:moved・双方向）',
             run: async (context) => {

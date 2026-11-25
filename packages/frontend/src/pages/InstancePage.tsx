@@ -28,7 +28,7 @@ import { type InstanceFailure, InstanceNotFoundError, type PortalGoal, WorldView
 /** 失敗したら一定時間後に自動でホームへ戻す（ロード画面で詰まらないように）。 */
 const RETURN_HOME_MS = 5000;
 
-const RETRY_MESSAGE = '元の部屋には入れませんでした';
+const RETRY_MESSAGE = '元のインスタンスには入れませんでした';
 
 /** 部屋を引く。無い・見る人に見えない部屋（404）は null、ほかの失敗はそのまま。 */
 const fetchRoomOrGone = (address: string, signal?: AbortSignal): Promise<Instance | null> =>
@@ -61,7 +61,7 @@ function portalRoom(
         (instance) => (signal.aborted ? null : instance.id),
         (e: unknown) => {
             if (!signal.aborted)
-                pushToast(e instanceof Error ? e.message : 'ポータルの先の部屋に入れませんでした', 'error');
+                pushToast(e instanceof Error ? e.message : 'ポータルの先のインスタンスに入れませんでした', 'error');
             return null;
         },
     );
@@ -130,7 +130,7 @@ export function InstancePage() {
         retryToast.current = pushToast(
             RETRY_MESSAGE,
             'info',
-            { label: '元の部屋をもう一度試す', run: () => navigate(retryPath) },
+            { label: '元のインスタンスをもう一度試す', run: () => navigate(retryPath) },
             { sticky: true },
         );
         navigate(path, { replace: true, state: { ...entry, retryPath: undefined } });
@@ -192,8 +192,11 @@ export function InstancePage() {
             if (!id || !viewerId || !signal) return;
             const checking: { toast: number | null } = { toast: null };
             try {
-                if (!(await confirm(`「${label}」へ移りますか？今の部屋から退出します。`)) || signal.aborted) return;
-                checking.toast = pushToast('ポータルの先の部屋を確かめています', 'info', undefined, { sticky: true });
+                if (!(await confirm(`「${label}」へ移りますか？今のインスタンスから退出します。`)) || signal.aborted)
+                    return;
+                checking.toast = pushToast('ポータルの先のインスタンスを確かめています', 'info', undefined, {
+                    sticky: true,
+                });
                 const room = await portalRoom(goal, id, viewerId, signal);
                 if (!room || signal.aborted) return;
                 await leaveWorld();

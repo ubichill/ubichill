@@ -32,11 +32,11 @@ Docker・DB・Go のツールチェーンは要らない。`http://localhost:333
 （lock の照合・権限・Go のロックと上限）で mod が動く。複数のタブ・ブラウザで同期する。
 
 起動の途中は mod ごとのビルドの行を出し、起動し終えたら最後に URL の案内を出す。以降は 1 件 1 行で、
-時刻・出どころ（`[dev]` 世代と部屋・`[build]` mod のビルド・`[instance]` Go）・結果を出す。画面は消さない。
+時刻・出どころ（`[dev]` 世代とインスタンス・`[build]` mod のビルド・`[instance]` Go）・結果を出す。画面は消さない。
 
 ```
 14:02:11 [build] ✓ pen  15 ms
-14:02:11 [dev] ✓ 世代 dfab882d-1 を作りました  22 ms  部屋 dev-dfab882d-1
+14:02:11 [dev] ✓ 世代 dfab882d-1 を作りました  22 ms  インスタンス dev-dfab882d-1
 
   ubichill dev  v1.1.0  ready in 447 ms
 
@@ -59,12 +59,12 @@ Docker・DB・Go のツールチェーンは要らない。`http://localhost:333
 - **mod**: `mods/`（か `--mods-dir`）があればその下の各 mod、無ければ cwd（`package.json` と `src/` があるとき）。
   ワールドだけのリポジトリ（`src/` が無い）でも `ubichill dev worlds/x.yaml` で動く。
 - **手元に無い mod**: world.yaml の横の `.lock.json` にあればその版（本番と同じ）、無ければ `dependencies[].source.url` から取る。
-  手元でビルドした mod は `source.url` が書いてあっても手元を使う。lock を書き直す（`ubichill install`）と部屋を作り直す。
+  手元でビルドした mod は `source.url` が書いてあっても手元を使う。lock を書き直す（`ubichill install`）とインスタンスを作り直す。
 - **保存すると**: その mod だけビルドし直し、全部そろったら「世代」（lock・manifest・Worker・asset）を切り替えて、
   開いているページを読み直す。entity と共有状態は Go にあるので残る（消えるのは Worker の中のローカルな状態だけ）。
   ビルドに失敗したら前の世代が動き続け、失敗は画面の診断に出る（直せば消える。後から開いたタブにも出る）。
-- **`world.yaml` を変えると**: 新しい部屋を作ってから切り替える（配置は初期状態に戻る）。Go が定義を断ったら前の部屋のまま。
-  画面の「部屋を作り直す」も同じ。
+- **`world.yaml` を変えると**: 新しいインスタンスを作ってから切り替える（配置は初期状態に戻る）。Go が定義を断ったら前のインスタンスのまま。
+  画面の「インスタンスを作り直す」も同じ。
 - **署名**: 手元のビルドは署名が無いので「署名なし・ローカル」として動かす。lock の照合・権限の確認は本番と同じ。
 - mod の外の共有コードも、import していれば監視する（その mod をビルドし直す）。
 - Go のバイナリは `@ubichill/instance-<os>-<cpu>` から探す。自分でビルドしたものを使うなら `UBICHILL_INSTANCE_BIN=<path>`。
@@ -81,7 +81,7 @@ CI で `build` しか使わないなら `npm install --omit=optional` で外せ�
 
 - ふだんの失敗はメッセージ・原因・直し方（`➜`）だけを出す。`--debug` ではスタックトレースも出す
 - `build`: Component ごとの esbuild の時間、lock の中身の数
-- `dev`: 変わったファイルとそれで何をするか（どの mod をビルドするか・部屋を作り直すか）、mod ごとのビルドの時間、
+- `dev`: 変わったファイルとそれで何をするか（どの mod をビルドするか・インスタンスを作り直すか）、mod ごとのビルドの時間、
   使った Go のバイナリと引数、HTTP の要求ごとの行（`[http] GET /... 200  3 ms`）、Go の info・debug のログ
 
 出力は TTY のときだけ色を付ける。`NO_COLOR=1` で消し、`FORCE_COLOR=1` でパイプでも付ける。記号は `✓`（成功）・`✗`（失敗）・
@@ -150,7 +150,7 @@ ubichill world build <world.yaml> [--id=<instanceId>] [--max-users=<n>] [--out=<
 - **`dev`**: 上の「`ubichill dev`」。
 - **`world build`**: 手元の `world.yaml` と兄弟の `.lock.json` から、Go のインスタンスサーバー（`ubichill-instance`）に
   渡す定義 JSON を作る。本体がインスタンスを作るときと同じ変換なので、`ubichill-instance --guests --world=<出力>` で
-  起動した部屋は本体と同じ初期状態を持つ。`--id` は省略時 `metadata.name`、`--max-users` は省略時ワールドの定員の上限。
+  起動したインスタンスは本体と同じ初期状態を持つ。`--id` は省略時 `metadata.name`、`--max-users` は省略時ワールドの定員の上限。
   lock に無い mod を参照していれば失敗する（先に `ubichill install`）。
 
 ## CI から公開する

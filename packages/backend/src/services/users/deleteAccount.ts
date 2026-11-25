@@ -43,7 +43,7 @@ export async function deleteAccount(
             return {
                 ok: false,
                 status: 503,
-                error: '開いている部屋を閉じられませんでした。しばらくしてからやり直してください',
+                error: '開いているインスタンスを閉じられませんでした。しばらくしてからやり直してください',
             };
         }
     }

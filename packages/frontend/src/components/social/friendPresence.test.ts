@@ -28,33 +28,33 @@ const data = {
 };
 
 describe('arrangeFriendPresence', () => {
-    it('自分の部屋は一番上に分け、ほかの部屋の一覧に重ねない', () => {
+    it('自分のインスタンスは一番上に分け、ほかのインスタンスの一覧に重ねない', () => {
         const p = arrangeFriendPresence(data, room('mine', 'ホーム'));
         expect(p.here?.friends.map((f) => f.id)).toEqual(['e']);
         expect(p.places.map((x) => x.instance.id)).not.toContain('mine');
     });
 
-    it('ほかの部屋はフレンドの多い順、同じなら人の多い順', () => {
+    it('ほかのインスタンスはフレンドの多い順、同じなら人の多い順', () => {
         const p = arrangeFriendPresence(data, room('mine', 'ホーム'));
         expect(p.places.map((x) => x.instance.id)).toEqual(['r2', 'r3', 'r1']);
     });
 
-    it('自分の部屋にフレンドがいなくても、自分の部屋は出す（公開範囲に関係なく）', () => {
+    it('自分のインスタンスにフレンドがいなくても、自分のインスタンスは出す（公開範囲に関係なく）', () => {
         const p = arrangeFriendPresence({ ...data, locations: [] }, room('mine', 'ホーム'));
         expect(p.here).toEqual({ instance: room('mine', 'ホーム'), friends: [] });
     });
 
-    it('サーバーが返した自分の部屋の情報（人数）を、手元の古い情報より優先する', () => {
+    it('サーバーが返した自分のインスタンスの情報（人数）を、手元の古い情報より優先する', () => {
         const p = arrangeFriendPresence(data, room('mine', 'ホーム', 1));
         expect(p.here?.instance.stats.currentUsers).toBe(2);
     });
 
-    it('オンラインは部屋にいる人と見えない部屋の人。オフラインは数えない', () => {
+    it('オンラインはインスタンスにいる人と見えないインスタンスの人。オフラインは数えない', () => {
         expect(arrangeFriendPresence(data, room('mine', 'ホーム')).onlineCount).toBe(6);
         expect(arrangeFriendPresence(data, null).onlineCount).toBe(6);
     });
 
-    it('見えない部屋・オフラインは名前順', () => {
+    it('見えないインスタンス・オフラインは名前順', () => {
         const p = arrangeFriendPresence(data, null);
         expect(p.offline.map((f) => f.id)).toEqual(['g', 'h']);
         expect(p.hidden.map((f) => f.id)).toEqual(['f']);
@@ -76,21 +76,21 @@ describe('確かめられないフレンド', () => {
         expect(arrangeFriendPresence(data, null).unreachable).toEqual([]);
     });
 
-    it('最後に確かめた場所と時刻を添える。部屋の名前が無ければ「部屋」、確かめたことが無ければ何も添えない', () => {
+    it('最後に確かめた場所と時刻を添える。インスタンスの名前が無ければ「インスタンス」、確かめたことが無ければ何も添えない', () => {
         const at = (status: 'in_room' | 'private' | 'offline', place?: string) => ({
             user: user('z'),
             lastKnown: { at: ago(5), status, ...(place ? { place } : {}) },
         });
         expect(lastKnownOf(at('in_room', '森'), NOW)).toBe('5 分前は森');
-        expect(lastKnownOf(at('in_room'), NOW)).toBe('5 分前は部屋');
-        expect(lastKnownOf(at('private'), NOW)).toBe('5 分前は非公開の部屋');
+        expect(lastKnownOf(at('in_room'), NOW)).toBe('5 分前はインスタンス');
+        expect(lastKnownOf(at('private'), NOW)).toBe('5 分前はプライベートインスタンス');
         expect(lastKnownOf(at('offline'), NOW)).toBe('5 分前はオフライン');
         expect(lastKnownOf({ user: user('z') }, NOW)).toBeUndefined();
     });
 });
 
 describe('onlineFriends', () => {
-    it('同じ部屋 → ほかの部屋 → 見えない部屋の順に 1 列にする（部屋の中は名前順）', () => {
+    it('同じインスタンス → ほかのインスタンス → 見えないインスタンスの順に 1 列にする（インスタンスの中は名前順）', () => {
         const list = onlineFriends(arrangeFriendPresence(data, room('mine', 'ホーム')));
         expect(list.map((x) => `${x.user.id}:${x.where.kind}`)).toEqual([
             'e:here',
@@ -117,7 +117,7 @@ describe('friendDirectory（すべてのフレンド）', () => {
         ],
     };
 
-    it('オンラインは部屋をまたいで名前順にし、いる場所を添える（同じ部屋・見えない部屋も）', () => {
+    it('オンラインはインスタンスをまたいで名前順にし、いる場所を添える（同じインスタンス・見えないインスタンスも）', () => {
         const dir = friendDirectory(arrangeFriendPresence(full, room('mine', 'ホーム')), NOW);
         expect(dir.online.map((c) => `${c.user.name}:${c.detail}`)).toEqual([
             'あきら:カフェ',
@@ -157,7 +157,7 @@ describe('friendDirectory（すべてのフレンド）', () => {
 });
 
 describe('placeFriendCards', () => {
-    it('部屋のカードは場所でなくひとことを添える（書いていなければ null）', () => {
+    it('インスタンスのカードは場所でなくひとことを添える（書いていなければ null）', () => {
         expect(placeFriendCards([{ ...user('a'), status: 'ねむい' }, user('b')])).toEqual([
             { user: { ...user('a'), status: 'ねむい' }, detail: 'ねむい', online: true },
             { user: user('b'), detail: null, online: true },
@@ -166,7 +166,7 @@ describe('placeFriendCards', () => {
 });
 
 describe('whereLabel', () => {
-    it('同じ部屋・ほかの部屋（ワールド名）・見えない部屋を一言で', () => {
+    it('同じインスタンス・ほかのインスタンス（ワールド名）・見えないインスタンスを一言で', () => {
         expect(whereLabel({ kind: 'here' })).toBe('ここにいます');
         expect(whereLabel({ kind: 'room', instance: room('r', '森') })).toBe('森');
         expect(whereLabel({ kind: 'hidden' })).toBe('プライベート');
@@ -182,19 +182,19 @@ describe('friendLocationOf（プロフィールの現在地）', () => {
         unreachable: [{ user: user('z', 'ぜん') }],
     };
 
-    it('入れる部屋は部屋とそこにいるフレンド（名前順）。自分と同じ部屋なら here', () => {
+    it('入れるインスタンスはインスタンスとそこにいるフレンド（名前順）。自分と同じインスタンスなら here', () => {
         const at = friendLocationOf(withRooms, 'b', 'mine', NOW);
         expect(at).toMatchObject({ kind: 'room', here: false, instance: { id: 'r2' } });
         expect(at.kind === 'room' && at.friends.map((f) => f.id)).toEqual(['c', 'b']);
         expect(friendLocationOf(withRooms, 'e', 'mine', NOW)).toMatchObject({ kind: 'room', here: true });
     });
 
-    it('招待が要る部屋は、見えていてもどこかを出さずプライベートにする。ただし自分もいるなら部屋を出す', () => {
+    it('招待が要るインスタンスは、見えていてもどこかを出さずプライベートにする。ただし自分もいるならインスタンスを出す', () => {
         expect(friendLocationOf(withRooms, 'k', 'mine', NOW)).toEqual({ kind: 'private' });
         expect(friendLocationOf(withRooms, 'k', 'lk', NOW)).toMatchObject({ kind: 'room', here: true });
     });
 
-    it('見えない部屋はプライベート、部屋にいなければオフライン、確かめられなければその旨（オフラインとは言わない）', () => {
+    it('見えないインスタンスはプライベート、インスタンスにいなければオフライン、確かめられなければその旨（オフラインとは言わない）', () => {
         expect(friendLocationOf(withRooms, 'f', undefined, NOW)).toEqual({ kind: 'private' });
         expect(friendLocationOf(withRooms, 'g', undefined, NOW)).toEqual({ kind: 'offline' });
         expect(friendLocationOf(withRooms, 'z', undefined, NOW)).toEqual({ kind: 'unreachable', lastKnown: undefined });
@@ -206,20 +206,20 @@ describe('friendLocationOf（プロフィールの現在地）', () => {
 });
 
 describe('selfLocationOf（自分のプロフィールの現在地）', () => {
-    it('今いる部屋を、フレンドの一覧に無くても出す（招待が要る部屋でも隠さない）', () => {
+    it('今いるインスタンスを、フレンドの一覧に無くても出す（招待が要るインスタンスでも隠さない）', () => {
         const locked = { ...room('lk', '秘密基地'), canJoin: false } as Instance;
         expect(selfLocationOf(data, locked)).toEqual({ kind: 'room', instance: locked, friends: [], here: true });
         expect(selfLocationOf(null, locked)).toMatchObject({ kind: 'room', here: true });
     });
 
-    it('一覧にあればそちらの部屋（人数が新しい）とそこにいるフレンドを出す', () => {
+    it('一覧にあればそちらのインスタンス（人数が新しい）とそこにいるフレンドを出す', () => {
         const stale = room('r2', 'ゲーム', 1);
         const at = selfLocationOf(data, stale);
         expect(at.kind === 'room' && at.instance.stats.currentUsers).toBe(8);
         expect(at.kind === 'room' && at.friends.map((f) => f.id)).toEqual(['c', 'b']);
     });
 
-    it('部屋の外なら away（オフラインとは言わない）', () => {
+    it('インスタンスの外なら away（オフラインとは言わない）', () => {
         expect(selfLocationOf(data, null)).toEqual({ kind: 'away' });
     });
 });
