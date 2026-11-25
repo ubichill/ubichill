@@ -1,11 +1,16 @@
 /**
  * `ubichill init mod` の雛形に入れる、AI エージェント向けの skill（Agent Skills の SKILL.md）。
+ * Codex は `.agents/skills`、Claude Code は `.claude/skills` を読むので、同じ中身を両方に置く
+ * （シンボリックリンクは Windows の clone で壊れるので使わない）。
  * API の一覧は書き写さず、インストールした `ubichill` の README と型を正とする（CLI と SDK の版がずれても嘘にならないように）。
  * ここに書くのは、型からは分からない実行環境の制約と、公開の決まりだけ。
  */
 
 export const MOD_AGENT_SKILL_NAME = 'ubichill-mod';
-export const MOD_AGENT_SKILL_PATH = `.claude/skills/${MOD_AGENT_SKILL_NAME}/SKILL.md`;
+export const MOD_AGENT_SKILL_PATHS = [
+    `.agents/skills/${MOD_AGENT_SKILL_NAME}/SKILL.md`,
+    `.claude/skills/${MOD_AGENT_SKILL_NAME}/SKILL.md`,
+] as const;
 
 const DOCS = 'https://github.com/ubichill/ubichill/blob/main/docs';
 

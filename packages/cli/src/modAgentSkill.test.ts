@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { CAPABILITY_CATALOG } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
 import yaml from 'yaml';
-import { MOD_AGENT_SKILL, MOD_AGENT_SKILL_NAME, MOD_AGENT_SKILL_PATH } from './modAgentSkill.ts';
+import { MOD_AGENT_SKILL, MOD_AGENT_SKILL_NAME, MOD_AGENT_SKILL_PATHS } from './modAgentSkill.ts';
 import { projectFiles } from './packages.ts';
 
 const sdkReadme = readFileSync(new URL('../../sdk/README.md', import.meta.url), 'utf-8');
@@ -14,15 +14,24 @@ const frontmatter = (text: string): { name?: string; description?: string } =>
 const codeSpans = (text: string): string[] => [...text.matchAll(/`([^`\n]+)`/g)].map((m) => m[1] ?? '');
 
 describe('mod の雛形の AI エージェント向け skill', () => {
-    it('mod の雛形にだけ入る（world は mod を書かない）', () => {
-        expect(projectFiles('mod', 'hello')[MOD_AGENT_SKILL_PATH]).toBe(MOD_AGENT_SKILL);
-        expect(projectFiles('world', 'hello')[MOD_AGENT_SKILL_PATH]).toBeUndefined();
+    it('Codex（.agents/skills）と Claude Code（.claude/skills）に同じ中身で入る', () => {
+        const files = projectFiles('mod', 'hello');
+        expect(MOD_AGENT_SKILL_PATHS.map((path) => files[path])).toEqual([MOD_AGENT_SKILL, MOD_AGENT_SKILL]);
+        expect(MOD_AGENT_SKILL_PATHS.map((path) => path.split('/').slice(0, 2).join('/'))).toEqual([
+            '.agents/skills',
+            '.claude/skills',
+        ]);
+    });
+
+    it('world の雛形には入らない（world は mod を書かない）', () => {
+        const files = projectFiles('world', 'hello');
+        for (const path of MOD_AGENT_SKILL_PATHS) expect(files[path]).toBeUndefined();
     });
 
     it('frontmatter の name はディレクトリ名と同じで、description は Agent Skills の上限に収まる', () => {
         const meta = frontmatter(MOD_AGENT_SKILL);
         expect(meta.name).toBe(MOD_AGENT_SKILL_NAME);
-        expect(MOD_AGENT_SKILL_PATH).toBe(`.claude/skills/${meta.name}/SKILL.md`);
+        for (const path of MOD_AGENT_SKILL_PATHS) expect(path).toMatch(new RegExp(`/skills/${meta.name}/SKILL\\.md$`));
         expect(meta.description?.length ?? 0).toBeGreaterThan(20);
         expect(meta.description?.length ?? 0).toBeLessThanOrEqual(1024);
     });

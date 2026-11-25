@@ -37,6 +37,7 @@ describe('projectFiles（ubichill init の雛形）', () => {
 
     it('mod の雛形のファイルの一覧', () => {
         expect(Object.keys(projectFiles('mod', 'hello')).sort()).toEqual([
+            '.agents/skills/ubichill-mod/SKILL.md',
             '.claude/skills/ubichill-mod/SKILL.md',
             '.github/workflows/pages.yml',
             '.gitignore',
