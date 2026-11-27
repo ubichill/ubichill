@@ -12,7 +12,7 @@ runs:
   steps:
     # mise.lock があると --locked 付きで入るため、ツールのバイナリもチェックサム検証される。
     # npm に公開する release-sdk でも使うので commit で固定する
-    - uses: jdx/mise-action@v5.2.9
+    - uses: jdx/mise-action@v5.3.0
 
     - name: Resolve pnpm store path
       id: pnpm-store
