@@ -182,7 +182,7 @@ function FriendLocations({
                 );
             })}
             {presence.hidden.length > 0 && (
-                <FriendGroup title="プライベートな部屋" count={presence.hidden.length}>
+                <FriendGroup title="プライベートインスタンス" count={presence.hidden.length}>
                     <FriendGrid cards={placeFriendCards(presence.hidden)} />
                 </FriendGroup>
             )}

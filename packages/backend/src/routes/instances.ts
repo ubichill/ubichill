@@ -24,14 +24,14 @@ const router = Router();
 // ── ほかのサーバーの部屋（連合。住所は `<部屋の ID>@<ドメイン>`） ──
 
 const TRAVEL_ERRORS: Record<TravelError, { status: number; error: string }> = {
-    blocked: { status: 404, error: 'このサーバーの部屋には入れません' },
+    blocked: { status: 404, error: 'このサーバーのインスタンスには入れません' },
     'not-found': { status: 404, error: 'インスタンスが見つからないか、入れる人が限られています（フレンドのみなど）' },
     'invite-required': { status: 403, error: 'このインスタンスに入るには招待が要ります' },
     full: { status: 403, error: '満員です' },
     rejected: { status: 403, error: 'このインスタンスには入れません' },
-    unavailable: { status: 503, error: '部屋のサーバーにつながりません' },
-    unsupported: { status: 422, error: '部屋のサーバーは、ほかのサーバーからの来訪に対応していません' },
-    incompatible: { status: 422, error: '部屋のサーバーの通信の版に、この画面は対応していません' },
+    unavailable: { status: 503, error: 'インスタンスのサーバーにつながりません' },
+    unsupported: { status: 422, error: 'インスタンスのサーバーは、ほかのサーバーからの来訪に対応していません' },
+    incompatible: { status: 422, error: 'インスタンスのサーバーの通信の版に、この画面は対応していません' },
 };
 
 /** ブラウザの origin（チケットを結び付ける）。許した画面の origin だけを使い、ほかは既定の画面の origin。 */
@@ -242,7 +242,7 @@ router.post('/:id/visit', requireAuth, async (req, res) => {
     // 記録が途切れていた（通信が戻った）: 部屋のサーバーに尋ね直して記録し直す
     const address = federation.remoteAddressOf(id);
     const resumed = address && (await federation.travel.resume(req.user.id, address).catch(() => false));
-    if (!resumed) return res.status(404).json({ error: 'この部屋への来訪の記録がありません' });
+    if (!resumed) return res.status(404).json({ error: 'このインスタンスへの来訪の記録がありません' });
     return res.status(204).send();
 });
 

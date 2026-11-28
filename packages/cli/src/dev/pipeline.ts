@@ -391,9 +391,9 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
         readonly elapsed: string;
     }): void {
         const generation = `世代 ${input.buildId}`;
-        const room = input.newRoom ? `  部屋 ${input.instanceId}（状態は初期に戻ります）` : '';
+        const room = input.newRoom ? `  インスタンス ${input.instanceId}（状態は初期に戻ります）` : '';
         if (input.firstBuild) {
-            dev.success(`世代 ${input.buildId} を作りました`, `${input.elapsed}  部屋 ${input.instanceId}`);
+            dev.success(`世代 ${input.buildId} を作りました`, `${input.elapsed}  インスタンス ${input.instanceId}`);
             return;
         }
         if (input.taken.reconfigure > 0) {
@@ -461,8 +461,8 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
             const instanceId = newRoom ? `dev-${buildId}` : (previous as Generation).instanceId;
             dev.debug(
                 newRoom
-                    ? `世代 ${buildId}: 部屋 ${instanceId} を作ります（${!previous ? '最初の世代' : taken.reconfigure > 0 ? 'ワールドの読み直し' : 'Component の増減・版の変更'}）`
-                    : `世代 ${buildId}: 部屋 ${instanceId} をそのまま使います（entity は残ります）`,
+                    ? `世代 ${buildId}: インスタンス ${instanceId} を作ります（${!previous ? '最初の世代' : taken.reconfigure > 0 ? 'ワールドの読み直し' : 'Component の増減・版の変更'}）`
+                    : `世代 ${buildId}: インスタンス ${instanceId} をそのまま使います（entity は残ります）`,
             );
             const room = newRoom
                 ? await buildRoomDefinition(world, mods, lock, { instanceId, maxUsers: deps.maxUsers })
@@ -477,7 +477,7 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
                 const result = await go.putInstance(room);
                 if (!result.ok)
                     throw new WorldError(
-                        `Go が部屋を作れません (${result.status}): ${result.error}`,
+                        `Go がインスタンスを作れません (${result.status}): ${result.error}`,
                         '--debug を付けると Go のログも出ます',
                     );
             }
@@ -507,7 +507,7 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
             }
             if (newRoom && previous && previous.instanceId !== instanceId) {
                 const retired = previous.instanceId;
-                dev.debug(`前の部屋 ${retired} は ${formatDuration(retireDelay)} 後に消します`);
+                dev.debug(`前のインスタンス ${retired} は ${formatDuration(retireDelay)} 後に消します`);
                 later(() => void deps.go()?.deleteInstance(retired), retireDelay);
             }
         } catch (error) {
@@ -547,15 +547,15 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
             if (!room || !go) return;
             // 起動し直した直後にまた落ちると putInstance が投げる。投げたままにすると node ごと落ちる
             const failure = await go.putInstance(room).then(
-                (result) => (result.ok ? null : `Go が部屋を作れません (${result.status}): ${result.error}`),
-                (error: unknown) => `Go が部屋を作れません: ${errorMessage(error)}`,
+                (result) => (result.ok ? null : `Go がインスタンスを作れません (${result.status}): ${result.error}`),
+                (error: unknown) => `Go がインスタンスを作れません: ${errorMessage(error)}`,
             );
             if (!failure) {
-                dev.success(`部屋 ${room.id} を作り直しました`, '状態は初期に戻ります');
+                dev.success(`インスタンス ${room.id} を作り直しました`, '状態は初期に戻ります');
                 setDiagnostics('room', []);
                 return;
             }
-            dev.error(failure, 'ブラウザの「部屋を作り直す」か、保存で作り直せます');
+            dev.error(failure, 'ブラウザの「インスタンスを作り直す」か、保存で作り直せます');
             setDiagnostics('room', [{ kind: 'world', message: failure }]);
             // Go に部屋が無いままなので、次のビルドでは中身が同じでも新しい部屋を作る
             unpublished.reconfigure = ++control.seq;

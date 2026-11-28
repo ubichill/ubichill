@@ -60,7 +60,7 @@ export function DeleteAccountSection({
         <section className={card}>
             <h2 className={heading}>アカウントを削除</h2>
             <p className={settingsNote}>
-                ワールド・部屋・フレンド・プロフィール・ログイン方法がすべて消え、元に戻せません。ID @{handle}
+                ワールド・インスタンス・フレンド・プロフィール・ログイン方法がすべて消え、元に戻せません。ID @{handle}
                 は二度と使えなくなります。
             </p>
             {!recent ? (

@@ -37,7 +37,7 @@ export function FriendPlaceGroup({
                         {ACCESS_TYPE_LABELS[instance.access.type]}
                     </span>
                     {instance.remote && (
-                        <span className={metaItem} title="部屋のサーバー">
+                        <span className={metaItem} title="インスタンスのサーバー">
                             <HudIcon name="globe" size={14} />
                             {instance.remote.domain}
                         </span>

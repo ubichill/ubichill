@@ -7,7 +7,9 @@ describe('PRESENCE_VISIBILITY_OPTIONS', () => {
         expect(PRESENCE_VISIBILITY_OPTIONS.map((o) => o.value)).toEqual([...PRESENCE_VISIBILITIES]);
     });
 
-    it('見せないを選んでも、同じ部屋の人には見えることを伝える（隠れられると思わせない）', () => {
-        expect(PRESENCE_VISIBILITY_OPTIONS.find((o) => o.value === 'hidden')?.description).toContain('同じ部屋');
+    it('見せないを選んでも、同じインスタンスの人には見えることを伝える（隠れられると思わせない）', () => {
+        expect(PRESENCE_VISIBILITY_OPTIONS.find((o) => o.value === 'hidden')?.description).toContain(
+            '同じインスタンス',
+        );
     });
 });

@@ -37,7 +37,7 @@ export class InstanceJoinRejected extends Error {}
 export type InstanceCreateFailure = { error: string; reason?: 'forbidden' | 'retry' };
 
 export const VISIBILITY_UNCONFIRMED_MESSAGE =
-    '作者のサーバーで公開範囲を確かめられないため、いまは部屋を作れません。少し待ってからもう一度試してください';
+    '作者のサーバーで公開範囲を確かめられないため、いまはインスタンスを作れません。少し待ってからもう一度試してください';
 
 export const PRIVATE_WORLD_MESSAGE = 'プライベートのワールドには、作者しかインスタンスを作れません';
 

@@ -172,7 +172,7 @@ function detailsFragment(world: WorldListItem | undefined): string {
 function footerFragment(): string {
     return `
                 <section style="margin-top:16px;padding-top:24px;border-top:1px solid ${C.border};color:${C.textSubtle};font-size:14px;line-height:1.7;">
-                    <p style="margin:0;"><span style="font-weight:700;color:${C.textMuted};">ubichill</span> は URL からワールドを読み込み、ブラウザだけで即座に参加できる 2D メタバース基盤です。「インスタンスを作成」で自分の部屋（インスタンス）を作って参加できます（要ログイン）。</p>
+                    <p style="margin:0;"><span style="font-weight:700;color:${C.textMuted};">ubichill</span> は URL からワールドを読み込み、ブラウザだけで即座に参加できる 2D メタバース基盤です。「インスタンスを作成」から参加できます（要ログイン）。</p>
                 </section>`;
 }
 

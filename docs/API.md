@@ -256,7 +256,7 @@ Events.emit('vp:media:state', state, { scope: 'referrers' }); // 参照で自分
 - `ref` は、送った時点の data の参照フィールドが指す相手に届く。未設定・宣言の無いフィールド名なら誰にも届かない。
 - `component` を宣言した参照は、その型の Component だけに届く。`targetType` で型を広げることはできない。宣言しなければ、指した Entity の全 Component に届く。
 - **配線は作者の意図を伝える仕組みで、届く範囲を守る仕組みではない**。参照フィールドは data の一部なので、mod 自身（自分の data の更新）も、
-  部屋の参加者（`entity:patch`）も書き換えられる。`scope: 'world'` を使えば配線と関係なく全 Worker に届く。受け手は、届いたイベントの中身を
+  インスタンスの参加者（`entity:patch`）も書き換えられる。`scope: 'world'` を使えば配線と関係なく全 Worker に届く。受け手は、届いたイベントの中身を
   信頼せずに検証する（送り手を確かめる必要があるなら、その仕組みを別に持つ）。
 - 参照で watchScope の外の相手を読めるのは、指した Entity の Component だけ。書けるのは `access: 'write'` のフィールドが指した相手だけ。
   どちらも `component` を宣言していればその型の Component に限る（data の id を書き換えられても、宣言の外の型には届かない）。
@@ -270,7 +270,7 @@ Events.emit('vp:media:state', state, { scope: 'referrers' }); // 参照で自分
   1 つのインスタンスの 2 つのフィールドでも競合する。競合した面（と core:media を 2 つ持つ Entity）には誰の動画も描かず、
   World Editor と `ubichill dev` が知らせる（読み込みの順で勝ち負けを決めると、ブラウザごとに結果が変わるため）。
   操作パネルを複数置くときは、再生を担当する Component を 1 つ決め、ほかのパネルからは参照で指示を送る。
-- 動画面に描けるのは**ワールド定義に置いた Component** の出力だけ。部屋の中で作られた Component（`Ubi.entity.spawn` や参加者の
+- 動画面に描けるのは**ワールド定義に置いた Component** の出力だけ。インスタンスの中で作られた Component（`Ubi.entity.spawn` や参加者の
   `entity:create`）は、面を指しても描かず、競合にも数えない（参加者が面を指す Component を作って、ほかの人の動画を消せないように）。
 
   ```ts
@@ -373,21 +373,21 @@ HTTP契約・型生成はOpenAPI、WebSocket契約はAsyncAPI。詳細は
 | `/social/invite-requests` | — | リクエストインバイト（`{userId}`）・`/:userId/accept`（招待で答える） | DELETE `/:userId`: 断る（どれも 20回/分/人） |
 | `/social/blocks` | ブロックした人（新しい順。作者アカウント `account` 付き） | ブロック（`{userId}`。フレンド・申請・招待・2 人の間の通知を消す） | DELETE `/:userId`: 解除 |
 | `/users/me` | 自分の情報 | — | — |
-| `/users/me/home` | ホームの設定とワールド | `/instance`: ホームの部屋を新しく作る（`?fallback=default` で既定のワールド。10回/分/人） | PUT: `{worldRef?: string\|null, accessType?}`（20回/分/人） |
+| `/users/me/home` | ホームの設定とワールド | `/instance`: ホームのインスタンスを新しく作る（`?fallback=default` で既定のワールド。10回/分/人） | PUT: `{worldRef?: string\|null, accessType?}`（20回/分/人） |
 | `/notifications` | 一覧（`?cursor=&limit=`、お知らせを含む新しい順）・`/unread-count` | `/read`（`{ids}` か `{all:true}`） | — |
 | `/notifications/stream` | SSE（`notification`・`read`・`removed`・`reaction`、25 秒ごとに keep-alive、15 分で閉じる） | — | — |
 | `/notifications/announcements` | 一覧 | 作成（**公式アカウントのみ**、20件/h） | — |
 | `/messages` | 会話の一覧（新しい順に 50 件・相手ごとの未読の数） | — | — |
 | `/messages/:userId` | 会話（`?cursor=&limit=`、新しい順。1 通ごとに `reactions`。送れなければ `refusal`） | 送る（`{content}`、500 文字まで。フレンドのみ。20回/分・300回/h/人）・`/read`: 既読 | — |
 | `/messages/:userId/:messageId/reaction` | — | PUT: リアクションを付ける（`{emoji}`、Unicode 絵文字 1 つ。1 人 1 つで付け直すと置き換え。フレンドのみ。60回/分/人） | DELETE: 外す |
-| `/instances/:id/visit` | — | ほかのサーバーの部屋（`<部屋 ID>@<ドメイン>`）にいる間の知らせ（30 秒ごと） | DELETE: 来訪をやめる |
+| `/instances/:id/visit` | — | ほかのサーバーのインスタンス（`<インスタンス ID>@<ドメイン>`）にいる間の知らせ（30 秒ごと） | DELETE: 来訪をやめる |
 | `/federation` | 連合しているか・このサーバーのドメイン（誰でも） | — | — |
 | `/federation/servers` | 知っているほかのサーバーと配送の調子（**管理者**） | — | — |
 | `/federation/policies` | ほかのサーバーとの付き合い方（**管理者**） | — | PUT `/:domain`（`{policy: 'limit'\|'block'}`）・DELETE `/:domain` |
 
-ほかのサーバーの部屋・人（連合）は、このサーバーのものと同じ API で扱う。部屋の ID の代わりに住所（`<部屋 ID>@<ドメイン>`）を、
+ほかのサーバーのインスタンス・人（連合）は、このサーバーのものと同じ API で扱う。インスタンスの ID の代わりに住所（`<インスタンス ID>@<ドメイン>`）を、
 ユーザー ID の代わりに actor の URL を渡す（`/instances/:id`・`/instances/:id/join`・`/instances/:id/invites`・`/social/friends`・
-`/social/users/:id`・`/social/invite-requests`・`/social/blocks`）。ほかのサーバーの部屋は `Instance.remote`（`{domain, url}`）、
+`/social/users/:id`・`/social/invite-requests`・`/social/blocks`）。ほかのサーバーのインスタンスは `Instance.remote`（`{domain, url}`）、
 ほかのサーバーの人は `UserSummary.domain` が付く。検索は `@ID@ドメイン` で、そのサーバーに WebFinger で問い合わせる。
 サーバー間の API は [design/federation.md](design/federation.md)。
 

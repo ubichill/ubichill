@@ -45,7 +45,7 @@ const RoomPortalView = memo(function RoomPortalView({
     const [elapsed] = useState(() => (1 - roomPortalRemaining(data.expiresAt, Date.now())) * ROOM_PORTAL.LIFETIME_MS);
     const gone = destination === null;
     const locked = gone || destination?.locked === true;
-    const name = destination?.name ?? (gone ? '入れない部屋' : 'ポータル');
+    const name = destination?.name ?? (gone ? '入れないインスタンス' : 'ポータル');
     const thumbnail =
         destination?.thumbnail && destination.thumbnail !== failedThumbnail ? destination.thumbnail : null;
     const look = destination?.name ? { displayName: destination.name, thumbnail: destination.thumbnail } : undefined;
@@ -60,7 +60,7 @@ const RoomPortalView = memo(function RoomPortalView({
                 type="button"
                 className={portal}
                 disabled={!go || destination === undefined || locked}
-                title={locked ? 'この部屋には入れません' : undefined}
+                title={locked ? 'このインスタンスには入れません' : undefined}
                 onClick={() => void go?.({ kind: 'room', room: data.room }, name, look)}
             >
                 <span className={portalName}>{name}</span>

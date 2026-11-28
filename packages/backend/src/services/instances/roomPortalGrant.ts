@@ -7,7 +7,8 @@ import {
     type WorldVisibility,
 } from '@ubichill/shared';
 
-export const PRIVATE_ROOM_PORTAL_MESSAGE = 'プライベートのワールドの部屋へのポータルは、部屋を作った人だけが置けます';
+export const PRIVATE_ROOM_PORTAL_MESSAGE =
+    'プライベートのワールドのインスタンスへのポータルは、インスタンスを作った人だけが置けます';
 
 export interface RoomPortalGrantDeps {
     /** このサーバーのドメイン（`<ID>@<このドメイン>` はこのサーバーの部屋） */
@@ -54,7 +55,7 @@ export function createRoomPortalGrants(deps: RoomPortalGrantDeps): RoomPortalGra
     return {
         async issue(userId, room) {
             const address = isRoomPortalAddress(room) ? parseRoomAddress(room, deps.selfDomain()) : null;
-            if (!address) return { ok: false, status: 400, error: '行き先の部屋が正しくありません' };
+            if (!address) return { ok: false, status: 400, error: '行き先のインスタンスが正しくありません' };
             const refused = address.domain === null ? await refusal(userId, address.id) : null;
             if (refused) return refused;
             const exp = Math.floor(deps.now() / 1000) + ROOM_PORTAL_GRANT.TTL_SECONDS;

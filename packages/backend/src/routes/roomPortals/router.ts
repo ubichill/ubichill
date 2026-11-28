@@ -22,7 +22,7 @@ export function createRoomPortalsRouter(deps: RoomPortalsRouterDeps): Router {
         const userId = req.user?.id;
         if (!userId) return void res.status(401).json({ error: 'Unauthorized' });
         const parsed = GrantRequestSchema.safeParse(req.body);
-        if (!parsed.success) return void res.status(400).json({ error: '行き先の部屋が正しくありません' });
+        if (!parsed.success) return void res.status(400).json({ error: '行き先のインスタンスが正しくありません' });
         try {
             const outcome = await deps.grants.issue(userId, parsed.data.room);
             if (!outcome.ok) return void res.status(outcome.status).json({ error: outcome.error });

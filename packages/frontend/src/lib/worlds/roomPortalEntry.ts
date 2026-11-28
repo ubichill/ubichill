@@ -7,10 +7,10 @@ export type RoomStatus = Pick<Instance, 'canJoin' | 'leaderId' | 'stats'>;
 export type RoomPortalRefusal = 'gone' | 'closed' | 'full' | 'unknown';
 
 export const ROOM_PORTAL_REFUSAL_MESSAGES: Record<RoomPortalRefusal, string> = {
-    gone: 'ポータルの先の部屋はもうありません',
-    closed: 'ポータルの先の部屋には入れません',
-    full: 'ポータルの先の部屋は満員です',
-    unknown: 'ポータルの先の部屋を確かめられませんでした',
+    gone: 'ポータルの先のインスタンスはもうありません',
+    closed: 'ポータルの先のインスタンスには入れません',
+    full: 'ポータルの先のインスタンスは満員です',
+    unknown: 'ポータルの先のインスタンスを確かめられませんでした',
 };
 
 /** 見る人が部屋に入れないわけ（公開範囲・招待、満員。部屋を作った人は満員でも入れる）。入れるなら null。 */

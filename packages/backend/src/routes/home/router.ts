@@ -48,7 +48,7 @@ export function createHomeRouter(deps: HomeRouterDeps): Router {
             send(res, await deps.home.ensureInstance(userId, { useDefault: req.query.fallback === 'default' }));
         } catch (error) {
             logger.error('ホームの部屋の用意に失敗:', error);
-            res.status(503).json({ error: 'ホームの部屋を用意できません' });
+            res.status(503).json({ error: 'ホームのインスタンスを用意できません' });
         }
     });
 

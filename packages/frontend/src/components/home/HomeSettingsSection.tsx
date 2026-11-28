@@ -33,7 +33,7 @@ export function HomeSettingsSection() {
     return (
         <div className={css({ display: 'flex', flexDirection: 'column', gap: '4' })}>
             <p className={css({ fontSize: '13px', color: 'textMuted', lineHeight: '1.7' })}>
-                ログインしたときと、ランチパッドの「ホーム」で入る部屋です。ワールドはワールドの詳細の「ホームに設定」で変えられます。
+                ログインしたときと、ランチパッドの「ホーム」で入るインスタンスです。ワールドはワールドの詳細の「ホームに設定」で変えられます。
             </p>
             <div className={worldRow}>
                 {home.world?.thumbnail ? (
