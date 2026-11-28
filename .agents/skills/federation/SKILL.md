@@ -40,14 +40,15 @@ A と B は、次のものを全部分ける。1 つでも共有すると、片�
 | 分けるもの | A（B は 3100 台を 3200 台に） | 設定する場所 |
 |---|---|---|
 | 画面 | `http://localhost:3100` | Vite の `--port 3100 --strictPort`。backend の `CORS_ORIGIN` と Go の `--origins` にもこの origin を入れる |
-| backend | `http://localhost:3101` | backend の `PORT`・`BETTER_AUTH_URL`。画面の `VITE_BACKEND_URL`（未設定だと localhost は :3001 に繋ぐ） |
+| backend | `http://localhost:3101` | backend の `PORT=3101`・`BETTER_AUTH_URL=http://localhost:3101`。画面の `VITE_BACKEND_URL=http://localhost:3101` |
+| 連合の公開 URL | `http://localhost:3101` | backend の `PUBLIC_BASE_URL=http://localhost:3101`。actor の URL と連合で名乗るドメインの元になる（既定は両方とも `http://localhost:3001`） |
 | Go | `127.0.0.1:3102` | Go の `--listen`。backend の `INSTANCE_RUNTIME_URL=http://127.0.0.1:3102` と `INSTANCE_PUBLIC_URL=http://localhost:3102/realtime/v1/ws`（既定の相対パスだと、Vite の中継が :3002 に固定されているので別の Go に繋がる） |
 | Go の管理トークン | backend と Go で同じ値、A と B では別の値 | `INSTANCE_ADMIN_TOKEN`（32 文字以上） |
 | DB | `ubichill_fed_a` | `DATABASE_URL`。作ってから、同じ `DATABASE_URL` を付けて `mise exec -- pnpm --filter @ubichill/db migrate:dev` を当てる |
 | Redis | 使わない（`INSTANCE_DIRECTORY=memory`）か、db 番号を分ける | `REDIS_URL` |
 
 - 両方に `FEDERATION_ALLOW_HTTP=true` と `WORLDS_FETCH_ALLOW_PRIVATE=true` を付ける。
-- 環境変数の正は `packages/backend/src/config/index.ts` と `services/instance/cmd/instance/main.go`。上の表と食い違ったらそちらに従い、この表を直す。
+- 環境変数の読み込みは `packages/backend/src/config/index.ts`・`packages/backend/src/services/federation/config.ts`・`services/instance/cmd/instance/main.go` を見る。
 - 相手は `@<ID>@localhost:3201` のように探す。
 - **localhost の cookie はポートで分かれない。** A と B に同じブラウザでログインすると、セッションが上書きし合う。ブラウザのプロファイルを分けるか、API のスクリプトで確かめる。
 - backend は `@ubichill/db` の `dist` を読む。db を直したら `mise exec -- pnpm turbo build --filter=@ubichill/db` をしてから起こし直す。直したつもりで古い SQL が動く。

@@ -5,7 +5,7 @@ description: ubichill の Host の画面（packages/frontend の HUD・ランチ
 
 # Host の画面
 
-PandaCSS・`tokens.colors`・`css()` と `cva()`・SVG のアイコン・`className` は CLAUDE.md の規則。ここに書くのは、コードを読んでも分からない好みと、確かめ方。
+PandaCSS・`tokens.colors`・`css()` と `cva()`・SVG のアイコン・`className` は `AGENTS.md` の規則。ここに書くのは、コードを読んでも分からない好みと、確かめ方。
 
 ## 好み
 
