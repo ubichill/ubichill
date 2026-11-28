@@ -48,27 +48,12 @@ describe('inspectBashCommand: 確かめさせる', () => {
         ['git reset --hard'],
         ['git reset --hard origin/main'],
         ['git clean -fdx'],
-        ['rm -rf dist'],
-        ['rm -fr dist'],
-        ['rm -r -f dist'],
-        ['rm --recursive --force dist'],
-        ['/bin/rm -Rf dist'],
-        ['gh auth login'],
-        ['gh auth refresh -s delete_repo'],
-        ['gh auth switch -u someone'],
-        ['gh repo delete owner/repo --yes'],
-        ['gh api repos/o/r/issues/1 --method DELETE'],
-        ['gh api repos/o/r/issues/1 --method=delete'],
-        ['gh api -X DELETE repos/o/r/milestones/1'],
-        ['gh api -XDELETE repos/o/r/milestones/1'],
-        ['gh pr merge 12 --squash'],
-        ['mise exec -- gh pr merge 12'],
     ])('%s', (command) => {
         expect(asks(command)).toHaveLength(1);
     });
 
     it('連ねたコマンドは理由を全部返す', () => {
-        expect(asks('git reset --hard && rm -rf node_modules')).toHaveLength(2);
+        expect(asks('git reset --hard && git clean -fdx')).toHaveLength(2);
     });
 });
 
@@ -80,15 +65,20 @@ describe('inspectBashCommand: 止めない', () => {
         ['git reset --soft HEAD~1'],
         ['git reset HEAD file.ts'],
         ['git clean -n'],
+        ['git branch -d -- old-branch'],
         ['git log --format=%f'],
         ['git commit -m "git push --force は使わない"'],
         ['echo "rm -rf /"'],
         ['rm -r dist'],
         ['rm -f file'],
+        ['rm -rf dist'],
+        ['/bin/rm --recursive --force dist'],
         ['gh auth status'],
+        ['gh auth switch -u someone'],
         ['gh api repos/o/r/pulls'],
         ['gh api repos/o/r/pulls --method GET'],
         ['gh pr view 12'],
+        ['gh pr merge 12 --squash'],
         ['grep -rf patterns.txt .'],
         ['pnpm test'],
         [''],
@@ -102,19 +92,34 @@ describe('inspectBashCommand: gh のログイン先を確かめるもの', () =>
         ['git push'],
         ['gh pr create --title t --body b'],
         ['gh pr comment 1 --body b'],
+        ['mise exec -- gh pr merge 12 --squash'],
         ['gh issue create -t t'],
+        ['gh repo edit owner/repo --description t'],
+        ['gh repo delete owner/repo'],
+        ['gh repo deploy-key add key.pub'],
         ['gh api repos/o/r/issues -f title=t'],
+        ['gh api repos/o/r/issues --raw-field=title=t'],
+        ['gh api repos/o/r/issues -Ftitle=t'],
         ['gh api repos/o/r/labels -X POST'],
+        ['gh api repos/o/r/labels -XDELETE'],
     ])('書き込む: %s', (command) => {
         expect(needsGh(command)).toBe(true);
     });
 
-    it.each([['gh pr list'], ['gh pr view 1'], ['gh pr checks 1'], ['gh api user'], ['git status']])(
-        '読むだけ: %s',
-        (command) => {
-            expect(needsGh(command)).toBe(false);
-        },
-    );
+    it.each([
+        ['gh pr list'],
+        ['gh pr view 1'],
+        ['gh pr checks 1'],
+        ['gh repo view owner/repo'],
+        ['gh repo deploy-key list'],
+        ['gh repo clone owner/repo'],
+        ['gh repo set-default owner/repo'],
+        ['gh api user'],
+        ['gh api search/issues --method=GET --field=q=issue'],
+        ['git status'],
+    ])('読み取りや手元の操作: %s', (command) => {
+        expect(needsGh(command)).toBe(false);
+    });
 });
 
 describe('decide', () => {

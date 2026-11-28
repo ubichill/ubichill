@@ -11,8 +11,8 @@ Viteベースの完全CSR。URLで起動しWebSocketで同期する、ゼロト�
 - skill の実体は `.agents/skills/<名前>/`。Claude Code 用に `.claude/skills/<名前>` からシンボリックリンクを張る。
 - hooks は `.claude/settings.json`（Claude Code）と `.codex/hooks.json`（Codex）から、同じ `scripts/agent-hooks/` を呼ぶ。Codex では最初に `/hooks` で信頼する。
   - 編集したファイルに biome をかけ、自動で直せない違反を返す。
-  - 強制 push・`git reset --hard`・`rm -rf`・`gh auth`・`gh api` の DELETE・`gh pr merge` などは、Claude Code では人に確かめ、Codex では止める（Codex は確かめる表示に対応していない）。判定は `scripts/agent-hooks/bash-guard.mjs`。
-  - `git config ubichill.ghUser <自分の GitHub アカウント>` を設定すると、GitHub に書き込む前に gh のログイン先が違えば止める。
+  - 強制 push・リモートブランチの削除・`git reset --hard`・`git clean -f` は、Claude Code では人に確かめ、Codex では止める。マージ済みのローカルブランチは `git branch -d -- <ブランチ>` で整理できる。
+  - `git config ubichill.ghUser <自分の GitHub アカウント>` を設定すると、`git push` と `gh pr`・`gh issue`・`gh release`・`gh label`・`gh repo`・`gh api` の書き込みで gh のログイン先が違えば止める。
 
 ## 用語と決定の記録（`/grill-with-docs`・domain-modeling）
 - 用語はリポジトリ直下の `GLOSSARY.md` を正とする（日本語で書き、`_Avoid_` は「使わない:」と書く）。設計書では定義し直さずリンクする。

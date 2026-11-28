@@ -1,5 +1,5 @@
 /**
- * AI エージェント（Claude Code・Codex）の PreToolUse(Bash) で、取り返しのつかないコマンドを人に確かめさせる判定。
+ * AI エージェント（Claude Code・Codex）の PreToolUse(Bash) で、危険な Git 操作と GitHub のログイン先を確かめる判定。
  * 入出力は pre-bash.mjs が持つ。ここは文字列だけを見る純粋な関数。
  *
  * 守りの網であって境界ではない（eval・変数展開・スクリプト経由は見えない）。
@@ -115,6 +115,9 @@ const inspectGit = (args) => {
 };
 
 const GH_READ_ONLY = new Set(['list', 'view', 'status', 'diff', 'checks', 'checkout']);
+const GH_ACCOUNT_GROUPS = new Set(['pr', 'issue', 'release', 'label', 'repo']);
+const GH_REPO_NON_WRITES = new Set(['clone', 'gitignore', 'license', 'read-dir', 'read-file', 'set-default']);
+const GH_REPO_NESTED = new Set(['autolink', 'deploy-key']);
 
 const ghApiMethod = (args) => {
     const explicit = args.flatMap((a, i) => {
@@ -125,41 +128,20 @@ const ghApiMethod = (args) => {
     });
     if (explicit.length > 0) return explicit[explicit.length - 1].toUpperCase();
     // フィールドを渡すと gh api は既定で POST になる
-    const hasFields = args.some((a) => ['-f', '-F', '--field', '--raw-field', '--input'].includes(a));
+    const hasFields = hasAny(args, ['--field', '--raw-field', '--input']) || args.some((a) => /^-[fF]/.test(a));
     return hasFields ? 'POST' : 'GET';
 };
 
 const inspectGh = (args) => {
     const [group, sub, ...rest] = args;
-    if (group === 'auth') {
-        return sub === 'status'
-            ? { asks: [], needsGhAccount: false }
-            : { asks: [`gh auth ${sub ?? ''} はログイン先や権限の範囲を変える`], needsGhAccount: false };
-    }
-    if (group === 'repo' && sub === 'delete') {
-        return { asks: ['gh repo delete はリポジトリごと消す'], needsGhAccount: false };
-    }
     if (group === 'api') {
-        const method = ghApiMethod([sub, ...rest].filter((a) => a !== undefined));
-        return {
-            asks: method === 'DELETE' ? ['gh api の DELETE は gh のサブコマンドの制約を受けずに消す'] : [],
-            needsGhAccount: method !== 'GET',
-        };
+        return { asks: [], needsGhAccount: ghApiMethod(args.slice(1)) !== 'GET' };
     }
-    if (group === 'pr' && sub === 'merge') {
-        return { asks: ['PR は人がレビューしてからマージする'], needsGhAccount: true };
+    if (!GH_ACCOUNT_GROUPS.has(group) || (group === 'repo' && GH_REPO_NON_WRITES.has(sub))) {
+        return { asks: [], needsGhAccount: false };
     }
-    if (['pr', 'issue', 'release', 'label'].includes(group) && sub !== undefined && !GH_READ_ONLY.has(sub)) {
-        return { asks: [], needsGhAccount: true };
-    }
-    return { asks: [], needsGhAccount: false };
-};
-
-const inspectRm = (args) => {
-    const flags = args.filter((a) => a.startsWith('-'));
-    const recursive = hasShortFlag(flags, 'r') || hasShortFlag(flags, 'R') || flags.includes('--recursive');
-    const force = hasShortFlag(flags, 'f') || flags.includes('--force');
-    return { asks: recursive && force ? ['rm -rf はファイルを完全に消す'] : [], needsGhAccount: false };
+    const action = group === 'repo' && GH_REPO_NESTED.has(sub) ? rest[0] : sub;
+    return { asks: [], needsGhAccount: action !== undefined && !action.startsWith('-') && !GH_READ_ONLY.has(action) };
 };
 
 const SHELLS = new Set(['bash', 'sh', 'zsh']);
@@ -176,7 +158,6 @@ const inspectSegment = (segment) => {
     }
     if (name === 'git') return inspectGit(args);
     if (name === 'gh') return inspectGh(args);
-    if (name === 'rm') return inspectRm(args);
     return { asks: [], needsGhAccount: false };
 };
 
