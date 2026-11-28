@@ -1,7 +1,7 @@
 # コントリビューションガイド
 
 Ubichill への貢献ありがとうございます。バグ報告・提案は Issue、変更は Pull Request で歓迎します。
-コーディング規約の詳細は [CLAUDE.md](CLAUDE.md) にまとまっているので、ここでは**設計思想**を共有します。
+コーディング規約の詳細は [AGENTS.md](AGENTS.md) にまとまっているので、ここでは**設計思想**を共有します。
 
 ## 設計思想
 
@@ -41,7 +41,7 @@ pnpm typecheck
 pnpm build:workers  # mod Worker のバンドル
 ```
 
-規約（named export のみ / `any` 禁止 / PandaCSS / SVG アイコン 等）は [CLAUDE.md](CLAUDE.md) を参照。
+規約（named export のみ / `any` 禁止 / PandaCSS / SVG アイコン 等）は [AGENTS.md](AGENTS.md) を参照。
 
 ## ブランチ / コミット / PR
 
