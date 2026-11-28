@@ -20,6 +20,7 @@ import {
 } from '@ubichill/shared';
 import type { Logger } from '@ubichill/terminal';
 import yaml from 'yaml';
+import { MOD_AGENT_SKILL, MOD_AGENT_SKILL_PATHS } from './modAgentSkill.ts';
 import { pagesWorkflow, projectReadme } from './pagesTemplate.ts';
 
 export function targetWorld(args: string[]): string {
@@ -133,6 +134,7 @@ export function projectFiles(kind: 'mod' | 'world', name: string): Record<string
             "import type { ComponentConfig } from 'ubichill';\nexport const config: ComponentConfig = { defaultTransform: { x: 40, y: 160, w: 320, h: 100 }, capabilities: ['ui:render'] };\nexport default function Hello() { return <div>Hello!</div>; }\n",
         // Worker には Host が Ubi を注入する。import 文を書くとモジュールになりグローバルの宣言にならない
         'src/env.d.ts': "declare const Ubi: import('ubichill').Ubi;\n",
+        ...Object.fromEntries(MOD_AGENT_SKILL_PATHS.map((path) => [path, MOD_AGENT_SKILL])),
         'prefabs/welcome.json': JSON.stringify({ name: 'ようこそ', entities: [entity] }, null, 2),
         'tsconfig.json': JSON.stringify(
             {
