@@ -1,5 +1,62 @@
 # @ubichill/db
 
+## 1.10.0
+
+### Minor Changes
+
+- 0b57c73: アカウントの削除（退会）とアカウントの切り替えを足す。削除は直近の本人確認と ID の入れ直しを求め、開いている部屋を閉じてからユーザーを消す。退会した ID は `retired_accounts`（migration 0040）に残して二度と使わせず、WebFinger と actor は 410 を返す。切り替えは better-auth の multiSession でこのブラウザーのアカウントを覚え、トークンを画面に返さない口（`/account-switch/*`）で切り替え・このアカウントだけのログアウトをする。
+- a50fc27: ボット対策をコントロールパネルで設定できるようにする。Cloudflare Turnstile か hCaptcha を選び、鍵の組で確かめてから保存する。使うと、メールアドレスとフェディバースでの新規登録と、パスワードでのログインで、ボットでないことを確かめる。パスワードでのログインは、メールアドレスの代わりに ID でもできるようにする。シークレットキーはサーバーの秘密で暗号化して置く（マイグレーション 0043）。
+- cc6767c: ログイン画面に並べるフェディバースのサーバーを、コントロールパネルの「認証」で管理者が決められるようにする（`featured_fediverse_servers`、migration 0041）。メールなしで登録した人が、設定の「ログイン方法」でメールアドレスとパスワードを足せるようにする（確認コード、`email_link_requests`）。ログイン方法の追加・解除でパスワードの入れ直しを求めず、代わりに連絡先メールに知らせる。block したとき、ほかの backend も覚えた方針をすぐ捨てる。shared の `FEATURED_FEDIVERSE_SERVERS` は `MAX_FEATURED_FEDIVERSE_SERVERS` に置き換え、`LoginMethods` に `email` を足す。 設定の「アカウント」に、ログイン中の端末の一覧と 1 台ずつのログアウトを足す（`GET/DELETE /api/v1/users/me/sessions`）。メールは `SMTP_URL` があれば SMTP、無ければ Resend で送る。
+- 5fba65a: 二段階認証（認証アプリとバックアップコード）を足す（`user_two_factors`・`two_factor_challenges`、migration 0042）。有効にすると、パスワードでもフェディバースでもログインのたびにコードを求め、コードを確かめてからセッションを作る（`POST /api/auth/two-factor/verify`）。設定の口は `/api/v1/users/me/two-factor`（状態・始める・有効にする・無効にする・バックアップコードの作り直し）。鍵の暗号化とバックアップコードの HMAC はどの秘密で作ったかを残し、`BETTER_AUTH_SECRETS` で秘密を入れ替えても古い秘密が残っている間は読める。shared に `TwoFactorStatus` などの型と `isTwoFactorRequired` を足す。
+- 251f987: Mastodon・Misskey のアカウントで登録・ログイン・連携できるようにする（メールなしで登録できる）。ログインの前に使うサーバーを選んで確かめられる。外部アカウントは `accounts` の `(provider_id, account_id)` で一意にし、アプリの登録と表示用の情報の表、セッションの `password_verified_at`・`auth_account_id` を足す（migration 0038・0039）。管理者は確認済みのメールを持つユーザーだけにし、管理者の権限はパスワードで確かめたセッションだけで使える。ログイン方法の追加・解除には直近の本人確認が要る。`REGISTRATION=closed` で新規登録を止められる。
+- 8788983: mod のお気に入りを足す。作者（handle@domain）と mod の ID で覚え（`user_mod_favorites`、マイグレーション 0050）、見るたびに作者のカタログで今の版を引く（このサーバーの作者は自分のカタログ、ほかのサーバーの作者は WebFinger が案内するカタログ）。足すのは作者のカタログに公開されている mod だけで、1 人 100 件まで（同時に足しても超えない）。`GET`・`POST`・`DELETE /api/v1/users/me/favorites/mods`、`GET /api/v1/users/me/favorites` に `modRefs`、ほかの人に見せる `GET /api/v1/users/:id/favorites` に `mods`（公開範囲はワールドのお気に入りと同じ 1 つの設定）。shared に `ModFavoriteRefSchema`・`FavoriteMods`。
+- dccca47: 部屋にいる人が、どのワールドの部屋でも、ほかの部屋へのポータルを開けるようにする。行き先はワールドではなく部屋なので、後から通った人も同じ部屋に入る。インスタンスは `portal:open` を受けると `core:portal` の Entity（data は `room`・`expiresAt`・`ownerName`）を作って全員に配り、60 秒で消す（1 人 1 つ・置き直しは 3 秒あける・1 部屋 64 まで・置いた人が部屋を出ても消さない）。閉じられるのは置いた人だけ（`portal:close`）。数字は shared の `ROOM_PORTAL`。インスタンスの作成に `holdEmptyMs` を足し、ポータルの先に作った部屋は `held_until`（マイグレーション 0046）まで空でも消さない。
+- e3611a0: コントロールパネルに「ブランディング」を足す: サーバーのアイコン（タブ・iOS のホーム画面・PWA 用の PNG を作る）・紹介のページのバナー（1200×630 の WebP）・テーマの色（ボタンの文字とのコントラスト比 4.5 未満は断る）・略称（`PUT /api/v1/admin/branding`・`PUT`・`DELETE /api/v1/admin/branding/images/:kind`、画像は `GET /api/v1/server/images/:variant/:hash`）。`GET /api/v1/server` にブランディングを入れる。BFF はどのページにもアイコン・`/manifest.webmanifest`・テーマの色を入れ、紹介のページ（`/`）にサーバー名・紹介・バナーの OGP・Twitter Card・JSON-LD（WebSite・Organization）を出す。`sitemap.xml` に検索に出してよい人のページ（`GET /api/v1/server/directory`。本番だけ）を足し、プライベートのワールドはワールドのページも sitemap も検索に載せない。「おすすめや検索に出す」をオフにした人のユーザーページは `noindex`（プロフィールに `discoverable` を足した）。`robots.txt` は OGP の画像を読ませる。BFF は検索に載せるかを `DEPLOYMENT_ENVIRONMENT`（chart が backend の `NODE_ENV` を渡す）で決め、本番以外は `X-Robots-Tag: noindex` も付ける。shared に `themePalette`・`themeColorProblem` などを足す。マイグレーション 0049（`server_branding`・`server_images`）。
+- 64af1db: サーバーの情報（名前・紹介・管理者・利用規約などの URL）をコントロールパネルの「全般」で設定できるようにし、ログインしていない人が `/` を開くと出る紹介のページと NodeInfo に出す（マイグレーション 0044）。新規登録を終えたら、そのままログインする。
+- b96babb: 設定に「ストレージ」を足す: 使っている量と容量・上げた画像の一覧（大きさ・画素数・上げた日・自分のワールドで使っているか）・その場で消す・使われていない画像を自動で消すかの切り替え（`GET /api/v1/users/me/storage`・`PUT /api/v1/users/me/storage/settings`）。自動で消すのを止めた人の画像は掃除が消さない。1 人あたりの容量（既定 200 MB）を管理者がコントロールパネルの「全般」で 10 MB〜10 GB に変えられるようにし（`GET`・`PUT /api/v1/admin/storage`）、数の上限（200 枚）をやめる。容量を越えたときは今の合計と画像の大きさを伝える。PNG・GIF のうち小さいか平らな画像は可逆の WebP も作り、小さい方を置く（ドット絵・平らな絵が小さくなり、縁もにじまない。プロフィール画像も同じ）。`GET /api/v1/assets`（一覧）は設定の「ストレージ」の API に移した。shared の `WORLD_ASSET_QUOTA`・`WorldAssetList` を `WORLD_ASSET_QUOTA_BYTES`・`StorageOverview` などに置き換える。マイグレーション 0046（`storage_settings`・`user_settings.world_asset_auto_cleanup`）。
+- 26c5bbc: mod を書かなくてもワールドに置ける本体の部品を足す: 画像（`core:image`）・文字（`core:text`）・ほかのワールドへの入口（`core:portal`）。ワールドの背景に画像を敷けるようにする（`environment.backgroundImage`・`backgroundImageFit`）。ワールドの作者は画像をこのサーバーに上げられる（`POST /api/v1/assets`。作り直した WebP を中身のハッシュの URL で配る。1 人 200 枚・200 MB まで。マイグレーション 0045）。
+
+  mod に埋め込まれる本体の部品の一覧が増えたので、公式ワールド（弾幕）の mod danmaku を 1.0.5 に上げる。
+
+- 15373c5: ワールドに公開範囲（パブリック・プライベート）を足す。プライベートのワールドはインスタンスを作者しか作れず、一覧（ほかのサーバーへの一覧・お気に入り・プロフィール）に出ず、ワールドに置くポータルの行き先にできない。公開（署名した版）するまではプライベートとして扱い、既定はパブリック（マイグレーション 0048 の `worlds.visibility`）。作者は `PUT /api/v1/worlds/:worldId/visibility` で変える。ワールドに置くポータルは、行き先のワールドのパブリックの部屋（人のいちばん多い部屋。無ければ作る）へ入る。shared に `canStartInstance`・`isPortalDestination`・`canOpenRoomPortalTo`・`pickPortalInstance` を足した。ホームはほかの人のプライベートのワールドにできず、あとからプライベートになったら既定のワールドで入る。
+
+### Patch Changes
+
+- 84bf659: routes・middleware から DB を直接呼ばないようにし、手順を services に移した。CLI の認可で同時に同じ鍵を登録したときに 500 になるのを 409 にした。起動の途中で送ったキャッシュの破棄の知らせ（公式アカウントの鍵の取り消しなど）が、ほかの backend に届かずに捨てられていたのを、繋いだときに送るようにした。`authorKeyRepository.createLocal` は同じ鍵がもうあれば例外ではなく `undefined` を返す。
+- b96babb: 設定の「ストレージ」の一覧を 50 個ずつ読むようにし（新しい順の続きの位置。合計と数は SUM・COUNT で引く。`GET /api/v1/users/me/storage/files`）、読み込みに回数の制限を掛ける。チェックしてまとめて消せるようにし（`POST /api/v1/users/me/storage/files/delete`、1 回 100 個まで）、消す回数をアップロードと別に数える。画像の作り直しは、PNG・GIF で縮めた後が 256 色以下のときだけ可逆も作り、可逆が失敗・時間切れ（1 秒）なら非可逆で通す（読み込みと縮小は 1 回）。マイグレーション 0046 に持ち主ごとの一覧の索引を足す。
+- dbb02d9: 使われていないワールドの画像の掃除と、ワールドの定義の保存（下書き・公開）を advisory lock で順番にする。掃除が参照を読んだ後にコミットした下書きが指す古い画像を消していた。保存は共有、掃除は 1 回ごとに排他で取る（掃除は 5 秒まで待ち、取れなければ次の回に回す）。
+- dbb02d9: どのワールドにも使われていないワールドの画像を、上げてから 7 日たったら消す（起動の 1 分後と 6 時間ごと、reaper のリースを持つ 1 台だけ）。このサーバーのワールドの下書き・版（だれのワールドでも）の定義に `<hash>.webp` が出てくれば使われているとみなす。同じ画像を上げ直すと猶予を数え直す（`created_at` を今にする）。shared に参照の形 `WORLD_ASSET_REFERENCE_PATTERN` を足す。
+- Updated dependencies [a50fc27]
+- Updated dependencies [cc6767c]
+- Updated dependencies [5fba65a]
+- Updated dependencies [dabeae7]
+- Updated dependencies [251f987]
+- Updated dependencies [b33fa19]
+- Updated dependencies [8788983]
+- Updated dependencies [8806acb]
+- Updated dependencies [6b10cf8]
+- Updated dependencies [2a8df33]
+- Updated dependencies [2a8df33]
+- Updated dependencies [dccca47]
+- Updated dependencies [dccca47]
+- Updated dependencies [e3611a0]
+- Updated dependencies [64af1db]
+- Updated dependencies [b96babb]
+- Updated dependencies [b96babb]
+- Updated dependencies [026f27e]
+- Updated dependencies [dbb02d9]
+- Updated dependencies [26c5bbc]
+- Updated dependencies [396d07d]
+- Updated dependencies [1b1d1d1]
+- Updated dependencies [4ca3146]
+- Updated dependencies [15373c5]
+- Updated dependencies [15373c5]
+- Updated dependencies [15373c5]
+- Updated dependencies [15373c5]
+- Updated dependencies [15373c5]
+- Updated dependencies [15373c5]
+  - @ubichill/shared@1.18.0
+
 ## 1.9.3
 
 ### Patch Changes

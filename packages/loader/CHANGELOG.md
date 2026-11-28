@@ -1,5 +1,41 @@
 # @ubichill/loader
 
+## 1.4.3
+
+### Patch Changes
+
+- 21b6db8: 公式ワールド（弾幕）をゲームにする。mod danmaku を 2.0.0 に上げる（壁 `danmaku:wall` を消すので major）。敵 `danmaku:enemy`（Worker を持たず設定だけ。現れる・去る秒、動き方、撃ち方 radial・spiral・aimed・rain）を遊ぶ範囲 `danmaku:canvas` の中に置くと、範囲がステージとして動かす。自機は範囲から出られず、HP・被弾後の無敵・撃墜と復活を持つ。部屋で共有するのはラウンドと始まった時刻と各自のダメージだけで、敵と弾は各クライアントが時刻から計算する。弾幕ワールドの結合テスト（loader）を壁からステージの確認に書き換える。ワールドのエディタは、設定欄（dataFields）を持つデータ専用の Component を置けるようにする（敵を置いて設定するため）。自機の弾と敵・敵の弾と自機の当たりは、移動後の位置だけでなく前のフレームからの線分（相手から見た動き）で見る（速い弾がフレームの間に相手を通り抜けても当たる）。各自のダメージは、乗っている自機の Entity（乗っている人しか書けない）に、その自機で与えた分として書き、範囲はこのラウンドの分を自機ごとに足す（同時に撃っても書き込みが消し合わず、遊んだ人が増えても Entity が大きくなり続けない）。1 つの記録が上限を超えないよう、範囲で動かす敵の数を記録の大きさで決める。ダメージは当たるたびでなく 150ms ごとにまとめて書く（その分で倒れる敵がいればすぐ書く）。敵の弾と自機の当たりは、前のフレームの時刻から今までの線分で見る（0.1 秒より長いフレームでも通り抜けない。最後の 0.25 秒まで）。自機から降りたら、飛んでいる自分の弾を消す（記録する自機が無い当たりで、敵が倒れて見えてから戻らないように）。
+- Updated dependencies [a50fc27]
+- Updated dependencies [cc6767c]
+- Updated dependencies [5fba65a]
+- Updated dependencies [dabeae7]
+- Updated dependencies [251f987]
+- Updated dependencies [b33fa19]
+- Updated dependencies [8788983]
+- Updated dependencies [8806acb]
+- Updated dependencies [6b10cf8]
+- Updated dependencies [2a8df33]
+- Updated dependencies [2a8df33]
+- Updated dependencies [dccca47]
+- Updated dependencies [dccca47]
+- Updated dependencies [e3611a0]
+- Updated dependencies [64af1db]
+- Updated dependencies [b96babb]
+- Updated dependencies [b96babb]
+- Updated dependencies [026f27e]
+- Updated dependencies [dbb02d9]
+- Updated dependencies [26c5bbc]
+- Updated dependencies [396d07d]
+- Updated dependencies [1b1d1d1]
+- Updated dependencies [4ca3146]
+- Updated dependencies [15373c5]
+- Updated dependencies [15373c5]
+- Updated dependencies [15373c5]
+- Updated dependencies [15373c5]
+- Updated dependencies [15373c5]
+- Updated dependencies [15373c5]
+  - @ubichill/shared@1.18.0
+
 ## 1.4.2
 
 ### Patch Changes

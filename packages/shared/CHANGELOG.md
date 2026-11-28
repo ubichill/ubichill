@@ -1,5 +1,57 @@
 # @ubichill/shared
 
+## 1.18.0
+
+### Minor Changes
+
+- a50fc27: ボット対策をコントロールパネルで設定できるようにする。Cloudflare Turnstile か hCaptcha を選び、鍵の組で確かめてから保存する。使うと、メールアドレスとフェディバースでの新規登録と、パスワードでのログインで、ボットでないことを確かめる。パスワードでのログインは、メールアドレスの代わりに ID でもできるようにする。シークレットキーはサーバーの秘密で暗号化して置く（マイグレーション 0043）。
+- cc6767c: ログイン画面に並べるフェディバースのサーバーを、コントロールパネルの「認証」で管理者が決められるようにする（`featured_fediverse_servers`、migration 0041）。メールなしで登録した人が、設定の「ログイン方法」でメールアドレスとパスワードを足せるようにする（確認コード、`email_link_requests`）。ログイン方法の追加・解除でパスワードの入れ直しを求めず、代わりに連絡先メールに知らせる。block したとき、ほかの backend も覚えた方針をすぐ捨てる。shared の `FEATURED_FEDIVERSE_SERVERS` は `MAX_FEATURED_FEDIVERSE_SERVERS` に置き換え、`LoginMethods` に `email` を足す。 設定の「アカウント」に、ログイン中の端末の一覧と 1 台ずつのログアウトを足す（`GET/DELETE /api/v1/users/me/sessions`）。メールは `SMTP_URL` があれば SMTP、無ければ Resend で送る。
+- 5fba65a: 二段階認証（認証アプリとバックアップコード）を足す（`user_two_factors`・`two_factor_challenges`、migration 0042）。有効にすると、パスワードでもフェディバースでもログインのたびにコードを求め、コードを確かめてからセッションを作る（`POST /api/auth/two-factor/verify`）。設定の口は `/api/v1/users/me/two-factor`（状態・始める・有効にする・無効にする・バックアップコードの作り直し）。鍵の暗号化とバックアップコードの HMAC はどの秘密で作ったかを残し、`BETTER_AUTH_SECRETS` で秘密を入れ替えても古い秘密が残っている間は読める。shared に `TwoFactorStatus` などの型と `isTwoFactorRequired` を足す。
+- dabeae7: 公開環境の追加に気付けて、取り消しやすくする（#184）。CLI・CI を公開環境として足す承認（`POST /api/v1/cli-auth/requests/:id/approve`）は、直近の本人確認（パスワードを 10 分以内に確かめた、パスワードの無い人は 10 分以内にログインした）を求め、足りなければ 403 `reauth-required` で断る。ブラウザで公開するときの自動の登録はこれまでどおり確認を出さない。ログイン方法の追加・解除（フェディバースの連携の開始 `POST /api/auth/fediverse/start` の `intent: 'link'`・`DELETE /api/v1/users/me/login-methods/:id`・メールアドレスとパスワードの追加 `POST /api/v1/users/me/email`・`/me/email/verify`）も直近の本人確認を求め（奪った古いセッションで攻撃者のログイン手段を足させない）、足したときのパスワードの確認の時刻はセッションのログインの時刻にする。追加の通知メールに種類・名前・鍵の指紋と、その環境を目立たせた設定の画面（`/settings/publishing?environment=<id>`）へのリンクを載せる。公開環境の名前（`PublishingEnvironmentNameSchema`）は U+2028・U+2029 も受け付けない。shared に `signingKeyFingerprint`・`publishingEnvironmentKindLabel`・`publishingEnvironmentSettingsPath` を足す。`ubichill login` と `ubichill ci create` は、承認画面と見比べる鍵の指紋を出す。
+- 251f987: Mastodon・Misskey のアカウントで登録・ログイン・連携できるようにする（メールなしで登録できる）。ログインの前に使うサーバーを選んで確かめられる。外部アカウントは `accounts` の `(provider_id, account_id)` で一意にし、アプリの登録と表示用の情報の表、セッションの `password_verified_at`・`auth_account_id` を足す（migration 0038・0039）。管理者は確認済みのメールを持つユーザーだけにし、管理者の権限はパスワードで確かめたセッションだけで使える。ログイン方法の追加・解除には直近の本人確認が要る。`REGISTRATION=closed` で新規登録を止められる。
+- 8788983: mod のお気に入りを足す。作者（handle@domain）と mod の ID で覚え（`user_mod_favorites`、マイグレーション 0050）、見るたびに作者のカタログで今の版を引く（このサーバーの作者は自分のカタログ、ほかのサーバーの作者は WebFinger が案内するカタログ）。足すのは作者のカタログに公開されている mod だけで、1 人 100 件まで（同時に足しても超えない）。`GET`・`POST`・`DELETE /api/v1/users/me/favorites/mods`、`GET /api/v1/users/me/favorites` に `modRefs`、ほかの人に見せる `GET /api/v1/users/:id/favorites` に `mods`（公開範囲はワールドのお気に入りと同じ 1 つの設定）。shared に `ModFavoriteRefSchema`・`FavoriteMods`。
+- 2a8df33: `absoluteEntityTransform`（Entity の transform の絶対化と省略の補い）と `componentTransformOf`（Component の transform の上書き）を足し、`flattenGameObject` もこれを使う。エディタの描画と、プレハブを置く位置・一式の枠の計算も同じ関数で大きさを決め、Component にだけ幅・高さがあるプレハブの真ん中が落とした場所からずれないようにする。
+- 2a8df33: Entity に表示名（`name`、日本語も可・50 文字まで）を足す。参照は今まで通り `id` で行う。置いたプレハブの親は、`prefab-<乱数>` ではなくプレハブの名前の id（`pen-set`、2 つ目から `pen-set-2`）と、プレハブの `name` の表示名になる（`ubichill prefab add` も同じ）。
+- dccca47: ほかのサーバーの部屋のサーバーが回数の制限（429）・時間切れ（408）で答えたとき、部屋が無い（404）ではなく今は答えられない（503）として返す。このサーバーのドメインを付けた部屋の住所（`<ID>@<このサーバー>`）も、部屋の詳細・入室でこのサーバーの部屋として読む（shared の `localRoomIdOf`）。
+- dccca47: 部屋にいる人が、どのワールドの部屋でも、ほかの部屋へのポータルを開けるようにする。行き先はワールドではなく部屋なので、後から通った人も同じ部屋に入る。インスタンスは `portal:open` を受けると `core:portal` の Entity（data は `room`・`expiresAt`・`ownerName`）を作って全員に配り、60 秒で消す（1 人 1 つ・置き直しは 3 秒あける・1 部屋 64 まで・置いた人が部屋を出ても消さない）。閉じられるのは置いた人だけ（`portal:close`）。数字は shared の `ROOM_PORTAL`。インスタンスの作成に `holdEmptyMs` を足し、ポータルの先に作った部屋は `held_until`（マイグレーション 0046）まで空でも消さない。
+- e3611a0: コントロールパネルに「ブランディング」を足す: サーバーのアイコン（タブ・iOS のホーム画面・PWA 用の PNG を作る）・紹介のページのバナー（1200×630 の WebP）・テーマの色（ボタンの文字とのコントラスト比 4.5 未満は断る）・略称（`PUT /api/v1/admin/branding`・`PUT`・`DELETE /api/v1/admin/branding/images/:kind`、画像は `GET /api/v1/server/images/:variant/:hash`）。`GET /api/v1/server` にブランディングを入れる。BFF はどのページにもアイコン・`/manifest.webmanifest`・テーマの色を入れ、紹介のページ（`/`）にサーバー名・紹介・バナーの OGP・Twitter Card・JSON-LD（WebSite・Organization）を出す。`sitemap.xml` に検索に出してよい人のページ（`GET /api/v1/server/directory`。本番だけ）を足し、プライベートのワールドはワールドのページも sitemap も検索に載せない。「おすすめや検索に出す」をオフにした人のユーザーページは `noindex`（プロフィールに `discoverable` を足した）。`robots.txt` は OGP の画像を読ませる。BFF は検索に載せるかを `DEPLOYMENT_ENVIRONMENT`（chart が backend の `NODE_ENV` を渡す）で決め、本番以外は `X-Robots-Tag: noindex` も付ける。shared に `themePalette`・`themeColorProblem` などを足す。マイグレーション 0049（`server_branding`・`server_images`）。
+- 64af1db: サーバーの情報（名前・紹介・管理者・利用規約などの URL）をコントロールパネルの「全般」で設定できるようにし、ログインしていない人が `/` を開くと出る紹介のページと NodeInfo に出す（マイグレーション 0044）。新規登録を終えたら、そのままログインする。
+- b96babb: 設定に「ストレージ」を足す: 使っている量と容量・上げた画像の一覧（大きさ・画素数・上げた日・自分のワールドで使っているか）・その場で消す・使われていない画像を自動で消すかの切り替え（`GET /api/v1/users/me/storage`・`PUT /api/v1/users/me/storage/settings`）。自動で消すのを止めた人の画像は掃除が消さない。1 人あたりの容量（既定 200 MB）を管理者がコントロールパネルの「全般」で 10 MB〜10 GB に変えられるようにし（`GET`・`PUT /api/v1/admin/storage`）、数の上限（200 枚）をやめる。容量を越えたときは今の合計と画像の大きさを伝える。PNG・GIF のうち小さいか平らな画像は可逆の WebP も作り、小さい方を置く（ドット絵・平らな絵が小さくなり、縁もにじまない。プロフィール画像も同じ）。`GET /api/v1/assets`（一覧）は設定の「ストレージ」の API に移した。shared の `WORLD_ASSET_QUOTA`・`WorldAssetList` を `WORLD_ASSET_QUOTA_BYTES`・`StorageOverview` などに置き換える。マイグレーション 0046（`storage_settings`・`user_settings.world_asset_auto_cleanup`）。
+- dbb02d9: どのワールドにも使われていないワールドの画像を、上げてから 7 日たったら消す（起動の 1 分後と 6 時間ごと、reaper のリースを持つ 1 台だけ）。このサーバーのワールドの下書き・版（だれのワールドでも）の定義に `<hash>.webp` が出てくれば使われているとみなす。同じ画像を上げ直すと猶予を数え直す（`created_at` を今にする）。shared に参照の形 `WORLD_ASSET_REFERENCE_PATTERN` を足す。
+- 26c5bbc: mod を書かなくてもワールドに置ける本体の部品を足す: 画像（`core:image`）・文字（`core:text`）・ほかのワールドへの入口（`core:portal`）。ワールドの背景に画像を敷けるようにする（`environment.backgroundImage`・`backgroundImageFit`）。ワールドの作者は画像をこのサーバーに上げられる（`POST /api/v1/assets`。作り直した WebP を中身のハッシュの URL で配る。1 人 200 枚・200 MB まで。マイグレーション 0045）。
+
+  mod に埋め込まれる本体の部品の一覧が増えたので、公式ワールド（弾幕）の mod danmaku を 1.0.5 に上げる。
+
+- 396d07d: ワールドを読む側（部屋・サーバー・ほかのサーバーのワールドを読むとき）は、この版が知らない本体の部品（`core:*`）と、本体の部品の知らない項目を断らずに残し、使わないようにする。新しい ubichill で部品を足しても、ワールドがこの版以降のサーバーで開けなくなることはない。書く側は今まで通り確かめる。エディタは確認の一覧に出し、`ubichill publish` は公開を止め、`ubichill dev` は警告を出す。部屋では、表示されない部品があることをコンソールに出す。core-components に、知らない項目を捨てて読む `readCoreData`・`readCoreComponentData` と、書く側で使う `unknownCoreComponentKeys` を足す。
+- 1b1d1d1: mod を書かずに置ける動きの部品を足す: 最初の場所（`core:spawn`。部屋に入ったとき画面の中心に来る）、ワープ（`core:warp`。押すとワールドの中の別の Entity へスクロールする）、スイッチ（`core:switch`。押すと対象の Entity の見える・見えないを部屋の全員の画面で切り替える）。Entity に `visible`（`false` なら最初は見えない。子も）を足す。インスタンスは見えない Entity の一覧をスナップショットの `hiddenEntities` に持ち、`switch:press` を確かめてから切り替えて `entity:visibility` で配る。公式ワールド（弾幕）の mod danmaku を 1.0.6 に上げる（mod に埋め込まれる部品の一覧が増えたため）。
+- 4ca3146: ワールドの公開（作者の署名付き）にサムネイルを必要にする。World Editor の公開・`ubichill publish`・本体の保存（署名付き）が、サムネイルの無いワールドを断る（下書きと署名の無い保存には求めない。shared の `worldPublishProblem`）。公式ワールド（Ubichill Home・弾幕・WASM デモ）にサムネイルを付ける。入口（`core:portal`）は、行き先のワールドのサムネイルを丸い窓に出し、上に名前を出す。
+- 15373c5: ワールドの公開範囲をサーバーの側で守る。プライベートのワールドの部屋を作れるのは作者だけで、作者のサーバーでだけ。
+
+  - ワールドのファイル（`.yaml`・`.lock.json`・`.sig.json`）に公開範囲のヘッダー `Ubichill-World-Visibility: private|public` を付ける（`Access-Control-Expose-Headers` にも入れる）。ほかのサーバーは外部のワールドを解決するとき、`private` ならそのワールドの部屋をだれにも作らせず、一覧・ワールドに置くポータルの行き先からも外す（shared の `WORLD_VISIBILITY_HEADER`・`worldVisibilityFromHeader`）。ファイルは今までどおり誰にでも配る。
+  - 部屋へのポータルを置く許可を backend が出す（`POST /api/v1/room-portals/grants`）。プライベートのワールドの部屋へは、その部屋を作った人にだけ出す（いまの公開範囲で判定する）。インスタンスは管理トークンのある運用で `portal:open` の `grant`（`base64url(JSON {room, userId, exp})` + `.` + HMAC-SHA256。鍵は管理トークンから `ubichill room portal grant v1` で派生、60 秒）を確かめ、無い・合わなければ断る。単体モードでは求めない（shared の `ROOM_PORTAL_GRANT`）。
+
+- 15373c5: ワールドに公開範囲（パブリック・プライベート）を足す。プライベートのワールドはインスタンスを作者しか作れず、一覧（ほかのサーバーへの一覧・お気に入り・プロフィール）に出ず、ワールドに置くポータルの行き先にできない。公開（署名した版）するまではプライベートとして扱い、既定はパブリック（マイグレーション 0048 の `worlds.visibility`）。作者は `PUT /api/v1/worlds/:worldId/visibility` で変える。ワールドに置くポータルは、行き先のワールドのパブリックの部屋（人のいちばん多い部屋。無ければ作る）へ入る。shared に `canStartInstance`・`isPortalDestination`・`canOpenRoomPortalTo`・`pickPortalInstance` を足した。ホームはほかの人のプライベートのワールドにできず、あとからプライベートになったら既定のワールドで入る。
+
+### Patch Changes
+
+- b33fa19: ログインの画面（`/auth`）をやめ、`/` にまとめる。紹介のページに Mastodon・Misskey のアカウントでのログインを最初から並べ、メールアドレスとパスワードでのログイン・新規登録は、その上のダイアログで開く。フェディバースの認証から戻る先（二段階目・ID と表示名を決める・失敗）も `/` にする。前の `/auth` へのリンクは `/` へ移す。
+- 8806acb: UI（`core:ui`）を、Entity の大きさの四角にする（FigJam の図形と同じ考え方）。塗り（`fill`）・枠線（`border`・`borderWidth`）・角丸（`radius`）・テキスト（`text`・`size`・`color`・`align`・`bold`）を持ち、`button: true` で押せるようになる。押すと、同じ Entity のスクリプト（ワープ `core:warp`・スイッチ `core:switch`・ポータル `core:portal`）を動かす。ワープ・スイッチは並び順に動かし、部屋を出るポータルは並びの最初の 1 つだけを最後に動かす（2 つ目からのポータルは動かず、エディタで知らせる）。押した動きが終わるまで同じボタンは押し直しても動かず、ボタンにした UI の `markup` は見た目だけ（中のリンクは押せない）。エディタの UI・テキストの欄は、data に無い項目に部屋で描く値を出す（置いたときの白い角丸の四角と「ようこそ」は、足したときの data として書く）。スクリプトは、ボタンにした UI があると自分では描かず、無ければ今まで通りの標準のボタンを出す。HTML 風の UI データ（`markup`）は上級者向けとして残す（書くとテキストの代わりに描く）。書いていない項目は描かないので、前の版の `core:ui` の見た目は変わらない。
+
+  本体の部品の表示名を、型の名前の読みにそろえる（コライダー・メディア・UI・イメージ・テキスト・ポータル・ワープ・スイッチ・スポーン）。「入口」「最初の場所」「画像」「文字」と呼んでいたものは、YAML の `core:portal` などと対応が分からなかった。ポータルの既定の名前と、公開に要るサムネイルの説明も「ポータル」にする。
+
+- 6b10cf8: 部屋へのポータルを、部屋のいちばん前に置く。インスタンスは `portal:open` で作る `core:portal` の z を、ワールドの座標の Entity の z のいちばん大きいものの 1 つ上（整数）にする（画面に固定する `overlay` の Entity と、置き直しで消す自分の前のポータルは比べない。0 より下にはしない（負の z はワールドの背景より奥に描かれる）、transform の上限 1e7 を超えるなら 1e7）。弾幕の範囲（z: 5000）のようにワールドを覆う Entity の上にも出る。画面は置く場所を選ばせてから `portal:open` を送る（shared の `portal:open`・`roomPortalCenter` の説明を合わせた）。
+- b96babb: 設定の「ストレージ」の一覧を 50 個ずつ読むようにし（新しい順の続きの位置。合計と数は SUM・COUNT で引く。`GET /api/v1/users/me/storage/files`）、読み込みに回数の制限を掛ける。チェックしてまとめて消せるようにし（`POST /api/v1/users/me/storage/files/delete`、1 回 100 個まで）、消す回数をアップロードと別に数える。画像の作り直しは、PNG・GIF で縮めた後が 256 色以下のときだけ可逆も作り、可逆が失敗・時間切れ（1 秒）なら非可逆で通す（読み込みと縮小は 1 回）。マイグレーション 0046 に持ち主ごとの一覧の索引を足す。
+- 026f27e: 画面・エラー・`ubichill dev` の出力・文書で「部屋」と「インスタンス」が混ざっていたのを「インスタンス」にそろえる（型の `Instance` の読み）。入れないインスタンスの呼び方は「プライベートインスタンス」にそろえる。用語集 `GLOSSARY.md` を足す。連合のプロトコルの `rooms`・部屋の住所の形は変えない。
+- 15373c5: 外部のワールドの公開範囲を、取ってきた URL ではなく署名の作者で決める。プライベートのワールドのファイルを別の場所に置き直しても、作者がこのサーバーのアカウントならその作者のワールド（以前の名前を含む）の公開範囲で、ほかのサーバーのアカウントなら作者のサーバーの正規の URL のヘッダーで、部屋を作らせるかを決める。部屋の住所のドメインは URL のホストと同じ形にそろえる（`:443`・頭の 0 のポートを外す。`parseRoomAddress`）。
+- 15373c5: 外部のワールドの公開範囲を閉じる側に倒す。作者の鍵の取得が一時的に失敗したとき（429・5xx・時間切れ。404・410 以外）は作者が無いとせず pending にする（shared の authorKeyDirectory。`fetchJson` は一時的な失敗を例外にする）。作者のサーバーの正規の URL の公開範囲を確かめられず、前に確かめた結果も無いときは部屋を作らない（503、`ResolvedWorld.visibilityUnconfirmed`）。外部のワールド・正規の URL を取りに行く回数に、ドメインごとに 1 分 120 回の上限を付ける。
+- 15373c5: 外部のワールドの公開範囲を 1 つの規則で決める。名乗る作者はいつも署名から取り（確かめられなかったときは識別結果の `claimedAuthor`。作者を確かめられたかにかかわらず）、閉じる側にだけ使う。ほかのサーバーの作者のワールドの部屋は、作者のサーバーの正規の URL が期限（5 分）の内に public と決まったときだけ作れる（private はいつまでも使い、期限を過ぎた public は使わない。404・410 はパブリック。決められなければ 503）。作者を確かめられない間に部屋を作らない別の規則はやめた。
+- 15373c5: 作者の鍵をいま確かめられない（`authorPending`）間も、署名が名乗る作者を識別結果の `claimedAuthor` に残し、外部のワールドの公開範囲を閉じる側にだけ当てる（プライベートにはするが、作者の ID は付けずパブリックにもしない）。作者を確かめられていない外部のワールドの部屋は作らない（503）。作者のサーバーの正規の URL とみなすのは https で同じオリジンのときだけにする。
+- Updated dependencies [8806acb]
+- Updated dependencies [26c5bbc]
+- Updated dependencies [396d07d]
+- Updated dependencies [1b1d1d1]
+  - @ubichill/core-components@1.1.0
+
 ## 1.17.1
 
 ### Patch Changes
