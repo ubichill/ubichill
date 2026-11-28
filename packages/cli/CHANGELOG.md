@@ -1,5 +1,60 @@
 # @ubichill/cli
 
+## 1.5.0
+
+### Minor Changes
+
+- 3e84c47: `ubichill init mod` の雛形に、AI エージェント向けの skill `ubichill-mod` を入れる。Codex が読む `.agents/skills/` と Claude Code が読む `.claude/skills/` に同じ中身で置く。Worker の中でできないこと（DOM・`fetch`・`eval`・CORS）、`Ubi.state` での共有と保存、権限、公開した版を変えない決まりを書き、API はインストールした `ubichill` の README と型を正とするよう案内する。
+- 8788983: `ubichill init mod|world` の雛形に、GitHub Pages へ公開するワークフロー（`.github/workflows/pages.yml`）と README を足す。mod はビルド（公開済みの版の履歴を引き継ぐ）→ 署名 → 署名の検査 → 前の版を残して `gh-pages` に足す → 配置を確かめてカタログに登録、ワールドは署名して書き出し → 検査 → 配置。Action は commit の SHA で固定し、署名の鍵は Secret `UBICHILL_CREDENTIALS`、公開先は既定で `https://<owner>.github.io/<repo>`（リポジトリの変数 `UBICHILL_PUBLIC_URL` で変えられる）。mod の雛形の Component は `ui:render` を宣言し、最初のビルドで capability の注意が出ないようにする。
+
+  `publish` に `--require-registration` を足す。ユーザーページ・カタログに登録できない作品があれば終了コード 2 で終わる（既定は今までどおり警告だけで 0）。雛形のワークフローはこれを使い、署名の鍵は使うステップにだけ渡し、`npm ci --ignore-scripts`・`persist-credentials: false`・書く権限はジョブだけにする。
+
+- 2a8df33: Entity に表示名（`name`、日本語も可・50 文字まで）を足す。参照は今まで通り `id` で行う。置いたプレハブの親は、`prefab-<乱数>` ではなくプレハブの名前の id（`pen-set`、2 つ目から `pen-set-2`）と、プレハブの `name` の表示名になる（`ubichill prefab add` も同じ）。
+- 26c5bbc: mod を書かなくてもワールドに置ける本体の部品を足す: 画像（`core:image`）・文字（`core:text`）・ほかのワールドへの入口（`core:portal`）。ワールドの背景に画像を敷けるようにする（`environment.backgroundImage`・`backgroundImageFit`）。ワールドの作者は画像をこのサーバーに上げられる（`POST /api/v1/assets`。作り直した WebP を中身のハッシュの URL で配る。1 人 200 枚・200 MB まで。マイグレーション 0045）。
+
+  mod に埋め込まれる本体の部品の一覧が増えたので、公式ワールド（弾幕）の mod danmaku を 1.0.5 に上げる。
+
+- 4ca3146: ワールドの公開（作者の署名付き）にサムネイルを必要にする。World Editor の公開・`ubichill publish`・本体の保存（署名付き）が、サムネイルの無いワールドを断る（下書きと署名の無い保存には求めない。shared の `worldPublishProblem`）。公式ワールド（Ubichill Home・弾幕・WASM デモ）にサムネイルを付ける。入口（`core:portal`）は、行き先のワールドのサムネイルを丸い窓に出し、上に名前を出す。
+
+### Patch Changes
+
+- dabeae7: 公開環境の追加に気付けて、取り消しやすくする（#184）。CLI・CI を公開環境として足す承認（`POST /api/v1/cli-auth/requests/:id/approve`）は、直近の本人確認（パスワードを 10 分以内に確かめた、パスワードの無い人は 10 分以内にログインした）を求め、足りなければ 403 `reauth-required` で断る。ブラウザで公開するときの自動の登録はこれまでどおり確認を出さない。ログイン方法の追加・解除（フェディバースの連携の開始 `POST /api/auth/fediverse/start` の `intent: 'link'`・`DELETE /api/v1/users/me/login-methods/:id`・メールアドレスとパスワードの追加 `POST /api/v1/users/me/email`・`/me/email/verify`）も直近の本人確認を求め（奪った古いセッションで攻撃者のログイン手段を足させない）、足したときのパスワードの確認の時刻はセッションのログインの時刻にする。追加の通知メールに種類・名前・鍵の指紋と、その環境を目立たせた設定の画面（`/settings/publishing?environment=<id>`）へのリンクを載せる。公開環境の名前（`PublishingEnvironmentNameSchema`）は U+2028・U+2029 も受け付けない。shared に `signingKeyFingerprint`・`publishingEnvironmentKindLabel`・`publishingEnvironmentSettingsPath` を足す。`ubichill login` と `ubichill ci create` は、承認画面と見比べる鍵の指紋を出す。
+- 56ffd61: `ubichill dev` の world.html で、mod を自分のサーバーの `/mods` から読むとき `Ubi.assets` が `ASSET_INVALID_PATH` で失敗していたのを直す。部屋の読み込み画面に、行き先のワールドのサムネイルを先に出す。
+- 026f27e: 画面・エラー・`ubichill dev` の出力・文書で「部屋」と「インスタンス」が混ざっていたのを「インスタンス」にそろえる（型の `Instance` の読み）。入れないインスタンスの呼び方は「プライベートインスタンス」にそろえる。用語集 `GLOSSARY.md` を足す。連合のプロトコルの `rooms`・部屋の住所の形は変えない。
+- 396d07d: ワールドを読む側（部屋・サーバー・ほかのサーバーのワールドを読むとき）は、この版が知らない本体の部品（`core:*`）と、本体の部品の知らない項目を断らずに残し、使わないようにする。新しい ubichill で部品を足しても、ワールドがこの版以降のサーバーで開けなくなることはない。書く側は今まで通り確かめる。エディタは確認の一覧に出し、`ubichill publish` は公開を止め、`ubichill dev` は警告を出す。部屋では、表示されない部品があることをコンソールに出す。core-components に、知らない項目を捨てて読む `readCoreData`・`readCoreComponentData` と、書く側で使う `unknownCoreComponentKeys` を足す。
+- Updated dependencies [a50fc27]
+- Updated dependencies [cc6767c]
+- Updated dependencies [5fba65a]
+- Updated dependencies [dabeae7]
+- Updated dependencies [21b6db8]
+- Updated dependencies [251f987]
+- Updated dependencies [b33fa19]
+- Updated dependencies [8788983]
+- Updated dependencies [8806acb]
+- Updated dependencies [6b10cf8]
+- Updated dependencies [2a8df33]
+- Updated dependencies [2a8df33]
+- Updated dependencies [dccca47]
+- Updated dependencies [dccca47]
+- Updated dependencies [e3611a0]
+- Updated dependencies [64af1db]
+- Updated dependencies [b96babb]
+- Updated dependencies [b96babb]
+- Updated dependencies [026f27e]
+- Updated dependencies [dbb02d9]
+- Updated dependencies [26c5bbc]
+- Updated dependencies [396d07d]
+- Updated dependencies [1b1d1d1]
+- Updated dependencies [4ca3146]
+- Updated dependencies [15373c5]
+- Updated dependencies [15373c5]
+- Updated dependencies [15373c5]
+- Updated dependencies [15373c5]
+- Updated dependencies [15373c5]
+- Updated dependencies [15373c5]
+  - @ubichill/shared@1.18.0
+  - @ubichill/loader@1.4.3
+
 ## 1.4.1
 
 ### Patch Changes

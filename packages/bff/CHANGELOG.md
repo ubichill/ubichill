@@ -1,5 +1,50 @@
 # @ubichill/bff
 
+## 1.1.0
+
+### Minor Changes
+
+- e3611a0: コントロールパネルに「ブランディング」を足す: サーバーのアイコン（タブ・iOS のホーム画面・PWA 用の PNG を作る）・紹介のページのバナー（1200×630 の WebP）・テーマの色（ボタンの文字とのコントラスト比 4.5 未満は断る）・略称（`PUT /api/v1/admin/branding`・`PUT`・`DELETE /api/v1/admin/branding/images/:kind`、画像は `GET /api/v1/server/images/:variant/:hash`）。`GET /api/v1/server` にブランディングを入れる。BFF はどのページにもアイコン・`/manifest.webmanifest`・テーマの色を入れ、紹介のページ（`/`）にサーバー名・紹介・バナーの OGP・Twitter Card・JSON-LD（WebSite・Organization）を出す。`sitemap.xml` に検索に出してよい人のページ（`GET /api/v1/server/directory`。本番だけ）を足し、プライベートのワールドはワールドのページも sitemap も検索に載せない。「おすすめや検索に出す」をオフにした人のユーザーページは `noindex`（プロフィールに `discoverable` を足した）。`robots.txt` は OGP の画像を読ませる。BFF は検索に載せるかを `DEPLOYMENT_ENVIRONMENT`（chart が backend の `NODE_ENV` を渡す）で決め、本番以外は `X-Robots-Tag: noindex` も付ける。shared に `themePalette`・`themeColorProblem` などを足す。マイグレーション 0049（`server_branding`・`server_images`）。
+
+### Patch Changes
+
+- 8806acb: UI（`core:ui`）を、Entity の大きさの四角にする（FigJam の図形と同じ考え方）。塗り（`fill`）・枠線（`border`・`borderWidth`）・角丸（`radius`）・テキスト（`text`・`size`・`color`・`align`・`bold`）を持ち、`button: true` で押せるようになる。押すと、同じ Entity のスクリプト（ワープ `core:warp`・スイッチ `core:switch`・ポータル `core:portal`）を動かす。ワープ・スイッチは並び順に動かし、部屋を出るポータルは並びの最初の 1 つだけを最後に動かす（2 つ目からのポータルは動かず、エディタで知らせる）。押した動きが終わるまで同じボタンは押し直しても動かず、ボタンにした UI の `markup` は見た目だけ（中のリンクは押せない）。エディタの UI・テキストの欄は、data に無い項目に部屋で描く値を出す（置いたときの白い角丸の四角と「ようこそ」は、足したときの data として書く）。スクリプトは、ボタンにした UI があると自分では描かず、無ければ今まで通りの標準のボタンを出す。HTML 風の UI データ（`markup`）は上級者向けとして残す（書くとテキストの代わりに描く）。書いていない項目は描かないので、前の版の `core:ui` の見た目は変わらない。
+
+  本体の部品の表示名を、型の名前の読みにそろえる（コライダー・メディア・UI・イメージ・テキスト・ポータル・ワープ・スイッチ・スポーン）。「入口」「最初の場所」「画像」「文字」と呼んでいたものは、YAML の `core:portal` などと対応が分からなかった。ポータルの既定の名前と、公開に要るサムネイルの説明も「ポータル」にする。
+
+- 026f27e: 画面・エラー・`ubichill dev` の出力・文書で「部屋」と「インスタンス」が混ざっていたのを「インスタンス」にそろえる（型の `Instance` の読み）。入れないインスタンスの呼び方は「プライベートインスタンス」にそろえる。用語集 `GLOSSARY.md` を足す。連合のプロトコルの `rooms`・部屋の住所の形は変えない。
+- b5a4f17: World Editor のコントロールパネルから、エディタの画面を撮ってサムネイルにできるようにする（「画面から撮る」で 16:9 の枠を出し、部屋で見える通りに描いて撮る）。ほかのサーバーのエディタも写せるように、上げた画像（`/api/v1/assets/*.webp`）と公式ワールドのサムネイル（`/world-thumbnails/*`）を、どのオリジンからも読めるようにする。
+- Updated dependencies [a50fc27]
+- Updated dependencies [cc6767c]
+- Updated dependencies [5fba65a]
+- Updated dependencies [dabeae7]
+- Updated dependencies [251f987]
+- Updated dependencies [b33fa19]
+- Updated dependencies [8788983]
+- Updated dependencies [8806acb]
+- Updated dependencies [6b10cf8]
+- Updated dependencies [2a8df33]
+- Updated dependencies [2a8df33]
+- Updated dependencies [dccca47]
+- Updated dependencies [dccca47]
+- Updated dependencies [e3611a0]
+- Updated dependencies [64af1db]
+- Updated dependencies [b96babb]
+- Updated dependencies [b96babb]
+- Updated dependencies [026f27e]
+- Updated dependencies [dbb02d9]
+- Updated dependencies [26c5bbc]
+- Updated dependencies [396d07d]
+- Updated dependencies [1b1d1d1]
+- Updated dependencies [4ca3146]
+- Updated dependencies [15373c5]
+- Updated dependencies [15373c5]
+- Updated dependencies [15373c5]
+- Updated dependencies [15373c5]
+- Updated dependencies [15373c5]
+- Updated dependencies [15373c5]
+  - @ubichill/shared@1.18.0
+
 ## 1.0.21
 
 ### Patch Changes
